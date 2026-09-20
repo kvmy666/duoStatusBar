@@ -86,8 +86,25 @@ All parts belong to one Rive state machine and one scale group, so they start an
 Airplane toggle: Wi-Fi arcs collapse into the centre dot (120 ms), then the plane scales `0 → 1` from
 inside that circle (180 ms) and settles; reverse on disable.
 
-## 6. Still to measure on the device (never assumed)
+## 6. Measured on the device (Phase 0) — no longer assumed
 
-* Real status-bar height and the icon slot height in **portrait and landscape** on OOS 16.
-* Available width in the right-hand icon cluster (how many px the Duo element may occupy).
-* Device density: physical 560 dpi, **override 484** → all sizes are computed in `dp` at runtime.
+Read from `com.android.systemui` on the target phone (full evidence in
+[`devicereport-oos16.md`](devicereport-oos16.md)). Density `3.025` (484 dpi override), portrait:
+
+| Item | px | dp |
+|---|---|---|
+| Status-bar window height | 141 | 46.6 |
+| Icon row height / top offset | 90 @ y38 | 29.8 |
+| Icon height (the strip) | 61 | 20.2 |
+| End-side cluster width (`status_bar_end_side_content`) | 329 | 108.8 |
+| `statusIcons` container width | 246 | 81.3 |
+| Battery slot (`id=battery`) | 83 × 61 @ x1105 | 27.4 × 20.2 |
+| Wi-Fi slot (`id=wifi_combo`) | 70 × 61 @ x913 | 23.1 × 20.2 |
+| Mobile slot (`id=mobile_combo`, ×2) | 61 × 61 @ x983, x1044 | 20.2 × 20.2 |
+| Clock (`id=clock`) | 128 × 90 @ x74 (left side, kept) | 42.3 |
+
+**Width budget for the Duo element:** the freed cluster spans `x 859 … 1188` (329 px). Its default home is
+the battery column (`x 1105 … 1188`, 83 px), so the element is drawn in an **83 × 83 px square** rendered
+at 3.025× density — which is exactly the reference element's proportions (the reference images show a
+square-ish bounding box: value, ring, then the cell spheres). Landscape is measured in Phase 3.
+

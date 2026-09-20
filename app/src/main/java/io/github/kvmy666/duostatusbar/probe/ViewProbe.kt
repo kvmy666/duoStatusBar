@@ -21,7 +21,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal object ViewProbe {
 
     private const val TYPE_STATUS_BAR = 2000
-    private const val MAX_DEPTH = 6
+
+    /**
+     * The status-bar tree is deeper than it looks: on OxygenOS 16 the icon cluster sits at
+     * depth 6+ (StatusBarWindowView > status_bar_container > PhoneStatusBarView > status_bar_contents
+     * > end_side_container > end_side_container_for_fake > EndSideContentLayout > …). Phase 0
+     * evidence showed a cap of 6 hid the battery/Wi-Fi/signal views completely.
+     */
+    private const val MAX_DEPTH = 14
     private const val FLUSH_AT = 4000
 
     private val done = AtomicBoolean(false)
@@ -36,10 +43,20 @@ internal object ViewProbe {
                     if (XposedHelpers.getIntField(layoutParams, "type") != TYPE_STATUS_BAR) return
                     if (!done.compareAndSet(false, true)) return
                     L.i("P-02 STATUS_BAR window view: ${view.javaClass.name}")
-                    val buffer = StringBuilder()
-                    walk(view, 0, buffer)
-                    if (buffer.isNotEmpty()) L.i(buffer.toString())
-                    L.i("P-02 hierarchy dump complete")
+                    // The window is added BEFORE its children are inflated, so dumping here would
+                    // only show the empty root. Wait for layout, then walk the finished tree.
+                    // Two passes: icons can be attached lazily on the first icon update.
+                    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+                    for (delay in longArrayOf(6_000L, 25_000L)) {
+                        handler.postDelayed({
+                            L.guard("P-02 dump") {
+                                val buffer = StringBuilder()
+                                walk(view, 0, buffer)
+                                if (buffer.isNotEmpty()) L.i(buffer.toString())
+                                L.i("P-02 hierarchy dump complete")
+                            }
+                        }, delay)
+                    }
                 }
             }
         }
@@ -49,12 +66,10 @@ internal object ViewProbe {
                 View::class.java, ViewGroup.LayoutParams::class.java, callback
             )
         }
-        L.guard("P-02 hook addView(view,params,display)") {
-            XposedHelpers.findAndHookMethod(
-                "android.view.WindowManagerImpl", lp.classLoader, "addView",
-                View::class.java, ViewGroup.LayoutParams::class.java, android.view.Display::class.java, callback
-            )
-        }
+        // NOTE (Phase 0 evidence): the 3-argument overload
+        // WindowManagerImpl#addView(View, ViewGroup.LayoutParams, Display) does NOT exist on
+        // OxygenOS 16 — hooking it only produced a NoSuchMethodError, so it is not attempted.
+        // The 2-argument overload above fires for the STATUS_BAR window and gave us the tree.
     }
 
     private fun walk(view: View, depth: Int, out: StringBuilder) {

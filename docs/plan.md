@@ -4,28 +4,28 @@ Small phases, executed incrementally; each phase ends with a commit, and a phase
 successful when its own tests pass **and** the stock status bar still works with the module disabled.
 Requirement checkmarks live in [`REQUIREMENTS.md`](REQUIREMENTS.md).
 
-## Phase 0 — Ground truth ✅ in progress
+## Phase 0 — Ground truth ✅ DONE
 
 **Goal:** replace every assumption with evidence from the device, and get a building module.
 
 * `[x]` Git repo, module skeleton, Gradle 8.13 + AGP 8.13.2 + JBR 21 (same toolchain as Auto Expand)
 * `[x]` Tooling: adb (TCP `192.168.100.245:6666`), jadx 1.5.6, **Rive CLI 1.1.0** (local RML docs)
 * `[x]` Device SystemUI pulled (`reverse/SystemUI-device.apk`, MD5 `A6CD5483…`, 108 MB)
-* `[x]` Evidence collector written: `ProbeHook`, `ViewProbe`, `ProbeReport` (P-01…P-05)
-* `[x]` Docs: `DESIGN-duo.md`, `REQUIREMENTS.md`, `dependencies.md`, `architecture.drawio`
-* `[ ]` Debug APK built → installed → module enabled in LSPosed → reboot → probe report captured
-* `[ ]` `docs/devicereport-oos16.md` written from real logs, class/method names confirmed
+* `[x]` Evidence collector: `ProbeHook`, `ViewProbe`, `ProbeReport` (P-00 … P-05)
+* `[x]` Docs: `DESIGN-duo.md`, `REQUIREMENTS.md`, `dependencies.md`, `architecture.drawio`, `install.md`
+* `[x]` Debug APK built → installed → module enabled → probes captured
+* `[x]` `docs/devicereport-oos16.md` written from real logs (incl. the full status-bar tree)
 
-**Exit criteria:** `adb logcat -s DuoSB` shows the P-01 inventory, the P-02 hierarchy, the P-03
-Rive verdict and P-04 events; SystemUI runs normally. Commit.
+**Headline results:** Rive **can** render inside SystemUI (3/3 native libraries loaded); the real icon strip
+is `id=system_icons` → `statusIcons` (Wi-Fi `wifi_combo`, mobile `mobile_combo` ×2) + `StatBatteryMeterView
+id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP names confirmed absent.
 
-## Phase 1 — Design lock & cloning references
+## Phase 1 — Design lock & cloning references ✅ DONE
 
-* Clone/study `StatusBarLyric` (view injection into the status bar), `customiuizer`/`XMiTools`
-  (real icon hiding), `lingyired/status-trio` (Duo geometry cross-check).
-* Measure the status-bar slot in portrait/landscape from the P-02 dump; fill the "still to measure"
-  table in `DESIGN-duo.md`.
-* `docs/test-cases.md` reviewed by you. Commit.
+* `[x]` References studied: `lingyired/status-trio` (Duo geometry), `StatusBarLyric` (view injection),
+  `customiuizer`/`XMiTools` (icon hiding patterns)
+* `[x]` Geometry measured from your 2 screenshots **and** the device (px + dp tables in `DESIGN-duo.md` §6)
+* `[x]` `docs/test-cases.md` written (groups A…G, per-feature, with linked-test rules)
 
 ## Phase 2 — Rive asset pipeline (FR-04/24/25)
 

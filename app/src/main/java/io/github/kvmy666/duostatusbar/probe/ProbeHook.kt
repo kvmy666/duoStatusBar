@@ -36,9 +36,11 @@ class ProbeHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             L.i("================ DUO STATUS BAR / PHASE 0 PROBES ================")
             L.i("P-00 uid=${android.os.Process.myUid()} pid=${android.os.Process.myPid()}")
             L.i("P-00 classLoader=${lp.classLoader}")
+            // P-01 needs neither the application context nor the view hierarchy, so it runs
+            // synchronously: a timer could be lost (and the log buffer rotates fast here).
+            L.guard("P-01 inventory") { ProbeReport.inventory(lp) }
             hookApplicationOnCreate()
-            // SystemUI has finished inflating the status bar a few seconds in; report once, then stop.
-            handler.postDelayed({ report() }, 15_000L)
+            handler.postDelayed({ report() }, 8_000L)
         }
     }
 
@@ -90,7 +92,6 @@ class ProbeHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     private fun report() {
         if (!reported.compareAndSet(false, true)) return
-        L.guard("P-01 inventory") { ProbeReport.inventory(lp) }
         L.guard("P-03 native library") { ProbeReport.nativeLibrary(app) }
         L.guard("P-05 metrics") { ProbeReport.metrics(app) }
         L.i("================ PHASE 0 PROBES DONE ================")

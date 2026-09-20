@@ -21,13 +21,13 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-10 | Premium Material design, built on established frameworks (no hand-rolled UI kit) | 5 | `[ ]` |
 | FR-11 | "Red Wine" primary colour with derived secondaries | 0, 5 | `[~]` |
 | FR-12 | Best/easiest tech, prefer ready-made solutions over building from scratch | 0 | `[x]` |
-| FR-13 | Derive the Duo element from existing open-source work (clone → understand → build) | 0, 1 | `[~]` |
-| FR-14 | Research Apple's behaviour (blogs + Apple docs), e.g. exactly what happens when charging | 1 | `[~]` |
+| FR-13 | Derive the Duo element from existing open-source work (clone → understand → build) | 0, 1 | `[x]` |
+| FR-14 | Research Apple's behaviour (blogs + Apple docs), e.g. exactly what happens when charging | 1 | `[x]` |
 | FR-15 | State colours: saver = its colour, `<20%` = red, charging = green | 3 | `[ ]` |
 | FR-16 | Optional charging/battery percentage in the middle, splitting the indicator in two halves | 3, 5 | `[ ]` |
 | FR-17 | Live dragging so the user controls the position inside the status bar | 5 | `[ ]` |
 | FR-18 | Tapping it triggers user actions **without** conflicting with Auto Expand; clear separation when both exist | 6 | `[ ]` |
-| FR-19 | `plan` + requirements `.md` with checkmarks · `draw.io` architecture file · function-dependency file | 0, 1 | `[~]` |
+| FR-19 | `plan` + requirements `.md` with checkmarks · `draw.io` architecture file · function-dependency file | 0, 1 | `[x]` |
 | FR-20 | Use-case tests per feature, tested in many conditions; test features individually, not full regression | all | `[ ]` |
 | FR-21 | Never break SystemUI: try/catch everywhere, fail silently | all | `[x]` |
 | FR-22 | Plan split into small phases, executed incrementally / agile | all | `[x]` |
@@ -62,11 +62,14 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 
 ## Evidence log (Phase 0, device: CPH2747 / OOS 16.0.9.400)
 
+Raw log: [`evidence/phase0-oos16.txt`](evidence/phase0-oos16.txt) · full analysis:
+[`devicereport-oos16.md`](devicereport-oos16.md).
+
 | Probe | Question | Result |
 |---|---|---|
-| P-00 | Module loads into `com.android.systemui` | pending device run |
-| P-01 | Which required classes/methods exist on this ROM | pending device run |
-| P-02 | Real status-bar view hierarchy + ids | pending device run |
-| P-03 | Can SystemUI load our native `librive.so` (Rive feasibility) | pending device run |
-| P-04 | Screen-on / unlock / rotation triggers | pending device run |
-| P-05 | Status bar height, density, orientation metrics | pending device run |
+| P-00 | Module loads into `com.android.systemui` | ✅ (SystemUI uid = 10266, not 1000 — noted) |
+| P-01 | Which required classes/methods exist on this ROM | ✅ 18/24 found with real methods; 6 names confirmed absent |
+| P-02 | Real status-bar view hierarchy + ids | ✅ full tree; icon strip = `id=system_icons` → `statusIcons` + `id=battery` |
+| P-03 | Can SystemUI load our native `librive.so` | ✅ **3/3 libraries loaded → Rive renders inside SystemUI** |
+| P-04 | Screen-on / unlock / rotation triggers | ✅ all four broadcasts received |
+| P-05 | Status bar height, density, orientation | ✅ 141 px window, 90 px icon row, 61 px icons, density 3.025 |

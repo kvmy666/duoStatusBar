@@ -20,24 +20,32 @@ internal object ProbeReport {
 
     /** Classes we believe we need. Their presence is logged, never assumed. */
     private val candidates = listOf(
+        // ---- AOSP-style names (present on AOSP-derived ROMs) ----
         "com.android.systemui.statusbar.phone.CollapsedStatusBarFragment",
         "com.android.systemui.statusbar.phone.PhoneStatusBarView",
-        "com.android.systemui.statusbar.phone.PhoneStatusBarViewController",
         "com.android.systemui.statusbar.phone.CentralSurfacesImpl",
         "com.android.systemui.statusbar.phone.StatusBarIconControllerImpl",
-        "com.android.systemui.statusbar.phone.StatusBarIconController",
+        "com.android.systemui.statusbar.StatusBarIconControllerImpl",
         "com.android.systemui.statusbar.StatusBarIconView",
         "com.android.systemui.statusbar.policy.BatteryControllerImpl",
         "com.android.systemui.battery.BatteryMeterView",
         "com.android.systemui.statusbar.phone.KeyguardStatusBarView",
-        "com.android.systemui.statusbar.policy.NetworkControllerImpl",
+        "com.android.systemui.statusbar.connectivity.NetworkControllerImpl",
         "com.android.systemui.statusbar.connectivity.WifiSignalController",
+        "com.android.systemui.statusbar.connectivity.MobileSignalController",
         "com.android.systemui.statusbar.policy.DarkIconDispatcherImpl",
         "com.android.systemui.statusbar.StatusBarStateControllerImpl",
+        "com.android.systemui.statusbar.StatusBarIconList",
         "com.android.systemui.qs.QSPanel",
         "com.android.systemui.qs.QuickQSPanel",
         "com.android.systemui.shade.NotificationShadeWindowView",
-        "com.android.systemui.statusbar.phone.NotificationPanelViewController"
+        "com.android.systemui.statusbar.phone.NotificationPanelViewController",
+        // ---- OxygenOS / ColorOS names, read out of THIS device's SystemUI in Phase 0 ----
+        "com.oplus.systemui.statusbar.phone.StatusBarIconControllerExImpl",
+        "com.oplus.systemui.statusbar.phone.OplusIconController",
+        "com.oplus.systemui.statusbar.widget.EndSideContentLayout",
+        "com.oplus.systemui.statusbar.widget.StartSideExceptHeadsUpLayout",
+        "com.oplus.systemui.statusbar.phone.dynamic.DynamicContentLayout"
     )
 
     /** Only these names get dumped, so the report stays human-readable. */

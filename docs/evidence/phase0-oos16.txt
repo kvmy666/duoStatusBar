@@ -1,0 +1,170 @@
+﻿--------- beginning of main
+09-20 22:42:32.914 25549 25549 I DuoSB   : MainHook loaded into com.android.systemui (process=com.android.systemui)
+09-20 22:42:32.914 25549 25549 I DuoSB   : ================ DUO STATUS BAR / PHASE 0 PROBES ================
+09-20 22:42:32.915 25549 25549 I DuoSB   : P-00 uid=10266 pid=25549
+09-20 22:42:32.915 25549 25549 I DuoSB   : P-00 classLoader=dalvik.system.PathClassLoader[DexPathList[[zip file "/system_ext/priv-app/SystemUI/SystemUI.apk"],nativeLibraryDirectories=[/system_ext/priv-app/SystemUI/lib/arm64, /system_ext/priv-app/SystemUI/SystemUI.apk!/lib/arm64-v8a, /system/lib64, /system_ext/lib64, /system/lib64, /system_ext/lib64]]]
+09-20 22:42:32.918 25549 25549 I DuoSB   : P-01 MISSING com.android.systemui.statusbar.phone.CollapsedStatusBarFragment
+09-20 22:42:32.919 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.phone.PhoneStatusBarView [0] 
+09-20 22:42:32.921 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.phone.CentralSurfacesImpl [4] getStatusBarHideIconsForBouncerManager() initShadeVisibilityListener() onExpandedInvisible() updateReportRejectedTouchVisibility()
+09-20 22:42:32.924 25549 25549 I DuoSB   : P-01 MISSING com.android.systemui.statusbar.phone.StatusBarIconControllerImpl
+09-20 22:42:32.925 25549 25549 I DuoSB   : P-01 MISSING com.android.systemui.statusbar.StatusBarIconControllerImpl
+09-20 22:42:32.926 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.StatusBarIconView [24] getIcon(StatusBarIcon) getIconAppearAmount() getIconHeight() getIconScale() getIconScaleIncreased() getSlot() getSlotTag() getSourceIcon() getStatusBarIcon() getVisibleState() getVisibleStateString(int) isIconBlocked() isIconVisible() maybeUpdateIconScaleDimens() onDarkChanged(ArrayList,float,int) setIconAppearAmount(float) setIconColor(int,boolean) setIsIconColorable(boolean) setTintAlpha(float) setVisibleState(int) setVisibleState(int,boolean) setVisibleState(int,boolean,NotificationIconContainer$$ExternalSyntheticLambda1,long) updateIconColor() updateIconDimens()
+09-20 22:42:32.926 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.policy.BatteryControllerImpl [2] fireBatteryLevelChanged() isBatteryDefender()
+09-20 22:42:32.927 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.battery.BatteryMeterView [10] getBatteryPercentView() getBatteryPercentViewText() getUnifiedBatteryState() onBatteryUnknownStateChanged(boolean) onDarkChanged(ArrayList,float,int) scaleBatteryMeterViews() setBatteryDrawableState(BatteryDrawableState) setBatteryEstimateFetcher(BatteryMeterView$BatteryEstimateFetcher) setPercentTextAtCurrentLevel() setUnifiedBatteryColors(BatteryColors)
+09-20 22:42:32.927 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.phone.KeyguardStatusBarView [1] setVisibility(int)
+09-20 22:42:32.928 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.connectivity.NetworkControllerImpl [11] addDemoModeSignalController(int,int) doUpdateMobileControllers() getMobileDataController() getMobileDataNetworkName() hasCorrectMobileControllers(List) hasWifiInternet() isMobileDataNetworkInService() pushConnectivityToSignals() setWifiEnabled(boolean) updateAirplaneMode(boolean) updateMobileControllers()
+09-20 22:42:32.928 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.connectivity.WifiSignalController [3] copyWifiStates() getCurrentIconIdForCarrierWifi() getQsCurrentIconIdForCarrierWifi()
+09-20 22:42:32.928 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.connectivity.MobileSignalController [5] getCurrentIconId() getNetworkNameForCarrierWiFi() getNumLevels() getQsCurrentIconId() setAirplaneMode(boolean)
+09-20 22:42:32.929 25549 25549 I DuoSB   : P-01 MISSING com.android.systemui.statusbar.policy.DarkIconDispatcherImpl
+09-20 22:42:32.930 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.statusbar.StatusBarStateControllerImpl [1] createDarkAnimator()
+09-20 22:42:32.930 25549 25549 I DuoSB   : P-01 MISSING com.android.systemui.statusbar.StatusBarIconList
+09-20 22:42:32.931 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.qs.QSPanel [0] 
+09-20 22:42:32.931 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.qs.QuickQSPanel [1] setVisibility(int)
+09-20 22:42:32.931 25549 25549 I DuoSB   : P-01 FOUND   com.android.systemui.shade.NotificationShadeWindowView [5] onVisibilityChanged(View,int) onWindowVisibilityChanged(int) setAlpha(float) setTransitionAlpha(float) setVisibility(int)
+09-20 22:42:32.932 25549 25549 I DuoSB   : P-01 MISSING com.android.systemui.statusbar.phone.NotificationPanelViewController
+09-20 22:42:32.935 25549 25549 I DuoSB   : P-01 FOUND   com.oplus.systemui.statusbar.phone.StatusBarIconControllerExImpl [7] createIconStateSaver() onCreateStatusBarIconView(String,boolean) restoreIconInstanceState(List,Bundle) saveIconInstanceState(List) setIcon(String,int,int,CharSequence,StatusBarIconList) updateStatusBarIconDrawable(Drawable,StatusBarIconView,StatusBarNotification) updateStatusBarIconGrayScale(Drawable,StatusBarIconView,StatusBarNotification)
+09-20 22:42:32.936 25549 25549 I DuoSB   : P-01 FOUND   com.oplus.systemui.statusbar.phone.OplusIconController [5] access$createIcon(OplusIconController,OplusStatusBarIconHolder,String) onSetIconHolder(int,StatusBarIconHolder,ViewGroup) setDynamicIconAnimationController(DynamicIconAnimationController) setNetWorkSpeedIcon(String,NetworkSpeedIconState) setOplusIcon(String,DynamicIcon)
+09-20 22:42:32.936 25549 25549 I DuoSB   : P-01 FOUND   com.oplus.systemui.statusbar.widget.EndSideContentLayout [1] setHiddenIconListChanged(boolean,ArrayList)
+09-20 22:42:32.937 25549 25549 I DuoSB   : P-01 FOUND   com.oplus.systemui.statusbar.widget.StartSideExceptHeadsUpLayout [1] setHiddenIconListChanged(boolean,ArrayList)
+09-20 22:42:32.937 25549 25549 I DuoSB   : P-01 FOUND   com.oplus.systemui.statusbar.phone.dynamic.DynamicContentLayout [0] 
+09-20 22:42:32.937 25549 25549 I DuoSB   : P-01 inventory: 18/24 candidate classes exist on this ROM
+09-20 22:42:33.362 25549 25549 I DuoSB   : P-04 Application ready: com.android.systemui
+09-20 22:42:33.363 25549 25549 I DuoSB   : P-04 lifecycle receiver registered (screen on/off, user present, rotation)
+09-20 22:42:33.933 25549 25549 I DuoSB   : P-02 STATUS_BAR window view: com.android.systemui.statusbar.window.StatusBarWindowView
+09-20 22:42:35.903 25549 25893 I DuoSB   : MainHook loaded into system (process=com.android.systemui)
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02 com.android.systemui.statusbar.window.StatusBarWindowView id=- vis=0 1272x141 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02   android.widget.FrameLayout id=status_bar_launch_animation_container vis=0 1272x141 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02   android.widget.FrameLayout id=status_bar_container vis=0 1272x141 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02     com.android.systemui.statusbar.phone.PhoneStatusBarView id=status_bar vis=0 1272x141 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02       com.oplus.systemui.statusbar.seeding.CapsulePluginContainer id=seeding_card_container vis=0 1272x141 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02         com.oplus.systemui.plugins.seedling.capsule.ui.view.CapsuleContainerRoot id=seeding_capsule_container_root vis=0 1272x141 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02           com.oplus.systemui.plugins.seedling.capsule.ui.view.CapsuleContainer id=seeding_capsule_container vis=8 0x0 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02             android.widget.ImageView id=left_moon vis=8 0x0 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02             android.widget.FrameLayout id=mimi_view vis=8 0x0 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02             android.widget.ImageView id=right_moon vis=8 0x0 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02       android.widget.ImageView id=notification_lights_out vis=8 0x0 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02       android.widget.LinearLayout id=status_bar_contents vis=0 1272x141 @0,0
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02         android.widget.FrameLayout id=status_bar_start_side_container vis=0 585x90 @0,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02           android.widget.FrameLayout id=status_bar_start_side_content vis=0 128x90 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02             com.android.systemui.statusbar.HeadsUpStatusBarView id=heads_up_status_bar_view vis=8 0x0 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02               android.widget.Space id=icon_placeholder vis=4 0x0 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02               android.widget.TextView id=text vis=0 0x0 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02             com.oplus.systemui.statusbar.widget.StartSideExceptHeadsUpLayout id=status_bar_start_side_except_heads_up vis=0 128x90 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02               com.android.systemui.statusbar.AlphaOptimizedFrameLayout id=operator_name_frame vis=8 0x0 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                 com.android.systemui.statusbar.OperatorNameView id=operator_name vis=0 0x0 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02               android.widget.FrameLayout id=clock_for_fake vis=0 128x90 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                 com.oplus.systemui.statusbar.widget.StatClock id=clock vis=0 128x90 @74,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02               android.widget.LinearLayout id=status_bar_start_side_content_for_fake vis=0 0x90 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                 com.oplus.systemui.statusbar.widget.HiddenReceiverFrameLayout id=prompt_view_group vis=8 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.SystemPromptView id=system_prompt_view vis=8 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                 android.widget.FrameLayout id=ongoing_activity_chip_primary vis=8 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                   com.android.systemui.statusbar.chips.ui.view.ChipBackgroundContainer id=ongoing_activity_chip_background vis=0 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                     android.widget.ImageView id=ongoing_activity_chip_icon vis=0 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.chips.ui.view.ChipChronometer id=ongoing_activity_chip_time vis=0 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.chips.ui.view.ChipTextView id=ongoing_activity_chip_text vis=8 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.chips.ui.view.ChipDateTimeView id=ongoing_activity_chip_short_time_delta vis=8 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                 com.android.systemui.statusbar.chips.ui.view.SecondaryOngoingActivityChip id=ongoing_activity_chip_secondary vis=8 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                   com.android.systemui.statusbar.chips.ui.view.ChipBackgroundContainer id=ongoing_activity_chip_background vis=0 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                     android.widget.ImageView id=ongoing_activity_chip_icon vis=0 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.chips.ui.view.ChipChronometer id=ongoing_activity_chip_time vis=0 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.chips.ui.view.ChipTextView id=ongoing_activity_chip_text vis=8 0x0 @202,38
+09-20 22:42:39.935 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.chips.ui.view.ChipDateTimeView id=ongoing_activity_chip_short_time_delta vis=8 0x0 @202,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                 com.android.systemui.statusbar.AlphaOptimizedFrameLayout id=notification_icon_area vis=0 0x90 @202,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.android.keyguard.AlphaOptimizedLinearLayout id=- vis=0 0x90 @202,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                     com.oplus.systemui.statusbar.widget.NotificationBadgeView id=notification_num_view vis=8 0x0 @202,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.phone.NotificationIconContainer id=notificationIcons vis=8 0x90 @202,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02         android.widget.Space id=cutout_space_view vis=0 102x141 @585,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02         android.widget.FrameLayout id=status_bar_end_side_container vis=0 585x90 @687,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02           android.widget.FrameLayout id=status_bar_end_side_container_for_fake vis=0 329x90 @859,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02             com.oplus.systemui.statusbar.widget.EndSideContentLayout id=status_bar_end_side_content vis=0 329x90 @859,38
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02               android.widget.LinearLayout id=system_icons vis=0 329x61 @859,52
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                 com.android.systemui.statusbar.phone.StatusIconContainer id=statusIcons vis=0 246x61 @859,52
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.android.systemui.statusbar.pipeline.shared.ui.view.SingleBindableStatusBarIconView id=- vis=0 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                     android.widget.ImageView id=icon_view vis=4 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.StatusBarIconView id=status_bar_dot vis=4 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=0 54x61 @859,52
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.phone.signal.widget.OplusModernStatusBarWifiView id=wifi_combo vis=0 70x61 @913,52
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                     com.android.keyguard.AlphaOptimizedLinearLayout id=wifi_group vis=0 70x61 @913,52
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                       android.widget.FrameLayout id=inout_container vis=8 0x0 @913,52
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=wifi_in vis=8 0x0 @913,52
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=wifi_out vis=8 0x0 @913,52
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                       android.widget.FrameLayout id=wifi_combo vis=0 70x48 @913,58
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                         com.android.systemui.statusbar.AlphaOptimizedImageView id=wifi_signal vis=0 67x48 @916,58
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                         com.android.systemui.statusbar.AlphaOptimizedImageView id=wifi_inout vis=0 61x48 @922,58
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                         com.android.systemui.statusbar.AlphaOptimizedImageView id=wifi_left vis=0 70x48 @913,58
+09-20 22:42:39.938 25549 25549 I DuoSB   : P-02                       android.view.View id=wifi_signal_spacer vis=8 0x0 @913,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.view.ViewStub id=connected_device_signals_stub vis=8 0x0 @913,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.view.View id=wifi_airplane_spacer vis=8 0x0 @913,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.StatusBarIconView id=status_bar_dot vis=8 61x61 @913,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.widget.StatIconView id=- vis=8 0x0 @859,82
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.phone.signal.widget.OplusModernStatusBarMobileView id=mobile_combo vis=0 61x61 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                     com.android.keyguard.AlphaOptimizedLinearLayout id=mobile_group vis=0 57x61 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.ImageView id=mobile_volte vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.FrameLayout id=inout_container vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=mobile_in vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=mobile_out vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.Space id=mobile_roaming_space vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.ImageView id=mobile_roaming_large vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.FrameLayout id=mobile_combo_real vis=0 57x61 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         com.android.systemui.statusbar.AnimatedImageView id=mobile_signal vis=0 57x48 @983,58
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=mobile_type vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=mobile_roaming vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=data_inout vis=8 0x0 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.StatusBarIconView id=status_bar_dot vis=0 61x61 @983,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                   com.oplus.systemui.statusbar.phone.signal.widget.OplusModernStatusBarMobileView id=mobile_combo vis=0 61x61 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                     com.android.keyguard.AlphaOptimizedLinearLayout id=mobile_group vis=0 57x61 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.ImageView id=mobile_volte vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.FrameLayout id=inout_container vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=mobile_in vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=mobile_out vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.Space id=mobile_roaming_space vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.ImageView id=mobile_roaming_large vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.FrameLayout id=mobile_combo_real vis=0 57x61 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         com.android.systemui.statusbar.AnimatedImageView id=mobile_signal vis=0 57x48 @1044,58
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=mobile_type vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=mobile_roaming vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                         android.widget.ImageView id=data_inout vis=8 0x0 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                     com.android.systemui.statusbar.StatusBarIconView id=status_bar_dot vis=0 61x61 @1044,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                 com.oplus.systemui.statusbar.pipeline.battery.ui.view.StatBatteryMeterView id=battery vis=0 83x61 @1105,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                   android.widget.ImageView id=battery_charge_reverse vis=8 0x0 @1105,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                   android.widget.FrameLayout id=battery_content vis=8 0x0 @1105,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                     android.widget.LinearLayout id=- vis=0 0x0 @1105,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                       android.widget.ProgressBar id=stat_battery_view vis=0 0x0 @1105,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                     android.widget.TextView id=battery_text vis=8 0x0 @1105,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                   android.widget.ImageView id=battery_icon_view vis=0 79x48 @1108,58
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                   android.widget.ImageView id=battery_charge_icon vis=8 0x0 @1105,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02                   android.widget.TextView id=battery_percentage_view vis=8 0x0 @1105,52
+09-20 22:42:39.940 25549 25549 I DuoSB   : P-02       android.widget.LinearLayout id=dynamic_icon_group vis=0 9x141 @1200,0
+09-20 22:42:39.942 25549 25549 I DuoSB   : P-02         com.oplus.systemui.statusbar.phone.dynamic.DynamicContentLayout id=dynamic_icon_content vis=0 0x90 @1200,38
+09-20 22:42:39.942 25549 25549 I DuoSB   : P-02           com.android.systemui.util.AutoMarqueeTextView id=dynamic_icon_text vis=8 0x0 @1200,38
+09-20 22:42:39.942 25549 25549 I DuoSB   : P-02         android.widget.LinearLayout id=privacy_chip_window vis=0 0x90 @1209,38
+09-20 22:42:39.942 25549 25549 I DuoSB   : P-02           android.widget.LinearLayout id=privacy_chip_container vis=0 0x90 @1209,38
+09-20 22:42:39.942 25549 25549 I DuoSB   : P-02             com.oplus.systemui.privacy.OplusOngoingPrivacyChip id=privacy_chip vis=8 0x0 @1209,38
+09-20 22:42:39.942 25549 25549 I DuoSB   : P-02               android.widget.FrameLayout id=privacy_icons vis=0 0x0 @1209,38
+09-20 22:42:39.942 25549 25549 I DuoSB   : P-02                 com.oplus.systemui.privacy.OplusPrivacyIconContainer id=icons_container vis=0 0x0 @1209,38
+09-20 22:42:39.942 25549 25549 I DuoSB   : P-02 hierarchy dump complete
+09-20 22:42:40.939 25549 25549 I DuoSB   : P-03 module apk=/data/app/~~Qq9EACa4QTSzH1UOb8YnZw==/io.github.kvmy666.duostatusbar-Rhx1M43IQ42PoKQOrIaqbA==/base.apk
+09-20 22:42:40.939 25549 25549 I DuoSB   : P-03 module nativeLibraryDir=/data/app/~~Qq9EACa4QTSzH1UOb8YnZw==/io.github.kvmy666.duostatusbar-Rhx1M43IQ42PoKQOrIaqbA==/lib/arm64
+09-20 22:42:40.941 25549 25549 I DuoSB   : P-03 shared objects on disk: librive-android.so(3684792B), libc++_shared.so(1292904B), libandroidx.graphics.path.so(10096B)
+09-20 22:42:40.947 25549 25549 I DuoSB   : P-03 loaded libc++_shared.so
+09-20 22:42:40.951 25549 25549 I DuoSB   : P-03 loaded librive-android.so
+09-20 22:42:40.952 25549 25549 I DuoSB   : P-03 loaded libandroidx.graphics.path.so
+09-20 22:42:40.953 25549 25549 I DuoSB   : P-03 VERDICT: Rive can render INSIDE SystemUI (3/3 libraries loaded)
+09-20 22:42:40.953 25549 25549 I DuoSB   : P-05 status_bar_height=122px density=3.025 densityDpi=484 screen=1272x2772 orientation=1 fontScale=1.0
+09-20 22:42:40.954 25549 25549 I DuoSB   : ================ PHASE 0 PROBES DONE ================
