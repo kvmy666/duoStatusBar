@@ -41,3 +41,6 @@ logcat/
 # ---- misc ----
 Thumbs.db
 desktop.ini
+
+# build error logs
+*.err
