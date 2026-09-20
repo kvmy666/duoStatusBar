@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.DuoStatusBar" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Red Wine — primary brand colour (FR-11). Full tonal palette lands in Phase 5. -->
+        <item name="colorPrimary">@color/wine_primary</item>
+        <item name="colorOnPrimary">@color/wine_on_primary</item>
+    </style>
+</resources>

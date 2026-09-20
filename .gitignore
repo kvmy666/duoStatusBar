@@ -1,0 +1,43 @@
+# ---- build output ----
+build/
+.gradle/
+.kotlin/
+local.properties
+captures/
+*.apk
+*.aab
+*.hprof
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+
+# ---- signing (never commit) ----
+keystore.properties
+*.jks
+*.keystore
+
+# ---- reverse-engineering artefacts ----
+# SystemUI/system files pulled from the device: local analysis only, never published.
+reverse/
+*.dex
+*.smali
+SystemUI*.apk
+*.oat
+*.vdex
+*.art
+
+# ---- Rive CLI ----
+.rive/
+rive/**/build/
+*.riv.export.json
+
+# ---- logs / device dumps ----
+logcat/
+*.log
+*.txt.tmp
+
+# ---- misc ----
+Thumbs.db
+desktop.ini

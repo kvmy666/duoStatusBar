@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Duo Status Bar</string>
+
+    <!-- Phase 0 -->
+    <string name="phase0_title">Diagnostics</string>
+    <string name="phase0_body">Phase 0 build: collects SystemUI evidence into logcat (tag DuoSB). No hooks are active yet.</string>
+</resources>

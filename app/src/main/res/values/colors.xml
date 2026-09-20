@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Red Wine palette (FR-11). Phase 5 expands this into a full Material 3 tonal set
+      (primary/secondary/tertiary + containers) generated from this seed.
+    -->
+    <color name="wine_primary">#7B1E3A</color>
+    <color name="wine_on_primary">#FFFFFF</color>
+    <color name="wine_secondary">#5E4149</color>
+    <color name="wine_surface">#141013</color>
+</resources>

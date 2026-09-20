@@ -1,0 +1,88 @@
+<mxfile host="app.diagrams.net" modified="2026-09-20T00:00:00.000Z" agent="cline" version="24.7.17" type="device">
+  <diagram id="duo-arch" name="Duo Status Bar - architecture">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Duo Status Bar - architecture (baseline: OnePlus 15 / OxygenOS 16 / LSPosed v2.2.0)" style="text;html=1;fontSize=16;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="240" y="20" width="900" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="lsposed" value="LSPosed 2.2.0 (Zygisk)&#10;scope: com.android.systemui only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="app" value="Settings App&#10;Kotlin + Compose Material 3&#10;Red Wine palette (FR-11)&#10;every toggle has an infinite Rive preview (FR-09)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7B1E3A;strokeColor=#4A1222;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="220" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="prefs" value="Prefs bridge&#10;/data/local/tmp/duo_prefs.json&#10;+ heartbeat file&#10;(FR-03, NFR-5)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE7E9;strokeColor=#7B1E3A;" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rivecli" value="Rive CLI project (RML, text)&#10;rive/duo/**  -&gt;  duo.riv&#10;verified with --verify / --screenshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F0FE;strokeColor=#1A73E8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="440" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sysui" value="com.android.systemui process" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#333333;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="360" y="80" width="700" height="620" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mainhook" value="MainHook&#10;(assets/xposed_init)&#10;every entry in try/catch - FR-21" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7B1E3A;strokeColor=#4A1222;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="400" y="130" width="240" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="probe" value="PHASE 0 - evidence collector&#10;ProbeHook / ViewProbe / ProbeReport&#10;P-01 class + method inventory&#10;P-02 status-bar view hierarchy&#10;P-03 librive.so loadable in SysUI&#10;P-04 screen on/off, unlock, rotate&#10;P-05 metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;" vertex="1" parent="1">
+          <mxGeometry x="400" y="230" width="240" height="150" as="geometry" />
+        </mxCell>
+
+        <mxCell id="hider" value="DuoIconHider (FR-08)&#10;really removes battery / Wi-Fi /&#10;signal / silent / DND / BT" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="680" y="230" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="injector" value="DuoInjector (FR-03)&#10;adds DuoRiveView to the status bar&#10;and the keyguard status bar&#10;portrait + landscape" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="680" y="320" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="binder" value="DuoStateBinder (FR-06/15)&#10;battery / charging / saver&#10;Wi-Fi level / cell level&#10;airplane / DND" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="410" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="riveview" value="DuoRiveView (FR-04/25)&#10;rive-android 10.2.0&#10;state machine + reveal timeline&#10;under 500 ms, parts synced" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F0FE;strokeColor=#1A73E8;" vertex="1" parent="1">
+          <mxGeometry x="680" y="420" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gesture" value="DuoGestureBridge (FR-05/18)&#10;tap / double / long-press&#10;+ Auto Expand coexistence" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="530" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="safety" value="SafetyGuard (FR-21 / NFR-4)&#10;fail-silent, N-strikes auto-disable&#10;rescue = disable module in LSPosed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8E6;strokeColor=#C5221F;" vertex="1" parent="1">
+          <mxGeometry x="680" y="540" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rom" value="OxygenOS 16 SystemUI internals&#10;names taken from the device, never guessed (FR-26)&#10;StatusBarIconControllerImpl / StatusBarIconView&#10;BatteryMeterView / KeyguardStatusBarView&#10;StatusBarWifiView / StatusBarMobileView" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F4EA;strokeColor=#137333;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="230" width="280" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="autoexpand" value="Auto Expand module&#10;io.github.kvmy666.autoexpand&#10;keeps its own cutout tap zones" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E8FD;strokeColor=#8430CE;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="530" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="lsposed" target="mainhook"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="mainhook" target="probe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" value="Phase 3+" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="mainhook" target="hider"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" value="Phase 3+" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="mainhook" target="injector"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="app" target="prefs"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" value="read prefs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="prefs" target="injector"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="rivecli" target="riveview"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="binder" target="riveview"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="injector" target="riveview"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" value="documented contract" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="gesture" target="autoexpand"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="hider" target="rom"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" value="reads real names" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" edge="1" parent="1" source="probe" target="rom"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="safety" target="riveview"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="probe" target="riveview"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
