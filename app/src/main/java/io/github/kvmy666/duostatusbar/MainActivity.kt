@@ -54,16 +54,30 @@ private fun Phase0Screen() {
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(text = "Duo Status Bar", style = MaterialTheme.typography.headlineSmall)
+
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "The element (live Rive)", style = MaterialTheme.typography.titleMedium)
+                DuoPreview()
+                Text(
+                    text = "This is the real duo.riv: the same file the status bar will render. " +
+                        "It plays the 500 ms reveal on load — battery ring with the percentage in " +
+                        "the gap, Wi-Fi layers, and the four cellular spheres.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = "Phase 0 — diagnostics build", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "This build installs a log-only probe into System UI. It changes nothing " +
-                        "on screen; it reports what this ROM actually contains so the real hooks " +
-                        "are written from evidence instead of guesses.",
+                    text = "The module also installs a log-only probe into System UI. It changes " +
+                        "nothing on screen; it reports what this ROM actually contains so the real " +
+                        "hooks are written from evidence instead of guesses.",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Text(text = "Enable in LSPosed → Modules → Duo Status Bar (scope: System UI) → reboot.",
+                Text(text = "Enable in LSPosed → Modules → Duo Status Bar (scope: System UI).",
                     style = MaterialTheme.typography.bodyMedium)
                 Text(text = "Then read: adb logcat -s DuoSB",
                     style = MaterialTheme.typography.bodyMedium)

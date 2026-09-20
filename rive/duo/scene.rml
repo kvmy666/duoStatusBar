@@ -107,21 +107,24 @@
                 <Ellipse x="-0.5" y="17" width="62" height="62" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="7" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color" />
-                    <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" />
+                    <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" id="0:110" />
                 </Stroke>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:67" />
             </Shape>
 
             <Shape name="wifiLayer2" id="0:15">
                 <Ellipse x="-0.5" y="17" width="37" height="37" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="7" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color" />
-                    <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" />
+                    <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" id="0:111" />
                 </Stroke>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:68" />
             </Shape>
 
             <Shape name="wifiDot" id="0:16">
                 <Ellipse x="-0.5" y="13.5" width="14" height="12" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:69" />
             </Shape>
 
             <!-- ============================ charging bolt ============================
@@ -139,6 +142,7 @@
                     <StraightVertex x="1.5" y="-0.5" radius="1.4" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:66" />
             </Shape>
 
             <!-- ============================== airplane ==============================
@@ -162,6 +166,7 @@
                     <StraightVertex x="-1.6" y="-2.2" radius="0.8" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:75" />
             </Shape>
 
             <!-- ========================== cellular spheres ==========================
@@ -170,18 +175,22 @@
             <Shape name="cell1" id="0:17">
                 <Ellipse x="-27" y="42.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:71" />
             </Shape>
             <Shape name="cell2" id="0:18">
                 <Ellipse x="-9.5" y="49.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:72" />
             </Shape>
             <Shape name="cell3" id="0:19">
                 <Ellipse x="8.5" y="50.2" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:73" />
             </Shape>
             <Shape name="cell4" id="0:20">
                 <Ellipse x="26" y="44.3" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:74" />
             </Shape>
         </Node>
 
@@ -192,13 +201,46 @@
              binding never fight over the same value.                                    -->
 
         <StateMachine name="Duo" id="0:90">
-            <StateMachineLayer name="Layer 1" id="0:91">
+            <StateMachineTrigger name="reveal" id="0:94" />
+            <StateMachineBool name="airplane" id="0:95" />
+
+            <!-- Layer 1 owns the reveal: scale bounce, one shot, re-firable by the host. Opacity and
+                 colour are deliberately NOT keyed here — they belong to the data binds, so the two
+                 mechanisms never fight over the same property. -->
+            <StateMachineLayer name="Reveal" id="0:91">
                 <AnyState x="200" y="-120" />
                 <ExitState x="400" y="-120" />
                 <EntryState>
                     <StateTransition stateToId="0:92" />
                 </EntryState>
-                <AnimationState x="200" y="0" animationId="0:93" id="0:92" />
+                <AnimationState x="200" y="0" animationId="0:93" id="0:92">
+                    <StateTransition stateToId="0:96" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+                <AnimationState x="0" y="0" animationId="0:97" id="0:96">
+                    <StateTransition stateToId="0:92">
+                        <TransitionTriggerCondition inputId="0:94" />
+                    </StateTransition>
+                </AnimationState>
+            </StateMachineLayer>
+
+            <!-- Layer 2 owns the airplane morph (FR-25): the Wi-Fi arcs collapse into the centre dot,
+                 then the plane grows out of it. Blends independently of the reveal layer. -->
+            <StateMachineLayer name="Airplane" id="0:98">
+                <AnyState x="200" y="-120" />
+                <ExitState x="400" y="-120" />
+                <EntryState>
+                    <StateTransition stateToId="0:99" />
+                </EntryState>
+                <AnimationState x="0" y="0" animationId="0:100" id="0:99">
+                    <StateTransition stateToId="0:101" duration="80">
+                        <TransitionBoolCondition inputId="0:95" opValue="equal" />
+                    </StateTransition>
+                </AnimationState>
+                <AnimationState x="200" y="0" animationId="0:102" id="0:101">
+                    <StateTransition stateToId="0:99" duration="80">
+                        <TransitionBoolCondition inputId="0:95" opValue="notEqual" />
+                    </StateTransition>
+                </AnimationState>
             </StateMachineLayer>
         </StateMachine>
 
@@ -217,6 +259,82 @@
                     <KeyFrameDouble value="1.12" interpolationType="cubic" frame="6" />
                     <KeyFrameDouble value="1.05" interpolationType="cubic" frame="18" />
                     <KeyFrameDouble value="1" interpolationType="cubic" frame="30" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Idle: pins the group at scale 1 so the reveal can be re-fired from a known state. -->
+        <LinearAnimation duration="1" name="Idle" id="0:97">
+            <KeyedObject objectId="0:3">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Wi-Fi idle: arcs at their resting trim, plane scaled to nothing. -->
+        <LinearAnimation duration="1" name="WifiIdle" id="0:100">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.3222" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8389" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.3222" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8389" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Airplane morph: 12 frames = 200 ms. Each arc slides to 6 o'clock (fraction 0.5, the dot's
+             position) while its length shrinks to zero, then the plane scales up out of that same
+             point over the last 11 frames. -->
+        <LinearAnimation duration="12" name="PlaneMorph" id="0:102">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.3222" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="7" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8389" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0.5" interpolationType="cubic" frame="7" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.3222" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="7" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8389" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0.5" interpolationType="cubic" frame="7" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="11" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="11" />
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
