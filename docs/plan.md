@@ -27,22 +27,21 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[x]` Geometry measured from your 2 screenshots **and** the device (px + dp tables in `DESIGN-duo.md` §6)
 * `[x]` `docs/test-cases.md` written (groups A…G, per-feature, with linked-test rules)
 
-## Phase 2 — Rive asset pipeline (FR-04/24/25) 🚧 IN PROGRESS
+## Phase 2 — Rive asset pipeline (FR-04/24/25) 🚧 nearly done
 
-* `[x]` `rive/duo/` project created; Rive CLI 1.1.0 driving it (verify / inspect / screenshot / test)
-* `[x]` Rive's trim semantics calibrated by measurement (`rive/_calib`) — documented in `docs/rive-pipeline.md`
-* `[x]` **Geometry renders**: ring (fill left half + 22 % track right half), 2 Wi-Fi arc layers + dot,
-  4 cellular spheres — matches the reference screenshots
-* `[x]` Percentage text in the top gap: bold, cap height 30 units, centred, verified by
-  measuring the rendered frame; font weight comes from stroking the glyphs so it survives a font swap
-* `[x]` Charging bolt and airplane glyph geometry authored (hidden by default; driven in Phase 3/4)
-* `[x]` View model (17 properties) + binds: ring trims, tint + foreground colours, track opacity,
-  percentage text / opacity / font size — proven working by measurement, not by eye
-* `[x]` Reveal timeline (30 frames @ 60 fps = 500 ms, one-shot) + state machine declared **inside**
-  the artboard (this was the bug that silently disabled every bind — see `docs/rive-pipeline.md`)
-* `[ ]` Airplane morph animation (arcs collapse into the dot → plane grows from it) as a state-machine
-  transition, and bind the remaining opacities (bolt, airplane, wifi layers, cells)
-* `[ ]` Per-setting looping previews for the app (FR-09); `.riv` into app assets; CI runs `--verify`
+* `[x]` `rive/duo/` project driven entirely from text by the Rive CLI (verify / inspect / screenshot)
+* `[x]` Rive's trim semantics calibrated by measurement (`rive/_calib`) — `docs/rive-pipeline.md`
+* `[x]` **Geometry complete**: ring (fill + 22 % track), top gap for the value, 2 Wi-Fi arc layers + dot,
+  4 cellular spheres, charging bolt, airplane glyph, percentage digits (bold, optically centred)
+* `[x]` **View model with 17 properties**, all bound: ring trims, tint + foreground colours, track
+  opacity, percentage text / opacity / font size, bolt / airplane / Wi-Fi / cell opacities
+* `[x]` **State machine with 2 layers and 2 inputs**: `reveal` (trigger, re-fires the 500 ms bounce)
+  and `airplane` (bool → the morph where arcs slide to 6 o'clock, shrink to nothing and the plane
+  scales up out of the same point)
+* `[x]` `duo.riv` (397 KB) rendered **live on the device** in the app preview — asset pipeline proven
+  end-to-end, including the Rive runtime init that the library does not do for you
+* `[ ]` In-app controls to fire `reveal` / toggle `airplane` so the morph can be eyeballed on the phone
+* `[ ]` Per-setting looping previews (FR-09) and a CI step running `rive --verify` on every push
 
 ## Phase 3 — SystemUI core (FR-03/06/08/21)
 

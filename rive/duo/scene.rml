@@ -201,12 +201,15 @@
              binding never fight over the same value.                                    -->
 
         <StateMachine name="Duo" id="0:90">
-            <StateMachineTrigger name="reveal" id="0:94" />
-            <StateMachineBool name="airplane" id="0:95" />
+            <!-- Inputs are view model booleans rather than StateMachineBool/Trigger on purpose: the
+                 runtime's state-machine input setters are Kotlin `internal` (only
+                 `SMIBoolean.setValue$kotlin_release` exists), so a host application cannot drive
+                 them. Drawn from the view model, every input is reachable through the public
+                 ViewModelInstance API. -->
 
-            <!-- Layer 1 owns the reveal: scale bounce, one shot, re-firable by the host. Opacity and
-                 colour are deliberately NOT keyed here — they belong to the data binds, so the two
-                 mechanisms never fight over the same property. -->
+            <!-- Layer 1 owns the reveal: scale bounce, one shot, re-fired through `revealRequest`.
+                 Opacity and colour are deliberately NOT keyed here — they belong to the data binds,
+                 so the two mechanisms never fight over the same property. -->
             <StateMachineLayer name="Reveal" id="0:91">
                 <AnyState x="200" y="-120" />
                 <ExitState x="400" y="-120" />
@@ -217,8 +220,15 @@
                     <StateTransition stateToId="0:96" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
                 </AnimationState>
                 <AnimationState x="0" y="0" animationId="0:97" id="0:96">
-                    <StateTransition stateToId="0:92">
-                        <TransitionTriggerCondition inputId="0:94" />
+                    <StateTransition stateToId="0:92" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:86" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
                     </StateTransition>
                 </AnimationState>
             </StateMachineLayer>
@@ -233,12 +243,26 @@
                 </EntryState>
                 <AnimationState x="0" y="0" animationId="0:100" id="0:99">
                     <StateTransition stateToId="0:101" duration="80">
-                        <TransitionBoolCondition inputId="0:95" opValue="equal" />
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:85" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
                     </StateTransition>
                 </AnimationState>
                 <AnimationState x="200" y="0" animationId="0:102" id="0:101">
                     <StateTransition stateToId="0:99" duration="80">
-                        <TransitionBoolCondition inputId="0:95" opValue="notEqual" />
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:85" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
                     </StateTransition>
                 </AnimationState>
             </StateMachineLayer>
@@ -367,6 +391,8 @@
         <ViewModelPropertyColor name="fgColor" id="0:82" />
         <ViewModelPropertyString name="percentText" id="0:83" />
         <ViewModelPropertyNumber name="percentFontSize" id="0:84" />
+        <ViewModelPropertyBoolean name="airplaneState" id="0:85" />
+        <ViewModelPropertyBoolean name="revealRequest" id="0:86" />
 
         <ViewModelInstance exports="true" name="Default" id="0:61">
             <ViewModelInstanceNumber viewModelPropertyId="0:62" propertyValue="0.9010" />
@@ -386,6 +412,8 @@
             <ViewModelInstanceColor viewModelPropertyId="0:82" propertyValue="FFFFFFFF" />
             <ViewModelInstanceString viewModelPropertyId="0:83" propertyValue="100" />
             <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="33" />
+            <ViewModelInstanceBoolean viewModelPropertyId="0:85" propertyValue="false" />
+            <ViewModelInstanceBoolean viewModelPropertyId="0:86" propertyValue="false" />
         </ViewModelInstance>
     </ViewModel>
 
