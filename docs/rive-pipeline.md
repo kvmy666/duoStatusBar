@@ -67,6 +67,25 @@ still hides a bind pointing at a property that does not exist.
 | **App crashes at startup**: `UnsatisfiedLinkError: No implementation found for long app.rive.runtime.kotlin.core.FileAssetLoader.constructor()` | rive-android 10.x removes its **own** AndroidX-Startup initializer from the merged manifest (`<meta-data android:name="…RiveInitializer" tools:node="remove"/>`), and this version has no `Rive.init()`. Nothing loads `librive-android.so`, so every JNI call fails. | Call the public initializer explicitly: `app.rive.runtime.kotlin.RiveInitializer().create(context)` before the first Rive object. In this project that is `RiveInit.ensure(context)` (reflective, dependency-free — deliberately, because the same call has to work inside SystemUI in Phase 3, where our compile classpath is irrelevant to the host process). |
 | On a real device the artboard draws its **authored** literals (e.g. `50`) even though the default instance says `100` | A view model default instance is a **build-time default**: the CLI previewer applies it, a runtime does not. | The host must push every property — which is the design anyway (`DuoStateBinder` sets all of them on each state change). Treat instance values as “what the previewer shows”, never as runtime behaviour. |
 
+## Driving the file from Android (read out of rive-android 10.2.0's own bytecode, not from memory)
+
+The *public* API is narrower than the Rive editor implies, and it decides what the host can control:
+
+| Want to… | Public API | Note |
+|---|---|---|
+| Initialise the runtime | `RiveInitializer().create(context)` | Nothing does it for you (see the trap table) |
+| Set any value the file draws | `stateMachine.getViewModelInstance().getNumberProperty("x").value = …` — and `getColorProperty` / `getStringProperty` / `getBooleanProperty` / `getEnumProperty` | The reason every visual parameter in `duo.riv` is a view-model property |
+| Fire the reveal | `getTriggerProperty("reveal").trigger()` | public ✅ |
+| Play a one-off animation | `RiveAnimationView.play(name, Loop, Direction, …)` | public, but a plain animation does **not** run binds |
+| Set a `StateMachineBool` / `StateMachineTrigger` input | **impossible** | their setters are Kotlin `internal`; bytecode shows only `SMIBoolean.setValue$kotlin_release` and `SMITrigger.fire$kotlin_release` |
+
+**Consequence:** the state machine's transitions are driven by **view model booleans** (`revealRequest`,
+`airplaneState`) instead of `StateMachineBool` inputs, using
+`TransitionViewModelCondition` → `TransitionPropertyViewModelComparator` → `BindablePropertyBoolean`
+(propertyKey 634) → `TransitionValueBooleanComparator`. Everything the host needs is reachable through
+public API, while the animations themselves (500 ms reveal bounce, 200 ms airplane morph) still live in
+the `.riv`.
+
 ### How to verify a bind actually applied (recipe)
 
 Do not eyeball the render. Measure it:
