@@ -33,7 +33,9 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[x]` Rive's trim semantics calibrated by measurement (`rive/_calib`) — documented in `docs/rive-pipeline.md`
 * `[x]` **Geometry renders**: ring (fill left half + 22 % track right half), 2 Wi-Fi arc layers + dot,
   4 cellular spheres — matches the reference screenshots
-* `[ ]` Percentage text in the top gap (needs the font + alignment property), charging bolt
+* `[x]` Percentage text in the top gap: bold, cap height 30 units, centred (x 38→80), verified by
+  measuring the rendered frame; font weight comes from stroking the glyphs so it survives a font swap
+* `[ ]` Charging bolt (sits in the same gap, which narrows to 55.6°)
 * `[ ]` Airplane morph (Wi-Fi arcs merge → plane grows from the dot)
 * `[ ]` View model + data binds (battery level, charging, saver, wifi/cell level, airplane, dnd)
 * `[ ]` Reveal timeline (scale 1→1.12 → fill 0→N → 1.05 → spring back, ≤ 500 ms, synced parts)
