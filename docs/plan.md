@@ -27,12 +27,17 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[x]` Geometry measured from your 2 screenshots **and** the device (px + dp tables in `DESIGN-duo.md` §6)
 * `[x]` `docs/test-cases.md` written (groups A…G, per-feature, with linked-test rules)
 
-## Phase 2 — Rive asset pipeline (FR-04/24/25)
+## Phase 2 — Rive asset pipeline (FR-04/24/25) 🚧 IN PROGRESS
 
-* `rive create duo` → RML artboard with the exact geometry from `DESIGN-duo.md`.
-* State machine inputs: battery, charging, saver, wifiLevel 0-3, cellLevel 0-4, airplane, dnd,
-  showPercent, middleSlotChoice; reveal timeline (the ≤ 0.5 s sequence); airplane morph.
-* Per-setting looping previews for the app (FR-09). `--verify` + `--screenshot` + Luau tests in CI. Commit.
+* `[x]` `rive/duo/` project created; Rive CLI 1.1.0 driving it (verify / inspect / screenshot / test)
+* `[x]` Rive's trim semantics calibrated by measurement (`rive/_calib`) — documented in `docs/rive-pipeline.md`
+* `[x]` **Geometry renders**: ring (fill left half + 22 % track right half), 2 Wi-Fi arc layers + dot,
+  4 cellular spheres — matches the reference screenshots
+* `[ ]` Percentage text in the top gap (needs the font + alignment property), charging bolt
+* `[ ]` Airplane morph (Wi-Fi arcs merge → plane grows from the dot)
+* `[ ]` View model + data binds (battery level, charging, saver, wifi/cell level, airplane, dnd)
+* `[ ]` Reveal timeline (scale 1→1.12 → fill 0→N → 1.05 → spring back, ≤ 500 ms, synced parts)
+* `[ ]` Per-setting looping previews for the app (FR-09); build `.riv` into app assets; CI `--verify`
 
 ## Phase 3 — SystemUI core (FR-03/06/08/21)
 

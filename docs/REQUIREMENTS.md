@@ -12,7 +12,7 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-02 | Run on multiple custom ROMs, not one vendor only | 7 | `[ ]` |
 | FR-03 | Everything the user can customise (size, shape, on/off) is exposed in the app settings | 5 | `[ ]` |
 | FR-03b | Identical behaviour on home screen, inside apps, lock screen, portrait **and** landscape | 3 | `[ ]` |
-| FR-04 | Animations powered by Rive | 2, 4 | `[ ]` |
+| FR-04 | Animations powered by Rive | 2, 4 | `[~]` |
 | FR-05 | Integration with Auto Expand (my other module): tap/double-tap/… actions from the status bar | 6 | `[ ]` |
 | FR-06 | States: Wi-Fi, 4G/5G, DND, airplane mode, charging | 3 | `[ ]` |
 | FR-07 | No conflict with live notifications — user chooses Duo, notifications, or both | 8 | `[ ]` |
