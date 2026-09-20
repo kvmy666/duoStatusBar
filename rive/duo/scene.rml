@@ -1,22 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DUO STATUS BAR — the status-bar element, authored in the design space of docs/DESIGN-duo.md.
+
+  Calibrated facts about Rive's parametric paths (measured, not guessed — see rive/_calib):
+    * TrimPath fractions run clockwise from 12 o'clock: fraction f == f * 360 degrees.
+    * A trim wraps when start > end (0.75 -> 0.10 draws across the top).
+    * `offset` rotates the trimmed window; start=0 end=0.3222 offset=0.8389 centres it on top.
+    * Stroke effects (TrimPath) nest INSIDE the Stroke, not beside the path.
+
+  Design coordinates live in a 120x120 box with the ring centred at (59.5, 61.5). Everything is
+  parented to one Node placed at that centre, so children are written relative to it and the whole
+  element can be scaled as a body (the reveal animation scales this Node).
+-->
 <Rive version="1" kind="fragment">
-    <Artboard defaultStateMachineId="0:7" styleId="0:5" width="500" height="500" name="Artboard" id="0:2">
-        <LayoutComponentStyle name="Artboard Style" id="0:5"/>
+    <Artboard width="120" height="120" name="Duo" id="0:2">
 
-        <Fill name="Background">
-            <SolidColor colorValue="FF282828" name="Color"/>
-        </Fill>
+        <Node x="60" y="61.5" name="duoGroup" id="0:3">
 
-        <LinearAnimation duration="60" name="Animation 1" id="0:6"/>
+            <!-- ============================ battery ring ============================
+                 Ring r 51.5 (Ellipse 103x103), stroke 8, round caps.
+                 Drawn arc 238.7deg -> 121.3deg clockwise, split by the top gap that holds the
+                 percentage.  Top gap edges: 324.35deg (0.9010) and 35.65deg (0.0990).
+                 Left segment  = 0.6631 -> 0.9010   (fill 0% .. 50%)
+                 Right segment = 0.0990 -> 0.3369   (fill 50% .. 100%)                     -->
 
-        <StateMachine name="State Machine 1" id="0:7">
-            <StateMachineLayer name="Layer 1" id="0:8">
-                <AnyState x="200" y="-120"/>
-                <ExitState x="400" y="-120"/>
-                <EntryState>
-                    <StateTransition stateToId="0:12"/>
-                </EntryState>
-                <AnimationState x="200" animationId="0:6" id="0:12"/>
-            </StateMachineLayer>
-        </StateMachine>
+            <Shape opacity="0.22" name="ringTrackL" id="0:10">
+                <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="8" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Track" />
+                    <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim" />
+                </Stroke>
+            </Shape>
+
+            <Shape opacity="0.22" name="ringTrackR" id="0:11">
+                <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="8" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Track" />
+                    <TrimPath start="0.0990" end="0.3369" offset="0" name="Trim" />
+                </Stroke>
+            </Shape>
+
+            <!-- battery fill, left half: 0 .. 50% -->
+            <Shape name="ringFillL" id="0:12">
+                <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="8" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim" />
+                </Stroke>
+            </Shape>
+
+            <!-- battery fill, right half: 50 .. 100%, starts empty at 0.0990 -->
+            <Shape name="ringFillR" id="0:13">
+                <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="8" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    <TrimPath start="0.0990" end="0.0990" offset="0" name="Trim" />
+                </Stroke>
+            </Shape>
+
+            <!-- ============================== Wi-Fi ==============================
+                 centre (59.5, 78.5) -> (-0.5, 17) relative to the group node.
+                 Each layer is an arc spanning +/-58deg centred on 12 o'clock:
+                 end = 116/360 = 0.3222, offset = 302/360 = 0.8389.
+                 Layer 1 and 2 are arcs; the third element is the solid dot.            -->
+
+            <Shape name="wifiLayer1" id="0:14">
+                <Ellipse x="-0.5" y="17" width="62" height="62" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="7" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" />
+                </Stroke>
+            </Shape>
+
+            <Shape name="wifiLayer2" id="0:15">
+                <Ellipse x="-0.5" y="17" width="37" height="37" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="7" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" />
+                </Stroke>
+            </Shape>
+
+            <Shape name="wifiDot" id="0:16">
+                <Ellipse x="-0.5" y="13.5" width="14" height="12" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+            </Shape>
+
+            <!-- ========================== cellular spheres ==========================
+                 r 5.5, on a downward arc concentric with the ring.                     -->
+
+            <Shape name="cell1" id="0:17">
+                <Ellipse x="-27" y="42.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+            </Shape>
+            <Shape name="cell2" id="0:18">
+                <Ellipse x="-9.5" y="49.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+            </Shape>
+            <Shape name="cell3" id="0:19">
+                <Ellipse x="8.5" y="50.2" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+            </Shape>
+            <Shape name="cell4" id="0:20">
+                <Ellipse x="26" y="44.3" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+            </Shape>
+        </Node>
     </Artboard>
 </Rive>
+

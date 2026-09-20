@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CALIBRATION SCENE (sacrificial, deleted before release).
+  Purpose: learn two things about Rive's ellipse path that the docs do not state, so every trim
+  offset in the real Duo scene is measured instead of guessed:
+     1. where does a closed Ellipse path start (angle), and
+     2. which direction does it run (clockwise or counter-clockwise on screen)?
+  Three nested rings, each trimmed to its own quarter, plus a marker at the top so the image can be
+  read directly: the marker is a small square at 12 o'clock.
+-->
+<Rive version="1" kind="fragment">
+    <Artboard width="120" height="120" name="Calib" id="0:2">
+
+        <!-- Marker at 12 o'clock (top centre), so the screenshot can be oriented by eye. -->
+        <Shape x="60" y="6" name="TopMarker" id="0:10">
+            <Rectangle width="8" height="8" originX="0.5" originY="0.5" name="Path" />
+            <Fill name="Fill"><SolidColor colorValue="FF00FF00" name="Color" /></Fill>
+        </Shape>
+
+        <!-- Quarter 0.00 -> 0.25 -->
+        <Shape x="60" y="60" name="Q1" id="0:11">
+            <Ellipse width="100" height="100" originX="0.5" originY="0.5" name="Path" />
+            <Stroke thickness="6" cap="butt" join="miter" name="Stroke">
+                <SolidColor colorValue="FFFF0000" name="Color" />
+                <TrimPath start="0" end="0.25" offset="0" name="Trim" />
+            </Stroke>
+        </Shape>
+
+        <!-- Quarter 0.25 -> 0.50 -->
+        <Shape x="60" y="60" name="Q2" id="0:12">
+            <Ellipse width="76" height="76" originX="0.5" originY="0.5" name="Path" />
+            <Stroke thickness="6" cap="butt" join="miter" name="Stroke">
+                <SolidColor colorValue="FF00AAFF" name="Color" />
+                <TrimPath start="0.25" end="0.5" offset="0" name="Trim" />
+            </Stroke>
+        </Shape>
+
+        <!-- Quarter 0.50 -> 0.75 -->
+        <Shape x="60" y="60" name="Q3" id="0:13">
+            <Ellipse width="52" height="52" originX="0.5" originY="0.5" name="Path" />
+            <Stroke thickness="6" cap="butt" join="miter" name="Stroke">
+                <SolidColor colorValue="FFFFFF00" name="Color" />
+                <TrimPath start="0.5" end="0.75" offset="0" name="Trim" />
+            </Stroke>
+        </Shape>
+
+        <!-- WRAP TEST: start > end (0.75 -> 0.10), expect an arc across 12 o'clock. -->
+        <Shape x="60" y="60" name="Q4Wrap" id="0:15">
+            <Ellipse width="42" height="42" originX="0.5" originY="0.5" name="Path" />
+            <Stroke thickness="5" cap="butt" join="miter" name="Stroke">
+                <SolidColor colorValue="FFB060FF" name="Color" />
+                <TrimPath start="0.75" end="0.1" offset="0" name="Trim" />
+            </Stroke>
+        </Shape>
+
+        <!-- OFFSET TEST: start=0 end=0.3222 offset=0.8389 -> expected arc centred on 12 o'clock. -->
+        <Shape x="60" y="60" name="Q5Offset" id="0:16">
+            <Ellipse width="26" height="26" originX="0.5" originY="0.5" name="Path" />
+            <Stroke thickness="5" cap="butt" join="miter" name="Stroke">
+                <SolidColor colorValue="FFFF7F00" name="Color" />
+                <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" />
+            </Stroke>
+        </Shape>
+    </Artboard>
+</Rive>
