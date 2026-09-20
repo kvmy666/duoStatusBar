@@ -13,7 +13,7 @@
   element can be scaled as a body (the reveal animation scales this Node).
 -->
 <Rive version="1" kind="fragment">
-    <Artboard width="120" height="120" name="Duo" id="0:2">
+    <Artboard width="120" height="120" name="Duo" id="0:2" viewModelId="0:60" viewModelInstanceId="0:61" defaultStateMachineId="0:90">
 
         <Node x="60" y="61.5" name="duoGroup" id="0:3">
 
@@ -22,19 +22,27 @@
                  alignValue 281 (center), originX 366 / originY 367 (normalized),
                  TextStylePaint.fontSize 274, .fontAssetId 279.                            -->
 
-            <Text x="0" y="-60" width="60" height="36" alignValue="center" originX="0.5" originY="0"
-                sizingValue="fixed" name="percent" id="0:30">
+            <Text x="-3.5" y="-60" width="80" height="42" alignValue="center" originX="0.5" originY="0"
+                sizingValue="fixed" overflowValue="visible" name="percent" id="0:30">
                 <TextStylePaint fontSize="42" fontAssetId="0:40" name="PercentStyle" id="0:31">
+                    <DataBindContext propertyKey="274" sourcePathIds="0:60-0:84" />
                     <Fill name="Fill">
-                        <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                        </SolidColor>
                     </Fill>
                     <!-- Weight: the reference digits are heavy and rounded. Stroking the glyphs fatten
                          them with any font, so the look survives the font swap in Phase 5. -->
                     <Stroke thickness="2.4" cap="round" join="round" name="Weight">
-                        <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                        </SolidColor>
                     </Stroke>
                 </TextStylePaint>
-                <TextValueRun styleId="0:31" text="50" name="Run" />
+                <TextValueRun styleId="0:31" text="50" name="Run">
+                    <DataBindContext propertyKey="268" sourcePathIds="0:60-0:83" />
+                </TextValueRun>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:65" />
             </Text>
 
             <!-- ============================ battery ring ============================
@@ -50,6 +58,7 @@
                     <SolidColor colorValue="FFFFFFFF" name="Track" />
                     <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim" />
                 </Stroke>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:64" />
             </Shape>
 
             <Shape opacity="0.22" name="ringTrackR" id="0:11">
@@ -58,23 +67,33 @@
                     <SolidColor colorValue="FFFFFFFF" name="Track" />
                     <TrimPath start="0.0990" end="0.3369" offset="0" name="Trim" />
                 </Stroke>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:64" />
             </Shape>
 
-            <!-- battery fill, left half: 0 .. 50% -->
+            <!-- battery fill, left half: 0 .. 50%. The app computes the trim end from the level
+                 (trim = 0.6631 + min(level,50)/50 * 0.2379) so no arithmetic is needed in Rive. -->
             <Shape name="ringFillL" id="0:12">
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="8" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                    <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim" />
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" />
+                    </SolidColor>
+                    <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim">
+                        <DataBindContext propertyKey="115" sourcePathIds="0:60-0:62" />
+                    </TrimPath>
                 </Stroke>
             </Shape>
 
-            <!-- battery fill, right half: 50 .. 100%, starts empty at 0.0990 -->
+            <!-- battery fill, right half: 50 .. 100% (trim = 0.0990 + max(level-50,0)/50 * 0.2379) -->
             <Shape name="ringFillR" id="0:13">
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="8" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                    <TrimPath start="0.0990" end="0.0990" offset="0" name="Trim" />
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" />
+                    </SolidColor>
+                    <TrimPath start="0.0990" end="0.0990" offset="0" name="Trim">
+                        <DataBindContext propertyKey="115" sourcePathIds="0:60-0:63" />
+                    </TrimPath>
                 </Stroke>
             </Shape>
 
@@ -105,6 +124,46 @@
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
             </Shape>
 
+            <!-- ============================ charging bolt ============================
+                 Appears in the ring's top gap instead of the digits; the gap narrows to 55.6deg.
+                 PointsPath vertices are in the shape's local space, so this bolt is authored around
+                 (0,0) and the Shape is placed where the gap's centre is.                        -->
+
+            <Shape x="0" y="-49.5" opacity="0" name="bolt" id="0:50">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="3.5" y="-10" radius="1.4" />
+                    <StraightVertex x="-7.5" y="0.5" radius="1.4" />
+                    <StraightVertex x="-1.5" y="0.5" radius="1.4" />
+                    <StraightVertex x="-3.5" y="10" radius="1.4" />
+                    <StraightVertex x="7.5" y="-0.5" radius="1.4" />
+                    <StraightVertex x="1.5" y="-0.5" radius="1.4" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+            </Shape>
+
+            <!-- ============================== airplane ==============================
+                 Occupies the Wi-Fi slot when airplane mode is on: the Wi-Fi layers collapse into
+                 the dot, then this scales up from inside it (FR-25).                              -->
+
+            <Shape x="-0.5" y="13.5" opacity="0" name="airplane" id="0:51">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="0" y="-8" radius="0.8" />
+                    <StraightVertex x="1.6" y="-2.2" radius="0.8" />
+                    <StraightVertex x="8" y="2.2" radius="0.8" />
+                    <StraightVertex x="8" y="4.2" radius="0.8" />
+                    <StraightVertex x="1.6" y="2.6" radius="0.8" />
+                    <StraightVertex x="1.2" y="6.5" radius="0.8" />
+                    <StraightVertex x="3.5" y="8.5" radius="0.8" />
+                    <StraightVertex x="-3.5" y="8.5" radius="0.8" />
+                    <StraightVertex x="-1.2" y="6.5" radius="0.8" />
+                    <StraightVertex x="-1.6" y="2.6" radius="0.8" />
+                    <StraightVertex x="-8" y="4.2" radius="0.8" />
+                    <StraightVertex x="-8" y="2.2" radius="0.8" />
+                    <StraightVertex x="-1.6" y="-2.2" radius="0.8" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+            </Shape>
+
             <!-- ========================== cellular spheres ==========================
                  r 5.5, on a downward arc concentric with the ring.                     -->
 
@@ -125,10 +184,92 @@
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
             </Shape>
         </Node>
+
+        <!-- =========================== state machine ===========================
+             Inside the artboard, not beside it: an artboard only runs a machine declared as its
+             child, and data binds only apply while a machine is running. The Reveal animation owns
+             exactly the properties that are NOT bound (the group's scale), so animation and data
+             binding never fight over the same value.                                    -->
+
+        <StateMachine name="Duo" id="0:90">
+            <StateMachineLayer name="Layer 1" id="0:91">
+                <AnyState x="200" y="-120" />
+                <ExitState x="400" y="-120" />
+                <EntryState>
+                    <StateTransition stateToId="0:92" />
+                </EntryState>
+                <AnimationState x="200" y="0" animationId="0:93" id="0:92" />
+            </StateMachineLayer>
+        </StateMachine>
+
+        <!-- FR-25 reveal: 30 frames at 60 fps = 500 ms, one shot.
+             0-100 ms scale up to 1.12, 200-300 ms settle to 1.05, 300-500 ms spring back to 1.0. -->
+        <LinearAnimation duration="30" name="Reveal" id="0:93">
+            <KeyedObject objectId="0:3">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="1.12" interpolationType="cubic" frame="6" />
+                    <KeyFrameDouble value="1.05" interpolationType="cubic" frame="18" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="30" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="1.12" interpolationType="cubic" frame="6" />
+                    <KeyFrameDouble value="1.05" interpolationType="cubic" frame="18" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="30" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
     </Artboard>
 
     <!-- Font for the digits. Montserrat (OFL) ships with the Rive CLI samples; the final build will
          bundle a rounded face so the numbers match Apple's, with a "use system font" option. -->
     <FontAsset file="Montserrat.ttf" name="Montserrat" id="0:40" />
+
+    <!-- ============================== data model ==============================
+         The host application (inside SystemUI) sets these; the binds above push them into the
+         drawing. All geometry maths lives in Kotlin so it can be unit-tested, which is why the
+         ring exposes ready-made trim ends instead of a battery percentage.               -->
+
+    <ViewModel defaultInstanceId="0:61" name="DuoModel" id="0:60">
+        <ViewModelPropertyNumber name="trimLeftEnd" id="0:62" />
+        <ViewModelPropertyNumber name="trimRightEnd" id="0:63" />
+        <ViewModelPropertyNumber name="trackOpacity" id="0:64" />
+        <ViewModelPropertyNumber name="percentOpacity" id="0:65" />
+        <ViewModelPropertyNumber name="boltOpacity" id="0:66" />
+        <ViewModelPropertyNumber name="wifiOuterOpacity" id="0:67" />
+        <ViewModelPropertyNumber name="wifiMidOpacity" id="0:68" />
+        <ViewModelPropertyNumber name="wifiDotOpacity" id="0:69" />
+        <ViewModelPropertyNumber name="cell1Opacity" id="0:71" />
+        <ViewModelPropertyNumber name="cell2Opacity" id="0:72" />
+        <ViewModelPropertyNumber name="cell3Opacity" id="0:73" />
+        <ViewModelPropertyNumber name="cell4Opacity" id="0:74" />
+        <ViewModelPropertyNumber name="airplaneOpacity" id="0:75" />
+        <ViewModelPropertyColor name="tint" id="0:81" />
+        <ViewModelPropertyColor name="fgColor" id="0:82" />
+        <ViewModelPropertyString name="percentText" id="0:83" />
+        <ViewModelPropertyNumber name="percentFontSize" id="0:84" />
+
+        <ViewModelInstance exports="true" name="Default" id="0:61">
+            <ViewModelInstanceNumber viewModelPropertyId="0:62" propertyValue="0.9010" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:63" propertyValue="0.3369" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:64" propertyValue="0.22" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:65" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:66" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:67" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:68" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:69" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:71" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:72" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:73" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:74" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:75" propertyValue="0" />
+            <ViewModelInstanceColor viewModelPropertyId="0:81" propertyValue="FFFFFFFF" />
+            <ViewModelInstanceColor viewModelPropertyId="0:82" propertyValue="FFFFFFFF" />
+            <ViewModelInstanceString viewModelPropertyId="0:83" propertyValue="100" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="33" />
+        </ViewModelInstance>
+    </ViewModel>
+
 </Rive>
 

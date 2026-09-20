@@ -33,13 +33,16 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[x]` Rive's trim semantics calibrated by measurement (`rive/_calib`) — documented in `docs/rive-pipeline.md`
 * `[x]` **Geometry renders**: ring (fill left half + 22 % track right half), 2 Wi-Fi arc layers + dot,
   4 cellular spheres — matches the reference screenshots
-* `[x]` Percentage text in the top gap: bold, cap height 30 units, centred (x 38→80), verified by
+* `[x]` Percentage text in the top gap: bold, cap height 30 units, centred, verified by
   measuring the rendered frame; font weight comes from stroking the glyphs so it survives a font swap
-* `[ ]` Charging bolt (sits in the same gap, which narrows to 55.6°)
-* `[ ]` Airplane morph (Wi-Fi arcs merge → plane grows from the dot)
-* `[ ]` View model + data binds (battery level, charging, saver, wifi/cell level, airplane, dnd)
-* `[ ]` Reveal timeline (scale 1→1.12 → fill 0→N → 1.05 → spring back, ≤ 500 ms, synced parts)
-* `[ ]` Per-setting looping previews for the app (FR-09); build `.riv` into app assets; CI `--verify`
+* `[x]` Charging bolt and airplane glyph geometry authored (hidden by default; driven in Phase 3/4)
+* `[x]` View model (17 properties) + binds: ring trims, tint + foreground colours, track opacity,
+  percentage text / opacity / font size — proven working by measurement, not by eye
+* `[x]` Reveal timeline (30 frames @ 60 fps = 500 ms, one-shot) + state machine declared **inside**
+  the artboard (this was the bug that silently disabled every bind — see `docs/rive-pipeline.md`)
+* `[ ]` Airplane morph animation (arcs collapse into the dot → plane grows from it) as a state-machine
+  transition, and bind the remaining opacities (bolt, airplane, wifi layers, cells)
+* `[ ]` Per-setting looping previews for the app (FR-09); `.riv` into app assets; CI runs `--verify`
 
 ## Phase 3 — SystemUI core (FR-03/06/08/21)
 

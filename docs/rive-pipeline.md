@@ -54,7 +54,40 @@ still hides a bind pointing at a property that does not exist.
 * An empty `<LinearAnimation/>` with no keyframes is not worth keeping; give the state machine a real
   animation or leave the state machine out while iterating on geometry.
 
-## Scene structure (`rive/duo/scene.rml`)
+## Traps found the hard way (each cost a debugging round — do not repeat them)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| **Every data bind silently does nothing.** The artboard renders as authored: bound text shows its literal, bound trims stay at their authored value. No error, no warning, `--verify` clean. | The `StateMachine` and its `LinearAnimation` were written as **root elements** (siblings of `<Artboard>`) instead of **children of the artboard**. An artboard only runs a machine declared inside it, and *binds only apply while a state machine is running*. | Move `<StateMachine>` + `<LinearAnimation>` inside `<Artboard>`. Confirmed by measurement: after the move, the bound default instance (`trimRightEnd = 0.3369`) filled the ring's right half exactly, and `100` replaced the authored `50`. |
+| `--data Duo/x=…` answers *"no view model is bound to this artboard"* | Same root cause as above (the CLI cannot resolve a bound instance for an artboard with no running machine). | Same fix. |
+| 3-digit text wraps to a second line and the third glyph lands in the middle of the icon | `Text` with `sizingValue="fixed"` and too small a `width` wraps like any text box. | Widen the box (`width="80"`), `overflowValue="visible"`, and **bind `TextStylePaint.fontSize` (key 274)** so the app shrinks the font for 3 digits — which is also what iOS does. |
+| `DataBindContext has no property "name"` | `DataBindContext` extends `DataBind`, which does not inherit `Component.name`. | Give binds no `name`; identify them by the target property + source path. |
+| `interpolationType` rejects `easeOut` / `easeInOut` | Only `hold`, `linear`, `cubic`, `cubicValue`, `elastic`, `scripted` (or an int) are accepted. | Use `cubic` plus `interpolatorId` pointing at a `CubicEaseInterpolator` when a custom curve is wanted. |
+| Bound value has no visible effect, and the *authored* value equals the intended bound value | Nothing is wrong — you cannot see a bind whose value matches the literal. | Set the view model's default instance to something visibly different while testing (that is how the missing state machine was caught). |
+
+### How to verify a bind actually applied (recipe)
+
+Do not eyeball the render. Measure it:
+
+```powershell
+# render one frame, then measure the drawn geometry numerically
+& $rive rive\duo --screenshot --advance=1
+python -c "from PIL import Image; import numpy as np
+im=Image.open('rive/duo/build/duo.png').convert('L'); m=np.asarray(im).astype(float)>120
+ys,xs=np.nonzero(m)
+cx,cy,r=59.5,61.5,51.5                      # ring centre + radius from DESIGN-duo.md
+d=np.hypot(xs-cx,ys-cy); band=(d>r-5)&(d<r+5)
+ang=(np.degrees(np.arctan2(xs[band]-cx,-(ys[band]-cy))))%360
+print([i*5 for i,v in enumerate(np.histogram(ang,bins=72,range=(0,360))[0]) if v==0])"
+```
+
+The empty 5° bins are the honest answer: a full ring leaves only the two designed gaps, a 50 % ring
+leaves one half empty, and a missing bind looks exactly like the authored value.
+
+**Setup that has to hold for binds to work at all:** `Artboard.viewModelId` → the view model,
+`Artboard.viewModelInstanceId` → the instance to show, `ViewModel.defaultInstanceId` → the same
+instance, `DefaultInstance` marked `exports="true"`, **and** the state machine inside the artboard.
+
 
 One `Node` (the group) sits at the ring's centre `(60, 61.5)` so the whole element can be scaled as a
 body — the reveal animation scales that single node. Children are written relative to it:
