@@ -17,6 +17,26 @@
 
         <Node x="60" y="61.5" name="duoGroup" id="0:3">
 
+            <!-- ====================== battery percentage text ======================
+                 Sits inside the ring's top gap (the gap is 71.3deg wide). Text type keys:
+                 alignValue 281 (center), originX 366 / originY 367 (normalized),
+                 TextStylePaint.fontSize 274, .fontAssetId 279.                            -->
+
+            <Text x="0" y="-60" width="60" height="36" alignValue="center" originX="0.5" originY="0"
+                sizingValue="fixed" name="percent" id="0:30">
+                <TextStylePaint fontSize="42" fontAssetId="0:40" name="PercentStyle" id="0:31">
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    </Fill>
+                    <!-- Weight: the reference digits are heavy and rounded. Stroking the glyphs fatten
+                         them with any font, so the look survives the font swap in Phase 5. -->
+                    <Stroke thickness="2.4" cap="round" join="round" name="Weight">
+                        <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    </Stroke>
+                </TextStylePaint>
+                <TextValueRun styleId="0:31" text="50" name="Run" />
+            </Text>
+
             <!-- ============================ battery ring ============================
                  Ring r 51.5 (Ellipse 103x103), stroke 8, round caps.
                  Drawn arc 238.7deg -> 121.3deg clockwise, split by the top gap that holds the
@@ -106,5 +126,9 @@
             </Shape>
         </Node>
     </Artboard>
+
+    <!-- Font for the digits. Montserrat (OFL) ships with the Rive CLI samples; the final build will
+         bundle a rounded face so the numbers match Apple's, with a "use system font" option. -->
+    <FontAsset file="Montserrat.ttf" name="Montserrat" id="0:40" />
 </Rive>
 
