@@ -13,7 +13,7 @@ built to be switched off the instant you want your old bar back.
 
 No system files are touched. Nothing is patched. The module only *draws*.
 
-<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/modes.gif" width="220" alt="Wi-Fi, airplane, Do Not Disturb and 5G changing in the middle of the ring">
+<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/status-bar.png" width="360" alt="The Duo element in the real status bar">
 
 ## ✨ What it does
 
@@ -27,15 +27,11 @@ No system files are touched. Nothing is patched. The module only *draws*.
 * **Tap it (optional):** hand taps to the [Auto Expand](https://github.com/kvmy666/AutoExpandNotifications)
   module to toggle Wi-Fi, Do Not Disturb, airplane mode or power saving.
 
-## 🎬 See it move
+## 🎬 See it in the app
 
-The element appearing when the screen wakes:
+Every animation has a live demo right next to its switch, so you can see exactly what you are turning on or off:
 
-<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/arrival.gif" width="200" alt="The element bouncing into place">
-
-Plugging in — the bolt is born where the Wi-Fi was, then finds its home in the ring:
-
-<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/charging.gif" width="200" alt="The charging bolt flying into the ring">
+<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/app-animations.png" width="300" alt="The Animations section with live demos for Appear, Disappear and Charging">
 
 ## 📲 Install (about two minutes)
 
@@ -79,6 +75,8 @@ Open the app and you'll find:
 | **Appearance** | Use **smooth graphics** (turn off if your phone ever feels slow) |
 | **Tap actions** | Choose what a single tap, double tap and long press do (with Auto Expand) |
 | **About** | See the module's status, share a report, or support the developer |
+
+<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/app.png" width="300" alt="The Duo Status Bar settings screen">
 
 Changing the **size** asks for a restart (there's a **Restart System UI** button right there) — it's the one
 setting that can't safely change while the bar is running.
