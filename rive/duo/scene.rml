@@ -302,21 +302,22 @@
             </StateMachineLayer>
         </StateMachine>
 
-        <!-- FR-25 reveal: 30 frames at 60 fps = 500 ms, one shot.
-             0-100 ms scale up to 1.12, 200-300 ms settle to 1.05, 300-500 ms spring back to 1.0. -->
-        <LinearAnimation duration="30" name="Reveal" id="0:93">
+        <!-- Reveal, one shot. 60 frames at 60 fps = **1 s** (user feedback: the 500 ms version was too
+             subtle to notice on boot; the prototype runs at 1 s and the timing can come back down
+             later). 0-200 ms scale up to 1.12, 200-600 ms settle to 1.05, 600-1000 ms spring to 1.0. -->
+        <LinearAnimation duration="60" name="Reveal" id="0:93">
             <KeyedObject objectId="0:3">
                 <KeyedProperty propertyKey="16">
                     <KeyFrameDouble value="1" interpolationType="cubic" frame="0" />
-                    <KeyFrameDouble value="1.12" interpolationType="cubic" frame="6" />
-                    <KeyFrameDouble value="1.05" interpolationType="cubic" frame="18" />
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="30" />
+                    <KeyFrameDouble value="1.12" interpolationType="cubic" frame="12" />
+                    <KeyFrameDouble value="1.05" interpolationType="cubic" frame="36" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="60" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="17">
                     <KeyFrameDouble value="1" interpolationType="cubic" frame="0" />
-                    <KeyFrameDouble value="1.12" interpolationType="cubic" frame="6" />
-                    <KeyFrameDouble value="1.05" interpolationType="cubic" frame="18" />
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="30" />
+                    <KeyFrameDouble value="1.12" interpolationType="cubic" frame="12" />
+                    <KeyFrameDouble value="1.05" interpolationType="cubic" frame="36" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="60" />
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>

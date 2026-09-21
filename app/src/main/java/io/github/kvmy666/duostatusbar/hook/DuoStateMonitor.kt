@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.animation.ValueAnimator
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -21,6 +22,9 @@ import io.github.kvmy666.duostatusbar.L
 internal class DuoStateMonitor(private val context: Context, private val host: DuoIconHost) {
 
     private var level = 100
+    /** What the ring is actually drawn at; it chases [level] so the fill animates instead of jumping. */
+    private var displayedLevel = 0
+    private var fill: ValueAnimator? = null
     private var charging = false
     private var saver = false
     private var airplane = false
@@ -35,11 +39,11 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 when (intent?.action) {
                     Intent.ACTION_BATTERY_CHANGED -> {
                         val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
-                        level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, level) * 100 / scale
+                        val target = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, level) * 100 / scale
                         val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
                         val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, 0)
                         charging = plugged || status == BatteryManager.BATTERY_STATUS_CHARGING
-                        render()
+                        setLevel(target)
                     }
                     PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {
                         saver = SystemReaders.isPowerSaveOn(context)
@@ -104,6 +108,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     fun stop() {
         if (!registered) return
         registered = false
+        runCatching { fill?.cancel() }
         runCatching { context.unregisterReceiver(receiver) }
     }
 
@@ -118,12 +123,33 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         }
     }
 
+    /**
+     * Animates the ring from where it is to [target] rather than snapping (user feedback: transitions
+     * should be animated). Runs from 0 on first attach, so the element fills up on the reveal.
+     */
+    private fun setLevel(target: Int) {
+        level = target
+        if (target == displayedLevel && fill?.isRunning != true) {
+            render()
+            return
+        }
+        fill?.cancel()
+        fill = ValueAnimator.ofInt(displayedLevel, target).apply {
+            duration = FILL_MS
+            addUpdateListener {
+                displayedLevel = it.animatedValue as Int
+                render()
+            }
+            start()
+        }
+    }
+
     private fun render() {
         val view = host.duo ?: return
         try {
             view.render(
                 DuoMapping.visual(
-                    level = level,
+                    level = displayedLevel,
                     charging = charging,
                     saver = saver,
                     showPercent = host.showPercent,
@@ -140,5 +166,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
     private companion object {
         const val TAG = "DuoSB"
+
+        /** How long the ring takes to fill to a new percentage. */
+        const val FILL_MS = 600L
     }
 }

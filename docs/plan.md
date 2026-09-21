@@ -89,7 +89,19 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
     than left as a hole.
   See `docs/evidence/phase3-log-sinks-and-fallback.md` and `docs/evidence/phase3-rive-live.md`.
 
-## Phase 4 — Animation (FR-25)
+## Phase 4 — Animation (FR-25) — iterating on user design feedback
+
+Design/animation pass in progress (2026-09-21), driven by the user's review of the live element:
+
+* `[x]` **Ring closes when the percentage is off.** The top gap was a fixed 71.3° hole; it is now two bound
+  properties (71.3° digits / 55.6° bolt / 0° closed), so the ring is continuous without the number.
+* `[x]` **Reveal raised to 1 s** (prototype; the 500 ms cut was too subtle on boot).
+* `[x]` **Animated fill**: the ring chases the battery level over 600 ms instead of snapping, from 0 on
+  first attach.
+* `[ ]` Wi-Fi re-authored to match the reference (the dot should be a rounded triangle, not an ellipse).
+* `[ ]` Proportions: number, airplane, moon sizes against the ring (and a possible flashlight glyph — needs
+  the user to say what it is).
+
 
 * `[x]` State machine bound and driven from the view model (`revealRequest`, `airplaneState`) — the runtime's
   own input setters are Kotlin `internal`, so the view model is the only public route.
