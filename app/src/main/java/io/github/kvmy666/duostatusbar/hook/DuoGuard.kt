@@ -33,24 +33,52 @@ import android.util.Log
  *
  * Off is the default, so a freshly installed build does nothing at all until `stage` says otherwise.
  * And if Rive dies twice the counter says so and stage 2 is refused — one boot is enough to stop a loop.
+ *
+ * The stage can also come from the user's settings in the app (over the provider, because a normal app
+ * cannot write global settings). Precedence is in [stage]: an explicit `duo_statusbar_stage` wins, then the
+ * app's settings, then off — so adb always has the last word and the app cannot quietly re-enable something
+ * that was switched off for diagnosis.
  */
 internal class DuoGuard(private val context: Context) {
 
     /** The exact command that turns the full element on; logged so nobody has to guess. */
     val enableHint: String = "adb shell settings put global $KEY_STAGE $RIVE"
 
-    /** 0 = off, 1 = icons only, 2 = icons + Rive. Anything unreadable means off. */
-    fun stage(): Int = try {
-        val value = Settings.Global.getInt(context.contentResolver, KEY_STAGE, OFF)
-        if (value in OFF..RIVE) {
-            value
-        } else {
-            Log.w(TAG, "stage '$value' is not 0..2 - treating as off")
-            OFF
+    /**
+     * The stage that is actually in force, resolved in this order:
+     *
+     *   1. `Settings.Global` `duo_statusbar_stage` **when present** (0/1/2). This is the developer override
+     *      and the kill switch: `adb shell settings put global duo_statusbar_stage 0` must always be able to
+     *      switch the module off no matter what the app's settings say.
+     *   2. otherwise the user's settings from the app (`enabled` + `useRive`).
+     *   3. otherwise off.
+     *
+     * The app cannot write global settings (no `WRITE_SECURE_SETTINGS` for a normal app), which is why the
+     * user path arrives over the provider instead — see `settings/DuoPrefs.kt`.
+     */
+    fun stage(): Int {
+        globalStage()?.let { override ->
+            Log.i(TAG, "stage $override (adb override)")
+            return override
+        }
+        val app = DuoSettingsClient.read(context)
+        val resolved = when {
+            !app.enabled -> OFF
+            app.useRive -> RIVE
+            else -> ICONS_ONLY
+        }
+        Log.i(TAG, "stage $resolved (app settings rev ${app.revision}, enabled=${app.enabled}, rive=${app.useRive})")
+        return resolved
+    }
+
+    /** The adb/developer override, or null when it has not been set (absent means "ask the app"). */
+    private fun globalStage(): Int? = try {
+        Settings.Global.getInt(context.contentResolver, KEY_STAGE, ABSENT).let { value ->
+            if (value == ABSENT) null else if (value in OFF..RIVE) value else null
         }
     } catch (t: Throwable) {
-        Log.w(TAG, "stage unreadable (${t.javaClass.simpleName}) - treating as off")
-        OFF
+        Log.w(TAG, "stage override unreadable (${t.javaClass.simpleName}) - using app settings")
+        null
     }
 
     /**
@@ -98,5 +126,8 @@ internal class DuoGuard(private val context: Context) {
         const val KEY_STAGE = "duo_statusbar_stage"
         const val KEY_ATTEMPTS = "duo_statusbar_rive_attempts"
         private const val MAX_ATTEMPTS = 2
+
+        /** Sentinel for "the user never set an override": `getInt` cannot return null, so it needs one. */
+        private const val ABSENT = -1
     }
 }

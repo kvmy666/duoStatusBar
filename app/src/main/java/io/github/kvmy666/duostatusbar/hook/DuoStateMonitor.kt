@@ -111,7 +111,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     level = level,
                     charging = charging,
                     saver = saver,
-                    showPercent = true,
+                    showPercent = host.showPercent,
                     wifiLevel = wifiLevel,
                     cellLevel = cellLevel,
                     airplane = airplane

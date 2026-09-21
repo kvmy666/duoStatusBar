@@ -1,11 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      Red Wine palette (FR-11). Phase 5 expands this into a full Material 3 tonal set
-      (primary/secondary/tertiary + containers) generated from this seed.
+      Red Wine palette (FR-11): the seed is #7B1E3A, and every other role is a tone of it or of a
+      neighbouring hue, so the app stays one colour family instead of an assortment of reds. Light and
+      dark are both complete, because the status bar is read in both.
+
+      These are the resource-level copies; the Compose scheme in ui/DuoTheme.kt mirrors them so
+      composables and XML never disagree.
     -->
     <color name="wine_primary">#7B1E3A</color>
     <color name="wine_on_primary">#FFFFFF</color>
-    <color name="wine_secondary">#5E4149</color>
-    <color name="wine_surface">#141013</color>
+    <color name="wine_primary_container">#FFD9DF</color>
+    <color name="wine_on_primary_container">#3F001C</color>
+    <color name="wine_secondary">#74565C</color>
+    <color name="wine_on_secondary">#FFFFFF</color>
+    <color name="wine_secondary_container">#FFD9DF</color>
+    <color name="wine_on_secondary_container">#2B151A</color>
+    <color name="wine_tertiary">#7C5635</color>
+    <color name="wine_on_tertiary">#FFFFFF</color>
+    <color name="wine_tertiary_container">#FFDCC2</color>
+    <color name="wine_on_tertiary_container">#2D1600</color>
+    <color name="wine_error">#BA1A1A</color>
+    <color name="wine_on_error">#FFFFFF</color>
+    <color name="wine_error_container">#FFDAD6</color>
+    <color name="wine_on_error_container">#410002</color>
+    <color name="wine_background">#FFF8F7</color>
+    <color name="wine_on_background">#22191B</color>
+    <color name="wine_surface">#FFF8F7</color>
+    <color name="wine_on_surface">#22191B</color>
+    <color name="wine_surface_variant">#F3DDE0</color>
+    <color name="wine_on_surface_variant">#524345</color>
+    <color name="wine_outline">#857376</color>
+    <color name="wine_outline_variant">#D7C1C4</color>
+
+    <!-- Dark theme -->
+    <color name="wine_primary_dark">#FFB1C1</color>
+    <color name="wine_on_primary_dark">#4C0F27</color>
+    <color name="wine_primary_container_dark">#641E37</color>
+    <color name="wine_on_primary_container_dark">#FFD9DF</color>
+    <color name="wine_secondary_dark">#E3BDC3</color>
+    <color name="wine_on_secondary_dark">#42292F</color>
+    <color name="wine_secondary_container_dark">#5A4046</color>
+    <color name="wine_on_secondary_container_dark">#FFD9DF</color>
+    <color name="wine_tertiary_dark">#EFBD91</color>
+    <color name="wine_on_tertiary_dark">#47290B</color>
+    <color name="wine_tertiary_container_dark">#613C1C</color>
+    <color name="wine_on_tertiary_container_dark">#FFDCC2</color>
+    <color name="wine_error_dark">#FFB4AB</color>
+    <color name="wine_on_error_dark">#690005</color>
+    <color name="wine_background_dark">#191113</color>
+    <color name="wine_on_background_dark">#F0DEDF</color>
+    <color name="wine_surface_dark">#191113</color>
+    <color name="wine_on_surface_dark">#F0DEDF</color>
+    <color name="wine_surface_variant_dark">#524345</color>
+    <color name="wine_on_surface_variant_dark">#D7C1C4</color>
+    <color name="wine_outline_dark">#A08C8F</color>
 </resources>

@@ -80,8 +80,19 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 
 ## Phase 5 — Settings app (FR-03/09/10/11/16/17/28)
 
-* Compose Material 3, full Red Wine tonal palette, search, every toggle with an infinite preview,
-  layout editor (drag), percentage toggle, donate button, diagnostics + log export. Commit.
+* `[x]` Red Wine tonal palette, light **and** dark, expressed in both `colors.xml` and Compose
+  (`ui/DuoTheme.kt`) so XML and composables cannot drift apart.
+* `[x]` The app ↔ module channel: the app owns the settings and publishes them over an exported provider,
+  and the module reads them (see `settings/DuoPrefs.kt` for why a provider and not `Settings.Global` — a
+  normal app cannot write global settings). Size, position and the percentage apply **live** on a broadcast;
+  an explicit `duo_statusbar_stage` from adb still overrides everything, so the kill switch is untouched.
+* `[x]` Settings screen: master switch, Rive/Canvas choice, percentage (FR-16), size and position, a looping
+  reveal preview (FR-09, first pass), and diagnostics that show the module's own self-report plus sharing.
+* `[x]` Hiding is now reversible: the stock views' original visibility and sizes are remembered, so switching
+  the element off restores them instead of leaving an empty stretch of status bar.
+* `[ ]` Dragging the element itself (FR-17) rather than a position slider.
+* `[ ]` Per-setting looping previews (FR-09), search, the donate button (FR-28), log export as a file.
+* Commit.
 
 ## Phase 6 — Auto Expand integration (FR-05/18/27)
 

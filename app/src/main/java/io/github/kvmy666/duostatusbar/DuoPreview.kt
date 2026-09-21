@@ -53,7 +53,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun DuoPreview(
     modifier: Modifier = Modifier,
-    pixelSize: Int = 200
+    pixelSize: Int = 200,
+    loop: Boolean = false
 ) {
     var level by remember { mutableFloatStateOf(78f) }
     var charging by remember { mutableStateOf(false) }
@@ -83,6 +84,21 @@ fun DuoPreview(
             delay(DuoBinder.REVEAL_MS + 60L)
         } finally {
             DuoBinder.requestReveal(vm, false)
+        }
+    }
+
+    // FR-09: an infinite looping demonstration of what the reveal looks like, on demand.
+    LaunchedEffect(loop, revealTick) {
+        if (!loop) return@LaunchedEffect
+        while (true) {
+            val vm = instance.value ?: break
+            try {
+                DuoBinder.requestReveal(vm, true)
+                delay(DuoBinder.REVEAL_MS + 60L)
+            } finally {
+                DuoBinder.requestReveal(vm, false)
+            }
+            delay(LOOP_GAP_MS)
         }
     }
 
@@ -183,6 +199,9 @@ private const val ARTBOARD = "Duo"
 private const val STATE_MACHINE = "Duo"
 private const val POLL_MS = 100L
 private const val MAX_POLLS = 25
+
+/** FR-09: the pause between loops of the reveal in the preview, so the bounce stays readable. */
+private const val LOOP_GAP_MS = 700L
 
 @Composable
 private fun LabelledSlider(

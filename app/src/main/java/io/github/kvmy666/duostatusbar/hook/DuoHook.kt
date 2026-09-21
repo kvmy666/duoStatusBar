@@ -1,6 +1,10 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -58,10 +62,67 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             L.i("application ready: ${ctx.packageName} (stage $stage)")
                             host = DuoIconHost(ctx)
                             hookWindowManagerAddView()
+                            hookSettingsChanges(ctx)
                         }
                     }
                 }
             )
+        }
+    }
+
+    /**
+     * The app's half of the channel. When the settings screen writes something it broadcasts, and this
+     * re-reads and applies it live: size and offset change without re-injecting anything, switching off puts
+     * the stock icons back exactly as they were, and switching on re-attaches.
+     */
+    private fun hookSettingsChanges(ctx: Context) {
+        L.guard("DuoHook settings receiver") {
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                    L.guard("DuoHook settings changed") {
+                        val stage = DuoGuard(ctx).stage()
+                        val settings = host?.refreshSettings()
+                        when {
+                            stage == DuoGuard.OFF -> host?.teardown()
+                            host?.duo == null -> scheduleAttach(attempt = 0)
+                            else -> monitor?.refresh()
+                        }
+                        report(ctx, stage, settings)
+                    }
+                }
+            }
+            ctx.registerReceiver(
+                receiver,
+                IntentFilter(DuoSettingsClient.ACTION_SETTINGS_CHANGED),
+                Context.RECEIVER_EXPORTED
+            )
+            L.i("listening for app settings changes")
+        }
+    }
+
+    /** Tells the app what the module is actually doing, so diagnostics shows facts, not intentions. */
+    private fun report(ctx: Context, stage: Int, settings: ModuleSettings?) {
+        L.guard("DuoHook status report") {
+            val element = host?.duo
+            val renderer = when (element) {
+                is DuoRiveView -> "Rive"
+                is DuoCanvasView -> "Canvas"
+                else -> "none"
+            }
+            val status = buildString {
+                append("stage=").append(stage)
+                append(" · renderer=").append(renderer)
+                append(" · attached=").append(element != null)
+                settings?.let {
+                    append(" · size=").append(it.sizePercent).append('%')
+                    append(" · offset=").append(it.offsetX).append("dp")
+                    append(" · percent=").append(it.showPercent)
+                    append(" · rev=").append(it.revision)
+                }
+                append(" · riveAttempts=").append(DuoGuard(ctx).attempts())
+            }
+            L.i("status -> app: $status")
+            DuoSettingsClient.report(ctx, status)
         }
     }
 
@@ -107,6 +168,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     }
                     if (!attaching.compareAndSet(false, true)) return@guard
                     L.i("Duo attached on attempt $attempt")
+                    report(ctx, DuoGuard(ctx).stage(), null)
                 } else {
                     scheduleAttach(attempt + 1)
                 }

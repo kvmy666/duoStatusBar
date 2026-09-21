@@ -33,8 +33,45 @@ internal class DuoIconHost(private val context: Context) {
     private val logged = AtomicBoolean(false)
     private val gateLogged = AtomicBoolean(false)
     private val factsLogged = AtomicBoolean(false)
+    private var settings = ModuleSettings.DEFAULT
+    private val hiddenOriginals = ArrayList<HiddenState>()
 
     val duo: DuoElement? get() = element
+
+    /** FR-16: whether the percentage should be drawn — asked by the state monitor on every render. */
+    val showPercent: Boolean get() = settings.showPercent
+
+    /**
+     * Re-reads the user's settings and applies what can change while running (size, offset).
+     * Called on attach and whenever the app says something changed, so no restart is needed.
+     */
+    fun refreshSettings(): ModuleSettings {
+        val fresh = DuoSettingsClient.read(context)
+        val changed = fresh != settings
+        settings = fresh
+        if (changed) {
+            Log.i(
+                TAG,
+                "settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
+                    "percent=${fresh.showPercent}, rive=${fresh.useRive}"
+            )
+            applyLayout()
+        }
+        return fresh
+    }
+
+    /** Size and offset come from the settings, so reshaping the element needs no re-injection (FR-03/17). */
+    private fun applyLayout() {
+        val target = host ?: return
+        val view = element?.ui ?: return
+        try {
+            view.layoutParams = LinearLayout.LayoutParams(slotWidthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
+            view.translationX = settings.offsetX * context.resources.displayMetrics.density
+            view.requestLayout()
+        } catch (t: Throwable) {
+            Log.w(TAG, "applyLayout: ${t.message}")
+        }
+    }
 
     /**
      * Finds `system_icons`, injects the Duo element, hides what it replaces. True on success.
@@ -69,15 +106,17 @@ internal class DuoIconHost(private val context: Context) {
                 candidate.teardown()
                 return false
             }
+            refreshSettings()
             val width = slotWidthPx(target)
             candidate.ui.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
             target.addView(candidate.ui)
             host = target
             element = candidate
+            applyLayout()
             hideEverythingExcept(target, candidate.ui)
             candidate.reveal()
             forgetAttemptsAfterSurvival(candidate)
-            Log.i(TAG, "Duo injected into ${target.javaClass.simpleName} (${width}px wide)")
+            Log.i(TAG, "Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
             true
         } catch (t: Throwable) {
             Log.e(TAG, "attach failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -143,6 +182,7 @@ internal class DuoIconHost(private val context: Context) {
         }
     }
 
+    /** Removes the element and puts the stock icons back exactly as they were. */
     fun teardown() {
         try {
             element?.let { host?.removeView(it.ui) }
@@ -150,22 +190,22 @@ internal class DuoIconHost(private val context: Context) {
         } catch (_: Throwable) {
         }
         element = null
+        restoreStockViews()
         host = null
     }
 
     // ----------------------------------------------------------------------------- internals
 
+    /**
+     * Hides every stock view in the strip **and remembers exactly what it looked like**, so switching the
+     * element off can put them back without a restart. Hiding is not destruction (FR-08): the views stay in
+     * the tree, they simply draw nothing and occupy nothing.
+     */
     private fun hideEverythingExcept(container: ViewGroup, keep: View) {
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
             if (child === keep) continue
-            child.visibility = View.GONE
-            child.layoutParams?.let { lp ->
-                lp.width = 0
-                lp.height = 0
-                child.layoutParams = lp
-            }
-            if (child is ViewGroup) hideDescendants(child)
+            hideRemoving(child)
         }
         if (logged.compareAndSet(false, true)) {
             Log.i(TAG, "stock status-bar views removed (GONE + 0x0), not overlaid - FR-08")
@@ -174,19 +214,54 @@ internal class DuoIconHost(private val context: Context) {
 
     private fun hideDescendants(group: ViewGroup) {
         for (i in 0 until group.childCount) {
-            val child = group.getChildAt(i)
-            child.visibility = View.GONE
-            child.layoutParams?.let { lp ->
-                lp.width = 0
-                lp.height = 0
-                child.layoutParams = lp
-            }
-            if (child is ViewGroup) hideDescendants(child)
+            hideRemoving(group.getChildAt(i))
         }
     }
 
-    /** The Duo element takes the battery slot's column (83 px measured on the target device). */
+    private fun hideRemoving(view: View) {
+        rememberOriginal(view)
+        view.visibility = View.GONE
+        view.layoutParams?.let { lp ->
+            lp.width = 0
+            lp.height = 0
+            view.layoutParams = lp
+        }
+        if (view is ViewGroup) hideDescendants(view)
+    }
+
+    private fun rememberOriginal(view: View) {
+        if (hiddenOriginals.any { it.view === view }) return
+        val lp = view.layoutParams
+        hiddenOriginals.add(HiddenState(view, view.visibility, lp?.width ?: 0, lp?.height ?: 0))
+    }
+
+    /** Puts every hidden view back as it was. Used when the element is switched off or torn down. */
+    fun restoreStockViews() {
+        for (state in hiddenOriginals) {
+            try {
+                state.view.visibility = state.visibility
+                state.view.layoutParams?.let { lp ->
+                    lp.width = state.width
+                    lp.height = state.height
+                    state.view.layoutParams = lp
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "restore: ${t.message}")
+            }
+        }
+        hiddenOriginals.clear()
+    }
+
+    private data class HiddenState(val view: View, val visibility: Int, val width: Int, val height: Int)
+
+    /** The Duo element takes the battery slot's column, scaled by the size setting (FR-03). */
     private fun slotWidthPx(container: ViewGroup): Int {
+        val base = measuredSlotWidth(container)
+        return (base * settings.sizePercent / 100).coerceAtLeast(1)
+    }
+
+    /** The battery slot's column — 83 px measured on the target device — or the best available estimate. */
+    private fun measuredSlotWidth(container: ViewGroup): Int {
         val measured = try {
             val id = context.resources.getIdentifier("battery", "id", SYSTEMUI_PACKAGE)
             if (id != 0) container.findViewById<View>(id)?.width ?: 0 else 0

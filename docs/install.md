@@ -43,10 +43,14 @@ The manager is **not** a normal installed app on this device; it ships inside th
 
 ## 5. The gate: staged enable (how the module is switched on)
 
-The module is **gated OFF by default**: at stage 0 it hooks nothing at all inside System UI, so installing it
-cannot change — or destabilise — the status bar. Staging exists because a Rive *native* fault kills the host
-process before any `try`/`catch` can run, which means the safety net has to live outside the process
-(full evidence: `docs/evidence/phase3-attempt1-crash.txt`).
+**Normal way — the app.** Install, enable the module in LSPosed (scope: System UI), restart System UI, then
+open **Duo Status Bar** and use the master switch. Changes apply immediately: the app writes its settings and
+broadcasts, and the module re-reads them (size, position and the percentage update live, no restart).
+
+**Developer way — adb.** The module is **gated OFF** until something turns it on, and an explicit
+`duo_statusbar_stage` always wins over the app, so a diagnosis can never be undone by the UI. Staging exists
+because a Rive *native* fault kills the host process before any `try`/`catch` can run, which means the safety
+net has to live outside the process (full evidence: `docs/evidence/phase3-attempt1-crash.txt`).
 
 ```powershell
 adb shell settings put global duo_statusbar_stage 1   # icons only: Canvas drawing, no native code

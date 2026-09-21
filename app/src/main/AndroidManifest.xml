@@ -24,6 +24,17 @@
             </intent-filter>
         </activity>
 
+        <!-- ============ app <-> module channel ============ -->
+        <!-- The app owns the user's settings; the module inside System UI reads them here.
+             Exported without a permission on purpose: System UI is a different uid and holds no
+             signature permission of ours, so requiring one would make the channel unusable. What it
+             exposes is non-sensitive (on/off, renderer, size, offset). See settings/DuoPrefs.kt. -->
+        <provider
+            android:name=".settings.DuoSettingsProvider"
+            android:authorities="io.github.kvmy666.duostatusbar.settings"
+            android:exported="true"
+            android:enabled="true" />
+
         <!-- ============ Xposed / LSPosed module declaration ============ -->
         <!-- xposedmodule marks this APK as a module; without it LSPosed ignores us. -->
         <meta-data

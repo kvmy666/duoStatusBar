@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.DuoStatusBar" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Red Wine — primary brand colour (FR-11). Full tonal palette lands in Phase 5. -->
+        <!-- Red Wine (FR-11): the full tonal set lives in colors.xml; Compose mirrors it in ui/DuoTheme.kt. -->
         <item name="colorPrimary">@color/wine_primary</item>
         <item name="colorOnPrimary">@color/wine_on_primary</item>
+        <item name="colorPrimaryContainer">@color/wine_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/wine_on_primary_container</item>
+        <item name="colorSecondary">@color/wine_secondary</item>
+        <item name="colorOnSecondary">@color/wine_on_secondary</item>
+        <item name="colorTertiary">@color/wine_tertiary</item>
+        <item name="colorError">@color/wine_error</item>
+        <item name="colorSurface">@color/wine_surface</item>
+        <item name="colorOnSurface">@color/wine_on_surface</item>
+        <item name="colorSurfaceVariant">@color/wine_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/wine_on_surface_variant</item>
+        <item name="colorOutline">@color/wine_outline</item>
     </style>
 </resources>
