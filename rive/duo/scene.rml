@@ -111,19 +111,19 @@
                  Layer 1 and 2 are arcs; the third element is the solid dot.            -->
 
             <Shape name="wifiLayer1" id="0:14">
-                <Ellipse x="-0.5" y="17" width="66" height="66" originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="6.5" cap="round" join="round" name="Stroke">
+                <Ellipse x="-0.5" y="17" width="68" height="68" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="6.8" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color" />
-                    <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" id="0:110" />
+                    <TrimPath start="0" end="0.2361" offset="0.8819" name="Trim" id="0:110" />
                 </Stroke>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:67" />
             </Shape>
 
             <Shape name="wifiLayer2" id="0:15">
-                <Ellipse x="-0.5" y="17" width="38" height="38" originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="6.5" cap="round" join="round" name="Stroke">
+                <Ellipse x="-0.5" y="17" width="44" height="44" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="6.8" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color" />
-                    <TrimPath start="0" end="0.3222" offset="0.8389" name="Trim" id="0:111" />
+                    <TrimPath start="0" end="0.2278" offset="0.8861" name="Trim" id="0:111" />
                 </Stroke>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:68" />
             </Shape>
@@ -132,9 +132,9 @@
                  rounded downward point. 12 wide, 11 tall, corners rounded to ~3.2. -->
             <Shape x="-0.5" y="13.5" name="wifiDot" id="0:16">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="-6.5" y="-5" radius="3.4" />
-                    <StraightVertex x="6.5" y="-5" radius="3.4" />
-                    <StraightVertex x="0" y="5" radius="3.4" />
+                    <StraightVertex x="-6.75" y="-5.25" radius="4.7" />
+                    <StraightVertex x="6.75" y="-5.25" radius="4.7" />
+                    <StraightVertex x="0" y="5.25" radius="4.7" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:69" />
