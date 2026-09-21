@@ -177,7 +177,6 @@
                     <StraightVertex x="0.86" y="-8.64" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
-                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:69" />
             </Shape>
 
             <!-- ============================ charging bolt ============================
@@ -246,7 +245,6 @@
                     <StraightVertex x="-10.58" y="-31.46" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
-                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:75" />
             </Shape>
 
             <!-- =============================== DND moon ===============================
@@ -303,7 +301,6 @@
                     <StraightVertex x="-5.27" y="-18.46" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
-                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:87" />
             </Shape>
 
             <!-- ========================== cellular spheres ==========================
@@ -450,35 +447,115 @@
 
             <!-- Layer 2 owns the airplane morph (FR-25): the Wi-Fi arcs collapse into the centre dot,
                  then the plane grows out of it. Blends independently of the reveal layer. -->
-            <StateMachineLayer name="Airplane" id="0:98">
+            <!-- MiddleSlot: the slot holds exactly one occupant, so this is a star rather than a mesh -
+                 every morph leaves the Wi-Fi pose and returns to it. That is also why the arcs always
+                 retract the same way before something new arrives: the slot has one way of emptying.
+
+                 `middleMode` is a number (0 off, 1 Wi-Fi, 2 airplane, 3 DND) rather than one boolean per
+                 occupant, because the slot can only hold one thing and a transition can compare a
+                 number. The layer runs independently of Body, so a plane can already be showing while
+                 the element is still arriving. -->
+            <!-- MiddleSlot: the slot holds exactly one occupant, so this is a star rather than a mesh -
+                 every morph leaves the Wi-Fi pose and returns to it. That is also why the arcs always
+                 retract the same way before something new arrives: the slot has one way of emptying.
+
+                 `middleMode` is a number (0 off, 1 Wi-Fi, 2 airplane, 3 DND) rather than one boolean per
+                 occupant, because the slot can only hold one thing and a transition can compare a
+                 number. The layer runs independently of Body, so a plane can already be showing while
+                 the element is still arriving. -->
+            <StateMachineLayer name="MiddleSlot" id="0:98">
                 <AnyState x="200" y="-120" />
                 <ExitState x="400" y="-120" />
                 <EntryState>
-                    <StateTransition stateToId="0:99" />
+                    <StateTransition stateToId="0:130" />
                 </EntryState>
-                <AnimationState x="0" y="140" animationId="0:100" id="0:99">
-                    <StateTransition stateToId="0:101" duration="80">
+
+                <AnimationState x="0" y="140" animationId="0:121" id="0:130">
+                    <StateTransition stateToId="0:101" duration="0">
                         <TransitionViewModelCondition opValue="equal">
                             <TransitionPropertyViewModelComparator>
-                                <BindablePropertyBoolean>
-                                    <DataBindContext sourcePathIds="0:60-0:85" propertyKey="634" />
-                                </BindablePropertyBoolean>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
                             </TransitionPropertyViewModelComparator>
-                            <TransitionValueBooleanComparator value="true" />
+                            <TransitionValueNumberComparator value="2" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:128" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="3" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:131" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="0" />
                         </TransitionViewModelCondition>
                     </StateTransition>
                 </AnimationState>
-                <AnimationState x="200" y="0" animationId="0:102" id="0:101">
-                    <StateTransition stateToId="0:99" duration="80">
-                        <TransitionViewModelCondition opValue="notEqual">
+
+                <AnimationState x="0" y="280" animationId="0:120" id="0:131">
+                    <StateTransition stateToId="0:130" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
                             <TransitionPropertyViewModelComparator>
-                                <BindablePropertyBoolean>
-                                    <DataBindContext sourcePathIds="0:60-0:85" propertyKey="634" />
-                                </BindablePropertyBoolean>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
                             </TransitionPropertyViewModelComparator>
-                            <TransitionValueBooleanComparator value="true" />
+                            <TransitionValueNumberComparator value="1" />
                         </TransitionViewModelCondition>
                     </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="200" y="0" animationId="0:102" id="0:101">
+                    <StateTransition stateToId="0:132" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+
+                <AnimationState x="300" y="0" animationId="0:122" id="0:132">
+                    <StateTransition stateToId="0:133" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="2" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="300" y="140" animationId="0:124" id="0:133">
+                    <StateTransition stateToId="0:130" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+
+                <AnimationState x="400" y="0" animationId="0:125" id="0:128">
+                    <StateTransition stateToId="0:134" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+
+                <AnimationState x="500" y="0" animationId="0:123" id="0:134">
+                    <StateTransition stateToId="0:135" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="3" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="500" y="140" animationId="0:126" id="0:135">
+                    <StateTransition stateToId="0:130" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
                 </AnimationState>
             </StateMachineLayer>
         </StateMachine>
@@ -618,7 +695,62 @@
         </LinearAnimation>
 
         <!-- Wi-Fi idle: arcs at their resting trim, plane scaled to nothing. -->
-        <LinearAnimation duration="1" name="WifiIdle" id="0:100" loopValue="loop">
+        <!-- ============================ middle slot ============================
+             The slot holds exactly one occupant, so the machine is a star rather than a mesh: every
+             morph starts from the Wi-Fi pose and returns to it, which is also why the arcs always
+             retract the same way before anything new arrives. One number (`middleMode`) picks the
+             occupant, because a transition can compare a number and the slot can only hold one thing.
+
+             The 1-frame `loop` poses are load-bearing, not decoration: a machine only advances while a
+             playing animation exists, and it only draws while it advances. -->
+
+        <LinearAnimation duration="1" name="MiddleOff" id="0:120" loopValue="loop">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="MiddleWifi" id="0:121" loopValue="loop">
             <KeyedObject objectId="0:110">
                 <KeyedProperty propertyKey="115">
                     <KeyFrameDouble value="0.2394" interpolationType="hold" frame="0" />
@@ -635,6 +767,11 @@
                     <KeyFrameDouble value="0.8817" interpolationType="hold" frame="0" />
                 </KeyedProperty>
             </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
             <KeyedObject objectId="0:51">
                 <KeyedProperty propertyKey="16">
                     <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
@@ -642,12 +779,119 @@
                 <KeyedProperty propertyKey="17">
                     <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
                 </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
 
-        <!-- Airplane morph: 12 frames = 200 ms. Each arc slides to 6 o'clock (fraction 0.5, the dot's
-             position) while its length shrinks to zero, then the plane scales up out of that same
-             point over the last 11 frames. -->
+        <LinearAnimation duration="1" name="MiddlePlane" id="0:122" loopValue="loop">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="MiddleDnd" id="0:123" loopValue="loop">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Wi-Fi -> airplane. The arcs retract and slide to fraction 0.5 (the bottom of each ellipse -
+             as close to the glyph's centre as a trim window can reach) over 7 frames, and the plane
+             grows out of that region over the next 4, so there is no dead frame. The plane seats with a
+             small back-out: that is what makes it read as "placed" rather than "switched on". -->
         <LinearAnimation duration="12" name="PlaneMorph" id="0:102">
             <KeyedObject objectId="0:110">
                 <KeyedProperty propertyKey="115">
@@ -677,20 +921,259 @@
                     <KeyFrameDouble value="0.5" interpolationType="cubic" frame="7" />
                 </KeyedProperty>
             </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="5" />
+                </KeyedProperty>
+            </KeyedObject>
             <KeyedObject objectId="0:51">
                 <KeyedProperty propertyKey="16">
-                    <!-- back-out: the plane seats with a small overshoot, which is what makes it read
-                         as "placed" rather than "switched on". -->
                     <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
                         <CubicEaseInterpolator x1="0.34" y1="1.56" x2="0.64" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="11" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="11" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="17">
                     <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
                         <CubicEaseInterpolator x1="0.34" y1="1.56" x2="0.64" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="11" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="11" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="8" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Airplane -> Wi-Fi. Quicker and with no overshoot: turning airplane mode off is a request to
+             reconnect, and the arcs should come back promptly. -->
+        <LinearAnimation duration="10" name="PlaneUnmorph" id="0:124">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.2394" interpolationType="cubic" frame="6" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8803" interpolationType="cubic" frame="6" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.2367" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.2394" interpolationType="cubic" frame="6" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8817" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8803" interpolationType="cubic" frame="6" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="6" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="5" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="5" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="5" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Wi-Fi -> DND. The same arc retraction as the plane, so the slot always empties the same way.
+             But the crescent gets NO overshoot: overshoot is the language of "notable", and Do Not
+             Disturb is the opposite of notable. It blooms up on a plain ease-out instead. -->
+        <LinearAnimation duration="14" name="DndIn" id="0:125">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.2394" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="6" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8803" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.5" interpolationType="cubic" frame="6" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.2367" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="6" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8817" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.5" interpolationType="cubic" frame="6" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="5" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="5" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="11" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="11" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- DND -> Wi-Fi. -->
+        <LinearAnimation duration="12" name="DndOut" id="0:126">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.2394" interpolationType="cubic" frame="7" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8803" interpolationType="cubic" frame="7" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.2367" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.2394" interpolationType="cubic" frame="7" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8817" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8803" interpolationType="cubic" frame="7" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="7" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="7" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="7" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="7" />
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
@@ -723,7 +1206,11 @@
         <ViewModelPropertyColor name="fgColor" id="0:82" />
         <ViewModelPropertyString name="percentText" id="0:83" />
         <ViewModelPropertyNumber name="percentFontSize" id="0:84" />
-        <ViewModelPropertyBoolean name="airplaneState" id="0:85" />
+        <!-- Which occupant the middle slot holds: 0 off, 1 Wi-Fi, 2 airplane, 3 DND. One number rather
+             than a boolean per occupant, because the slot holds exactly one thing at a time - and a
+             transition can compare a number (`BindablePropertyNumber` + `TransitionValueNumberComparator`),
+             which keeps the state machine a star instead of a mesh. -->
+        <ViewModelPropertyNumber name="middleMode" id="0:107" />
         <!-- The arrival: 0 is "nothing asked for"; 500/750/1000/1250/1500 fires an arrival of that
              many milliseconds. One number carries both the trigger and the duration on purpose - it
              needs one transition condition, and the host cannot fire without also saying how long. -->
@@ -754,7 +1241,7 @@
             <ViewModelInstanceColor viewModelPropertyId="0:82" propertyValue="FFFFFFFF" />
             <ViewModelInstanceString viewModelPropertyId="0:83" propertyValue="100" />
             <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="26" />
-            <ViewModelInstanceBoolean viewModelPropertyId="0:85" propertyValue="false" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:107" propertyValue="1" />
             <ViewModelInstanceNumber viewModelPropertyId="0:105" propertyValue="0" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:106" propertyValue="true" />
             <ViewModelInstanceNumber viewModelPropertyId="0:87" propertyValue="0" />

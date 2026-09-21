@@ -20,8 +20,7 @@ class DuoMappingTest {
         charging: Boolean = false,
         saver: Boolean = false,
         airplane: Boolean = false,
-        dnd: Boolean = false,
-        middleBlend: Float = 1f
+        dnd: Boolean = false
     ) = DuoMapping.visual(
         level = level,
         charging = charging,
@@ -30,8 +29,7 @@ class DuoMappingTest {
         wifiLevel = 3,
         cellLevel = 4,
         airplane = airplane,
-        dnd = dnd,
-        middleBlend = middleBlend
+        dnd = dnd
     )
 
     // ---------------------------------------------------------------------------- ring geometry
@@ -168,63 +166,48 @@ class DuoMappingTest {
     }
 
     @Test
-    fun `airplane mode blanks both radios and raises the glyph`() {
+    fun `airplane mode blanks the cellular ramps and takes the middle slot`() {
         val v = visual(70, airplane = true)
-        assertEquals(1f, v.airplaneOpacity, 0.0001f)
-        assertEquals(0f, v.wifiOuterOpacity, 0.0001f)
-        assertEquals(0f, v.wifiMidOpacity, 0.0001f)
-        assertEquals(0f, v.wifiDotOpacity, 0.0001f)
-        assertTrue(v.airplaneState)
+        assertEquals(DuoMapping.MIDDLE_AIRPLANE, v.middleMode)
+        // The glyphs are the state machine's job now, so the host only reports the level: the arcs stay
+        // lit here and the Rive MiddleSlot layer retracts them as it morphs.
         v.let { assertEquals(listOf(0.3f, 0.3f, 0.3f, 0.3f), listOf(it.cell1Opacity, it.cell2Opacity, it.cell3Opacity, it.cell4Opacity)) }
     }
 
     @Test
-    fun `dnd shows the moon and clears the middle slot`() {
+    fun `dnd takes the middle slot and leaves the spheres lit`() {
         val v = visual(70, dnd = true)
-        assertEquals(1f, v.dndOpacity, 0.0001f)
-        assertEquals(0f, v.wifiOuterOpacity, 0.0001f)
-        assertEquals(0f, v.wifiMidOpacity, 0.0001f)
-        assertEquals(0f, v.wifiDotOpacity, 0.0001f)
+        assertEquals(DuoMapping.MIDDLE_DND, v.middleMode)
         // Cellular is not the middle slot: the spheres stay lit while DND is on.
         assertEquals(listOf(1f, 1f, 1f, 1f), listOf(v.cell1Opacity, v.cell2Opacity, v.cell3Opacity, v.cell4Opacity))
     }
 
     @Test
-    fun `dnd is off by default`() {
-        assertEquals(0f, visual(70).dndOpacity, 0.0001f)
+    fun `the middle slot shows the Wi-Fi by default`() {
+        assertEquals(DuoMapping.MIDDLE_WIFI, visual(70).middleMode)
     }
 
     @Test
-    fun `the middle slot crossfades instead of cutting`() {
-        // Mid-hand-over: the Wi-Fi is half faded and the plane is half in, so neither pops.
-        val mid = visual(70, airplane = true, middleBlend = 0.5f)
-        assertEquals(0.5f, mid.wifiOuterOpacity, 0.0001f)
-        assertEquals(0.5f, mid.wifiMidOpacity, 0.0001f)
-        assertEquals(0.5f, mid.wifiDotOpacity, 0.0001f)
-        assertEquals(0.5f, mid.airplaneOpacity, 0.0001f)
-        // Blend 0 is still the Wi-Fi's slot; blend 1 is fully handed over.
-        assertEquals(1f, visual(70, airplane = true, middleBlend = 0f).wifiOuterOpacity, 0.0001f)
-        assertEquals(0f, visual(70, airplane = true, middleBlend = 0f).airplaneOpacity, 0.0001f)
-        val done = visual(70, airplane = true, middleBlend = 1f)
-        assertEquals(0f, done.wifiOuterOpacity, 0.0001f)
-        assertEquals(1f, done.airplaneOpacity, 0.0001f)
-        // The moon crossfades the same way.
-        assertEquals(0.5f, visual(70, dnd = true, middleBlend = 0.5f).dndOpacity, 0.0001f)
+    fun `the slot holds exactly one occupant, and airplane wins`() {
+        // FR-06/FR-16: one number, one occupant - which is why the state machine can be a star.
+        assertEquals(DuoMapping.MIDDLE_AIRPLANE, DuoMapping.middleMode(airplane = true, dnd = true))
+        assertEquals(DuoMapping.MIDDLE_DND, DuoMapping.middleMode(airplane = false, dnd = true))
+        assertEquals(DuoMapping.MIDDLE_WIFI, DuoMapping.middleMode(airplane = false, dnd = false))
     }
 
     @Test
     fun `a demo can morph between two snapshots without leaving either state`() {
-        val off = visual(72, middleBlend = 0f)
-        val on = visual(72, airplane = true, middleBlend = 1f)
+        val off = visual(72, dnd = false)
+        val on = visual(72, airplane = true)
         // The ends are the states themselves, not an approximation of them.
         assertEquals(off, off.lerp(on, 0f))
         assertEquals(on, off.lerp(on, 1f))
         // Half-way is actually half-way for the things that can be half-way...
         val mid = off.lerp(on, 0.5f)
         assertEquals((off.wifiOuterOpacity + on.wifiOuterOpacity) / 2f, mid.wifiOuterOpacity, 0.0001f)
-        assertEquals((off.airplaneOpacity + on.airplaneOpacity) / 2f, mid.airplaneOpacity, 0.0001f)
+        assertEquals((off.trimLeftEnd + on.trimLeftEnd) / 2f, mid.trimLeftEnd, 0.0001f)
         // ...and the things that cannot are one state or the other, never a third thing.
-        assertTrue(mid.airplaneState == off.airplaneState || mid.airplaneState == on.airplaneState)
+        assertTrue(mid.middleMode == off.middleMode || mid.middleMode == on.middleMode)
         assertTrue(mid.tint == off.tint || mid.tint == on.tint)
         assertEquals(off.percentText, off.lerp(on, 0.49f).percentText)
         assertEquals(on.percentText, off.lerp(on, 0.51f).percentText)
@@ -235,9 +218,7 @@ class DuoMappingTest {
 
     @Test
     fun `airplane beats dnd for the middle slot`() {
-        val v = visual(70, airplane = true, dnd = true)
-        assertEquals(1f, v.airplaneOpacity, 0.0001f)
-        assertEquals(0f, v.dndOpacity, 0.0001f)
+        assertEquals(DuoMapping.MIDDLE_AIRPLANE, visual(70, airplane = true, dnd = true).middleMode)
     }
 
     @Test

@@ -142,6 +142,66 @@ measured, not eyeballed, using the CLI's headless renderer:
   means a different "middle" still needs re-checking against the two reference screenshots.
 * `[ ]` A flashlight glyph: mentioned as a possible middle-slot occupant, needs the user to say what it is.
 
+## Phase 4b — Motion system rebuild (FR-25) 🚧 in progress
+
+The four animations above were tweens, not a system. This rebuild makes one: every part on one clock, every
+motion caused by something, and a reason attached to each number. Rive-authored, view-model driven, verified
+headlessly.
+
+**Philosophy** (each decision below follows from these): one body one beat · motion is a receipt, never an
+idle · additive layers, never combinatorial states · one property one owner · ease with intent · geometry in
+Kotlin, easing in Rive.
+
+**Architecture — five layers, one machine:** `Body` (arrival/departure) · `MiddleSlot` (Wi-Fi ↔ airplane ↔
+DND) · `WifiLevel` and `CellLevel` (blends) · `Charge` (the bolt's journey). Layers run simultaneously, so no
+state ever needs a combination of them.
+
+* `[x]` **Phase 1 — the eases are real.** The file had 27 `cubic` keyframes and **zero** interpolator
+  children: per `rive docs gotchas` a cubic keyframe with no `CubicEaseInterpolator` child does not ease at
+  all, so the entire set had been running linear while looking finished (`--verify` builds it clean). Every
+  keyframe now carries its curve. Proved with a control build that had them stripped — the frames differ by
+  up to 67k pixels. `tools/check-rive-eases.py` enforces it in CI.
+* `[x]` **Phase 2 — the body.** `Reveal` rewritten (0.75 → 1.10 overshoot at 100 ms → 0.97 rebound → damped
+  elastic settle at 500 ms), starting at 0.75 rather than 0 because at 140 px a zero-point spawn reads as a
+  bubble, and opaque by 100 ms so the element is legible before it settles. `Depart` added (ease-in, 40 %
+  shorter, opposite tilt). **The duration is the user's**: 500/750/1000/1250/1500 ms, one timeline at five
+  speeds (`AnimationState.speed`), on a slider. `revealMs` carries both the trigger and the duration, which
+  also fixes the re-fire bug (the old boolean ended at 4000 ms but cleared at 4060 ms). Departure is tied to
+  the screen, not the lock — the lock screen is meant to show the element.
+* `[ ]` **Phase 3 — MiddleSlot.** The four-state star (`Off`/`Wifi`/`Plane`/`Dnd`) plus `PlaneMorph`,
+  `PlaneUnmorph`, `DndIn`, `DndOut`, driven by `middleMode`. Arcs always retract to the same point first so
+  the slot always empties the same way; the plane gets a small back-out, the crescent deliberately gets none
+  (overshoot is the language of "notable"; DND should bloom, not pop).
+* `[ ]` **Phase 4 — the charge choreography** (the user's idea, 2026-09-21). Plugging in tells a story:
+  1. the Wi-Fi fades out where it sits;
+  2. the bolt appears **in the middle slot** — the same place, so the eye never has to search;
+  3. it rises and shrinks as it travels to its home in the ring's top gap;
+  4. the Wi-Fi returns to the slot behind it.
+  The bolt is born where the Wi-Fi was and takes its place in the ring. Also here: the tint cross-fade to
+  green, and `ChargeOut` (faster, no overshoot — unplugging is an acknowledgement of a loss, not a
+  celebration).
+  *Ownership:* the Wi-Fi gets a **group node** whose opacity the Charge layer keys, while the arcs keep their
+  own bound/blended opacity — two nested opacities multiply, so the fade for the bolt and the signal level
+  never fight over one property.
+* `[ ]` **Phase 5 — the signal ramps move into Rive.** `BlendState1DViewModel` for Wi-Fi and cellular; delete
+  the binds they replace. Easing one bound number makes each sphere cross its threshold in turn, which is the
+  design's 40 ms cascade for free — no four extra timelines.
+* `[ ]` **Phase 6 — the fill moves into Rive.** `DataConverterInterpolator` + `DataConverterRangeMapper` on
+  the fill trims; delete the host's 2.4 s `ValueAnimator` and every per-frame write on SystemUI's UI thread.
+  The fill must never overshoot: it would briefly display a *wrong battery value*.
+* `[ ]` **Phase 7 — docs.** DESIGN §5, the stale timing tables in `rive-pipeline.md` and
+  `rive-summary-phase4.json`, FR-25, and NFR-1 (which says "≤ 500 ms" and now needs to read
+  "≤ 1500 ms, user-configurable, and no added jank").
+
+**Not doing, and why:** no idle breathing, no low-battery heartbeat, no squash-and-stretch, no particles or
+glow (fill-rate and memory on SystemUI), no per-sphere timelines, no in-Rive digit counting, no taps in Rive
+(that belongs to Auto Expand), no Luau (a WASM runtime in a process that has already died natively).
+
+**Verification:** `--verify` plus two checks `problems` does *not* do — cubic-without-interpolator must stay
+0, and an ownership check (nothing keyed by two simultaneously-active layers, nothing both keyed and bound).
+Then pose screenshots per state via `--data`/`--advance`/`--viewport=140x140`, `--bench` for the NFR-1 claim,
+and on the device `gfxinfo`, `meminfo`, all three surfaces and both orientations.
+
 ## Phase 5 — Settings app (FR-03/09/10/11/16/17/28)
 
 * `[x]` Red Wine tonal palette, light **and** dark, expressed in both `colors.xml` and Compose

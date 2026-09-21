@@ -33,10 +33,9 @@ object DuoBinder {
     val REVEAL_CHOICES = intArrayOf(500, 750, 1000, 1250, 1500)
 
     /** Number of properties a complete snapshot writes — used to report partial failures. */
-    const val PROPERTY_COUNT = 21
+    const val PROPERTY_COUNT = 19
 
     private const val REVEAL_MS = "revealMs"
-    private const val AIRPLANE_STATE = "airplaneState"
     private const val PERCENT_TEXT = "percentText"
     private const val VISIBLE = "visible"
 
@@ -53,11 +52,10 @@ object DuoBinder {
             "percentOpacity" to v.percentOpacity,
             "percentFontSize" to v.percentFontSize,
             "boltOpacity" to v.boltOpacity,
-            "airplaneOpacity" to v.airplaneOpacity,
-            "dndOpacity" to v.dndOpacity,
             "wifiOuterOpacity" to v.wifiOuterOpacity,
             "wifiMidOpacity" to v.wifiMidOpacity,
-            "wifiDotOpacity" to v.wifiDotOpacity,
+            // The whole middle-slot hand-over is one Rive layer; this only says which occupant.
+            "middleMode" to v.middleMode.toFloat(),
             "cell1Opacity" to v.cell1Opacity,
             "cell2Opacity" to v.cell2Opacity,
             "cell3Opacity" to v.cell3Opacity,
@@ -73,8 +71,6 @@ object DuoBinder {
         }
 
         if (!write(PERCENT_TEXT) { vm.getStringProperty(PERCENT_TEXT).value = v.percentText }) failures++
-        // Drives the state machine layer that plays the airplane morph.
-        if (!write(AIRPLANE_STATE) { vm.getBooleanProperty(AIRPLANE_STATE).value = v.airplaneState }) failures++
         // False plays the departure, true brings the element back (screen off / on).
         if (!write(VISIBLE) { vm.getBooleanProperty(VISIBLE).value = v.visible }) failures++
 

@@ -448,8 +448,7 @@ private fun demo(
     wifiLevel = 3,
     cellLevel = 4,
     airplane = airplane,
-    dnd = dnd,
-    middleBlend = middleBlend
+    dnd = dnd
 )
 
 /** FR-09: a level that shows a clear half-full ring rather than an empty or full one. */

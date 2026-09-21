@@ -18,19 +18,21 @@ data class DuoVisual(
     val percentOpacity: Float,
     val percentFontSize: Float,
     val boltOpacity: Float,
-    val airplaneOpacity: Float,
-    /** The Do Not Disturb crescent in the middle slot; 0 unless DND is on (FR-06). */
-    val dndOpacity: Float,
     val wifiOuterOpacity: Float,
     val wifiMidOpacity: Float,
-    val wifiDotOpacity: Float,
     val cell1Opacity: Float,
     val cell2Opacity: Float,
     val cell3Opacity: Float,
     val cell4Opacity: Float,
     val tint: Int,
     val fgColor: Int,
-    val airplaneState: Boolean,
+    /**
+     * Which occupant the middle slot holds: 0 off, 1 Wi-Fi, 2 airplane, 3 DND (FR-06/FR-16).
+     *
+     * The slot's whole hand-over - the arcs collapsing, the dot fading, the plane or crescent growing
+     * out of it - is one Rive state machine layer, so this is the only thing the host says about it.
+     */
+    val middleMode: Int,
     /** False plays the departure (screen off); true brings the element back. */
     val visible: Boolean = true
 ) {
@@ -55,11 +57,8 @@ data class DuoVisual(
             percentOpacity = at(percentOpacity, other.percentOpacity),
             percentFontSize = at(percentFontSize, other.percentFontSize),
             boltOpacity = at(boltOpacity, other.boltOpacity),
-            airplaneOpacity = at(airplaneOpacity, other.airplaneOpacity),
-            dndOpacity = at(dndOpacity, other.dndOpacity),
             wifiOuterOpacity = at(wifiOuterOpacity, other.wifiOuterOpacity),
             wifiMidOpacity = at(wifiMidOpacity, other.wifiMidOpacity),
-            wifiDotOpacity = at(wifiDotOpacity, other.wifiDotOpacity),
             cell1Opacity = at(cell1Opacity, other.cell1Opacity),
             cell2Opacity = at(cell2Opacity, other.cell2Opacity),
             cell3Opacity = at(cell3Opacity, other.cell3Opacity),
@@ -67,7 +66,8 @@ data class DuoVisual(
             percentText = if (past) other.percentText else percentText,
             tint = if (past) other.tint else tint,
             fgColor = if (past) other.fgColor else fgColor,
-            airplaneState = if (past) other.airplaneState else airplaneState,
+            // The middle slot's hand-over is a Rive layer, not a tween: this only picks which occupant.
+            middleMode = if (past) other.middleMode else middleMode,
             visible = if (past) other.visible else visible
         )
     }
@@ -177,18 +177,12 @@ object DuoMapping {
         airplane: Boolean,
         dnd: Boolean = false,
         fgColor: Int = WHITE,
-        middleBlend: Float = 1f,
         visible: Boolean = true
     ): DuoVisual {
         // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, else Wi-Fi.
-        // Note `wifiOpacities(0)` is not "hidden" - level 0 is the dimmed "no network" state - so a
-        // taken slot is zeroed explicitly here rather than by feeding 0 into the level ramp.
-        //
-        // [middleBlend] crossfades the hand-over: 0 keeps the Wi-Fi, 1 shows the alternate occupant,
-        // and the monitor tweens it so the slot fades instead of cutting (user feedback). The Wi-Fi
-        // also gets its arcs collapsed by the state machine's Airplane layer at the same time.
-        val alternate = if (airplane || dnd) 1f else 0f
-        val wifiFade = 1f - middleBlend.coerceIn(0f, 1f) * alternate
+        // The hand-over itself - the arcs collapsing, the dot fading, the new occupant growing out of it
+        // - is the MiddleSlot layer's job, so all the host says is which occupant it should be.
+        val mode = middleMode(airplane, dnd)
         val (outer, middle, dot) = wifiOpacities(wifiLevel)
         val cells = cellOpacities(if (airplane) 0 else cellLevel)
         val percent = if (showPercent && !charging) level.toString() else ""
@@ -203,19 +197,29 @@ object DuoMapping {
             percentOpacity = if (percent.isEmpty()) 0f else 1f,
             percentFontSize = percentFontSize(percent.ifEmpty { "50" }),
             boltOpacity = if (charging) 1f else 0f,
-            airplaneOpacity = if (airplane) middleBlend.coerceIn(0f, 1f) else 0f,
-            dndOpacity = if (dnd && !airplane) middleBlend.coerceIn(0f, 1f) else 0f,
-            wifiOuterOpacity = outer * wifiFade,
-            wifiMidOpacity = middle * wifiFade,
-            wifiDotOpacity = dot * wifiFade,
+            wifiOuterOpacity = outer,
+            wifiMidOpacity = middle,
             cell1Opacity = cells[0],
             cell2Opacity = cells[1],
             cell3Opacity = cells[2],
             cell4Opacity = cells[3],
             tint = tint(level, charging, saver),
             fgColor = fgColor,
-            airplaneState = airplane,
+            middleMode = mode,
             visible = visible
         )
+    }
+
+    /** The middle slot's occupants, in the order the state machine expects (see `scene.rml`). */
+    const val MIDDLE_OFF = 0
+    const val MIDDLE_WIFI = 1
+    const val MIDDLE_AIRPLANE = 2
+    const val MIDDLE_DND = 3
+
+    /** FR-06/FR-16: airplane wins the slot, then DND, else Wi-Fi. */
+    fun middleMode(airplane: Boolean, dnd: Boolean): Int = when {
+        airplane -> MIDDLE_AIRPLANE
+        dnd -> MIDDLE_DND
+        else -> MIDDLE_WIFI
     }
 }

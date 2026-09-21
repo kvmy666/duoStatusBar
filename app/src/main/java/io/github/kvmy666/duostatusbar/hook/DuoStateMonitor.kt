@@ -25,9 +25,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     /** What the ring is actually drawn at; it chases [level] so the fill animates instead of jumping. */
     private var displayedLevel = 0
     private var fill: ValueAnimator? = null
-    /** 0 = the Wi-Fi owns the middle slot, 1 = the airplane/moon does; tweened, never jumped. */
-    private var middleBlend = 0f
-    private var middleFade: ValueAnimator? = null
     private var charging = false
     private var saver = false
     private var airplane = false
@@ -56,7 +53,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     }
                     Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
                         airplane = SystemReaders.isAirplaneOn(context)
-                        animateMiddleSlot()
+                        render()
                     }
                     // FR-06: the middle slot shows the moon while DND/silent is on. Both signals are
                     // event-driven (no polling): the zen filter, and the ringer dropping to silent.
@@ -65,7 +62,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                         val was = dnd
                         dnd = SystemReaders.isDndOn(context)
                         if (dnd != was) L.i("dnd -> $dnd (middle slot now shows the moon)")
-                        animateMiddleSlot()
+                        render()
                     }
                     // FR-25: reveal on every screen-on and every unlock. The ring re-fills from 0 with
                     // it, so the fill animation is part of the arrival rather than a one-off at boot.
@@ -128,7 +125,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         if (!registered) return
         registered = false
         runCatching { fill?.cancel() }
-        runCatching { middleFade?.cancel() }
         runCatching { context.unregisterReceiver(receiver) }
     }
 
@@ -170,31 +166,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         setLevel(level)
     }
 
-    /**
-     * Crossfades the middle slot between the Wi-Fi and whichever of airplane/DND owns it (FR-06/FR-16).
-     *
-     * Without this the slot cuts: the host used to write the Wi-Fi's opacities to 0 and the plane's
-     * to 1 in the same frame, so the Wi-Fi vanished and the plane popped rather than the Wi-Fi hiding
-     * and the airplane coming in. The airplane's `airplaneState` is set from the current flags on the
-     * next render, so the state machine's collapse-and-grow starts on the same frame this does.
-     */
-    private fun animateMiddleSlot() {
-        val target = if (airplane || dnd) 1f else 0f
-        if (target == middleBlend && middleFade?.isRunning != true) {
-            render()
-            return
-        }
-        middleFade?.cancel()
-        middleFade = ValueAnimator.ofFloat(middleBlend, target).apply {
-            duration = MIDDLE_MS
-            addUpdateListener {
-                middleBlend = it.animatedValue as Float
-                render()
-            }
-            start()
-        }
-    }
-
     private fun render() {
         // Every element the host owns - the main bar's and, on the lock screen, the keyguard bar's.
         if (host.duo == null) return
@@ -209,7 +180,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     cellLevel = cellLevel,
                     airplane = airplane,
                     dnd = dnd,
-                    middleBlend = middleBlend,
                     visible = visible
                 )
             )
@@ -223,8 +193,5 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
         /** How long the ring takes to fill to a new percentage (4x slower per user feedback). */
         const val FILL_MS = 2_400L
-
-        /** The middle slot's hand-over. Matches the 12-frame (200 ms) PlaneMorph in scene.rml. */
-        const val MIDDLE_MS = 200L
     }
 }

@@ -108,8 +108,8 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         }
 
         // FR-06: the DND crescent takes the middle slot (0, 17 design units below the ring centre).
-        if (visual.dndOpacity > 0f) {
-            moonPaint.color = withAlpha(visual.fgColor, visual.dndOpacity)
+        if (visual.middleMode == DuoMapping.MIDDLE_DND) {
+            moonPaint.color = withAlpha(visual.fgColor, 1f)
             canvas.save()
             canvas.translate(cx, cy + DND_SLOT_Y * k)
             canvas.scale(k, k)
