@@ -42,16 +42,16 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 
 | ID | Requirement | Status |
 |---|---|---|
-| NFR-1 | No measurable jank added to SystemUI: animations complete in ≤ 500 ms and run on the UI thread only | `[!]` |
+| NFR-1 | No measurable jank added to SystemUI: animations run on the UI thread, and the arrival is user-configurable in 500-1500 ms | `[~]` |
 | NFR-2 | Battery impact: event-driven updates, no polling loops | `[x]` |
 | NFR-3 | Memory: the Duo view must stay a few KB; no bitmap allocation per frame | `[~]` |
 | NFR-4 | If the module fails, the stock status bar must remain usable (fail-silent + auto-disable after N strikes) | `[x]` |
 | NFR-5 | All prefs survive reboot and are readable inside the SystemUI process | `[x]` |
 
-**NFR-1 and NFR-3 conflict with decisions taken since they were written — both need your call:**
+**NFR-1 and NFR-3, resolved:**
 
-* NFR-1's "animations complete in ≤ 500 ms" cannot hold against the 4 s reveal you asked for. The jank half is
-  still testable; the duration half is not, as written.
+* NFR-1 is rewritten: the arrival is the user's setting (500-1500 ms, one Rive timeline at five speeds), so a
+  fixed ceiling cannot hold. What remains testable - no added jank, UI thread only - is what it now says.
 * NFR-3's "a few KB" was written when there was one Canvas view. There are now three status bars, each with
   its own element, and the Rive path is native. Measured on the device (`dumpsys meminfo
   com.android.systemui`, stage 2 vs stage 0): **Graphics 19.9 MB on vs 17.0 MB off**, so the three Rive views

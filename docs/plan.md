@@ -186,12 +186,16 @@ state ever needs a combination of them.
 * `[ ]` **Phase 5 — the signal ramps move into Rive.** `BlendState1DViewModel` for Wi-Fi and cellular; delete
   the binds they replace. Easing one bound number makes each sphere cross its threshold in turn, which is the
   design's 40 ms cascade for free — no four extra timelines.
-* `[ ]` **Phase 6 — the fill moves into Rive.** `DataConverterInterpolator` + `DataConverterRangeMapper` on
-  the fill trims; delete the host's 2.4 s `ValueAnimator` and every per-frame write on SystemUI's UI thread.
-  The fill must never overshoot: it would briefly display a *wrong battery value*.
-* `[ ]` **Phase 7 — docs.** DESIGN §5, the stale timing tables in `rive-pipeline.md` and
-  `rive-summary-phase4.json`, FR-25, and NFR-1 (which says "≤ 500 ms" and now needs to read
-  "≤ 1500 ms, user-configurable, and no added jank").
+* `[!]` **Phase 6 — the fill into Rive: DEFERRED, fallback in place.** Built it — a `DataConverterGroup`
+  [interpolator 0.2 s ease-out, range mapper 0–50 → 0.6631–0.9010 with `clampUpper`] fed by a raw
+  `batteryLevel`, and the mirror for the right half. `inspect` confirms the wiring (converterId on the bind,
+  both items in the group), but **the CLI's headless renderer does not apply it**: the fill measured identical
+  at every level (11260 bright ring pixels at 0/25/50/75/100) and identical across the ease. Since it could not
+  be verified before shipping, the fill is back on the host's tween, which is known to work — the fallback the
+  user asked for. The converters are removed rather than left as dead weight.
+* `[x]` **Phase 7 — docs.** DESIGN §5, the stale timing tables in `rive-pipeline.md` and
+  `rive-summary-phase4.json`, FR-25, and NFR-1 (rewritten to "runs on the UI thread, arrival user-configurable
+  in 500–1500 ms", because a fixed ceiling cannot hold against the arrival being a user setting).
 
 **Not doing, and why:** no idle breathing, no low-battery heartbeat, no squash-and-stretch, no particles or
 glow (fill-rate and memory on SystemUI), no per-sphere timelines, no in-Rive digit counting, no taps in Rive
