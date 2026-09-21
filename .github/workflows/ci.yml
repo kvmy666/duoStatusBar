@@ -39,10 +39,25 @@ jobs:
       # The app preview and the status-bar module must draw the *same* file. The .riv is authored in
       # rive/duo and committed into the app, so this catches the failure mode where one of them is rebuilt
       # and the other is forgotten — which would show up as "the preview looks right, the phone does not".
-      - name: The shipped .riv must be the built one
+      #
+      # Best effort, like the verify below: a stock runner has no Rive CLI, and rive/duo/build/ is
+      # gitignored, so the built file only exists once the CLI has run. When the CLI is present the scene
+      # is built here and compared; when it is not, the check is skipped rather than failed.
+      - name: Rive project checks (best effort)
         run: |
+          if command -v rive >/dev/null 2>&1; then
+            RIVE="$(command -v rive)"
+          elif [ -x "$HOME/.rive/bin/rive" ]; then
+            RIVE="$HOME/.rive/bin/rive"
+          else
+            echo "::notice::Rive CLI unavailable on this runner - skipping the Rive checks"
+            exit 0
+          fi
+          "$RIVE" rive/duo --verify
+          "$RIVE" inspect rive/duo --summary
+          "$RIVE" rive/duo --once
           cmp rive/duo/build/duo.riv app/src/main/res/raw/duo.riv
-          echo "rive/duo/build/duo.riv == app/src/main/res/raw/duo.riv"
+          echo "the shipped .riv is exactly what the scene builds"
 
       # The app↔module channel is addressed by an authority string that exists twice: as a manifest attribute
       # and as DuoPrefs.AUTHORITY. A unit test cannot compare them (Robolectric does not register manifest
@@ -53,17 +68,3 @@ jobs:
           grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
           grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
           echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
-
-      # Best effort: the compiled .riv is checked above, so a missing CLI never breaks the build.
-      - name: Rive project checks
-        run: |
-          if command -v rive >/dev/null 2>&1; then
-            RIVE="$(command -v rive)"
-          elif [ -x "$HOME/.rive/bin/rive" ]; then
-            RIVE="$HOME/.rive/bin/rive"
-          else
-            echo "::notice::Rive CLI unavailable on this runner - skipping rive/duo --verify"
-            exit 0
-          fi
-          "$RIVE" rive/duo --verify
-          "$RIVE" inspect rive/duo --summary
