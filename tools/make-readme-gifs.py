@@ -27,8 +27,8 @@ RIVE = os.environ.get("RIVE_CLI") or os.path.join(
 
 VIEWPORT = "120x120"
 SCALE = 2  # the GIF is shown at 2x, so it stays crisp on a HiDPI screen
-FRAME_MS = 55
-HOLD = 7  # how many times a settled frame is repeated
+FRAME_MS = 60
+HOLD = 5  # how many times a settled frame is repeated
 
 
 def render(advance, data):
@@ -53,10 +53,14 @@ def save_gif(name, frames):
     if not frames:
         raise SystemExit(f"{name}: no frames")
     path = os.path.join(OUT_DIR, name)
-    # One shared palette keeps the file small and the colours consistent between frames.
-    frames[0].save(
-        path, save_all=True, append_images=frames[1:],
-        duration=FRAME_MS, loop=0, optimize=True, disposal=2,
+    # Re-encode to a shared palette with no transparency and no disposal tricks. PIL's default
+    # `optimize=True` merges identical frames and can leave delta frames some decoders render badly;
+    # this form is what every browser (and GitHub's image proxy) renders the same way.
+    palette = frames[0].convert("P", palette=Image.ADAPTIVE, colors=128)
+    quantized = [frame.quantize(palette=palette, dither=Image.NONE) for frame in frames]
+    quantized[0].save(
+        path, save_all=True, append_images=quantized[1:],
+        duration=FRAME_MS, loop=0, optimize=False, disposal=1,
     )
     print(f"wrote {os.path.relpath(path, ROOT)} ({len(frames)} frames)")
 
@@ -69,13 +73,13 @@ def stepped(start, stop, step):
 
 
 def arrival():
-    frames = [render(n, ["revealMs=1000"]) for n in stepped(0, 78, 3)]
+    frames = [render(n, ["revealMs=1000"]) for n in stepped(0, 78, 4)]
     save_gif("arrival.gif", frames)
 
 
 def charging():
     data = ["charging=true", "animateCharge=true"]
-    frames = [render(n, data) for n in stepped(0, 96, 4)]
+    frames = [render(n, data) for n in stepped(0, 96, 5)]
     save_gif("charging.gif", frames)
 
 
@@ -85,16 +89,16 @@ def modes():
     # Settled Wi-Fi.
     frames += [render(60, ["middleMode=1"])] * HOLD
     # Wi-Fi -> airplane: the arcs retract, the plane grows.
-    frames += [render(n, ["middleMode=2"]) for n in stepped(0, 28, 2)]
+    frames += [render(n, ["middleMode=2"]) for n in stepped(0, 28, 3)]
     frames += [render(60, ["middleMode=2"])] * HOLD
     # Airplane -> DND.
-    frames += [render(n, ["middleMode=3"]) for n in stepped(0, 32, 2)]
+    frames += [render(n, ["middleMode=3"]) for n in stepped(0, 32, 3)]
     frames += [render(60, ["middleMode=3"])] * HOLD
     # DND -> the cellular generation.
-    frames += [render(n, ["middleMode=4", "networkText=5G"]) for n in stepped(0, 28, 2)]
+    frames += [render(n, ["middleMode=4", "networkText=5G"]) for n in stepped(0, 28, 3)]
     frames += [render(60, ["middleMode=4", "networkText=5G"])] * HOLD
     # Back to Wi-Fi.
-    frames += [render(n, ["middleMode=1"]) for n in stepped(0, 24, 2)]
+    frames += [render(n, ["middleMode=1"]) for n in stepped(0, 24, 3)]
     frames += [render(60, ["middleMode=1"])] * HOLD
     save_gif("modes.gif", frames)
 

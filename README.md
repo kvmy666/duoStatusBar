@@ -13,7 +13,7 @@ built to be switched off the instant you want your old bar back.
 
 No system files are touched. Nothing is patched. The module only *draws*.
 
-<img src="docs/media/modes.gif" width="220" alt="Wi-Fi, airplane, Do Not Disturb and 5G changing in the middle of the ring">
+<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/modes.gif" width="220" alt="Wi-Fi, airplane, Do Not Disturb and 5G changing in the middle of the ring">
 
 ## ✨ What it does
 
@@ -31,11 +31,11 @@ No system files are touched. Nothing is patched. The module only *draws*.
 
 The element appearing when the screen wakes:
 
-<img src="docs/media/arrival.gif" width="200" alt="The element bouncing into place">
+<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/arrival.gif" width="200" alt="The element bouncing into place">
 
 Plugging in — the bolt is born where the Wi-Fi was, then finds its home in the ring:
 
-<img src="docs/media/charging.gif" width="200" alt="The charging bolt flying into the ring">
+<img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/charging.gif" width="200" alt="The charging bolt flying into the ring">
 
 ## 📲 Install (about two minutes)
 
