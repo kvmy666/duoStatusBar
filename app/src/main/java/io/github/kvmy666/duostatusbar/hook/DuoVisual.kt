@@ -136,12 +136,18 @@ object DuoMapping {
         cellLevel: Int,
         airplane: Boolean,
         dnd: Boolean = false,
-        fgColor: Int = WHITE
+        fgColor: Int = WHITE,
+        middleBlend: Float = 1f
     ): DuoVisual {
         // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, else Wi-Fi.
         // Note `wifiOpacities(0)` is not "hidden" - level 0 is the dimmed "no network" state - so a
         // taken slot is zeroed explicitly here rather than by feeding 0 into the level ramp.
-        val middleTaken = airplane || dnd
+        //
+        // [middleBlend] crossfades the hand-over: 0 keeps the Wi-Fi, 1 shows the alternate occupant,
+        // and the monitor tweens it so the slot fades instead of cutting (user feedback). The Wi-Fi
+        // also gets its arcs collapsed by the state machine's Airplane layer at the same time.
+        val alternate = if (airplane || dnd) 1f else 0f
+        val wifiFade = 1f - middleBlend.coerceIn(0f, 1f) * alternate
         val (outer, middle, dot) = wifiOpacities(wifiLevel)
         val cells = cellOpacities(if (airplane) 0 else cellLevel)
         val percent = if (showPercent && !charging) level.toString() else ""
@@ -156,11 +162,11 @@ object DuoMapping {
             percentOpacity = if (percent.isEmpty()) 0f else 1f,
             percentFontSize = percentFontSize(percent.ifEmpty { "50" }),
             boltOpacity = if (charging) 1f else 0f,
-            airplaneOpacity = if (airplane) 1f else 0f,
-            dndOpacity = if (dnd && !airplane) 1f else 0f,
-            wifiOuterOpacity = if (middleTaken) 0f else outer,
-            wifiMidOpacity = if (middleTaken) 0f else middle,
-            wifiDotOpacity = if (middleTaken) 0f else dot,
+            airplaneOpacity = if (airplane) middleBlend.coerceIn(0f, 1f) else 0f,
+            dndOpacity = if (dnd && !airplane) middleBlend.coerceIn(0f, 1f) else 0f,
+            wifiOuterOpacity = outer * wifiFade,
+            wifiMidOpacity = middle * wifiFade,
+            wifiDotOpacity = dot * wifiFade,
             cell1Opacity = cells[0],
             cell2Opacity = cells[1],
             cell3Opacity = cells[2],

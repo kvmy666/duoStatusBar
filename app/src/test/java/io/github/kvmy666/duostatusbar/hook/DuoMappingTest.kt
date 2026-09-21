@@ -20,7 +20,8 @@ class DuoMappingTest {
         charging: Boolean = false,
         saver: Boolean = false,
         airplane: Boolean = false,
-        dnd: Boolean = false
+        dnd: Boolean = false,
+        middleBlend: Float = 1f
     ) = DuoMapping.visual(
         level = level,
         charging = charging,
@@ -29,7 +30,8 @@ class DuoMappingTest {
         wifiLevel = 3,
         cellLevel = 4,
         airplane = airplane,
-        dnd = dnd
+        dnd = dnd,
+        middleBlend = middleBlend
     )
 
     // ---------------------------------------------------------------------------- ring geometry
@@ -190,6 +192,24 @@ class DuoMappingTest {
     @Test
     fun `dnd is off by default`() {
         assertEquals(0f, visual(70).dndOpacity, 0.0001f)
+    }
+
+    @Test
+    fun `the middle slot crossfades instead of cutting`() {
+        // Mid-hand-over: the Wi-Fi is half faded and the plane is half in, so neither pops.
+        val mid = visual(70, airplane = true, middleBlend = 0.5f)
+        assertEquals(0.5f, mid.wifiOuterOpacity, 0.0001f)
+        assertEquals(0.5f, mid.wifiMidOpacity, 0.0001f)
+        assertEquals(0.5f, mid.wifiDotOpacity, 0.0001f)
+        assertEquals(0.5f, mid.airplaneOpacity, 0.0001f)
+        // Blend 0 is still the Wi-Fi's slot; blend 1 is fully handed over.
+        assertEquals(1f, visual(70, airplane = true, middleBlend = 0f).wifiOuterOpacity, 0.0001f)
+        assertEquals(0f, visual(70, airplane = true, middleBlend = 0f).airplaneOpacity, 0.0001f)
+        val done = visual(70, airplane = true, middleBlend = 1f)
+        assertEquals(0f, done.wifiOuterOpacity, 0.0001f)
+        assertEquals(1f, done.airplaneOpacity, 0.0001f)
+        // The moon crossfades the same way.
+        assertEquals(0.5f, visual(70, dnd = true, middleBlend = 0.5f).dndOpacity, 0.0001f)
     }
 
     @Test

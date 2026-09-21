@@ -202,23 +202,48 @@
                  Occupies the Wi-Fi slot when airplane mode is on: the Wi-Fi layers collapse into
                  the dot, then this scales up from inside it (FR-25).                              -->
 
-            <!-- Scaled x1.6 (was ~16 units wide, a speck next to the 62-unit Wi-Fi): the plane now
-                 reads at the same weight as the arcs it replaces. -->
-            <Shape x="-0.5" y="13.5" opacity="0" name="airplane" id="0:51">
+            <!-- Traced from the supplied silhouette by tools/trace-shape-to-rive.py (37 points,
+                 26 x 24 units), nose to the right as the source art is. 26 units wide so it reads at
+                 the same weight as the Wi-Fi it replaces. -->
+            <Shape x="-0.5" y="13.8" opacity="0" name="airplane" id="0:51">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="0" y="-12.8" radius="1.28" />
-                    <StraightVertex x="2.56" y="-3.52" radius="1.28" />
-                    <StraightVertex x="12.8" y="3.52" radius="1.28" />
-                    <StraightVertex x="12.8" y="6.72" radius="1.28" />
-                    <StraightVertex x="2.56" y="4.16" radius="1.28" />
-                    <StraightVertex x="1.92" y="10.4" radius="1.28" />
-                    <StraightVertex x="5.6" y="13.6" radius="1.28" />
-                    <StraightVertex x="-5.6" y="13.6" radius="1.28" />
-                    <StraightVertex x="-1.92" y="10.4" radius="1.28" />
-                    <StraightVertex x="-2.56" y="4.16" radius="1.28" />
-                    <StraightVertex x="-12.8" y="6.72" radius="1.28" />
-                    <StraightVertex x="-12.8" y="3.52" radius="1.28" />
-                    <StraightVertex x="-2.56" y="-3.52" radius="1.28" />
+                    <StraightVertex x="-10.58" y="-31.46" />
+                    <StraightVertex x="-8.29" y="-31.46" />
+                    <StraightVertex x="-7.22" y="-30.97" />
+                    <StraightVertex x="5.42" y="-17.14" />
+                    <StraightVertex x="6.24" y="-16.86" />
+                    <StraightVertex x="13.78" y="-16.77" />
+                    <StraightVertex x="16.45" y="-16.32" />
+                    <StraightVertex x="18.87" y="-15.17" />
+                    <StraightVertex x="19.63" y="-14.33" />
+                    <StraightVertex x="20.00" y="-13.43" />
+                    <StraightVertex x="19.96" y="-12.41" />
+                    <StraightVertex x="19.47" y="-11.42" />
+                    <StraightVertex x="18.34" y="-10.46" />
+                    <StraightVertex x="16.86" y="-9.80" />
+                    <StraightVertex x="13.21" y="-9.18" />
+                    <StraightVertex x="6.24" y="-9.14" />
+                    <StraightVertex x="5.17" y="-8.69" />
+                    <StraightVertex x="-7.20" y="4.95" />
+                    <StraightVertex x="-8.29" y="5.46" />
+                    <StraightVertex x="-10.58" y="5.46" />
+                    <StraightVertex x="-11.06" y="5.11" />
+                    <StraightVertex x="-11.14" y="4.66" />
+                    <StraightVertex x="-4.72" y="-9.43" />
+                    <StraightVertex x="-13.95" y="-10.17" />
+                    <StraightVertex x="-17.68" y="-3.97" />
+                    <StraightVertex x="-19.28" y="-3.77" />
+                    <StraightVertex x="-19.75" y="-4.04" />
+                    <StraightVertex x="-20.00" y="-4.69" />
+                    <StraightVertex x="-20.00" y="-21.35" />
+                    <StraightVertex x="-19.69" y="-22.03" />
+                    <StraightVertex x="-18.17" y="-22.23" />
+                    <StraightVertex x="-17.33" y="-21.68" />
+                    <StraightVertex x="-13.95" y="-15.83" />
+                    <StraightVertex x="-4.70" y="-16.59" />
+                    <StraightVertex x="-11.06" y="-30.42" />
+                    <StraightVertex x="-11.10" y="-31.03" />
+                    <StraightVertex x="-10.58" y="-31.46" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:75" />
@@ -226,26 +251,56 @@
 
             <!-- =============================== DND moon ===============================
                  The middle slot's second occupant (FR-06): while Do Not Disturb is on, the Wi-Fi
-                 fades out and this crescent fades in. The path is NOT drawn by hand - it is the
-                 real `drawable/stat_sys_dnd` from the target device's SystemUI, read with
-                 `aapt2 dump xmltree` and converted to Rive cubic handles by
-                 tools/dnd-moon-to-rive.py, which resamples the result against the source cubics
-                 and refuses to emit a mismatch. The shape sits at the Wi-Fi centre (-0.5, 17) and
-                 is scaled to the slot. -->
+                 fades out and this crescent fades in. Traced from the supplied art by
+                 tools/trace-shape-to-rive.py (42 points, 42 x 42 units), with --fill-holes so the
+                 outlined crescent comes out solid - the supplied icon is a stroked outline whose
+                 interior is transparent, and the user asked for it filled. Sits at the Wi-Fi centre
+                 (-0.5, 17) and is scaled to the slot. -->
 
-            <Shape x="-0.5" y="17" opacity="0" name="dndMoon" id="0:52">
+            <Shape x="-0.5" y="0.81" opacity="0" name="dndMoon" id="0:52">
                 <PointsPath isClosed="true" name="Path" id="0:53">
-                    <CubicDetachedVertex x="-2.084" y="-18.520" inRotation="0.000000" inDistance="0.000" outRotation="-0.982794" outDistance="0.613" />
-                    <CubicDetachedVertex x="-2.050" y="-20.220" inRotation="1.012197" inDistance="0.642" outRotation="-2.158799" outDistance="0.613" />
-                    <CubicDetachedVertex x="-3.614" y="-20.900" inRotation="-0.165149" inDistance="0.620" outRotation="2.963567" outDistance="9.984" />
-                    <CubicDetachedVertex x="-20.920" y="-0.160" inRotation="-1.570796" inDistance="10.370" outRotation="1.570796" outDistance="11.628" />
-                    <CubicDetachedVertex x="0.160" y="20.920" inRotation="3.141593" inDistance="11.628" outRotation="0.000000" outDistance="10.370" />
-                    <CubicDetachedVertex x="20.900" y="3.580" inRotation="1.748221" inDistance="10.017" outRotation="-1.396124" outDistance="0.587" />
-                    <CubicDetachedVertex x="20.220" y="2.050" inRotation="0.540420" inDistance="0.595" outRotation="-2.582993" outDistance="0.642" />
-                    <CubicDetachedVertex x="18.520" y="2.084" inRotation="-0.632749" inDistance="0.632" outRotation="2.518684" outDistance="2.972" />
-                    <CubicDetachedVertex x="9.918" y="4.804" inRotation="0.000000" inDistance="3.230" outRotation="3.141593" outDistance="8.160" />
-                    <CubicDetachedVertex x="-4.838" y="-9.952" inRotation="1.570796" inDistance="8.160" outRotation="-1.570796" outDistance="3.196" />
-                    <CubicDetachedVertex x="-2.118" y="-18.520" inRotation="2.177784" inDistance="2.980" outRotation="0.000000" outDistance="0.000" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:87" />
