@@ -74,6 +74,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             host = DuoIconHost(ctx)
             hookWindowManagerAddView()
             hookShadeHeader()
+            hookStatusIconContainer()
             hookSettingsChanges(ctx)
                         }
                     }
@@ -254,6 +255,30 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * after the stub inflates, which is why searching for it at boot found nothing. This takes the
      * returned view, which is the only moment it is handed over directly.
      */
+    /**
+     * FR-03b: hides icon views as the ROM adds them.
+     *
+     * A hiding pass on a layout change is not enough on the shade header - the ROM repopulates its
+     * `StatusIconContainer` afterwards, so the icons came back after every pass. `StatusIconContainer`
+     * is the one container all three bars use for their icons, so hooking its `addView` catches every
+     * icon in every bar at the moment it arrives.
+     */
+    private fun hookStatusIconContainer() {
+        L.guard("DuoHook icon container") {
+            val cls = XposedHelpers.findClass(
+                "com.android.systemui.statusbar.phone.StatusIconContainer", lp.classLoader
+            )
+            XposedBridge.hookAllMethods(cls, "addView", object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    L.guard("DuoHook icon added") {
+                        val child = param.args.firstOrNull() as? View ?: return@guard
+                        host?.onStatusIconAdded(child)
+                    }
+                }
+            })
+        }
+    }
+
     private fun hookShadeHeader() {
         // The controller that owns the header is the reliable hand-over: it is handed the header view
         // directly, whatever inflated it.

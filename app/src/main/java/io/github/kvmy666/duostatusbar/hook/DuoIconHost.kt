@@ -52,10 +52,48 @@ internal class DuoIconHost(private val context: Context) {
     /** Names already reported as "not inflated yet", so the retry loop does not spam the log. */
     private val missingLogged = HashSet<String>()
 
-    private inner class ExtraBar(val name: String) {
+    /** Diagnostics: one line per icon class, so the log says where the icons actually land. */
+    private val addedLogged = HashSet<String>()
+    private val unmanagedLogged = HashSet<String>()
+
+    private inner class ExtraBar(val name: String, val center: Boolean = true) {
         var container: ViewGroup? = null
+
+        /** What the element's size is capped by, and what it is centred in when [center]. */
         var bar: View? = null
         var element: DuoElement? = null
+    }
+
+    /**
+     * FR-03b: called as each icon view is added to a status icon container (hooked at
+     * `StatusIconContainer.addView`).
+     *
+     * Hiding on a layout pass is not enough on the shade header: the ROM repopulates `statusIcons`
+     * *after* the pass, so the icons came straight back. This hides each one at the moment it arrives,
+     * which is the only moment the ROM cannot undo.
+     */
+    fun onStatusIconAdded(view: View) {
+        try {
+            if (view === element?.ui || extras.any { it.element?.ui === view }) return
+            var parent: View? = view.parent as? View
+            while (parent != null) {
+                if (parent === host || extras.any { it.container === parent }) {
+                    if (addedLogged.add(view.javaClass.simpleName)) {
+                        L.i("hiding a status icon as it arrives: ${view.javaClass.simpleName} in " +
+                                "${parent.javaClass.simpleName}")
+                    }
+                    hideRemoving(view)
+                    return
+                }
+                parent = parent.parent as? View
+            }
+            if (unmanagedLogged.add(view.javaClass.simpleName)) {
+                L.i("status icon arrived in an unmanaged container: ${view.javaClass.simpleName} " +
+                        "parent=${(view.parent as? View)?.javaClass?.simpleName}")
+            }
+        } catch (t: Throwable) {
+            L.w("icon added: ${t.javaClass.simpleName}: ${t.message}")
+        }
     }
 
     private val extras = ArrayList<ExtraBar>()
@@ -157,7 +195,6 @@ internal class DuoIconHost(private val context: Context) {
      */
     fun attachShadeHeader(header: View): Boolean {
         if (extras.any { it.name == "shade header" }) return true
-        if (missingLogged.add("shade header tree")) dumpTree(header, 0)
         val area = findShadeIconsArea(header)
         if (area == null) {
             if (missingLogged.add("shade header")) {
@@ -165,7 +202,9 @@ internal class DuoIconHost(private val context: Context) {
             }
             return false
         }
-        return attachExtraView("shade header", area)
+        // Centred on the header, not the icon area: the area is a 0x0 strip at the header's end
+        // (measured - it is laid out later), and the header is what has a real height to cap against.
+        return attachExtraView("shade header", area, header, center = false)
     }
 
     /**
@@ -196,21 +235,26 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /** Attaches into an already-known container (the shade header's icon area). */
-    private fun attachExtraView(name: String, target: ViewGroup): Boolean {
+    private fun attachExtraView(
+        name: String,
+        target: ViewGroup,
+        cap: View? = null,
+        center: Boolean = true
+    ): Boolean {
         if (extras.any { it.name == name }) return true
         if (element == null) return false
         return try {
             val stage = guard.stage()
             if (stage == DuoGuard.OFF) return false
             if (target === host) return true
-            val slot = ExtraBar(name)
+            val slot = ExtraBar(name, center)
             val candidate = createElement(target, stage)
             slot.container = target
-            slot.bar = target
+            slot.bar = cap ?: target
             slot.element = candidate
             extras.add(slot)
             allowOverflow(target)
-            val side = elementSidePx(target, target)
+            val side = elementSidePx(target, slot.bar)
             candidate.ui.layoutParams = layoutParamsFor(target, side)
             target.addView(candidate.ui)
             applyExtraLayout(slot)
@@ -247,7 +291,7 @@ internal class DuoIconHost(private val context: Context) {
             val side = elementSidePx(target, slot.bar)
             view.layoutParams = layoutParamsFor(target, side)
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
-            view.translationY = windowCenterShiftY(target, slot.bar)
+            view.translationY = if (slot.center) windowCenterShiftY(target, slot.bar) else 0f
             view.requestLayout()
         } catch (t: Throwable) {
             L.w("${slot.name} layout: ${t.message}")
