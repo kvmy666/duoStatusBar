@@ -14,7 +14,7 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-03b | Identical behaviour on home screen, inside apps, lock screen, portrait **and** landscape | 3 | `[ ]` |
 | FR-04 | Animations powered by Rive | 2, 4 | `[~]` |
 | FR-05 | Integration with Auto Expand (my other module): tap/double-tap/… actions from the status bar | 6 | `[ ]` |
-| FR-06 | States: Wi-Fi, 4G/5G, DND, airplane mode, charging | 3 | `[~]` |
+| FR-06 | States: Wi-Fi, 4G/5G, DND, airplane mode, charging | 3 | `[x]` |
 | FR-07 | No conflict with live notifications — user chooses Duo, notifications, or both | 8 | `[ ]` |
 | FR-08 | Stock battery / signal / Wi-Fi are **really** removed (not covered); silent mode and the rest hidden too | 3 | `[x]` |
 | FR-09 | Every setting in the app has an **infinite looping animation** explaining on/off behaviour | 5 | `[ ]` |
@@ -23,7 +23,7 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-12 | Best/easiest tech, prefer ready-made solutions over building from scratch | 0 | `[x]` |
 | FR-13 | Derive the Duo element from existing open-source work (clone → understand → build) | 0, 1 | `[x]` |
 | FR-14 | Research Apple's behaviour (blogs + Apple docs), e.g. exactly what happens when charging | 1 | `[x]` |
-| FR-15 | State colours: saver = its colour, `<20%` = red, charging = green | 3 | `[ ]` |
+| FR-15 | State colours: saver = its colour, `<20%` = red, charging = green | 3 | `[~]` |
 | FR-16 | Optional charging/battery percentage in the middle, splitting the indicator in two halves | 3, 5 | `[ ]` |
 | FR-17 | Live dragging so the user controls the position inside the status bar | 5 | `[ ]` |
 | FR-18 | Tapping it triggers user actions **without** conflicting with Auto Expand; clear separation when both exist | 6 | `[ ]` |

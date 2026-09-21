@@ -315,7 +315,11 @@
         </LinearAnimation>
 
         <!-- Idle: pins the group at scale 1 so the reveal can be re-fired from a known state. -->
-        <LinearAnimation duration="1" name="Idle" id="0:97">
+        <!-- `loop` on the idle states is load-bearing, not decoration: a state machine only keeps
+             advancing while it has a playing animation, and the renderer only draws while the machine
+             advances. With the default `oneShot` these 1-frame holds finished immediately, the machine
+             went idle, the loop stopped, and every later data bind was written but never drawn. -->
+        <LinearAnimation duration="1" name="Idle" id="0:97" loopValue="loop">
             <KeyedObject objectId="0:3">
                 <KeyedProperty propertyKey="16">
                     <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
@@ -327,7 +331,7 @@
         </LinearAnimation>
 
         <!-- Wi-Fi idle: arcs at their resting trim, plane scaled to nothing. -->
-        <LinearAnimation duration="1" name="WifiIdle" id="0:100">
+        <LinearAnimation duration="1" name="WifiIdle" id="0:100" loopValue="loop">
             <KeyedObject objectId="0:110">
                 <KeyedProperty propertyKey="115">
                     <KeyFrameDouble value="0.3222" interpolationType="hold" frame="0" />

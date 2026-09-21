@@ -57,12 +57,14 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
   The DND crescent is the middle slot's second occupant (FR-06): it is **extracted from the device's own
   `stat_sys_dnd`** (not redrawn) by `tools/dnd-moon-to-rive.py`, which resamples its own output against the
   source and refuses a mismatch. Verified on the device (`docs/evidence/phase3-live-render-and-dnd.md`).
-* `[x]` **Live rendering fixed.** The element used to freeze after its first frame: the Rive state machine
-  was never started, so data binds stopped applying and the renderer's loop stopped, and every later change
-  was written but never drawn. `DuoRiveView` now plays the machine and restarts the renderer's loop after
-  each snapshot. Two dead ends are recorded in the evidence: calling `draw()` directly raced the loop and
-  killed SystemUI (the breaker then refused Rive), and a layout feedback loop was rendering at frame rate.
-  Visual confirmation of the live behaviours is the remaining human check (below).
+* `[x]` **Live rendering fixed and verified on the device.** The element used to freeze after its first
+  frame. The root cause was in the `.riv`: `LinearAnimation.loopValue` defaults to `oneShot`, so the idle
+  animations finished immediately, the state machine stopped advancing, and both the binds and the
+  renderer's loop stopped - every later change was written but never drawn. The idle animations now
+  `loopValue="loop"`, and `DuoRiveView` plays the machine and restarts the renderer's loop after each
+  snapshot. Confirmed live: charging shows the bolt + green ring, DND swaps Wi-Fi for the crescent, both
+  revert on release. Two dead ends are recorded: calling `draw()` directly raced the loop and killed
+  SystemUI (the breaker then refused Rive), and a layout feedback loop was rendering at frame rate.
 * `[x]` `DuoGuard`: stage gate + death counter in `Settings.Global`, refuses Rive after two deaths.
 * `[x]` Stage 1 was reached on the device: `Duo attached on attempt 0` + `renderer=Canvas` + `attached=true`
   (LSPosed log, 2026-09-21 13:39). The icon-hiding line and the visual check come from the next run, once
