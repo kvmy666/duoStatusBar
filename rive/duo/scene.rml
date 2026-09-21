@@ -106,35 +106,36 @@
 
             <!-- ============================== Wi-Fi ==============================
                  centre (59.5, 78.5) -> (-0.5, 17) relative to the group node.
-                 Each layer is an arc spanning +/-58deg centred on 12 o'clock:
-                 end = 116/360 = 0.3222, offset = 302/360 = 0.8389.
-                 Layer 1 and 2 are arcs; the third element is the solid dot.            -->
+                 Each layer is an arc spanning +/-43deg centred on 12 o'clock
+                 (end = 86/360, offset = 1 - end/2). Layer 1 and 2 are arcs; the
+                 third element is the solid dot.  These are the measured Apple
+                 glyph centreline radii (31.1 / 18.1 units), not the outer edges. -->
 
             <Shape name="wifiLayer1" id="0:14">
-                <Ellipse x="-0.5" y="17" width="68" height="68" originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="6.8" cap="round" join="round" name="Stroke">
+                <Ellipse x="-0.5" y="17" width="62.2" height="62.2" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="7.1" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color" />
-                    <TrimPath start="0" end="0.2361" offset="0.8819" name="Trim" id="0:110" />
+                    <TrimPath start="0" end="0.2394" offset="0.8803" name="Trim" id="0:110" />
                 </Stroke>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:67" />
             </Shape>
 
             <Shape name="wifiLayer2" id="0:15">
-                <Ellipse x="-0.5" y="17" width="44" height="44" originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="6.8" cap="round" join="round" name="Stroke">
+                <Ellipse x="-0.5" y="17" width="36.3" height="36.3" originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="7" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color" />
-                    <TrimPath start="0" end="0.2278" offset="0.8861" name="Trim" id="0:111" />
+                    <TrimPath start="0" end="0.2367" offset="0.8817" name="Trim" id="0:111" />
                 </Stroke>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:68" />
             </Shape>
 
             <!-- The dot is a rounded **triangle** in the reference (image 1), not a blob: flat top,
                  rounded downward point. 12 wide, 11 tall, corners rounded to ~3.2. -->
-            <Shape x="-0.5" y="13.5" name="wifiDot" id="0:16">
+            <Shape x="-0.5" y="13.8" name="wifiDot" id="0:16">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="-6.75" y="-5.25" radius="4.7" />
-                    <StraightVertex x="6.75" y="-5.25" radius="4.7" />
-                    <StraightVertex x="0" y="5.25" radius="4.7" />
+                    <StraightVertex x="-7.08" y="-5.5" radius="4.7" />
+                    <StraightVertex x="7.08" y="-5.5" radius="4.7" />
+                    <StraightVertex x="0" y="5.5" radius="4.7" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:69" />
