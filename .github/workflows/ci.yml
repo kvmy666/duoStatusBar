@@ -30,6 +30,12 @@ jobs:
       - name: Module logs must go through L
         run: python3 tools/route-module-logs.py --check
 
+      # `rive --verify` builds a keyframe that says `cubic` with no CubicEaseInterpolator child without a
+      # word, and that keyframe does not ease at all (`rive docs gotchas`). The whole file shipped that way
+      # once — 27 cubic keyframes, zero curves — so the mistake is cheap to make and invisible without this.
+      - name: Rive keyframes must carry the ease they ask for
+        run: python3 tools/check-rive-eases.py rive/duo/scene.rml
+
       # The app preview and the status-bar module must draw the *same* file. The .riv is authored in
       # rive/duo and committed into the app, so this catches the failure mode where one of them is rebuilt
       # and the other is forgotten — which would show up as "the preview looks right, the phone does not".
