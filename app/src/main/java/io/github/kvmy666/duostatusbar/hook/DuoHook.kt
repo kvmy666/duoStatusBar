@@ -245,13 +245,19 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     /**
-     * FR-03b: the pulled-down shade's header is built by `ShadeHeaderController`, not inflated into the
-     * shade window, so it cannot be found by searching - it is taken from the controller's own
-     * constructor. Measured from the device's SystemUI: `com.android.systemui.shade.ShadeHeaderController`
-     * takes the header `View` as its first argument and binds `R.id.statusIcons` inside it.
+     * FR-03b: the pulled-down shade's header.
+     *
+     * Decompiled from the device's SystemUI rather than guessed:
+     * `com.android.systemui.qs.dagger.OplusQSModuleEx.providesShadeHeaderView` takes the shade window,
+     * finds the `qs_header_stub` ViewStub inside it, sets it to `R.layout.combined_qs_header` and
+     * inflates it - returning the header view. So the header *is* in the shade window's tree, but only
+     * after the stub inflates, which is why searching for it at boot found nothing. This takes the
+     * returned view, which is the only moment it is handed over directly.
      */
     private fun hookShadeHeader() {
-        L.guard("DuoHook shade header") {
+        // The controller that owns the header is the reliable hand-over: it is handed the header view
+        // directly, whatever inflated it.
+        L.guard("DuoHook shade header controller") {
             val cls = XposedHelpers.findClass(
                 "com.android.systemui.shade.ShadeHeaderController", lp.classLoader
             )
@@ -265,6 +271,26 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     }
                 }
             })
+        }
+        L.guard("DuoHook shade header") {
+            XposedHelpers.findAndHookMethod(
+                "android.view.ViewStub", lp.classLoader, "inflate",
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        L.guard("DuoHook stub inflate") {
+                            val view = param.result as? View ?: return@guard
+                            val ctx = app ?: return@guard
+                            val id = ctx.resources.getIdentifier(
+                                "shade_header_system_icons", "id", "com.android.systemui"
+                            )
+                            if (id == 0 || view.findViewById<View>(id) == null) return@guard
+                            L.i("shade header inflated from a stub: ${view.javaClass.name}")
+                            shadeHeader = view
+                            view.post { shadeHeader?.let { host?.attachShadeHeader(it) } }
+                        }
+                    }
+                }
+            )
         }
     }
 
