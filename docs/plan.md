@@ -90,8 +90,10 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
   reveal preview (FR-09, first pass), and diagnostics that show the module's own self-report plus sharing.
 * `[x]` Hiding is now reversible: the stock views' original visibility and sizes are remembered, so switching
   the element off restores them instead of leaving an empty stretch of status bar.
-* `[ ]` Dragging the element itself (FR-17) rather than a position slider.
-* `[ ]` Per-setting looping previews (FR-09), search, the donate button (FR-28), log export as a file.
+* `[x]` Dragging the element (FR-17): a mock status bar in the app hosting the **same Canvas element** the
+  phone uses, dragged to set the offset — no native code, so it cannot break the settings app.
+* `[ ]` Per-setting looping previews beyond the global one (FR-09), settings search, and exporting the
+  diagnostics as a *file* rather than a shared text. The donate button (FR-28) is in.
 * Commit.
 
 ## Phase 6 — Auto Expand integration (FR-05/18/27)
@@ -126,11 +128,18 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 ## Phase 8 — Shade header (FR-07/25)
 
 * Optional replacement of QS / notification-header icons; Duo / notifications / both. Commit.
+* Deliberately **not started**: it needs the shade's own view tree measured on the device first, and this
+  project's rule is that ids are measured, never guessed. Phase 0 collected the class names; the ids and sizes
+  are what a probe run has to add before this can be written.
 
 ## Phase 9 — Release (FR-01/28)
 
-* README (badges, your GIFs, download count, bug report via Issues + Telegram @kvmy1,
-  Buy Me a Coffee → paypal.me/kroomfahd), CI workflow → GitHub Release + Xposed-Modules-Repo. Commit + tag.
+* `[x]` README: badges (downloads, release, CI), what it does, the honest status table, install, the kill
+  switch, gestures, build instructions, Issues + Telegram @kvmy1, Buy Me a Coffee / paypal.me/kroomfahd.
+* `[x]` CI on every push: unit tests, debug build, `.riv` consistency check, provider-authority check, and the
+  Rive project checks when the CLI is available.
+* `[x]` Tag-driven release workflow → GitHub Release + Xposed-Modules-Repo mirror, with `--latest` forced.
+* `[ ]` First tagged release (after the Phase 3 device run) and the GIFs/screenshots for the listing.
 
 ## Human-in-the-loop steps (you)
 
