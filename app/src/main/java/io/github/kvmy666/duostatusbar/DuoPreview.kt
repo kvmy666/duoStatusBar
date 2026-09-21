@@ -53,7 +53,8 @@ import kotlinx.coroutines.delay
 fun DuoPreview(
     modifier: Modifier = Modifier,
     pixelSize: Int = 200,
-    loop: Boolean = false
+    loop: Boolean = false,
+    revealMs: Int = 1000
 ) {
     var level by remember { mutableFloatStateOf(78f) }
     var charging by remember { mutableStateOf(false) }
@@ -81,10 +82,10 @@ fun DuoPreview(
     LaunchedEffect(revealTick) {
         val vm = instance.value ?: return@LaunchedEffect
         try {
-            DuoBinder.requestReveal(vm, true)
-            delay(DuoBinder.REVEAL_MS + 60L)
+            DuoBinder.requestReveal(vm, revealMs)
+            delay(revealMs + 60L)
         } finally {
-            DuoBinder.requestReveal(vm, false)
+            DuoBinder.requestReveal(vm, 0)
         }
     }
 
@@ -94,10 +95,10 @@ fun DuoPreview(
         while (true) {
             val vm = instance.value ?: break
             try {
-                DuoBinder.requestReveal(vm, true)
-                delay(DuoBinder.REVEAL_MS + 60L)
+                DuoBinder.requestReveal(vm, revealMs)
+                delay(revealMs + 60L)
             } finally {
-                DuoBinder.requestReveal(vm, false)
+                DuoBinder.requestReveal(vm, 0)
             }
             delay(LOOP_GAP_MS)
         }
@@ -127,7 +128,7 @@ fun DuoPreview(
         Toggle("Do Not Disturb (moon)", dnd) { dnd = it }
         LabelledSlider("Wi-Fi ${wifi.toInt()} of 3", wifi, 0f..3f, steps = 2) { wifi = it }
         LabelledSlider("Cellular ${cell.toInt()} of 4", cell, 0f..4f, steps = 3) { cell = it }
-        Button(onClick = { revealTick++ }) { Text("Replay reveal (${DuoBinder.REVEAL_MS / 1000} s)") }
+        Button(onClick = { revealTick++ }) { Text("Replay reveal ($revealMs ms)") }
         Text(
             text = "tint #${"%08X".format(visual.tint)} · ${DuoBinder.PROPERTY_COUNT} properties bound per snapshot",
             style = MaterialTheme.typography.bodySmall

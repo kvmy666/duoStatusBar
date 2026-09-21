@@ -84,6 +84,22 @@ class SettingsChannelTest {
         assertEquals("toggle_flashlight", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_TAP)])
         assertEquals("no_action", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DOUBLE_TAP)])
         assertEquals("take_screenshot", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_LONG_PRESS)])
+        assertEquals(1000, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_REVEAL_MS)])
+    }
+
+    @Test
+    fun `an arrival duration is snapped to one the Rive file can actually play`() {
+        // The file holds one timeline at five speeds. Anything between two of them has to become one of
+        // them, or the state machine would simply never fire and the element would never arrive.
+        for (choice in DuoPrefs.REVEAL_CHOICES) {
+            assertEquals(choice, DuoPrefs.nearestReveal(choice))
+            assertEquals("just under $choice", choice, DuoPrefs.nearestReveal(choice - 1))
+        }
+        assertEquals(500, DuoPrefs.nearestReveal(0))
+        assertEquals(1500, DuoPrefs.nearestReveal(99_999))
+        // 624 is nearer 500 than 750; 626 tips the other way. The boundary is the midpoint.
+        assertEquals(500, DuoPrefs.nearestReveal(624))
+        assertEquals(750, DuoPrefs.nearestReveal(626))
     }
 
     @Test

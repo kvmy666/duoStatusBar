@@ -66,7 +66,7 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
     }
 
     /** Nothing to animate here; the reveal is Rive's to run. */
-    override fun reveal() = Unit
+    override fun reveal(ms: Int) = Unit
 
     override fun teardown() = Unit
 

@@ -347,26 +347,104 @@
             <!-- Layer 1 owns the reveal: scale bounce, one shot, re-fired through `revealRequest`.
                  Opacity and colour are deliberately NOT keyed here — they belong to the data binds,
                  so the two mechanisms never fight over the same property. -->
+            <!-- Body: the only layer that touches the shared group node, so the whole element moves as
+                 one object and can never de-sync.
+
+                 The five Reveal states play ONE timeline at five speeds rather than five timelines, so
+                 the arrival has a single shape to tune. `revealMs` carries both the trigger and the
+                 duration: 0 is "nothing asked for", and the host sets it to 500/750/1000/1250/1500 to
+                 fire an arrival of that length. Folding the two into one number is deliberate - it needs
+                 one condition per transition, and it means the host cannot fire a reveal without also
+                 saying how long it should take. -->
             <StateMachineLayer name="Reveal" id="0:91">
                 <AnyState x="200" y="-120" />
                 <ExitState x="400" y="-120" />
                 <EntryState>
-                    <StateTransition stateToId="0:92" />
+                    <StateTransition stateToId="0:112" />
                 </EntryState>
-                <AnimationState x="200" y="0" animationId="0:93" id="0:92">
-                    <StateTransition stateToId="0:96" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
-                </AnimationState>
-                <AnimationState x="0" y="140" animationId="0:97" id="0:96">
-                    <StateTransition stateToId="0:92" duration="0">
+
+                <AnimationState x="0" y="140" animationId="0:97" id="0:112">
+                    <StateTransition stateToId="0:113" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:105" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="500" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:114" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:105" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="750" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:115" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:105" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1000" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:116" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:105" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1250" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:117" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:105" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1500" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:118" duration="0">
                         <TransitionViewModelCondition opValue="equal">
                             <TransitionPropertyViewModelComparator>
                                 <BindablePropertyBoolean>
-                                    <DataBindContext sourcePathIds="0:60-0:86" propertyKey="634" />
+                                    <DataBindContext sourcePathIds="0:60-0:106" propertyKey="634" />
                                 </BindablePropertyBoolean>
                             </TransitionPropertyViewModelComparator>
-                            <TransitionValueBooleanComparator value="true" />
+                            <TransitionValueBooleanComparator value="false" />
                         </TransitionViewModelCondition>
                     </StateTransition>
+                </AnimationState>
+
+                <!-- speed = 500 / duration, because the timeline is authored at 500 ms. -->
+                <AnimationState x="200" y="0" animationId="0:93" speed="1" id="0:113">
+                    <StateTransition stateToId="0:112" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+                <AnimationState x="300" y="0" animationId="0:93" speed="0.6667" id="0:114">
+                    <StateTransition stateToId="0:112" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+                <AnimationState x="400" y="0" animationId="0:93" speed="0.5" id="0:115">
+                    <StateTransition stateToId="0:112" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+                <AnimationState x="500" y="0" animationId="0:93" speed="0.4" id="0:116">
+                    <StateTransition stateToId="0:112" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+                <AnimationState x="600" y="0" animationId="0:93" speed="0.3333" id="0:117">
+                    <StateTransition stateToId="0:112" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+
+                <AnimationState x="0" y="280" animationId="0:104" id="0:118">
+                    <StateTransition stateToId="0:112" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
                 </AnimationState>
             </StateMachineLayer>
 
@@ -419,57 +497,99 @@
              Keys live on the group node (0:3) only: scaleX 16, scaleY 17, rotation 15, opacity 18.
              Those four are owned by this layer and Idle - no other layer or data bind touches them,
              so animation and binding never fight (the same rule the airplane morph follows). -->
-        <LinearAnimation duration="240" name="Reveal" id="0:93">
+        <LinearAnimation duration="30" name="Reveal" id="0:93">
             <KeyedObject objectId="0:3">
-                <!-- Every ease here is a nested interpolator, not just the word `cubic`: per
-                     `rive docs gotchas`, a cubic keyframe with no CubicEaseInterpolator child does not
-                     ease at all. The curve named on a keyframe governs the segment that STARTS at it;
-                     the last keyframe's is never read. -->
+                <!-- The arrival. Authored at the SHORTEST duration (30 frames = 500 ms); the longer
+                     variants are the same timeline played slower by `AnimationState.speed`, so there is
+                     one shape to tune rather than five. Every ease is a nested interpolator, not just the
+                     word `cubic`: per `rive docs gotchas`, a cubic keyframe with no CubicEaseInterpolator
+                     child does not ease at all. The curve on a keyframe governs the segment that STARTS
+                     at it; the last keyframe's is never read.
+
+                     Shape, and why:
+                       0.75 -> 1.10  (0-100 ms)  decelerate into a 10% overshoot - the arrival "pop"
+                       1.10 -> 0.97  (100-200 ms) the rebound
+                       0.97 -> 1.00  (200-500 ms) one damped elastic settle, ~2 visible bounces
+                     It starts at 0.75, not 0: at 140 px a zero-point spawn reads as a bubble, not as
+                     the element arriving. And not at 1.0, because an arrival needs somewhere to arrive
+                     from. -->
                 <KeyedProperty propertyKey="16">
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                    <KeyFrameDouble value="0.75" interpolationType="cubic" frame="0">
                         <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="1.25" interpolationType="cubic" frame="72">
+                    <KeyFrameDouble value="1.1" interpolationType="cubic" frame="6">
                         <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="128">
-                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
-                    </KeyFrameDouble>
-                    <KeyFrameDouble value="1.06" interpolationType="elastic" frame="176">
+                    <KeyFrameDouble value="0.97" interpolationType="elastic" frame="12">
                         <ElasticInterpolator easingValue="easeOut" amplitude="0.35" period="0.4" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="240" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="30" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="17">
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                    <KeyFrameDouble value="0.75" interpolationType="cubic" frame="0">
                         <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="1.25" interpolationType="cubic" frame="72">
+                    <KeyFrameDouble value="1.1" interpolationType="cubic" frame="6">
                         <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="128">
-                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
-                    </KeyFrameDouble>
-                    <KeyFrameDouble value="1.06" interpolationType="elastic" frame="176">
+                    <KeyFrameDouble value="0.97" interpolationType="elastic" frame="12">
                         <ElasticInterpolator easingValue="easeOut" amplitude="0.35" period="0.4" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="240" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="30" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="15">
+                    <!-- The tilt resolves AFTER the pop (peak at 267 ms, scale peaks at 100 ms): the
+                         body arrives, then settles square. -->
                     <KeyFrameDouble value="-0.4363" interpolationType="cubic" frame="0">
                         <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="0.1047" interpolationType="cubic" frame="128">
+                    <KeyFrameDouble value="0.1047" interpolationType="cubic" frame="16">
                         <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="240" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="30" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="18">
+                    <!-- Fully opaque at 100 ms, before the body has finished settling: the element is
+                         legible first and beautiful second, which is the only order that works on a
+                         status bar. -->
                     <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
                         <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="48" />
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="240" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="6" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="30" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- The departure. Ease-in, so it reads as *pulled away* rather than *placed* - the inverse of
+             the arrival's ease-out. 40% shorter than the shortest arrival: leaving should not hold you.
+             The tilt goes the other way so a quick lock->unlock does not replay the same arc and read as
+             a stutter. No overshoot: shrinking past the target before vanishing looks like a glitch. -->
+        <LinearAnimation duration="12" name="Depart" id="0:104">
+            <KeyedObject objectId="0:3">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.94" interpolationType="cubic" frame="12" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.94" interpolationType="cubic" frame="12" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="-0.1047" interpolationType="cubic" frame="12" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="1" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="12" />
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
@@ -604,7 +724,12 @@
         <ViewModelPropertyString name="percentText" id="0:83" />
         <ViewModelPropertyNumber name="percentFontSize" id="0:84" />
         <ViewModelPropertyBoolean name="airplaneState" id="0:85" />
-        <ViewModelPropertyBoolean name="revealRequest" id="0:86" />
+        <!-- The arrival: 0 is "nothing asked for"; 500/750/1000/1250/1500 fires an arrival of that
+             many milliseconds. One number carries both the trigger and the duration on purpose - it
+             needs one transition condition, and the host cannot fire without also saying how long. -->
+        <ViewModelPropertyNumber name="revealMs" id="0:105" />
+        <!-- Departure: false shrinks the element away (lock / screen off), true brings it back. -->
+        <ViewModelPropertyBoolean name="visible" id="0:106" />
         <ViewModelPropertyNumber name="dndOpacity" id="0:87" />
         <!-- Each half's track arc length, so the ring can close (percentage off) or narrow (charging):
              the left grows to the whole drawn arc and the right shrinks to nothing. -->
@@ -630,7 +755,8 @@
             <ViewModelInstanceString viewModelPropertyId="0:83" propertyValue="100" />
             <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="26" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:85" propertyValue="false" />
-            <ViewModelInstanceBoolean viewModelPropertyId="0:86" propertyValue="false" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:105" propertyValue="0" />
+            <ViewModelInstanceBoolean viewModelPropertyId="0:106" propertyValue="true" />
             <ViewModelInstanceNumber viewModelPropertyId="0:87" propertyValue="0" />
             <ViewModelInstanceNumber viewModelPropertyId="0:88" propertyValue="0.2379" />
             <ViewModelInstanceNumber viewModelPropertyId="0:89" propertyValue="0.2379" />

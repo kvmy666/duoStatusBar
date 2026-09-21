@@ -30,7 +30,9 @@ data class DuoVisual(
     val cell4Opacity: Float,
     val tint: Int,
     val fgColor: Int,
-    val airplaneState: Boolean
+    val airplaneState: Boolean,
+    /** False plays the departure (screen off); true brings the element back. */
+    val visible: Boolean = true
 ) {
     /**
      * Interpolates between two snapshots, for the FR-09 setting demos that morph one setting between
@@ -65,7 +67,8 @@ data class DuoVisual(
             percentText = if (past) other.percentText else percentText,
             tint = if (past) other.tint else tint,
             fgColor = if (past) other.fgColor else fgColor,
-            airplaneState = if (past) other.airplaneState else airplaneState
+            airplaneState = if (past) other.airplaneState else airplaneState,
+            visible = if (past) other.visible else visible
         )
     }
 }
@@ -174,7 +177,8 @@ object DuoMapping {
         airplane: Boolean,
         dnd: Boolean = false,
         fgColor: Int = WHITE,
-        middleBlend: Float = 1f
+        middleBlend: Float = 1f,
+        visible: Boolean = true
     ): DuoVisual {
         // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, else Wi-Fi.
         // Note `wifiOpacities(0)` is not "hidden" - level 0 is the dimmed "no network" state - so a
@@ -210,7 +214,8 @@ object DuoMapping {
             cell4Opacity = cells[3],
             tint = tint(level, charging, saver),
             fgColor = fgColor,
-            airplaneState = airplane
+            airplaneState = airplane,
+            visible = visible
         )
     }
 }

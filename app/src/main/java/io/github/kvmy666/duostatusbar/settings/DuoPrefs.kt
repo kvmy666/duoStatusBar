@@ -35,6 +35,11 @@ data class DuoSettings(
     /** FR-17: horizontal nudge inside the slot, in dp, from the drag editor. */
     val offsetX: Int = 0,
     /**
+     * FR-25: how long the arrival takes, in ms. One Rive timeline played at five speeds, so this is a
+     * choice from [DuoPrefs.REVEAL_CHOICES] rather than a free number.
+     */
+    val revealMs: Int = 1000,
+    /**
      * FR-05/18: what a gesture on the element asks Auto Expand to do. Its action keys, or `no_action`.
      * The defaults mean the element consumes no touches at all — no gestures, no conflicts.
      */
@@ -57,11 +62,12 @@ object DuoPrefs {
     const val COL_TAP = "tap_action"
     const val COL_DOUBLE_TAP = "double_tap_action"
     const val COL_LONG_PRESS = "long_press_action"
+    const val COL_REVEAL_MS = "reveal_ms"
 
     /** The column set the module expects; kept in one place so both sides cannot drift. */
     val COLUMNS = arrayOf(
         COL_ENABLED, COL_USE_RIVE, COL_SHOW_PERCENT, COL_SIZE_PERCENT, COL_OFFSET_X, COL_REVISION,
-        COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS
+        COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS, COL_REVEAL_MS
     )
 
     private const val PREFS = "duo_settings"
@@ -78,6 +84,7 @@ object DuoPrefs {
             showPercent = p.getBoolean(COL_SHOW_PERCENT, true),
             sizePercent = p.getInt(COL_SIZE_PERCENT, 100),
             offsetX = p.getInt(COL_OFFSET_X, 0),
+            revealMs = nearestReveal(p.getInt(COL_REVEAL_MS, DEFAULT_REVEAL_MS)),
             tapAction = p.getString(COL_TAP, "no_action") ?: "no_action",
             doubleTapAction = p.getString(COL_DOUBLE_TAP, "no_action") ?: "no_action",
             longPressAction = p.getString(COL_LONG_PRESS, "no_action") ?: "no_action"
@@ -94,6 +101,7 @@ object DuoPrefs {
             .putBoolean(COL_SHOW_PERCENT, settings.showPercent)
             .putInt(COL_SIZE_PERCENT, settings.sizePercent.coerceIn(MIN_SIZE, MAX_SIZE))
             .putInt(COL_OFFSET_X, settings.offsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET))
+            .putInt(COL_REVEAL_MS, nearestReveal(settings.revealMs))
             .putString(COL_TAP, settings.tapAction)
             .putString(COL_DOUBLE_TAP, settings.doubleTapAction)
             .putString(COL_LONG_PRESS, settings.longPressAction)
@@ -136,6 +144,19 @@ object DuoPrefs {
     // Same bounds the module clamps to, so the two sides cannot disagree about what a legal value is.
     // Raised to 200 so the element can grow to the status bar's own height (the module caps the drawn
     // side at the window height, so 200 % is the ceiling that is actually reachable).
+    /**
+     * FR-25: the arrivals the Rive file can play. The file holds one timeline at five speeds, so a value
+     * between two of these is snapped to the nearest rather than silently ignored.
+     */
+    val REVEAL_CHOICES = intArrayOf(500, 750, 1000, 1250, 1500)
+    const val DEFAULT_REVEAL_MS = 1000
+    const val MIN_REVEAL_MS = 500
+    const val MAX_REVEAL_MS = 1500
+
+    /** Snaps a requested arrival to the nearest the file can actually play. */
+    fun nearestReveal(ms: Int): Int =
+        REVEAL_CHOICES.minByOrNull { kotlin.math.abs(it - ms) } ?: DEFAULT_REVEAL_MS
+
     const val MIN_SIZE = 60
     const val MAX_SIZE = 200
     const val MAX_OFFSET = 40

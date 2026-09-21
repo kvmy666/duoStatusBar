@@ -43,7 +43,8 @@ internal interface DuoElement {
     fun render(v: DuoVisual)
 
     /** Re-fires the reveal animation; a no-op where there is no animation to run. */
-    fun reveal()
+    /** Fires an arrival of [ms] milliseconds. */
+    fun reveal(ms: Int)
 
     fun teardown()
 }

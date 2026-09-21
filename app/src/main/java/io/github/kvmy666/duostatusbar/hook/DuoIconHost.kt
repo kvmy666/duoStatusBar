@@ -169,7 +169,7 @@ internal class DuoIconHost(private val context: Context) {
             candidate.onReady {
                 if (slot.element !== candidate) return@onReady
                 hideEverythingExcept(target, candidate.ui)
-                candidate.reveal()
+                candidate.reveal(settings.revealMs)
                 L.i("Duo injected into $name (${bar.javaClass.simpleName}, ${side}px) - FR-03b")
             }
             candidate.onFailed {
@@ -261,7 +261,7 @@ internal class DuoIconHost(private val context: Context) {
             candidate.onReady {
                 if (slot.element !== candidate) return@onReady
                 hideEverythingExcept(target, candidate.ui)
-                candidate.reveal()
+                candidate.reveal(settings.revealMs)
                 L.i("Duo injected into $name (${target.javaClass.simpleName}, ${side}px) - FR-03b")
             }
             candidate.onFailed {
@@ -300,6 +300,20 @@ internal class DuoIconHost(private val context: Context) {
 
     /** FR-16: whether the percentage should be drawn — asked by the state monitor on every render. */
     val showPercent: Boolean get() = settings.showPercent
+
+    /** FR-25: how long an arrival takes, in ms — asked by the monitor when it fires one. */
+    val revealMs: Int get() = settings.revealMs
+
+    /** FR-25: fires the arrival on every bar, so the lock screen wakes with the rest of the element. */
+    fun revealAll(ms: Int) {
+        for (target in listOfNotNull(element) + extras.mapNotNull { it.element }) {
+            try {
+                target.reveal(ms)
+            } catch (t: Throwable) {
+                L.w("reveal: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
 
     /**
      * Re-reads the user's settings and applies what can change while running (size, offset).
@@ -464,7 +478,7 @@ internal class DuoIconHost(private val context: Context) {
         if (element !== candidate) return
         try {
             hideEverythingExcept(target, candidate.ui)
-            candidate.reveal()
+            candidate.reveal(settings.revealMs)
             val width = candidate.ui.layoutParams?.width ?: 0
             L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
         } catch (t: Throwable) {

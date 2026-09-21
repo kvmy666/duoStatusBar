@@ -19,6 +19,8 @@
     <string name="settings_share">Share diagnostics</string>
     <string name="settings_save_file">Save diagnostics to a file</string>
     <string name="settings_search">Search settings</string>
+    <string name="settings_reveal">Arrival speed</string>
+    <string name="settings_reveal_detail">How long the element takes to arrive when the screen wakes. One Rive timeline at five speeds, so it is a choice rather than a free number.</string>
     <string name="settings_recheck">Re-check the status bar</string>
     <string name="settings_donate">Donate</string>
     <string name="settings_history">Recent reports</string>

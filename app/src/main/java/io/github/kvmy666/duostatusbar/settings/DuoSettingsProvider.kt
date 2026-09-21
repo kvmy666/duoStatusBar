@@ -95,7 +95,8 @@ class DuoSettingsProvider : ContentProvider() {
             revision,
             settings.tapAction,
             settings.doubleTapAction,
-            settings.longPressAction
+            settings.longPressAction,
+            DuoPrefs.nearestReveal(settings.revealMs)
         )
     }
 }

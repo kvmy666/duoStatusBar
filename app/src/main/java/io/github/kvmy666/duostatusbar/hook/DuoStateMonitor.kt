@@ -31,6 +31,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private var charging = false
     private var saver = false
     private var airplane = false
+    /** FR-25: false plays the departure as the screen goes off. */
+    private var visible = true
     private var dnd = false
     private var wifiLevel = 3
     private var cellLevel = 4
@@ -68,8 +70,17 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     // FR-25: reveal on every screen-on and every unlock. The ring re-fills from 0 with
                     // it, so the fill animation is part of the arrival rather than a one-off at boot.
                     Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
-                        host.duo?.reveal()
+                        visible = true
+                        host.revealAll(host.revealMs)
                         restartFill()
+                    }
+                    // FR-25: the departure plays as the screen goes, so the element leaves with the rest
+                    // of the display rather than blinking out with it. Tied to the SCREEN, not the lock:
+                    // the lock screen is supposed to show the element (FR-03b), so locking must not
+                    // dismiss it.
+                    Intent.ACTION_SCREEN_OFF -> {
+                        visible = false
+                        render()
                     }
                     // Rotation re-inflates the strip: hide the stock views again.
                     Intent.ACTION_CONFIGURATION_CHANGED -> {
@@ -95,6 +106,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
                 addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
                 addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
+                addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(Intent.ACTION_CONFIGURATION_CHANGED)
@@ -197,7 +209,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     cellLevel = cellLevel,
                     airplane = airplane,
                     dnd = dnd,
-                    middleBlend = middleBlend
+                    middleBlend = middleBlend,
+                    visible = visible
                 )
             )
         } catch (t: Throwable) {

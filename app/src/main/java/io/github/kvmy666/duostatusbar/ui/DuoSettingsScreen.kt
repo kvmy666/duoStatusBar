@@ -152,11 +152,12 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         }
 
         if (matches(stringResource(R.string.settings_preview), stringResource(R.string.settings_loop),
-                stringResource(R.string.settings_size), stringResource(R.string.settings_offset))
+                stringResource(R.string.settings_size), stringResource(R.string.settings_offset),
+                stringResource(R.string.settings_reveal))
         ) Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.settings_preview), style = MaterialTheme.typography.titleMedium)
-                DuoPreview(loop = loop)
+                DuoPreview(loop = loop, revealMs = settings.revealMs)
                 SettingSwitch(
                     label = stringResource(R.string.settings_loop),
                     detail = null,
@@ -174,6 +175,21 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                         )
                     }
                 ) { update(settings.copy(sizePercent = it.toInt())) }
+                // FR-25: the arrival is one Rive timeline played at five speeds, so this picks an index
+                // into the choices rather than a free millisecond value.
+                LabelledSlider(
+                    label = "${stringResource(R.string.settings_reveal)}: ${settings.revealMs} ms",
+                    value = DuoPrefs.REVEAL_CHOICES.indexOf(settings.revealMs)
+                        .coerceAtLeast(0).toFloat(),
+                    range = 0f..(DuoPrefs.REVEAL_CHOICES.size - 1).toFloat(),
+                    steps = DuoPrefs.REVEAL_CHOICES.size - 2
+                ) { index ->
+                    update(settings.copy(revealMs = DuoPrefs.REVEAL_CHOICES[index.toInt().coerceIn(0, DuoPrefs.REVEAL_CHOICES.size - 1)]))
+                }
+                Text(
+                    text = stringResource(R.string.settings_reveal_detail),
+                    style = MaterialTheme.typography.bodySmall
+                )
                 Text(
                     text = "${stringResource(R.string.settings_offset)}: ${settings.offsetX} dp",
                     style = MaterialTheme.typography.bodyMedium
@@ -444,6 +460,7 @@ private fun LabelledSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
+    steps: Int = 0,
     preview: (@Composable () -> Unit)? = null,
     onChange: (Float) -> Unit
 ) {
@@ -456,7 +473,7 @@ private fun LabelledSlider(
                 modifier = Modifier.padding(start = if (preview == null) 0.dp else 12.dp)
             )
         }
-        Slider(value = value, onValueChange = onChange, valueRange = range)
+        Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps)
     }
 }
 

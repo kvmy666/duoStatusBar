@@ -18,16 +18,27 @@ object DuoBinder {
 
     private const val TAG = "DuoSB"
 
-    /** How long the reveal timeline runs; the host clears the request just after it finishes.
-     *  Matches the 4 s Reveal in `rive/duo/scene.rml` (raised from 1 s on user feedback). */
-    const val REVEAL_MS = 4_000L
+    /**
+     * How long the arrival request stays set before the host clears it back to 0.
+     *
+     * `revealMs` carries both the trigger and the duration: the state machine fires an arrival when it
+     * reads a non-zero value, so leaving it set would re-fire the moment the arrival finished. Clearing
+     * it early is what makes it fire once. It only has to outlive the first frame - the machine latches
+     * the state on the transition - so this is short on purpose, and shorter than the shortest arrival
+     * (500 ms) so a second arrival can still be requested.
+     */
+    const val REVEAL_CLEAR_MS = 120L
+
+    /** The arrivals the file can play, in ms: the one timeline at five speeds. */
+    val REVEAL_CHOICES = intArrayOf(500, 750, 1000, 1250, 1500)
 
     /** Number of properties a complete snapshot writes — used to report partial failures. */
     const val PROPERTY_COUNT = 21
 
-    private const val REVEAL_REQUEST = "revealRequest"
+    private const val REVEAL_MS = "revealMs"
     private const val AIRPLANE_STATE = "airplaneState"
     private const val PERCENT_TEXT = "percentText"
+    private const val VISIBLE = "visible"
 
     /** Writes the whole snapshot. Returns how many properties failed to bind (0 is perfect). */
     fun apply(vm: ViewModelInstance, v: DuoVisual): Int {
@@ -64,13 +75,15 @@ object DuoBinder {
         if (!write(PERCENT_TEXT) { vm.getStringProperty(PERCENT_TEXT).value = v.percentText }) failures++
         // Drives the state machine layer that plays the airplane morph.
         if (!write(AIRPLANE_STATE) { vm.getBooleanProperty(AIRPLANE_STATE).value = v.airplaneState }) failures++
+        // False plays the departure, true brings the element back (screen off / on).
+        if (!write(VISIBLE) { vm.getBooleanProperty(VISIBLE).value = v.visible }) failures++
 
         return failures
     }
 
-    /** Arms or clears the reveal. The state machine fires on the false -> true edge. */
-    fun requestReveal(vm: ViewModelInstance, on: Boolean): Boolean =
-        write(REVEAL_REQUEST) { vm.getBooleanProperty(REVEAL_REQUEST).value = on }
+    /** Fires an arrival of [ms] milliseconds; 0 clears the request. See [REVEAL_CLEAR_MS]. */
+    fun requestReveal(vm: ViewModelInstance, ms: Int): Boolean =
+        write(REVEAL_MS) { vm.getNumberProperty(REVEAL_MS).value = ms.toFloat() }
 
     private inline fun write(name: String, block: () -> Unit): Boolean = try {
         block()
