@@ -37,6 +37,9 @@ rive/**/build/
 logcat/
 *.log
 *.txt.tmp
+# pulled from the device by tools/dump-lsposed-scope.py - regenerate rather than commit
+docs/evidence/modules_config.db*
+docs/evidence/*-statusbar.png
 
 # ---- misc ----
 Thumbs.db

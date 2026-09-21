@@ -6,7 +6,7 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
+import io.github.kvmy666.duostatusbar.L
 
 /**
  * The one hand-off point between this app and the module that runs inside System UI.
@@ -38,7 +38,7 @@ class DuoSettingsProvider : ContentProvider() {
                 addRow(rowFor(s, DuoPrefs.revision(ctx)))
             }
         } catch (t: Throwable) {
-            Log.w(TAG, "query failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.w("query failed: ${t.javaClass.simpleName}: ${t.message}")
             null
         }
     }
@@ -49,13 +49,13 @@ class DuoSettingsProvider : ContentProvider() {
                 val ctx = context
                 val status = extras?.getString(EXTRA_STATUS).orEmpty()
                 if (ctx != null && status.isNotEmpty()) DuoPrefs.writeStatus(ctx, status)
-                Log.i(TAG, "module status: $status")
+                L.i("module status: $status")
                 Bundle().apply { putBoolean(EXTRA_OK, true) }
             }
             else -> Bundle().apply { putBoolean(EXTRA_OK, false) }
         }
     } catch (t: Throwable) {
-        Log.w(TAG, "call $method failed: ${t.javaClass.simpleName}: ${t.message}")
+        L.w("call $method failed: ${t.javaClass.simpleName}: ${t.message}")
         null
     }
 

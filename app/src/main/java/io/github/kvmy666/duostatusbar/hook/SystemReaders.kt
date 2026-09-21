@@ -5,7 +5,7 @@ import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.provider.Settings
 import android.telephony.TelephonyManager
-import android.util.Log
+import io.github.kvmy666.duostatusbar.L
 
 /**
  * The platform reads behind the Duo element, kept apart from the monitor so each one can be tested
@@ -33,7 +33,7 @@ internal object SystemReaders {
             }
         }
     } catch (t: Throwable) {
-        Log.w(TAG, "wifiLevel: ${t.message}")
+        L.w("wifiLevel: ${t.message}")
         current
     }
 
@@ -45,7 +45,7 @@ internal object SystemReaders {
             tm?.signalStrength?.level?.coerceIn(0, 4) ?: current
         }
     } catch (t: Throwable) {
-        Log.w(TAG, "cellLevel: ${t.message}")
+        L.w("cellLevel: ${t.message}")
         current
     }
 

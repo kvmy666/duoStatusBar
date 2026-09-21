@@ -2,12 +2,12 @@ package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
 import android.os.Build
-import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.integration.AutoExpand
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import java.util.concurrent.atomic.AtomicBoolean
@@ -63,9 +63,7 @@ internal class DuoIconHost(private val context: Context) {
         val changed = fresh != settings
         settings = fresh
         if (changed) {
-            Log.i(
-                TAG,
-                "settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
+            L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
                     "percent=${fresh.showPercent}, rive=${fresh.useRive}"
             )
             applyLayout()
@@ -83,7 +81,7 @@ internal class DuoIconHost(private val context: Context) {
             view.requestLayout()
             installGestures(view)
         } catch (t: Throwable) {
-            Log.w(TAG, "applyLayout: ${t.message}")
+            L.w("applyLayout: ${t.message}")
         }
     }
 
@@ -113,7 +111,7 @@ internal class DuoIconHost(private val context: Context) {
         })
         view.isClickable = true
         view.setOnTouchListener { _, event -> detector.onTouchEvent(event) }
-        Log.i(TAG, "gestures on: tap=$tap doubleTap=$doubleTap longPress=$longPress (handled by Auto Expand)")
+        L.i("gestures on: tap=$tap doubleTap=$doubleTap longPress=$longPress (handled by Auto Expand)")
     }
 
     /**
@@ -131,13 +129,13 @@ internal class DuoIconHost(private val context: Context) {
             val stage = guard.stage()
             if (stage == DuoGuard.OFF) {
                 if (gateLogged.compareAndSet(false, true)) {
-                    Log.i(TAG, "gated off - enable with: ${guard.enableHint}")
+                    L.i("gated off - enable with: ${guard.enableHint}")
                 }
                 return false
             }
             val target = findStatusIconsHost(statusBarRoot)
             if (target == null) {
-                Log.w(TAG, "system_icons not found - status bar left untouched")
+                L.w("system_icons not found - status bar left untouched")
                 return false
             }
             root = statusBarRoot
@@ -146,7 +144,7 @@ internal class DuoIconHost(private val context: Context) {
                 DuoSbFacts.report(context, statusBarRoot, target, slotWidthPx(target))
             }
             if (!candidate.isReady) {
-                Log.w(TAG, "element not ready - status bar left untouched")
+                L.w("element not ready - status bar left untouched")
                 candidate.teardown()
                 return false
             }
@@ -160,21 +158,24 @@ internal class DuoIconHost(private val context: Context) {
             hideEverythingExcept(target, candidate.ui)
             candidate.reveal()
             forgetAttemptsAfterSurvival(candidate)
-            Log.i(TAG, "Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
+            L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
             true
         } catch (t: Throwable) {
-            Log.e(TAG, "attach failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("attach failed: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
     }
 
     private fun createElement(root: View, stage: Int): DuoElement {
         if (stage >= DuoGuard.RIVE) {
-            riveElement(root)?.let { return it }
+            riveElement(root)?.let { rive ->
+                L.i("element: Rive (stage $stage)")
+                return rive
+            }
         }
         val canvas = DuoCanvasView(context)
         canvas.start()
-        Log.i(TAG, "element: Canvas (stage $stage)")
+        L.i("element: Canvas (stage $stage)")
         return canvas
     }
 
@@ -188,7 +189,7 @@ internal class DuoIconHost(private val context: Context) {
      */
     private fun riveElement(root: View): DuoElement? {
         if (!root.isHardwareAccelerated) {
-            Log.w(TAG, "status bar window is not hardware accelerated - Rive needs a Surface, using Canvas")
+            L.w("status bar window is not hardware accelerated - Rive needs a Surface, using Canvas")
             return null
         }
         if (!guard.riveAllowed()) return null
@@ -222,14 +223,14 @@ internal class DuoIconHost(private val context: Context) {
         if (!ensureElementAttached()) {
             // Never leave a hole: if the element cannot live in the rebuilt strip, the stock icons come back
             // rather than an empty stretch of status bar. The next hide pass remembers them again.
-            Log.w(TAG, "element could not be re-attached - restoring the stock icons instead of leaving a gap")
+            L.w("element could not be re-attached - restoring the stock icons instead of leaving a gap")
             restoreStockViews()
             return
         }
         try {
             hideEverythingExcept(target, keep)
         } catch (t: Throwable) {
-            Log.w(TAG, "reapplyHiding: ${t.message}")
+            L.w("reapplyHiding: ${t.message}")
         }
     }
 
@@ -249,10 +250,10 @@ internal class DuoIconHost(private val context: Context) {
             host = fresh
             fresh.addView(view)
             applyLayout()
-            Log.i(TAG, "element re-attached into ${fresh.javaClass.simpleName} after the strip was rebuilt")
+            L.i("element re-attached into ${fresh.javaClass.simpleName} after the strip was rebuilt")
             true
         } catch (t: Throwable) {
-            Log.w(TAG, "re-attach failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.w("re-attach failed: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
     }
@@ -284,7 +285,7 @@ internal class DuoIconHost(private val context: Context) {
             hideRemoving(child)
         }
         if (logged.compareAndSet(false, true)) {
-            Log.i(TAG, "stock status-bar views removed (GONE + 0x0), not overlaid - FR-08")
+            L.i("stock status-bar views removed (GONE + 0x0), not overlaid - FR-08")
         }
     }
 
@@ -322,7 +323,7 @@ internal class DuoIconHost(private val context: Context) {
                     state.view.layoutParams = lp
                 }
             } catch (t: Throwable) {
-                Log.w(TAG, "restore: ${t.message}")
+                L.w("restore: ${t.message}")
             }
         }
         hiddenOriginals.clear()
@@ -351,16 +352,16 @@ internal class DuoIconHost(private val context: Context) {
 
     private fun findStatusIconsHost(root: View): LinearLayout? {
         if (romLogged.compareAndSet(false, true)) {
-            Log.i(TAG, "ROM adapter: ${rom.id} (${rom.label}) - ${rom.notes}")
+            L.i("ROM adapter: ${rom.id} (${rom.label}) - ${rom.notes}")
         }
         for (name in rom.containerIds) {
             val id = context.resources.getIdentifier(name, "id", rom.systemUiPackage)
             if (id == 0) continue
             val found = root.findViewById<View>(id)
-            Log.d(TAG, "container $name -> ${found?.javaClass?.simpleName ?: "null"}")
+            L.d("container $name -> ${found?.javaClass?.simpleName ?: "null"}")
             (found as? LinearLayout)?.let { return it }
         }
-        Log.w(TAG, "no container id resolved (tried ${rom.containerIds}) - status bar left untouched")
+        L.w("no container id resolved (tried ${rom.containerIds}) - status bar left untouched")
         return null
     }
 

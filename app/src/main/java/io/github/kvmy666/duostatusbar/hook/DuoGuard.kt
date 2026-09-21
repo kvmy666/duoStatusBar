@@ -2,7 +2,7 @@ package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
 import android.provider.Settings
-import android.util.Log
+import io.github.kvmy666.duostatusbar.L
 
 /**
  * The safety valve for a failure that `try`/`catch` cannot reach.
@@ -58,7 +58,7 @@ internal class DuoGuard(private val context: Context) {
      */
     fun stage(): Int {
         globalStage()?.let { override ->
-            Log.i(TAG, "stage $override (adb override)")
+            L.i("stage $override (adb override)")
             return override
         }
         val app = DuoSettingsClient.read(context)
@@ -67,7 +67,7 @@ internal class DuoGuard(private val context: Context) {
             app.useRive -> RIVE
             else -> ICONS_ONLY
         }
-        Log.i(TAG, "stage $resolved (app settings rev ${app.revision}, enabled=${app.enabled}, rive=${app.useRive})")
+        L.i("stage $resolved (app settings rev ${app.revision}, enabled=${app.enabled}, rive=${app.useRive})")
         return resolved
     }
 
@@ -77,7 +77,7 @@ internal class DuoGuard(private val context: Context) {
             if (value == ABSENT) null else if (value in OFF..RIVE) value else null
         }
     } catch (t: Throwable) {
-        Log.w(TAG, "stage override unreadable (${t.javaClass.simpleName}) - using app settings")
+        L.w("stage override unreadable (${t.javaClass.simpleName}) - using app settings")
         null
     }
 
@@ -89,7 +89,7 @@ internal class DuoGuard(private val context: Context) {
     fun riveAllowed(): Boolean {
         val attempts = attempts()
         if (attempts < MAX_ATTEMPTS) return true
-        Log.w(TAG, "Rive refused: $attempts failed attempts recorded - clear with: adb shell settings put global $KEY_ATTEMPTS 0")
+        L.w("Rive refused: $attempts failed attempts recorded - clear with: adb shell settings put global $KEY_ATTEMPTS 0")
         return false
     }
 
@@ -114,7 +114,7 @@ internal class DuoGuard(private val context: Context) {
             Settings.Global.putInt(context.contentResolver, key, value)
         } catch (t: Throwable) {
             // Losing the counter costs the breaker, not the status bar - so never propagate.
-            Log.w(TAG, "guard write $key=$value: ${t.javaClass.simpleName}: ${t.message}")
+            L.w("guard write $key=$value: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 

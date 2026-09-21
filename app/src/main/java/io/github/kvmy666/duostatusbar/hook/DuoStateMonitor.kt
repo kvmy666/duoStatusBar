@@ -7,7 +7,7 @@ import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.PowerManager
-import android.util.Log
+import io.github.kvmy666.duostatusbar.L
 
 /**
  * Watches the state the Duo element shows and pushes it into the drawing.
@@ -57,7 +57,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     WifiManager.WIFI_STATE_CHANGED_ACTION -> refresh()
                 }
             } catch (t: Throwable) {
-                Log.e(TAG, "receiver ${intent?.action}: ${t.javaClass.simpleName}: ${t.message}")
+                L.e("receiver ${intent?.action}: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
@@ -80,9 +80,9 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
             saver = SystemReaders.isPowerSaveOn(context)
             airplane = SystemReaders.isAirplaneOn(context)
             refresh()
-            Log.i(TAG, "state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane")
+            L.i("state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane")
         } catch (t: Throwable) {
-            Log.e(TAG, "monitor start failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("monitor start failed: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 
@@ -99,7 +99,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
             cellLevel = SystemReaders.cellLevel(context, airplane, cellLevel)
             render()
         } catch (t: Throwable) {
-            Log.w(TAG, "refresh: ${t.message}")
+            L.w("refresh: ${t.message}")
         }
     }
 
@@ -118,7 +118,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 )
             )
         } catch (t: Throwable) {
-            Log.e(TAG, "render: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("render: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 

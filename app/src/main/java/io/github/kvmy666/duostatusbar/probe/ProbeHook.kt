@@ -23,7 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   P-04  the triggers we need: screen on/off, unlock, rotation                    -> here
  *   P-05  status bar metrics (height, density, orientation)                        -> ProbeReport
  *
- * Read back with:  adb logcat -s DuoSB
+ * Read back from LSPosed's module log (`/data/adb/lspd/log/modules_<boot>.log`, lines prefixed `DuoSB |`);
+ * `adb logcat -s DuoSB` only works on ROMs that do not filter SystemUI's logging.
  */
 class ProbeHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 

@@ -2,7 +2,7 @@ package io.github.kvmy666.duostatusbar.hook.integration
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import io.github.kvmy666.duostatusbar.L
 
 /**
  * The hand-off to Auto Expand (FR-05/18): **this module draws, that module acts.**
@@ -50,10 +50,10 @@ internal object AutoExpand {
                     .setPackage(SYSTEMUI)
                     .putExtra(EXTRA_ACTION_KEY, key)
             )
-            Log.i(TAG, "asked Auto Expand for '$key'")
+            L.i("asked Auto Expand for '$key'")
             true
         } catch (t: Throwable) {
-            Log.w(TAG, "Auto Expand request '$key' failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.w("Auto Expand request '$key' failed: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
     }

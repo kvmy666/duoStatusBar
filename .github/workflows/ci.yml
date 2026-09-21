@@ -24,6 +24,12 @@ jobs:
       - name: Unit tests and debug build
         run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest :app:assembleDebug --console=plain
 
+      # Every module log line has to go through L, never android.util.Log directly: OxygenOS drops the
+      # latter from inside SystemUI, so a line written that way is invisible on the device that matters
+      # (this is what made a working module look dead - see docs/evidence/phase3-log-sinks-and-fallback.md).
+      - name: Module logs must go through L
+        run: python3 tools/route-module-logs.py --check
+
       # The app preview and the status-bar module must draw the *same* file. The .riv is authored in
       # rive/duo and committed into the app, so this catches the failure mode where one of them is rebuilt
       # and the other is forgotten — which would show up as "the preview looks right, the phone does not".

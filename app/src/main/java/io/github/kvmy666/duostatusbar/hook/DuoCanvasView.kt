@@ -6,8 +6,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.util.Log
 import android.view.View
+import io.github.kvmy666.duostatusbar.L
 
 /**
  * The element drawn with plain Android Canvas — no Rive, no native code, nothing that can fault.
@@ -55,7 +55,7 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
             visual = v
             invalidate()
         } catch (t: Throwable) {
-            Log.w(TAG, "canvas render: ${t.message}")
+            L.w("canvas render: ${t.message}")
         }
     }
 
@@ -69,7 +69,7 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
             drawElement(canvas)
         } catch (t: Throwable) {
             // A drawing failure must never repeat: draw nothing rather than throw every frame.
-            Log.w(TAG, "canvas onDraw: ${t.javaClass.simpleName}: ${t.message}")
+            L.w("canvas onDraw: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 

@@ -42,7 +42,10 @@ NotificationManager (DND)             │        └─> DuoGestureBridge.action
 
 ## 4. Ordered debug playbook (cheapest → most expensive)
 
-1. `adb logcat -s DuoSB` — every guard logs `<Component> FAILED -> <exception>`; the first line is almost always the cause.
+1. Read the module log — LSPosed's own file, `/data/adb/lspd/log/modules_<boot>.log` (lines prefixed
+   `DuoSB |`), or `./tools/duo-verify.ps1`. `adb logcat -s DuoSB` is **not** enough on OxygenOS: logd there
+   drops `android.util.Log` output from SystemUI entirely. Every guard logs
+   `<Component> FAILED -> <exception>`; the first line is almost always the cause.
 2. Re-run the Phase-0 probes (P-01 inventory) — after a ROM update the class/method names are the
    first thing to change; a `P-01 MISSING` line explains a whole dead feature.
 3. `P-02` hierarchy dump — if the Duo element is not visible, this shows whether the container existed,

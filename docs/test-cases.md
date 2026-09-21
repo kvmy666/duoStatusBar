@@ -6,11 +6,16 @@ under "Linked tests". Every case is run on the target device and its result is r
 Legend: `PASS` / `FAIL` / `SKIP`. "Stock bar OK?" means: with the module disabled in LSPosed, the
 original status bar is untouched.
 
+**Where the module log is read from:** LSPosed's own file, `/data/adb/lspd/log/modules_<boot>.log` (tag
+`LSPosedFramework`, lines prefixed `DuoSB |`). On OxygenOS the `android.util.Log` sink does not work from
+SystemUI at all — the tag never appears in logcat even while the code runs — so a case that cannot be
+confirmed from LSPosed's log is not confirmed (see `evidence/phase3-log-sinks-and-fallback.md`).
+
 ## A. Phase 0 — evidence
 
 | ID | Case | Steps | Expected |
 |---|---|---|---|
-| A-1 | Probe loads into SystemUI | install APK, enable module, scope System UI, reboot, `adb logcat -s DuoSB` | `P-00 uid=1000` + `MainHook loaded into com.android.systemui` |
+| A-1 | Probe loads into SystemUI | install APK, enable module, scope System UI, reboot, read the module log | `P-00 uid=1000` + `MainHook loaded into com.android.systemui` |
 | A-2 | Class inventory | same log | `P-01 inventory: n/18` with a FOUND/MISSING line per class |
 | A-3 | Status-bar hierarchy | same log | `P-02 STATUS_BAR window view: …` + a ≥5-level tree with ids and sizes |
 | A-4 | Rive verdict | same log | `P-03 VERDICT: …` (either SUCCEEDED, or missing → documented fallback) |

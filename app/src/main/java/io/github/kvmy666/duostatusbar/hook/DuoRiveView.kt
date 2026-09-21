@@ -1,7 +1,6 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
-import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
 import app.rive.runtime.kotlin.RiveAnimationView
@@ -9,6 +8,7 @@ import app.rive.runtime.kotlin.core.Alignment
 import app.rive.runtime.kotlin.core.Fit
 import app.rive.runtime.kotlin.core.RendererType
 import app.rive.runtime.kotlin.core.ViewModelInstance
+import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.RiveInit
 import java.util.zip.ZipFile
 
@@ -44,7 +44,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         return try {
             // False means the runtime is not usable here; the host falls back to the no-native view.
             if (!RiveInit.ensure(context)) {
-                Log.e(TAG, "Rive runtime unavailable - not creating a Rive view")
+                L.e("Rive runtime unavailable - not creating a Rive view")
                 return false
             }
             val bytes = loadRiveBytes() ?: return false
@@ -69,13 +69,13 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
             val machine = view.stateMachines.firstOrNull()
             viewModelInstance = machine?.viewModelInstance
             if (viewModelInstance == null) {
-                Log.w(TAG, "no view model instance bound - binds will not run")
+                L.w("no view model instance bound - binds will not run")
                 return false
             }
-            Log.i(TAG, "Duo view ready (machines=${view.stateMachines.size}, inputs=${machine?.inputNames})")
+            L.i("Duo view ready (machines=${view.stateMachines.size}, inputs=${machine?.inputNames})")
             true
         } catch (t: Throwable) {
-            Log.e(TAG, "start failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("start failed: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
     }
@@ -86,11 +86,11 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         val failures = try {
             DuoBinder.apply(vm, v)
         } catch (t: Throwable) {
-            Log.e(TAG, "render failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("render failed: ${t.javaClass.simpleName}: ${t.message}")
             return
         }
         if (failures > 0) {
-            Log.w(TAG, "$failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
+            L.w("$failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
         }
     }
 
@@ -102,7 +102,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
             DuoBinder.requestReveal(vm, true)
             postDelayed({ DuoBinder.requestReveal(vm, false) }, DuoBinder.REVEAL_MS + 60L)
         } catch (t: Throwable) {
-            Log.e(TAG, "reveal failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("reveal failed: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 
@@ -133,7 +133,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
                 ?.getResourceAsStream(RAW_ENTRY)
                 ?.use { return it.readBytes() }
         } catch (t: Throwable) {
-            Log.w(TAG, "classloader route failed: ${t.message}")
+            L.w("classloader route failed: ${t.message}")
         }
         return try {
             val apk = context.packageManager.getApplicationInfo(MODULE_PACKAGE, 0).sourceDir
@@ -141,7 +141,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
                 zip.getEntry(RAW_ENTRY)?.let { zip.getInputStream(it).readBytes() }
             }
         } catch (t: Throwable) {
-            Log.e(TAG, "APK route failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("APK route failed: ${t.javaClass.simpleName}: ${t.message}")
             null
         }
     }

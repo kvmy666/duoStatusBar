@@ -67,8 +67,19 @@ stage 2 is then refused (Canvas is used instead) until the counter is reset — 
 ## 6. Verifying a run
 
 ```powershell
-adb logcat -c; adb shell su -c 'pkill -f com.android.systemui'; Start-Sleep 20; adb logcat -d -s DuoSB
+# the sink that always works: LSPosed's own log, which is where XposedBridge.log goes
+adb shell su -c 'cp /data/adb/lspd/log/modules_*.log /sdcard/Download/ && chmod 666 /sdcard/Download/modules_*.log'
+adb pull /sdcard/Download/modules_<boot>.log; Select-String -Path modules_*.log -Pattern 'DuoSB \|'
+
+# restart System UI first if the stage changed - it is read once per process
+adb shell su -c 'pkill -f com.android.systemui'
 ```
+
+`tools/duo-verify.ps1` does all of that and prints a PASS/FAIL per claim. **Do not read `adb logcat -s DuoSB`
+on OxygenOS**: this ROM's filtered logd drops `android.util.Log` output from SystemUI entirely — the tag is
+absent from the buffer even while the code runs, which is exactly how a working module looked dead for two
+verification rounds (see `docs/evidence/phase3-log-sinks-and-fallback.md`). LSPosed's log is the sink that
+survives, and `L` writes to both.
 
 Lines to look for, in order:
 
@@ -79,9 +90,13 @@ Lines to look for, in order:
 | `status bar window found: …` | the status-bar window was identified by `TYPE_STATUS_BAR` |
 | `container system_icons -> LinearLayout` | the icon strip was found on this ROM |
 | `--- window facts ---` … `verdict: …` | hardware acceleration: whether Rive *can* work here at all |
-| `element: Canvas (stage 1)` / `Rive runtime ready: defaultRendererType=…` | which renderer is in use |
+| `element: Rive (stage 2)` / `element: Canvas (stage N)` | which renderer was chosen for this run |
+| `status bar window is not hardware accelerated …` | Rive refused before native code — the reason Canvas was used |
+| `Rive runtime ready: defaultRendererType=…` | `RiveInit` did the half of `Rive.init` that ReLinker cannot do here |
+| `Duo view ready (machines=…)` | Rive is drawing and the view model instance is bound |
 | `Duo injected into … (83px wide)` | the element is in the status bar |
 | `stock status-bar views removed (GONE + 0x0)` | stock icons hidden for real, not overlaid (FR-08) |
+| `status -> app: stage=… · renderer=… · attached=…` | what the app's settings screen is being told |
 
 ## 7. Rescue path (if anything looks wrong)
 

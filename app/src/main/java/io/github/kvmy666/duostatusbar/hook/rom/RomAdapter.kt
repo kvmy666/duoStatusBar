@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.hook.rom
 
+
 /**
  * What a ROM is called and where its status-bar icon strip lives (FR-01/02).
  *

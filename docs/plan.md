@@ -55,12 +55,26 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[x]` `DuoStateMonitor` + `SystemReaders`: battery/charging/saver, Wi-Fi level, cell level, airplane,
   broadcast-driven (no polling); the mapping is covered by 16 unit tests. DND still to add.
 * `[x]` `DuoGuard`: stage gate + death counter in `Settings.Global`, refuses Rive after two deaths.
-* `[ ]` On-device verification of stage 1 (Canvas only, no native code) — ready, phone pending.
-* `[ ]` On-device verification of stage 2 (Rive). First attempt died natively: `Rive.init` throws on its
+* `[x]` Stage 1 was reached on the device: `Duo attached on attempt 0` + `renderer=Canvas` + `attached=true`
+  (LSPosed log, 2026-09-21 13:39). The icon-hiding line and the visual check come from the next run, once
+  the logging sink fix below is on the device.
+* `[ ]` On-device verification of stage 2 (Rive). The first attempt died natively: `Rive.init` throws on its
   ReLinker step inside SystemUI, so `defaultRendererType` was left **null** and native renderer creation
   segfaulted (nothing catchable in-process — see `docs/evidence/phase3-attempt1-crash.txt`). Fix in:
   `RiveInit` performs those three steps itself with the type pinned to `Canvas`, `DuoSbFacts` measures
-  hardware acceleration before any Rive object exists, `DuoGuard` breaks any crash loop.
+  hardware acceleration before any Rive object exists, `DuoGuard` breaks any crash loop. Two further faults
+  were found on the device and are fixed, both of which had made a working module look dead:
+  * every diagnostic line went through `android.util.Log`, which OxygenOS **drops from SystemUI** — the tag
+    never appears in logcat, so all the reasons were invisible and every check reported FAIL. `L` is now the
+    only logger (`tools/route-module-logs.py` enforces it) and `tools/duo-verify.ps1` reads LSPosed's log
+    file, which is the sink that survives.
+  * at `stage=2` the element still came back as Canvas (`renderer=Canvas`, `riveAttempts=0`). The two paths
+    that return before native code are "not hardware accelerated" and "`start()` failed cleanly"; both log
+    their reason now, so the next run names it. This matters because rive-android 10.2.0 ships only
+    `TextureView`-based views (`RiveAnimationView`, `RiveTextureView`, no drawable): if the status bar
+    window really is not accelerated, no Rive widget can draw there and the element needs its own hardware
+    accelerated overlay window instead.
+  See `docs/evidence/phase3-log-sinks-and-fallback.md`.
 
 ## Phase 4 — Animation (FR-25)
 

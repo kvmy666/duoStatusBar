@@ -3,7 +3,7 @@ package io.github.kvmy666.duostatusbar.hook
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
+import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 
 /**
@@ -72,10 +72,10 @@ internal object DuoSettingsClient {
         } ?: ModuleSettings.DEFAULT
         // Logged because this is a synchronous binder call from System UI's boot path: if it is ever slow,
         // it is slow there, and that deserves a number rather than a guess.
-        Log.i(TAG, "settings read in ${android.os.SystemClock.elapsedRealtime() - started} ms (rev ${result.revision})")
+        L.i("settings read in ${android.os.SystemClock.elapsedRealtime() - started} ms (rev ${result.revision})")
         result
     } catch (t: Throwable) {
-        Log.w(TAG, "settings unreadable (${t.javaClass.simpleName}: ${t.message}) - using defaults")
+        L.w("settings unreadable (${t.javaClass.simpleName}: ${t.message}) - using defaults")
         ModuleSettings.DEFAULT
     }
 
@@ -85,7 +85,7 @@ internal object DuoSettingsClient {
             val extras = Bundle().apply { putString("status", status) }
             context.contentResolver.call(uri, "status", null, extras)
         } catch (t: Throwable) {
-            Log.w(TAG, "status report failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.w("status report failed: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 }

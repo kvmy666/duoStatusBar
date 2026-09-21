@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.hook
 
+
 /**
  * Everything the drawing needs, derived from system state.
  *

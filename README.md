@@ -101,8 +101,10 @@ preview and a status bar drawing different files is a bug that looks like magic.
 
 ## Bugs and feedback
 
-* **Issues:** https://github.com/kvmy666/duoStatusBar/issues — a logcat is worth more than a description:
-  `adb logcat -d -s DuoSB`
+* **Issues:** https://github.com/kvmy666/duoStatusBar/issues — a log is worth more than a description.
+  Send the module log: LSPosed → its own log, or
+  `adb shell su -c 'cp /data/adb/lspd/log/modules_*.log /sdcard/Download/'` and pull it (lines prefixed
+  `DuoSB |`). `adb logcat -d -s DuoSB` only works on ROMs that do not filter SystemUI's logging.
 * **Telegram:** [@kvmy1](https://t.me/kvmy1)
 
 ## Support

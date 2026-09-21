@@ -1,7 +1,6 @@
 package io.github.kvmy666.duostatusbar
 
 import android.content.Context
-import android.util.Log
 import java.io.File
 import java.lang.reflect.Field
 
@@ -58,7 +57,7 @@ internal object RiveInit {
             val ok = try {
                 loadNativeLibraries(context) && finishInitialisation()
             } catch (t: Throwable) {
-                Log.e(TAG, "Rive runtime not started: ${t.javaClass.simpleName}: ${t.message}")
+                L.e("Rive runtime not started: ${t.javaClass.simpleName}: ${t.message}")
                 false
             }
             result = ok
@@ -72,12 +71,12 @@ internal object RiveInit {
             .getApplicationInfo(MODULE_PACKAGE, 0)
             .nativeLibraryDir
             ?: run {
-                Log.e(TAG, "no nativeLibraryDir for $MODULE_PACKAGE")
+                L.e("no nativeLibraryDir for $MODULE_PACKAGE")
                 return false
             }
         val libs = File(nativeDir).listFiles { f -> f.name.endsWith(".so") }
         if (libs.isNullOrEmpty()) {
-            Log.e(TAG, "no .so files in $nativeDir")
+            L.e("no .so files in $nativeDir")
             return false
         }
         var loaded = 0
@@ -85,10 +84,10 @@ internal object RiveInit {
             try {
                 System.load(lib.absolutePath)
                 loaded++
-                Log.i(TAG, "native loaded: ${lib.name}")
+                L.i("native loaded: ${lib.name}")
             } catch (t: Throwable) {
                 // "already loaded in this process" lands here on a second call and is harmless.
-                Log.w(TAG, "native ${lib.name}: ${t.javaClass.simpleName}: ${t.message}")
+                L.w("native ${lib.name}: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
         return loaded > 0
@@ -108,10 +107,10 @@ internal object RiveInit {
 
         val readBack = riveClass.getMethod("getDefaultRendererType").invoke(instance)
         if (readBack == null) {
-            Log.e(TAG, "defaultRendererType is still null - refusing to create a Rive view")
+            L.e("defaultRendererType is still null - refusing to create a Rive view")
             return false
         }
-        Log.i(TAG, "Rive runtime ready: defaultRendererType=$readBack")
+        L.i("Rive runtime ready: defaultRendererType=$readBack")
         return true
     }
 }

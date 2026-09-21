@@ -1,7 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
-import android.util.Log
 import app.rive.runtime.kotlin.core.ViewModelInstance
+import io.github.kvmy666.duostatusbar.L
 
 /**
  * The one place that knows how a [DuoVisual] reaches the drawing.
@@ -72,7 +72,7 @@ object DuoBinder {
         block()
         true
     } catch (t: Throwable) {
-        Log.w(TAG, "bind $name: ${t.javaClass.simpleName}: ${t.message}")
+        L.w("bind $name: ${t.javaClass.simpleName}: ${t.message}")
         false
     }
 }

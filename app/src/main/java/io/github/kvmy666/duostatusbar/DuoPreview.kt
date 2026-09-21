@@ -1,7 +1,6 @@
 package io.github.kvmy666.duostatusbar
 
 import android.content.Context
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -151,7 +150,7 @@ private fun createRiveView(
         RiveAnimationView(builder)
     } catch (t: Throwable) {
         // An empty preview box beats a crash in the app that exists to diagnose the module.
-        Log.e(TAG, "Rive preview setup failed: ${t.javaClass.simpleName}: ${t.message}")
+        L.e("Rive preview setup failed: ${t.javaClass.simpleName}: ${t.message}")
         return RiveAnimationView(context)
     }
     watchForViewModelInstance(view, onFound = { instance.value = it })
@@ -163,10 +162,10 @@ private fun pushVisual(vm: ViewModelInstance?, visual: DuoVisual) {
     try {
         val failures = DuoBinder.apply(vm, visual)
         if (failures > 0) {
-            Log.w(TAG, "preview: $failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
+            L.w("preview: $failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
         }
     } catch (t: Throwable) {
-        Log.w(TAG, "preview push: ${t.javaClass.simpleName}: ${t.message}")
+        L.w("preview push: ${t.javaClass.simpleName}: ${t.message}")
     }
 }
 
@@ -182,14 +181,14 @@ private fun watchForViewModelInstance(
             val found = machine?.viewModelInstance
             if (found != null) {
                 onFound(found)
-                Log.i(TAG, "preview ready (machines=${view.stateMachines.size}, inputs=${machine?.inputNames})")
+                L.i("preview ready (machines=${view.stateMachines.size}, inputs=${machine?.inputNames})")
             } else if (attempt < MAX_POLLS) {
                 watchForViewModelInstance(view, onFound, attempt + 1)
             } else {
-                Log.w(TAG, "preview: no view model instance after $MAX_POLLS polls")
+                L.w("preview: no view model instance after $MAX_POLLS polls")
             }
         } catch (t: Throwable) {
-            Log.w(TAG, "preview poll: ${t.javaClass.simpleName}: ${t.message}")
+            L.w("preview poll: ${t.javaClass.simpleName}: ${t.message}")
         }
     }, if (attempt == 0) 60L else POLL_MS)
 }
