@@ -46,6 +46,10 @@ function Get-ModuleLines {
     $newest = (& $Adb shell su -c 'ls -t /data/adb/lspd/log/modules_*.log | head -1' 2>&1 | Select-Object -First 1)
     if ($newest) { $newest = $newest.Trim() }
     if (-not $newest -or $newest -notmatch 'modules_.*\.log$') { return @() }
+    # Remember which file this came from: after a restart LSPosed may roll to a new modules_*.log, and a
+    # line count from the *old* file then slices the new one from the wrong place - silently hiding the
+    # very lines the checks look for. The caller compares file names, not just counts.
+    $script:lastLogFile = $newest
     & $Adb shell su -c "cp '$newest' $remote; chmod 666 $remote" 2>&1 | Out-Null
     $local = Join-Path $root 'docs\evidence\lsposed-modules.log'
     & $Adb pull $remote $local 2>&1 | Out-Null
@@ -94,7 +98,9 @@ Say "stage -> $Stage ($stageValue)"
 Detail "stage is now $(& $Adb shell settings get global duo_statusbar_stage)"
 
 Say "restart System UI"
-$moduleLinesBefore = (Get-ModuleLines).Count
+$beforeLines = @(Get-ModuleLines)
+$logFileBefore = $script:lastLogFile
+$moduleLinesBefore = $beforeLines.Count
 & $Adb logcat -c -b all | Out-Null
 & $Adb shell su -c 'pkill -f com.android.systemui' | Out-Null
 Start-Sleep -Seconds 22
@@ -104,7 +110,10 @@ Say "module log"
 # OxygenOS's filtered logd (android.util.Log from SystemUI never reaches logcat there - see L.kt),
 # while logcat covers every other ROM. The module writes to both, so the claims below hold either way.
 $moduleLines = @(Get-ModuleLines)
-$newLines = if ($moduleLines.Count -gt $moduleLinesBefore) {
+$newLines = if ($script:lastLogFile -ne $logFileBefore) {
+    # A new file is a new record: every line in it belongs to this restart, so none may be sliced away.
+    $moduleLines
+} elseif ($moduleLines.Count -gt $moduleLinesBefore) {
     $moduleLines[$moduleLinesBefore..($moduleLines.Count - 1)]
 } else {
     $moduleLines
@@ -116,10 +125,16 @@ $log | ForEach-Object { Detail $_ }
 $joined = $log -join "`n"
 $checks = [ordered]@{
     'the gate resolved'          = 'stage \d \((adb override|app settings)'
-    'the status bar was found'   = 'status bar window found'
-    'the icon strip was found'   = 'container system_icons'
-    'hardware acceleration known'= 'verdict:'
-    'the element was injected'   = 'Duo injected into'
+}
+# `off` is the kill switch: the correct outcome is that nothing was hooked at all, so the injection
+# checks below would be false failures there - and demanding them would hide the one claim that matters.
+if ($Stage -eq 'off') {
+    $checks['nothing was hooked'] = 'gated off|nothing hooked'
+} else {
+    $checks['the status bar was found']    = 'status bar window found'
+    $checks['the icon strip was found']    = 'container system_icons'
+    $checks['hardware acceleration known'] = 'verdict:'
+    $checks['the element was injected']    = 'Duo injected into'
 }
 if ($Stage -eq 'icons') { $checks['the Canvas element was used'] = 'element: Canvas' }
 if ($Stage -eq 'rive') {
@@ -128,7 +143,6 @@ if ($Stage -eq 'rive') {
     $checks['the Rive view is live'] = 'Duo view ready'
     $checks['the app sees the Rive renderer'] = 'renderer=Rive'
 }
-if ($Stage -eq 'off') { $checks['nothing was hooked'] = 'gated off|nothing hooked' }
 
 Say "verdict"
 $failed = 0

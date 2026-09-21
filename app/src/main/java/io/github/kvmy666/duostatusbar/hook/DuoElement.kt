@@ -27,6 +27,19 @@ internal interface DuoElement {
     /** Prepares the drawing. False means "nothing drew - do not touch the stock icons". */
     fun start(): Boolean
 
+    /**
+     * Runs [action] once the drawing is actually live, and immediately when it already is.
+     *
+     * Readiness can arrive late: a Rive state machine only binds its view model after the view has been
+     * attached to a window, which is after [start] returns. The host hides the stock icons and fires the
+     * first reveal from here, never from the synchronous return, so a late binding cannot leave a blank
+     * status bar (FR-21).
+     */
+    fun onReady(action: () -> Unit)
+
+    /** Runs [action] when the element can never become ready, so the host can fall back. */
+    fun onFailed(action: () -> Unit)
+
     fun render(v: DuoVisual)
 
     /** Re-fires the reveal animation; a no-op where there is no animation to run. */

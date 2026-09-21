@@ -50,6 +50,11 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
 
     override fun start(): Boolean = true
 
+    /** Canvas draws from the first frame, so readiness is never deferred. */
+    override fun onReady(action: () -> Unit) = action()
+
+    override fun onFailed(action: () -> Unit) = Unit
+
     override fun render(v: DuoVisual) {
         try {
             visual = v

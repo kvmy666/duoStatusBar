@@ -143,11 +143,6 @@ internal class DuoIconHost(private val context: Context) {
             if (factsLogged.compareAndSet(false, true)) {
                 DuoSbFacts.report(context, statusBarRoot, target, slotWidthPx(target))
             }
-            if (!candidate.isReady) {
-                L.w("element not ready - status bar left untouched")
-                candidate.teardown()
-                return false
-            }
             refreshSettings()
             val width = slotWidthPx(target)
             candidate.ui.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -155,15 +150,57 @@ internal class DuoIconHost(private val context: Context) {
             host = target
             element = candidate
             applyLayout()
-            hideEverythingExcept(target, candidate.ui)
-            candidate.reveal()
+            // The stock icons are hidden and the first reveal fires only once the element reports itself
+            // live. A Rive state machine binds *after* this method returns (it needs the view attached to a
+            // window), so hiding here would cover an empty slot; Canvas reports ready immediately.
+            candidate.onReady { onElementReady(candidate, target) }
+            candidate.onFailed { onElementFailed(candidate, target) }
             forgetAttemptsAfterSurvival(candidate)
-            L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
             true
         } catch (t: Throwable) {
             L.e("attach failed: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
+    }
+
+    /** The element is live: now it is safe to take the stock icons out and fire the reveal (FR-08/25). */
+    private fun onElementReady(candidate: DuoElement, target: LinearLayout) {
+        if (element !== candidate) return
+        try {
+            hideEverythingExcept(target, candidate.ui)
+            candidate.reveal()
+            val width = candidate.ui.layoutParams?.width ?: 0
+            L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
+        } catch (t: Throwable) {
+            L.w("onReady: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /**
+     * The Rive element never bound its view model. Rather than leave an empty slot, it is replaced by the
+     * no-native Canvas element, which draws the ring and the percentage from the same mapping (FR-21).
+     */
+    private fun onElementFailed(candidate: DuoElement, target: LinearLayout) {
+        if (element !== candidate) return
+        L.w("Rive element did not bind - falling back to Canvas")
+        val canvas = try {
+            DuoCanvasView(context).also { it.start() }
+        } catch (t: Throwable) {
+            L.e("Canvas fallback failed: ${t.javaClass.simpleName}: ${t.message}")
+            return
+        }
+        try {
+            candidate.teardown()
+            target.removeView(candidate.ui)
+        } catch (t: Throwable) {
+            L.w("fallback remove: ${t.message}")
+        }
+        canvas.ui.layoutParams = LinearLayout.LayoutParams(slotWidthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
+        target.addView(canvas.ui)
+        element = canvas
+        applyLayout()
+        canvas.onReady { onElementReady(canvas, target) }
+        L.i("element: Canvas (fallback after Rive did not bind)")
     }
 
     private fun createElement(root: View, stage: Int): DuoElement {
@@ -220,6 +257,9 @@ internal class DuoIconHost(private val context: Context) {
     fun reapplyHiding() {
         val target = host ?: return
         val keep = element?.ui ?: return
+        // Never hide the stock icons over an element that is not drawing yet: a layout pass can arrive
+        // before Rive has bound its view model, and hiding then would leave a blank stretch of status bar.
+        if (!(element?.isReady ?: false)) return
         if (!ensureElementAttached()) {
             // Never leave a hole: if the element cannot live in the rebuilt strip, the stock icons come back
             // rather than an empty stretch of status bar. The next hide pass remembers them again.

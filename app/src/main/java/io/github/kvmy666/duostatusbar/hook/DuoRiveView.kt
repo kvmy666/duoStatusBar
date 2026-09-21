@@ -32,14 +32,25 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
     private var rive: RiveAnimationView? = null
     private var viewModelInstance: ViewModelInstance? = null
     private var started = false
+    private var polls = 0
+    private var pendingVisual: DuoVisual? = null
+    private val readyActions = ArrayList<() -> Unit>()
+    private val failedActions = ArrayList<() -> Unit>()
 
     override val ui: View get() = this
 
     /** True once the drawing is live; the host uses this to decide whether it may hide stock icons. */
     override val isReady: Boolean get() = viewModelInstance != null
 
+    /**
+     * Builds the view and returns true when the *runtime* is usable. It deliberately does **not** require
+     * the view model instance yet: Rive binds the state machine's instance only after the view has been
+     * attached to a window, and at this point the element has not been added to the status bar. Reading it
+     * here is what made the module fall back to Canvas on every attempt - the instance was always null,
+     * not because the asset was wrong. [onReady] reports the real, later readiness.
+     */
     override fun start(): Boolean {
-        if (started) return isReady
+        if (started) return true
         started = true
         return try {
             // False means the runtime is not usable here; the host falls back to the no-native view.
@@ -66,13 +77,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             rive = view
 
-            val machine = view.stateMachines.firstOrNull()
-            viewModelInstance = machine?.viewModelInstance
-            if (viewModelInstance == null) {
-                L.w("no view model instance bound - binds will not run")
-                return false
-            }
-            L.i("Duo view ready (machines=${view.stateMachines.size}, inputs=${machine?.inputNames})")
+            pollForInstance()
             true
         } catch (t: Throwable) {
             L.e("start failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -80,9 +85,53 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         }
     }
 
+    override fun onReady(action: () -> Unit) {
+        if (isReady) action() else readyActions.add(action)
+    }
+
+    override fun onFailed(action: () -> Unit) {
+        failedActions.add(action)
+    }
+
+    /**
+     * The state machine appears some time after the view is attached to a window, so it is polled rather
+     * than assumed. On success every waiter runs once; on exhaustion the host is told, so it can fall back
+     * to Canvas instead of leaving an empty slot.
+     */
+    private fun pollForInstance() {
+        postDelayed({
+            if (viewModelInstance != null) return@postDelayed
+            try {
+                val machine = rive?.stateMachines?.firstOrNull()
+                val found = machine?.viewModelInstance
+                if (found != null) {
+                    viewModelInstance = found
+                    L.i("Duo view ready (machines=${rive?.stateMachines?.size}, inputs=${machine.inputNames})")
+                    pendingVisual?.let { render(it) }
+                    pendingVisual = null
+                    readyActions.toList().forEach { it() }
+                    readyActions.clear()
+                    failedActions.clear()
+                } else if (++polls < MAX_POLLS) {
+                    pollForInstance()
+                } else {
+                    L.w("no view model instance after $MAX_POLLS polls - Rive element did not bind")
+                    failedActions.toList().forEach { it() }
+                    readyActions.clear()
+                    failedActions.clear()
+                }
+            } catch (t: Throwable) {
+                L.w("instance poll: ${t.javaClass.simpleName}: ${t.message}")
+                if (++polls < MAX_POLLS) pollForInstance() else failedActions.toList().forEach { it() }
+            }
+        }, POLL_MS)
+    }
+
     /** Pushes a full state snapshot into the drawing. Never throws. */
     override fun render(v: DuoVisual) {
-        val vm = viewModelInstance ?: return
+        // Before the instance binds there is nothing to write to; remember the newest state and replay it
+        // the moment the machine is live, so the element never shows a stale first frame.
+        val vm = viewModelInstance ?: run { pendingVisual = v; return }
         val failures = try {
             DuoBinder.apply(vm, v)
         } catch (t: Throwable) {
@@ -114,6 +163,9 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         }
         rive = null
         viewModelInstance = null
+        pendingVisual = null
+        readyActions.clear()
+        failedActions.clear()
         started = false
     }
 
@@ -152,5 +204,10 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         private const val RAW_ENTRY = "res/raw/duo.riv"
         private const val ARTBOARD = "Duo"
         private const val STATE_MACHINE = "Duo"
+
+        // The instance binds a few frames after the view is attached; 25 x 100 ms mirrors the app preview,
+        // which is where this timing was first measured.
+        private const val POLL_MS = 100L
+        private const val MAX_POLLS = 25
     }
 }

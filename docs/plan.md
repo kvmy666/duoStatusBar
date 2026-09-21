@@ -58,23 +58,25 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[x]` Stage 1 was reached on the device: `Duo attached on attempt 0` + `renderer=Canvas` + `attached=true`
   (LSPosed log, 2026-09-21 13:39). The icon-hiding line and the visual check come from the next run, once
   the logging sink fix below is on the device.
-* `[ ]` On-device verification of stage 2 (Rive). The first attempt died natively: `Rive.init` throws on its
-  ReLinker step inside SystemUI, so `defaultRendererType` was left **null** and native renderer creation
-  segfaulted (nothing catchable in-process — see `docs/evidence/phase3-attempt1-crash.txt`). Fix in:
-  `RiveInit` performs those three steps itself with the type pinned to `Canvas`, `DuoSbFacts` measures
-  hardware acceleration before any Rive object exists, `DuoGuard` breaks any crash loop. Two further faults
-  were found on the device and are fixed, both of which had made a working module look dead:
-  * every diagnostic line went through `android.util.Log`, which OxygenOS **drops from SystemUI** — the tag
-    never appears in logcat, so all the reasons were invisible and every check reported FAIL. `L` is now the
-    only logger (`tools/route-module-logs.py` enforces it) and `tools/duo-verify.ps1` reads LSPosed's log
-    file, which is the sink that survives.
-  * at `stage=2` the element still came back as Canvas (`renderer=Canvas`, `riveAttempts=0`). The two paths
-    that return before native code are "not hardware accelerated" and "`start()` failed cleanly"; both log
-    their reason now, so the next run names it. This matters because rive-android 10.2.0 ships only
-    `TextureView`-based views (`RiveAnimationView`, `RiveTextureView`, no drawable): if the status bar
-    window really is not accelerated, no Rive widget can draw there and the element needs its own hardware
-    accelerated overlay window instead.
-  See `docs/evidence/phase3-log-sinks-and-fallback.md`.
+* `[x]` On-device verification of stage 2 (**Rive is live**): `duo-verify.ps1 -Stage rive` is 9/9 PASS and
+  the element is the real Rive drawing (`renderer=Rive`, `Duo view ready`, screenshot
+  `docs/evidence/verify-rive.png`); `-Stage off` restores the stock icons (`verify-off.png`). Getting there
+  took three device-found faults, each now fixed and documented:
+  * the first attempt died natively: `Rive.init` throws on its ReLinker step inside SystemUI, so
+    `defaultRendererType` was left **null** and native renderer creation segfaulted (nothing catchable
+    in-process — see `docs/evidence/phase3-attempt1-crash.txt`). `RiveInit` now performs those three steps
+    itself with the type pinned to `Canvas`, `DuoSbFacts` measures hardware acceleration before any Rive
+    object exists, and `DuoGuard` breaks any crash loop.
+  * every diagnostic line went through `android.util.Log`, which OxygenOS **drops from SystemUI**, so all the
+    reasons were invisible and every check reported FAIL. `L` is now the only logger
+    (`tools/route-module-logs.py` enforces it) and `tools/duo-verify.ps1` reads LSPosed's log file, the sink
+    that survives.
+  * the element still came back as Canvas: the view model instance was read **synchronously** in
+    `DuoRiveView.start()`, but Rive binds it only *after* the view is attached to a window. Readiness is now
+    an event (`onReady`/`onFailed` with a 25 × 100 ms poll, mirroring the app preview), the host hides the
+    stock icons and fires the reveal from there, and an element that never binds is swapped for Canvas rather
+    than left as a hole.
+  See `docs/evidence/phase3-log-sinks-and-fallback.md` and `docs/evidence/phase3-rive-live.md`.
 
 ## Phase 4 — Animation (FR-25)
 
@@ -153,7 +155,8 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[x]` CI on every push: unit tests, debug build, `.riv` consistency check, provider-authority check, and the
   Rive project checks when the CLI is available.
 * `[x]` Tag-driven release workflow → GitHub Release + Xposed-Modules-Repo mirror, with `--latest` forced.
-* `[ ]` First tagged release (after the Phase 3 device run) and the GIFs/screenshots for the listing.
+* `[ ]` First tagged release — the Phase 3 device run it was waiting on is done (Rive live), so this now
+  only needs the GIFs/screenshots for the listing.
 
 ## Human-in-the-loop steps (you)
 
