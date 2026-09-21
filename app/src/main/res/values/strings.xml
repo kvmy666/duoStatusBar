@@ -16,6 +16,9 @@
     <string name="settings_loop">Loop the reveal</string>
     <string name="settings_diagnostics">Diagnostics</string>
     <string name="settings_share">Share diagnostics</string>
+    <string name="settings_recheck">Re-check the status bar</string>
+    <string name="settings_donate">Donate</string>
+    <string name="settings_history">Recent reports</string>
     <string name="settings_no_status">The module has not reported yet. It reports when the status bar is built, which needs the module enabled in LSPosed with the System UI scope.</string>
     <string name="settings_gate_hint">adb kill switch: settings put global duo_statusbar_stage 0</string>
     <string name="settings_gestures">Gestures on the element</string>

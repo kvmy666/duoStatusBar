@@ -67,6 +67,8 @@ object DuoPrefs {
     private const val PREFS = "duo_settings"
     private const val KEY_REVISION = "revision"
     private const val KEY_STATUS = "last_status"
+    private const val KEY_HISTORY = "status_history"
+    private const val HISTORY_LIMIT = 20
 
     fun read(context: Context): DuoSettings {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -108,9 +110,28 @@ object DuoPrefs {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATUS, "") ?: ""
 
     fun writeStatus(context: Context, status: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_STATUS, status).apply()
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // A cheap rolling history: appended only when it changes, so a burst of identical reports (the
+        // element is re-checked on every layout change) does not turn into a wall of the same line.
+        val previous = p.getString(KEY_STATUS, "")
+        if (previous == status) return
+        val history = (statusHistory(context) + "${System.currentTimeMillis()} $status")
+            .takeLast(HISTORY_LIMIT)
+        p.edit()
+            .putString(KEY_STATUS, status)
+            .putStringSet(KEY_HISTORY, history.toSet())
+            .apply()
     }
+
+    /**
+     * The last few module self-reports, oldest first. Kept because a bug report with the *sequence* of what
+     * the module thought it was doing is worth far more than the final state.
+     */
+    fun statusHistory(context: Context): List<String> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(KEY_HISTORY, emptySet())
+            .orEmpty()
+            .sorted()
 
     // Same bounds the module clamps to, so the two sides cannot disagree about what a legal value is.
     const val MIN_SIZE = 60

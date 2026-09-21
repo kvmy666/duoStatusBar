@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,12 +56,14 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
     var loop by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(DuoPrefs.status(context)) }
+    var history by remember { mutableStateOf(DuoPrefs.statusHistory(context)) }
 
     // The module answers an instant after the broadcast; re-reading is simpler than a callback.
     LaunchedEffect(Unit) {
         while (true) {
             delay(1500)
             status = DuoPrefs.status(context)
+            history = DuoPrefs.statusHistory(context)
         }
     }
 
@@ -166,22 +169,57 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     text = stringResource(R.string.settings_gate_hint),
                     style = MaterialTheme.typography.bodySmall
                 )
-                Button(onClick = {
-                    val report = buildString {
-                        appendLine("Duo Status Bar diagnostics")
-                        appendLine("settings: $settings")
-                        append("module: ").append(status.ifEmpty { "no report yet" })
+                if (history.isNotEmpty()) {
+                    Text(stringResource(R.string.settings_history), style = MaterialTheme.typography.labelLarge)
+                    history.takeLast(3).forEach { entry ->
+                        Text(
+                            text = entry.substringAfter(' '),
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, report)
-                    }
-                    context.startActivity(Intent.createChooser(send, "Share diagnostics"))
-                }) { Text(stringResource(R.string.settings_share)) }
+                }
+                Button(
+                    onClick = {
+                        // Reuses the settings broadcast: the module re-resolves the stage, re-applies the layout
+                        // and reports again, which is exactly what "did it take effect?" means.
+                        context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(stringResource(R.string.settings_recheck)) }
+                Button(
+                    onClick = {
+                        val report = buildString {
+                            appendLine("Duo Status Bar diagnostics")
+                            appendLine("settings: $settings")
+                            appendLine("module: ").append(status.ifEmpty { "no report yet" })
+                            if (history.isNotEmpty()) {
+                                appendLine("history:")
+                                history.forEach { appendLine("  $it") }
+                            }
+                        }
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, report)
+                        }
+                        context.startActivity(Intent.createChooser(send, "Share diagnostics"))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(stringResource(R.string.settings_share)) }
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL))
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(stringResource(R.string.settings_donate)) }
             }
         }
     }
 }
+
+/** FR-28: where the donate button goes. */
+private const val DONATE_URL = "https://paypal.me/kroomfahd"
 
 @Composable
 private fun SettingSwitch(
