@@ -6,6 +6,10 @@
 [![Android 15+](https://img.shields.io/badge/Android-15%2B-3ddc84)](https://developer.android.com)
 [![LSPosed](https://img.shields.io/badge/LSPosed-module-8a2be2)](https://modules.lsposed.org/module/io.github.kvmy666.duostatusbar)
 
+<p align="center">
+  <img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/icon.png" width="120" alt="Duo Status Bar icon">
+</p>
+
 **Your status bar, but beautiful.** Duo Status Bar turns the battery, Wi-Fi and signal icons into one
 smooth, Apple-style element — a battery ring with the percentage tucked into its gap, Wi-Fi arcs, cellular
 spheres and a charging bolt that flies into place. It is animated with [Rive](https://rive.app), and it is
