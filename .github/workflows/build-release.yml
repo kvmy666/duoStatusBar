@@ -81,3 +81,18 @@ jobs:
           # Force this release to be the mirror's "Latest": modules.lsposed.org keys the in-app store off
           # that pointer, and a stale one freezes the store at an old version.
           gh release edit "${TAG}" --repo "$REPO" --latest --draft=false --prerelease=false
+
+          # The modules repo shows SUMMARY on its front page and README.md as the full description, so
+          # keep both in sync with this repo (LSPosed's submission terms). Nothing else is uploaded:
+          # the mirror gets the APK and the two meta files, never the source.
+          for f in SUMMARY README.md; do
+            content=$(base64 -w0 "$f")
+            sha=$(gh api "repos/${REPO}/contents/${f}" --jq .sha 2>/dev/null || true)
+            if [ -n "$sha" ]; then
+              gh api -X PUT "repos/${REPO}/contents/${f}" \
+                -f message="Sync ${f} from source" -f content="$content" -f sha="$sha" > /dev/null
+            else
+              gh api -X PUT "repos/${REPO}/contents/${f}" \
+                -f message="Add ${f}" -f content="$content" > /dev/null
+            fi
+          done

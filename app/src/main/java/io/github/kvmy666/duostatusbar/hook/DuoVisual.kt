@@ -17,6 +17,12 @@ data class DuoVisual(
     val percentText: String,
     val percentOpacity: Float,
     val percentFontSize: Float,
+    /**
+     * The cellular generation shown in the middle slot when Wi-Fi is off — "5G"/"4G"/"3G"/"2G", or
+     * empty when there is no service. Empty unless the slot is actually holding it, so a hidden
+     * occupant never carries stale text (FR-06).
+     */
+    val networkText: String,
     val boltOpacity: Float,
     val wifiOuterOpacity: Float,
     val wifiMidOpacity: Float,
@@ -46,7 +52,12 @@ data class DuoVisual(
      */
     val charging: Boolean,
     /** False plays the departure (screen off); true brings the element back. */
-    val visible: Boolean = true
+    val visible: Boolean = true,
+    /**
+     * Whether the charging *journey* plays. False shows the bolt instantly, which is the user's
+     * "charging animation" switch (FR-25).
+     */
+    val animateCharge: Boolean = true
 ) {
     /**
      * Interpolates between two snapshots, for the FR-09 setting demos that morph one setting between
@@ -76,6 +87,7 @@ data class DuoVisual(
             cell3Opacity = at(cell3Opacity, other.cell3Opacity),
             cell4Opacity = at(cell4Opacity, other.cell4Opacity),
             percentText = if (past) other.percentText else percentText,
+            networkText = if (past) other.networkText else networkText,
             tint = if (past) other.tint else tint,
             fgColor = if (past) other.fgColor else fgColor,
             // The middle slot's hand-over is a Rive layer, not a tween: this only picks which occupant.
@@ -83,7 +95,8 @@ data class DuoVisual(
             wifiLevel = if (past) other.wifiLevel else wifiLevel,
             cellLevel = if (past) other.cellLevel else cellLevel,
             charging = if (past) other.charging else charging,
-            visible = if (past) other.visible else visible
+            visible = if (past) other.visible else visible,
+            animateCharge = if (past) other.animateCharge else animateCharge
         )
     }
 }
@@ -192,12 +205,19 @@ object DuoMapping {
         airplane: Boolean,
         dnd: Boolean = false,
         fgColor: Int = WHITE,
-        visible: Boolean = true
+        visible: Boolean = true,
+        /** Whether the Wi-Fi radio is on. Off hands the middle slot to the cellular generation. */
+        wifiOn: Boolean = true,
+        /** The cellular generation, e.g. "5G"; ignored unless the slot is actually holding it. */
+        networkText: String = "",
+        /** Whether the charging journey plays; false shows the bolt instantly. */
+        animateCharge: Boolean = true
     ): DuoVisual {
-        // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, else Wi-Fi.
-        // The hand-over itself - the arcs collapsing, the dot fading, the new occupant growing out of it
-        // - is the MiddleSlot layer's job, so all the host says is which occupant it should be.
-        val mode = middleMode(airplane, dnd)
+        // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, then
+        // Wi-Fi; with Wi-Fi off the slot shows the cellular generation instead. The hand-over itself
+        // - the arcs collapsing, the dot fading, the new occupant growing out of it - is the
+        // MiddleSlot layer's job, so all the host says is which occupant it should be.
+        val mode = middleMode(airplane, dnd, wifiOn, networkText.isNotEmpty())
         val (outer, middle, dot) = wifiOpacities(wifiLevel)
         val cells = cellOpacities(if (airplane) 0 else cellLevel)
         val percent = if (showPercent && !charging) level.toString() else ""
@@ -211,6 +231,8 @@ object DuoMapping {
             percentText = percent.ifEmpty { " " },
             percentOpacity = if (percent.isEmpty()) 0f else 1f,
             percentFontSize = percentFontSize(percent.ifEmpty { "50" }),
+            // Only the slot's actual occupant carries text: a hidden one never shows a stale label.
+            networkText = if (mode == MIDDLE_NETWORK) networkText else "",
             boltOpacity = if (charging) 1f else 0f,
             wifiOuterOpacity = outer,
             wifiMidOpacity = middle,
@@ -224,7 +246,8 @@ object DuoMapping {
             wifiLevel = wifiLevel,
             cellLevel = cellLevel,
             charging = charging,
-            visible = visible
+            visible = visible,
+            animateCharge = animateCharge
         )
     }
 
@@ -234,10 +257,35 @@ object DuoMapping {
     const val MIDDLE_AIRPLANE = 2
     const val MIDDLE_DND = 3
 
-    /** FR-06/FR-16: airplane wins the slot, then DND, else Wi-Fi. */
-    fun middleMode(airplane: Boolean, dnd: Boolean): Int = when {
-        airplane -> MIDDLE_AIRPLANE
-        dnd -> MIDDLE_DND
-        else -> MIDDLE_WIFI
+    /** The cellular generation shown when Wi-Fi is off (FR-06): "5G"/"4G"/"3G"/"2G". */
+    const val MIDDLE_NETWORK = 4
+
+    /** FR-06/FR-16: airplane wins the slot, then DND, then Wi-Fi, then the cellular generation. */
+    fun middleMode(airplane: Boolean, dnd: Boolean, wifiOn: Boolean = true, hasNetwork: Boolean = false): Int =
+        when {
+            airplane -> MIDDLE_AIRPLANE
+            dnd -> MIDDLE_DND
+            wifiOn -> MIDDLE_WIFI
+            hasNetwork -> MIDDLE_NETWORK
+            else -> MIDDLE_OFF
+        }
+
+    /**
+     * The cellular generation label for a `TelephonyManager.NETWORK_TYPE_*` value.
+     *
+     * Android-free on purpose: the type constants are spelled out as literals so this stays in the
+     * pure, unit-tested half. Unknown or Wi-Fi-calling types map to empty, which leaves the slot off
+     * rather than showing a label that means nothing.
+     */
+    fun networkGeneration(type: Int): String = when (type) {
+        // NETWORK_TYPE_NR
+        20 -> "5G"
+        // NETWORK_TYPE_LTE, NETWORK_TYPE_LTE_CA
+        13, 19 -> "4G"
+        // UMTS, EVDO_0/A, HSDPA, HSUPA, HSPA, EVDO_B, EHRPD, HSPAP, TD_SCDMA
+        3, 5, 6, 8, 9, 10, 12, 14, 15, 17 -> "3G"
+        // GPRS, EDGE, CDMA, 1xRTT, IDEN, GSM
+        1, 2, 4, 7, 11, 16 -> "2G"
+        else -> ""
     }
 }

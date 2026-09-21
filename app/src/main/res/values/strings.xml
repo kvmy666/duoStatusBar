@@ -1,35 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Duo Status Bar</string>
+    <string name="app_tagline">A ring-shaped battery, Wi-Fi and signal icon for your status bar.</string>
 
-    <!-- Phase 5 — settings screen -->
-    <string name="settings_title">The element</string>
-    <string name="settings_master">Replace the battery, Wi-Fi and signal icons</string>
-    <string name="settings_master_detail">Off means the stock status bar is untouched: nothing is hooked and nothing is hidden.</string>
-    <string name="settings_renderer">Rive animation</string>
-    <string name="settings_renderer_detail">Off uses the plain drawing instead — no native code in the path.</string>
-    <string name="settings_percent">Battery percentage in the ring</string>
-    <string name="settings_percent_detail">FR-16: the number sits in the ring\'s top gap and splits the indicator in two halves.</string>
-    <string name="settings_size">Size</string>
-    <string name="settings_offset">Position</string>
-    <string name="settings_drag_hint">Mock status bar — drag the element along it</string>
-    <string name="settings_preview">Preview</string>
-    <string name="settings_loop">Loop the reveal</string>
-    <string name="settings_diagnostics">Diagnostics</string>
-    <string name="settings_share">Share diagnostics</string>
-    <string name="settings_save_file">Save diagnostics to a file</string>
+    <!-- Search -->
     <string name="settings_search">Search settings</string>
-    <string name="settings_reveal">Arrival speed</string>
-    <string name="settings_reveal_detail">How long the element takes to arrive when the screen wakes. One Rive timeline at five speeds, so it is a choice rather than a free number.</string>
-    <string name="settings_recheck">Re-check the status bar</string>
-    <string name="settings_donate">Donate</string>
-    <string name="settings_history">Recent reports</string>
-    <string name="settings_no_status">The module has not reported yet. It reports when the status bar is built, which needs the module enabled in LSPosed with the System UI scope.</string>
-    <string name="settings_gate_hint">adb kill switch: settings put global duo_statusbar_stage 0</string>
-    <string name="settings_gestures">Gestures on the element</string>
-    <string name="settings_gestures_note">Taps are handed to Auto Expand, which owns the actions — this module only draws. With \"No Action\" the element does not consume touches at all.</string>
-    <string name="settings_gestures_missing">Auto Expand is not installed, so there is nothing to hand a tap to. Install it to use these.</string>
+
+    <!-- Battery icon -->
+    <string name="section_element">Battery icon</string>
+    <string name="settings_master">Use Duo Status Bar</string>
+    <string name="settings_master_detail">Turns the ring on or off. When it is off, your phone\'s normal status bar is used and nothing is changed.</string>
+    <string name="settings_percent">Show battery percentage</string>
+    <string name="settings_percent_detail">Puts the number inside the ring instead of a plain circle.</string>
+    <string name="settings_size">Size</string>
+    <string name="settings_size_restart">Changing the size needs a restart to take effect.</string>
+    <string name="settings_restart">Restart System UI</string>
+    <string name="settings_position">Position</string>
+    <string name="settings_position_hint">Drag the battery icon left or right</string>
+    <string name="settings_position_reset">Reset</string>
+
+    <!-- Animations -->
+    <string name="section_animations">Animations</string>
+    <string name="settings_animations">Animations</string>
+    <string name="settings_animations_detail">The master switch for all motion. Turn it off for a still battery icon.</string>
+    <string name="settings_anim_speed">Speed</string>
+    <string name="settings_anim_arrival">Appear</string>
+    <string name="settings_anim_arrival_detail">A short bounce when the screen turns on.</string>
+    <string name="settings_anim_departure">Disappear</string>
+    <string name="settings_anim_departure_detail">A quick shrink when the screen turns off.</string>
+    <string name="settings_anim_charging">Charging</string>
+    <string name="settings_anim_charging_detail">The lightning bolt flying into the ring when you plug in.</string>
+    <string name="settings_anim_preview">Live preview</string>
+
+    <!-- Appearance -->
+    <string name="section_look">Appearance</string>
+    <string name="settings_renderer">Smooth graphics</string>
+    <string name="settings_renderer_detail">Draws the icon with the graphics chip. Turn it off if the icon looks wrong or your phone feels slow.</string>
+
+    <!-- Tap actions -->
+    <string name="section_actions">Tap actions</string>
+    <string name="settings_gestures_note">Taps on the battery icon are handled by the Auto Expand app, so both apps always agree on what a tap means.</string>
+    <string name="settings_gestures_missing">Install Auto Expand to make the battery icon respond to taps.</string>
     <string name="settings_tap">Single tap</string>
     <string name="settings_double_tap">Double tap</string>
     <string name="settings_long_press">Long press</string>
+
+    <!-- About -->
+    <string name="section_about">About</string>
+    <string name="settings_status">Status</string>
+    <string name="settings_no_status">Waiting for the module… If this stays empty, enable Duo Status Bar in LSPosed (scope: System UI) and restart your phone.</string>
+    <string name="settings_recheck">Refresh status</string>
+    <string name="settings_share">Share status</string>
+    <string name="settings_save_file">Save status to a file</string>
+    <string name="settings_history">Recent activity</string>
+    <string name="settings_donate">Support the developer</string>
+    <string name="settings_version">Duo Status Bar %1$s</string>
 </resources>

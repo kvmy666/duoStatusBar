@@ -195,6 +195,68 @@ class DuoMappingTest {
         assertEquals(DuoMapping.MIDDLE_WIFI, DuoMapping.middleMode(airplane = false, dnd = false))
     }
 
+    // --------------------------------------------------------------------------- network generation
+
+    @Test
+    fun `the cellular generation maps the common radio types`() {
+        assertEquals("5G", DuoMapping.networkGeneration(20))   // NR
+        assertEquals("4G", DuoMapping.networkGeneration(13))   // LTE
+        assertEquals("4G", DuoMapping.networkGeneration(19))   // LTE_CA
+        assertEquals("3G", DuoMapping.networkGeneration(3))    // UMTS
+        assertEquals("3G", DuoMapping.networkGeneration(15))   // HSPAP
+        assertEquals("2G", DuoMapping.networkGeneration(1))    // GPRS
+        assertEquals("2G", DuoMapping.networkGeneration(16))   // GSM
+    }
+
+    @Test
+    fun `an unknown radio type shows no label`() {
+        // UNKNOWN and IWLAN (Wi-Fi calling) are not a generation worth naming.
+        assertEquals("", DuoMapping.networkGeneration(0))
+        assertEquals("", DuoMapping.networkGeneration(18))
+    }
+
+    @Test
+    fun `with wifi off the slot shows the cellular generation`() {
+        assertEquals(
+            DuoMapping.MIDDLE_NETWORK,
+            DuoMapping.middleMode(airplane = false, dnd = false, wifiOn = false, hasNetwork = true)
+        )
+        // No service either: the slot empties rather than showing a stale label.
+        assertEquals(
+            DuoMapping.MIDDLE_OFF,
+            DuoMapping.middleMode(airplane = false, dnd = false, wifiOn = false, hasNetwork = false)
+        )
+    }
+
+    @Test
+    fun `airplane and dnd beat the network label`() {
+        assertEquals(
+            DuoMapping.MIDDLE_AIRPLANE,
+            DuoMapping.middleMode(airplane = true, dnd = false, wifiOn = false, hasNetwork = true)
+        )
+        assertEquals(
+            DuoMapping.MIDDLE_DND,
+            DuoMapping.middleMode(airplane = false, dnd = true, wifiOn = false, hasNetwork = true)
+        )
+    }
+
+    @Test
+    fun `the network label is only carried while the slot holds it`() {
+        val shown = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 0, cellLevel = 4, airplane = false, wifiOn = false, networkText = "5G"
+        )
+        assertEquals(DuoMapping.MIDDLE_NETWORK, shown.middleMode)
+        assertEquals("5G", shown.networkText)
+        // Wi-Fi on: the slot holds the glyph, so the label is blank even if one was handed in.
+        val hidden = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, wifiOn = true, networkText = "5G"
+        )
+        assertEquals(DuoMapping.MIDDLE_WIFI, hidden.middleMode)
+        assertEquals("", hidden.networkText)
+    }
+
     @Test
     fun `a demo can morph between two snapshots without leaving either state`() {
         val off = visual(72, dnd = false)

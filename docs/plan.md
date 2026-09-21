@@ -280,6 +280,33 @@ and on the device `gfxinfo`, `meminfo`, all three surfaces and both orientations
 * `[ ]` First tagged release — the Phase 3 device run it was waiting on is done (Rive live), so this now
   only needs the GIFs/screenshots for the listing.
 
+## Phase 10 — User-facing release pass 🚧
+
+The app was written for the project, not for a person. This pass rewrites it for the person.
+
+* `[x]` **Wording.** Every user-facing string is now plain English ("Battery icon", "Appear", "Smooth
+  graphics"); the requirement ids, the "mock status bar" and the adb kill switch are gone from the
+  screen. The screen is grouped into **Battery icon / Animations / Appearance / Tap actions / About**.
+* `[x]` **Animations section (FR-25).** A master switch, an arrival **speed** control, and individual
+  switches for **Appear**, **Disappear** and **Charging**. Off means instant, not removed: the charging
+  switch is a real `animateCharge` view-model boolean, and the Charge layer takes a direct transition to
+  its pose when it is false (verified headlessly — the bolt is in the ring at frame 2 instead of flying).
+  Arrival, departure and the ring fill are gated host-side.
+* `[x]` **Size needs a restart (FR-03/17).** Resizing the Rive view while System UI was running is what
+  took it down, so the module now captures the size once, on attach, and ignores live changes. The row
+  says so and carries a **Restart System UI** button; the app asks the module (the only side that can do
+  it) to restart, and the module kills its own process so Android brings System UI back.
+* `[x]` **Previews that show the thing (FR-09).** The row demos were white-on-light and effectively
+  invisible; they now sit on a dark chip. The animation switches use a small **Rive** demo instead of the
+  Canvas one, so the arrival bounce, the departure shrink and the charging journey are the real motion.
+* `[x]` **Position (FR-17).** The blank strip is replaced by a status-bar-shaped preview (clock, dark
+  pill) with the same element the bar uses; dragging anywhere moves it, the value is shown, and there is a
+  Reset.
+* `[x]` **Release prep.** `versionName` 1.0.0 (`versionCode` 2); `:app:minifyReleaseWithR8` is green, so
+  the shrunk build compiles.
+* `[ ]` On-device pass: install the release, walk every control, confirm the restart button and the Rive
+  demos on the phone.
+
 ## Human-in-the-loop steps (you)
 
 | Phase | What only you can do |

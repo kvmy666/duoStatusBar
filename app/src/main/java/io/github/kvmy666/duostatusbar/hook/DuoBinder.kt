@@ -33,12 +33,14 @@ object DuoBinder {
     val REVEAL_CHOICES = intArrayOf(500, 750, 1000, 1250, 1500)
 
     /** Number of properties a complete snapshot writes — used to report partial failures. */
-    const val PROPERTY_COUNT = 19
+    const val PROPERTY_COUNT = 21
 
     private const val REVEAL_MS = "revealMs"
     private const val PERCENT_TEXT = "percentText"
+    private const val NETWORK_TEXT = "networkText"
     private const val VISIBLE = "visible"
     private const val CHARGING = "charging"
+    private const val ANIMATE_CHARGE = "animateCharge"
 
     /** Writes the whole snapshot. Returns how many properties failed to bind (0 is perfect). */
     fun apply(vm: ViewModelInstance, v: DuoVisual): Int {
@@ -67,10 +69,14 @@ object DuoBinder {
         }
 
         if (!write(PERCENT_TEXT) { vm.getStringProperty(PERCENT_TEXT).value = v.percentText }) failures++
+        // The middle slot's cellular label, shown only while Wi-Fi is off (FR-06).
+        if (!write(NETWORK_TEXT) { vm.getStringProperty(NETWORK_TEXT).value = v.networkText }) failures++
         // False plays the departure, true brings the element back (screen off / on).
         if (!write(VISIBLE) { vm.getBooleanProperty(VISIBLE).value = v.visible }) failures++
         // Drives the Charge layer: the bolt's journey from the middle slot to the ring's gap.
         if (!write(CHARGING) { vm.getBooleanProperty(CHARGING).value = v.charging }) failures++
+        // False makes the bolt appear/disappear instantly (the user's charging-animation switch).
+        if (!write(ANIMATE_CHARGE) { vm.getBooleanProperty(ANIMATE_CHARGE).value = v.animateCharge }) failures++
 
         return failures
     }

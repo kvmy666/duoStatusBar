@@ -109,6 +109,12 @@ internal class DuoIconHost(private val context: Context) {
     private val gateLogged = AtomicBoolean(false)
     private val factsLogged = AtomicBoolean(false)
     private var settings = ModuleSettings.DEFAULT
+    /**
+     * The size the element is actually drawn at. It is captured once, when the element attaches, and
+     * deliberately **not** updated by [refreshSettings]: resizing the Rive view live is what took System
+     * UI down, so a size change only takes effect on the next start (the app shows a Restart button).
+     */
+    private var appliedSize = 0
     private val hiddenOriginals = ArrayList<HiddenState>()
 
     val duo: DuoElement? get() = element
@@ -289,10 +295,14 @@ internal class DuoIconHost(private val context: Context) {
         val view = slot.element?.ui ?: return
         try {
             val side = elementSidePx(target, slot.bar)
-            view.layoutParams = layoutParamsFor(target, side)
+            val lp = view.layoutParams
+            // Same rule as applyLayout: never request a layout pass unless the size actually changed.
+            if (lp == null || lp.width != side || lp.height != side) {
+                view.layoutParams = layoutParamsFor(target, side)
+                view.requestLayout()
+            }
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
             view.translationY = if (slot.center) windowCenterShiftY(target, slot.bar) else 0f
-            view.requestLayout()
         } catch (t: Throwable) {
             L.w("${slot.name} layout: ${t.message}")
         }
@@ -303,6 +313,12 @@ internal class DuoIconHost(private val context: Context) {
 
     /** FR-25: how long an arrival takes, in ms — asked by the monitor when it fires one. */
     val revealMs: Int get() = settings.revealMs
+
+    // The Animations section (FR-25). The master gates the three individual switches.
+    val animationsEnabled: Boolean get() = settings.animationsEnabled
+    val arrivalEnabled: Boolean get() = settings.animationsEnabled && settings.arrivalEnabled
+    val departureEnabled: Boolean get() = settings.animationsEnabled && settings.departureEnabled
+    val chargingEnabled: Boolean get() = settings.animationsEnabled && settings.chargingEnabled
 
     /**
      * Shows or hides every element's view outright.
@@ -358,12 +374,19 @@ internal class DuoIconHost(private val context: Context) {
         val view = element?.ui ?: return
         try {
             val side = elementSidePx(target, root)
-            view.layoutParams = LinearLayout.LayoutParams(side, side)
+            val lp = view.layoutParams
+            // Only touch the view's bounds when the size actually changes. Re-assigning layoutParams
+            // (even to the same numbers) requests a layout pass, and a layout pass on the Rive
+            // TextureView is what took System UI down; the size is restart-only now, so this normally
+            // does nothing at all and a settings change can never reshape the drawing.
+            if (lp == null || lp.width != side || lp.height != side) {
+                view.layoutParams = LinearLayout.LayoutParams(side, side)
+                view.requestLayout()
+            }
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
             // The strip sits low in the window, so centring on it wastes the space above. Centre the
             // element in the whole status bar instead, which is what lets it grow to the window height.
             view.translationY = windowCenterShiftY(target, root)
-            view.requestLayout()
             installGestures(view)
         } catch (t: Throwable) {
             L.w("applyLayout: ${t.message}")
@@ -380,7 +403,7 @@ internal class DuoIconHost(private val context: Context) {
      * it can never grow past the bar.
      */
     private fun elementSidePx(container: ViewGroup, windowRoot: View?): Int {
-        val scaled = measuredSlotWidth(container) * settings.sizePercent / 100
+        val scaled = measuredSlotWidth(container) * appliedSize / 100
         // Cap at the status bar window's own height: that is the largest the element can be without the
         // ROM clipping it, so the size setting stays meaningful all the way up.
         val height = (windowRoot?.height ?: 0).takeIf { it > 0 } ?: return scaled
@@ -468,10 +491,13 @@ internal class DuoIconHost(private val context: Context) {
             }
             root = statusBarRoot
             val candidate = createElement(statusBarRoot, stage)
+            refreshSettings()
+            // Capture the size once per process: live size changes are deferred to a restart (see
+            // [appliedSize]) because resizing the Rive view live used to take System UI down.
+            appliedSize = settings.sizePercent
             if (factsLogged.compareAndSet(false, true)) {
                 DuoSbFacts.report(context, statusBarRoot, target, slotWidthPx(target))
             }
-            refreshSettings()
             val side = elementSidePx(target, root)
             allowOverflow(target)
             candidate.ui.layoutParams = LinearLayout.LayoutParams(side, side)
@@ -738,7 +764,7 @@ internal class DuoIconHost(private val context: Context) {
     /** The Duo element takes the battery slot's column, scaled by the size setting (FR-03). */
     private fun slotWidthPx(container: ViewGroup): Int {
         val base = measuredSlotWidth(container)
-        return (base * settings.sizePercent / 100).coerceAtLeast(1)
+        return (base * appliedSize / 100).coerceAtLeast(1)
     }
 
     /** The battery slot's column — 83 px measured on the target device — or the best available estimate. */

@@ -35,6 +35,10 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private var dnd = false
     private var wifiLevel = 3
     private var cellLevel = 4
+    /** Whether the Wi-Fi radio is on: off hands the middle slot to the cellular generation (FR-06). */
+    private var wifiOn = true
+    /** The cellular generation shown when Wi-Fi is off: "5G"/"4G"/"3G"/"2G", or empty. */
+    private var networkText = ""
     private var registered = false
     /** When the last arrival fired, for the AOD burst guard. */
     private var lastRevealAt = 0L
@@ -64,7 +68,9 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     }
                     Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
                         airplane = SystemReaders.isAirplaneOn(context)
-                        render()
+                        // Re-read the network generation too: airplane on blanks it, airplane off
+                        // restores the label the slot may need if Wi-Fi is also off.
+                        refresh()
                     }
                     // FR-06: the middle slot shows the moon while DND/silent is on. Both signals are
                     // event-driven (no polling): the zen filter, and the ringer dropping to silent.
@@ -92,10 +98,14 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                         // when the user actually woke the phone.
                         handler.removeCallbacks(hideRunnable)
                         host.setElementsVisible(true)
-                        if (isInteractive() && revealAllowed()) {
-                            visible = true
+                        visible = true
+                        // FR-25: the arrival animation is optional. With it off the element simply
+                        // appears; the fill still catches up below.
+                        if (host.arrivalEnabled && isInteractive() && revealAllowed()) {
                             host.revealAll(host.revealMs)
                             restartFill()
+                        } else {
+                            setLevel(level)
                         }
                     }
                     // FR-25: the departure plays as the screen goes, so the element leaves with the rest
@@ -108,9 +118,16 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                         // always-on display the bar is re-laid out several times a second, and an element
                         // that is only half hidden flickers with it. The AOD has its own status bar, so
                         // the element has no business being there.
-                        visible = false
-                        render()
-                        handler.postDelayed(hideRunnable, DEPART_HIDE_MS)
+                        handler.removeCallbacks(hideRunnable)
+                        if (host.departureEnabled) {
+                            visible = false
+                            render()
+                            handler.postDelayed(hideRunnable, DEPART_HIDE_MS)
+                        } else {
+                            // No departure animation: take the element off the display at once, and
+                            // leave `visible` alone so the Rive machine never plays the Depart timeline.
+                            host.setElementsVisible(false)
+                        }
                     }
                     // Rotation re-inflates the strip: hide the stock views again.
                     Intent.ACTION_CONFIGURATION_CHANGED -> {
@@ -118,7 +135,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                         render()
                     }
                     WifiManager.RSSI_CHANGED_ACTION,
-                    WifiManager.WIFI_STATE_CHANGED_ACTION -> refresh()
+                    WifiManager.WIFI_STATE_CHANGED_ACTION,
+                    ACTION_SERVICE_STATE_CHANGED -> refresh()
                 }
             } catch (t: Throwable) {
                 L.e("receiver ${intent?.action}: ${t.javaClass.simpleName}: ${t.message}")
@@ -142,6 +160,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 addAction(Intent.ACTION_CONFIGURATION_CHANGED)
                 addAction(WifiManager.RSSI_CHANGED_ACTION)
                 addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
+                addAction(ACTION_SERVICE_STATE_CHANGED)
             }
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
             saver = SystemReaders.isPowerSaveOn(context)
@@ -202,11 +221,13 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         true
     }
 
-    /** Re-reads Wi-Fi and cellular, then redraws. Never throws. */
+    /** Re-reads Wi-Fi, cellular and the network generation, then redraws. Never throws. */
     fun refresh() {
         try {
+            wifiOn = SystemReaders.isWifiEnabled(context, wifiOn)
             wifiLevel = SystemReaders.wifiLevel(context, wifiLevel)
             cellLevel = SystemReaders.cellLevel(context, airplane, cellLevel)
+            networkText = SystemReaders.networkGeneration(context, airplane, networkText)
             render()
         } catch (t: Throwable) {
             L.w("refresh: ${t.message}")
@@ -219,13 +240,21 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
      */
     private fun setLevel(target: Int) {
         level = target
+        // The master animation switch also owns the ring fill: off means the level snaps.
+        if (!host.animationsEnabled) {
+            fill?.cancel()
+            displayedLevel = target
+            render()
+            return
+        }
         if (target == displayedLevel && fill?.isRunning != true) {
             render()
             return
         }
         fill?.cancel()
         fill = ValueAnimator.ofInt(displayedLevel, target).apply {
-            duration = FILL_MS
+            // The fill follows the arrival speed, so "faster animations" means a faster fill too.
+            duration = FILL_MS * host.revealMs / 1000L
             addUpdateListener {
                 displayedLevel = it.animatedValue as Int
                 render()
@@ -254,7 +283,10 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     cellLevel = cellLevel,
                     airplane = airplane,
                     dnd = dnd,
-                    visible = visible
+                    visible = visible,
+                    wifiOn = wifiOn,
+                    networkText = networkText,
+                    animateCharge = host.chargingEnabled
                 )
             )
         } catch (t: Throwable) {
@@ -273,5 +305,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
         /** How long the departure gets before the element is taken off the display. */
         const val DEPART_HIDE_MS = 450L
+
+        /** `TelephonyManager.ACTION_SERVICE_STATE_CHANGED`, spelled out: the constant is not public. */
+        const val ACTION_SERVICE_STATE_CHANGED = "android.intent.action.SERVICE_STATE"
     }
 }

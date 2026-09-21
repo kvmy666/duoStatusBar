@@ -304,6 +304,31 @@
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
             </Shape>
 
+            <!-- ========================= network generation =========================
+                 The middle slot's connectivity fallback (FR-06): when Wi-Fi is off the slot shows the
+                 cellular generation the phone is on ("5G"/"4G"/"3G"/"2G") instead of the Wi-Fi glyph,
+                 mirroring the stock bar. Same face as the charge number (SysSans, fontAssetId 0:40),
+                 so the two read as one type system.
+
+                 The text itself is bound (`networkText`); the MiddleSlot machine owns its opacity and
+                 scale, so it arrives and leaves with the same choreography as the plane and crescent.
+                 Authored at opacity 0 so a file that never gets the label shows nothing. -->
+            <Text x="-0.5" y="1" width="56" height="34" alignValue="center" originX="0.5" originY="0.5"
+                sizingValue="fixed" overflowValue="visible" opacity="0" name="network" id="0:170">
+                <TextStylePaint fontSize="30" fontAssetId="0:40" name="NetworkStyle" id="0:171">
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    </Fill>
+                    <!-- The same weight-by-stroke trick the digits use, so "5G" reads as boldly. -->
+                    <Stroke thickness="2" cap="round" join="round" name="Weight">
+                        <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    </Stroke>
+                </TextStylePaint>
+                <TextValueRun styleId="0:171" text="5G" name="Run">
+                    <DataBindContext propertyKey="268" sourcePathIds="0:60-0:173" />
+                </TextValueRun>
+            </Text>
+
             <!-- ========================== cellular spheres ==========================
                  r 5.5, on a downward arc concentric with the ring.                     -->
 
@@ -498,6 +523,16 @@
                             <TransitionValueNumberComparator value="0" />
                         </TransitionViewModelCondition>
                     </StateTransition>
+                    <StateTransition stateToId="0:177" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="4" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
                 </AnimationState>
 
                 <AnimationState x="0" y="280" animationId="0:120" id="0:131">
@@ -509,6 +544,16 @@
                                 </BindablePropertyNumber>
                             </TransitionPropertyViewModelComparator>
                             <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:177" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="4" />
                         </TransitionViewModelCondition>
                     </StateTransition>
                 </AnimationState>
@@ -554,6 +599,27 @@
                 <AnimationState x="500" y="140" animationId="0:126" id="0:135">
                     <StateTransition stateToId="0:130" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
                 </AnimationState>
+
+                <AnimationState x="600" y="0" animationId="0:175" id="0:177">
+                    <StateTransition stateToId="0:178" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+
+                <AnimationState x="600" y="140" animationId="0:174" id="0:178">
+                    <StateTransition stateToId="0:179" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:107" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="4" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="700" y="140" animationId="0:176" id="0:179">
+                    <StateTransition stateToId="0:130" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
             </StateMachineLayer>
             <!-- Charge: independent of Body and MiddleSlot, because charging is orthogonal to both - a
                  plane can be showing and the phone can be charging at once. -->
@@ -565,11 +631,40 @@
                 </EntryState>
 
                 <AnimationState x="0" y="140" animationId="0:140" id="0:146">
+                    <!-- The charging choreography plays only when `animateCharge` is on. Both
+                         conditions must hold, so this is charging AND animated. -->
                     <StateTransition stateToId="0:147" duration="0">
                         <TransitionViewModelCondition opValue="equal">
                             <TransitionPropertyViewModelComparator>
                                 <BindablePropertyBoolean>
                                     <DataBindContext sourcePathIds="0:60-0:108" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:180" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <!-- Charging with the animation off: the bolt simply appears, no journey. -->
+                    <StateTransition stateToId="0:148" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:108" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:180" propertyKey="634" />
                                 </BindablePropertyBoolean>
                             </TransitionPropertyViewModelComparator>
                             <TransitionValueBooleanComparator value="true" />
@@ -590,6 +685,33 @@
                             <TransitionPropertyViewModelComparator>
                                 <BindablePropertyBoolean>
                                     <DataBindContext sourcePathIds="0:60-0:108" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:180" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <!-- Unplugged with the animation off: the bolt simply disappears. -->
+                    <StateTransition stateToId="0:146" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:108" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:180" propertyKey="634" />
                                 </BindablePropertyBoolean>
                             </TransitionPropertyViewModelComparator>
                             <TransitionValueBooleanComparator value="true" />
@@ -1643,6 +1765,190 @@
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
+
+        <!-- The cellular generation's resting pose: arcs retracted, plane and crescent away, the label
+             up. Same shape as MiddleOff/MiddlePlane/MiddleDnd so the star machine always has a stable
+             state to land on, and the 1-frame `loop` keeps the machine advancing (and therefore
+             drawing). -->
+        <LinearAnimation duration="1" name="MiddleNet" id="0:174" loopValue="loop">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:51">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:52">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:170">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Wi-Fi -> the cellular generation. The arcs retract exactly as they do for the plane and the
+             crescent, so the slot empties the same way whatever is arriving; the label then rises on a
+             plain ease-out (no overshoot - a signal label is information, not an event). -->
+        <LinearAnimation duration="28" name="NetIn" id="0:175">
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.2394" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="14" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8803" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="14" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0.2367" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="14" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.8817" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.5" interpolationType="hold" frame="14" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="11" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:170">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="6">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="18" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0.7" interpolationType="cubic" frame="6">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="22" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0.7" interpolationType="cubic" frame="6">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="22" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- The cellular generation -> Wi-Fi: the label drops away first, then the arcs come back
+             promptly (turning Wi-Fi on is a request to connect). -->
+        <LinearAnimation duration="24" name="NetOut" id="0:176">
+            <KeyedObject objectId="0:170">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="12" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8" interpolationType="hold" frame="12" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8" interpolationType="hold" frame="12" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:110">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.2394" interpolationType="hold" frame="18" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8803" interpolationType="hold" frame="18" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:111">
+                <KeyedProperty propertyKey="115">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.2367" interpolationType="hold" frame="18" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="116">
+                    <KeyFrameDouble value="0.5" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8817" interpolationType="hold" frame="18" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:16">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="8">
+                        <CubicEaseInterpolator x1="0" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="18" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
     </Artboard>
 
     <!-- Font for the digits. Montserrat (OFL) ships with the Rive CLI samples; the final build will
@@ -1672,6 +1978,9 @@
         <ViewModelPropertyColor name="fgColor" id="0:82" />
         <ViewModelPropertyString name="percentText" id="0:83" />
         <ViewModelPropertyNumber name="percentFontSize" id="0:84" />
+        <!-- The cellular generation ("5G"/"4G"/"3G"/"2G") shown in the middle slot when Wi-Fi is off.
+             Empty means no service, which leaves the slot empty rather than showing a stale label. -->
+        <ViewModelPropertyString name="networkText" id="0:173" />
         <!-- Which occupant the middle slot holds: 0 off, 1 Wi-Fi, 2 airplane, 3 DND. One number rather
              than a boolean per occupant, because the slot holds exactly one thing at a time - and a
              transition can compare a number (`BindablePropertyNumber` + `TransitionValueNumberComparator`),
@@ -1685,6 +1994,9 @@
         <ViewModelPropertyBoolean name="visible" id="0:106" />
         <!-- Charging: drives the bolt's journey from the middle slot to the ring's gap. -->
         <ViewModelPropertyBoolean name="charging" id="0:108" />
+        <!-- Whether the charging *journey* plays. False shows the bolt instantly, so the user can turn
+             the charge animation off without losing the bolt. -->
+        <ViewModelPropertyBoolean name="animateCharge" id="0:180" />
         <!-- The two signal axes the blend layers read: 0-3 arcs, 0-4 spheres. -->
         <ViewModelPropertyNumber name="wifiLevel" id="0:150" />
         <ViewModelPropertyNumber name="cellLevel" id="0:151" />
@@ -1712,10 +2024,12 @@
             <ViewModelInstanceColor viewModelPropertyId="0:82" propertyValue="FFFFFFFF" />
             <ViewModelInstanceString viewModelPropertyId="0:83" propertyValue="100" />
             <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="26" />
+            <ViewModelInstanceString viewModelPropertyId="0:173" propertyValue="" />
             <ViewModelInstanceNumber viewModelPropertyId="0:107" propertyValue="1" />
             <ViewModelInstanceNumber viewModelPropertyId="0:105" propertyValue="0" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:106" propertyValue="true" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:108" propertyValue="false" />
+            <ViewModelInstanceBoolean viewModelPropertyId="0:180" propertyValue="true" />
             <ViewModelInstanceNumber viewModelPropertyId="0:150" propertyValue="3" />
             <ViewModelInstanceNumber viewModelPropertyId="0:151" propertyValue="4" />
             <ViewModelInstanceNumber viewModelPropertyId="0:87" propertyValue="0" />

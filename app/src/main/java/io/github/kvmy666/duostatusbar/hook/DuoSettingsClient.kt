@@ -26,7 +26,11 @@ internal data class ModuleSettings(
     val revision: Long,
     val tapAction: String,
     val doubleTapAction: String,
-    val longPressAction: String
+    val longPressAction: String,
+    val animationsEnabled: Boolean,
+    val arrivalEnabled: Boolean,
+    val departureEnabled: Boolean,
+    val chargingEnabled: Boolean
 ) {
     companion object {
         val DEFAULT = ModuleSettings(
@@ -39,7 +43,11 @@ internal data class ModuleSettings(
             revision = 0L,
             tapAction = "no_action",
             doubleTapAction = "no_action",
-            longPressAction = "no_action"
+            longPressAction = "no_action",
+            animationsEnabled = true,
+            arrivalEnabled = true,
+            departureEnabled = true,
+            chargingEnabled = true
         )
     }
 }
@@ -69,7 +77,11 @@ internal object DuoSettingsClient {
                     revision = cursor.getLong(cursor.getColumnIndexOrThrow(DuoPrefs.COL_REVISION)),
                     tapAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_TAP)) ?: "no_action",
                     doubleTapAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DOUBLE_TAP)) ?: "no_action",
-                    longPressAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_LONG_PRESS)) ?: "no_action"
+                    longPressAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_LONG_PRESS)) ?: "no_action",
+                    animationsEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ANIMATIONS)) == 1,
+                    arrivalEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ARRIVAL)) == 1,
+                    departureEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DEPARTURE)) == 1,
+                    chargingEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_CHARGING)) == 1
                 )
             }
         } ?: ModuleSettings.DEFAULT

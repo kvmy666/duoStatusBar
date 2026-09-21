@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -8,12 +9,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -25,7 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.core.content.FileProvider
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,13 +39,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import io.github.kvmy666.duostatusbar.DuoPreview
+import androidx.core.content.FileProvider
+import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.DuoRivePreview
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.DuoCanvasView
@@ -61,18 +70,17 @@ import kotlinx.coroutines.delay
  *
  * Every change is written to the app's own storage and then broadcast, which is what makes it reach the
  * status bar immediately: the module listens for that broadcast and re-reads (see
- * `hook/DuoHook.hookSettingsChanges`). The module cannot be written to directly, so this handshake is the
- * mechanism — the app owns the values, the module applies them.
+ * `hook/DuoHook.hookSettingsChanges`). The app cannot write to the module directly, so this handshake is
+ * the mechanism — the app owns the values, the module applies them.
  *
- * The diagnostics card shows what the module reported about itself: facts, not intentions. When it says
- * "no report yet", the cause is almost always scope or enablement in LSPosed, which is what the hint
- * underneath it is for.
+ * One exception is the size: resizing the Rive view while System UI is running is what used to take it
+ * down, so a size change is only applied on the next start. That is why the size row carries a Restart
+ * button and says so.
  */
 @Composable
 fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
-    var loop by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(DuoPrefs.status(context)) }
     var history by remember { mutableStateOf(DuoPrefs.statusHistory(context)) }
     var query by remember { mutableStateOf("") }
@@ -104,6 +112,10 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
+        Text(
+            text = stringResource(R.string.app_tagline),
+            style = MaterialTheme.typography.bodyMedium
+        )
 
         OutlinedTextField(
             value = query,
@@ -113,60 +125,43 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        if (matches(stringResource(R.string.settings_title), stringResource(R.string.settings_master),
-                stringResource(R.string.settings_master_detail), stringResource(R.string.settings_renderer),
-                stringResource(R.string.settings_renderer_detail), stringResource(R.string.settings_percent),
-                stringResource(R.string.settings_percent_detail))
+        // ------------------------------------------------------------------ Battery icon
+        if (matches(
+                stringResource(R.string.section_element), stringResource(R.string.settings_master),
+                stringResource(R.string.settings_master_detail), stringResource(R.string.settings_percent),
+                stringResource(R.string.settings_percent_detail), stringResource(R.string.settings_size),
+                stringResource(R.string.settings_position)
+            )
         ) Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.titleMedium)
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionTitle(stringResource(R.string.section_element))
                 SettingSwitch(
                     label = stringResource(R.string.settings_master),
                     detail = stringResource(R.string.settings_master_detail),
                     checked = settings.enabled,
                     preview = {
-                        // Off is the element *absent*, so the demo shows an empty ring with no
-                        // number rather than a ring reading "0".
-                        DuoSettingPreview(off = demo(level = 0, showPercent = false), on = demo())
+                        // Off is the element *absent*: an empty chip, not a ring reading "0".
+                        DuoSettingPreview(
+                            off = demo(level = 0, showPercent = false),
+                            on = demo()
+                        )
                     }
                 ) { update(settings.copy(enabled = it)) }
-                SettingSwitch(
-                    label = stringResource(R.string.settings_renderer),
-                    detail = stringResource(R.string.settings_renderer_detail),
-                    checked = settings.useRive,
-                    enabled = settings.enabled
-                ) { update(settings.copy(useRive = it)) }
                 SettingSwitch(
                     label = stringResource(R.string.settings_percent),
                     detail = stringResource(R.string.settings_percent_detail),
                     checked = settings.showPercent,
                     enabled = settings.enabled,
                     preview = {
-                        DuoSettingPreview(
-                            off = demo(showPercent = false),
-                            on = demo(showPercent = true)
-                        )
+                        DuoSettingPreview(off = demo(showPercent = false), on = demo(showPercent = true))
                     }
                 ) { update(settings.copy(showPercent = it)) }
-            }
-        }
 
-        if (matches(stringResource(R.string.settings_preview), stringResource(R.string.settings_loop),
-                stringResource(R.string.settings_size), stringResource(R.string.settings_offset),
-                stringResource(R.string.settings_reveal))
-        ) Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(R.string.settings_preview), style = MaterialTheme.typography.titleMedium)
-                DuoPreview(loop = loop, revealMs = settings.revealMs)
-                SettingSwitch(
-                    label = stringResource(R.string.settings_loop),
-                    detail = null,
-                    checked = loop
-                ) { loop = it }
                 LabelledSlider(
                     label = "${stringResource(R.string.settings_size)} ${settings.sizePercent}%",
                     value = settings.sizePercent.toFloat(),
                     range = DuoPrefs.MIN_SIZE.toFloat()..DuoPrefs.MAX_SIZE.toFloat(),
+                    enabled = settings.enabled,
                     preview = {
                         DuoSettingPreview(
                             off = demo(),
@@ -175,36 +170,108 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                         )
                     }
                 ) { update(settings.copy(sizePercent = it.toInt())) }
-                // FR-25: the arrival is one Rive timeline played at five speeds, so this picks an index
-                // into the choices rather than a free millisecond value.
-                LabelledSlider(
-                    label = "${stringResource(R.string.settings_reveal)}: ${settings.revealMs} ms",
-                    value = DuoPrefs.REVEAL_CHOICES.indexOf(settings.revealMs)
-                        .coerceAtLeast(0).toFloat(),
-                    range = 0f..(DuoPrefs.REVEAL_CHOICES.size - 1).toFloat(),
-                    steps = DuoPrefs.REVEAL_CHOICES.size - 2
-                ) { index ->
-                    update(settings.copy(revealMs = DuoPrefs.REVEAL_CHOICES[index.toInt().coerceIn(0, DuoPrefs.REVEAL_CHOICES.size - 1)]))
-                }
                 Text(
-                    text = stringResource(R.string.settings_reveal_detail),
+                    text = stringResource(R.string.settings_size_restart),
                     style = MaterialTheme.typography.bodySmall
                 )
-                Text(
-                    text = "${stringResource(R.string.settings_offset)}: ${settings.offsetX} dp",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                PositionEditor(settings.offsetX) { update(settings.copy(offsetX = it)) }
+                Button(
+                    onClick = { restartSystemUi(context) },
+                    enabled = settings.enabled,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(stringResource(R.string.settings_restart)) }
+
+                PositionEditor(
+                    offsetDp = settings.offsetX,
+                    enabled = settings.enabled
+                ) { update(settings.copy(offsetX = it)) }
             }
         }
 
-        val emptyStatus = stringResource(R.string.settings_no_status)
+        // -------------------------------------------------------------------- Animations
+        if (matches(
+                stringResource(R.string.section_animations), stringResource(R.string.settings_animations),
+                stringResource(R.string.settings_anim_speed), stringResource(R.string.settings_anim_arrival),
+                stringResource(R.string.settings_anim_departure), stringResource(R.string.settings_anim_charging)
+            )
+        ) Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionTitle(stringResource(R.string.section_animations))
+                SettingSwitch(
+                    label = stringResource(R.string.settings_animations),
+                    detail = stringResource(R.string.settings_animations_detail),
+                    checked = settings.animationsEnabled,
+                    enabled = settings.enabled
+                ) { update(settings.copy(animationsEnabled = it)) }
+
+                // The arrival is one Rive timeline at five speeds, so this is a choice, not a number.
+                val speedIndex = (DuoPrefs.REVEAL_CHOICES.size - 1 -
+                        DuoPrefs.REVEAL_CHOICES.indexOf(settings.revealMs).coerceAtLeast(0))
+                LabelledSlider(
+                    label = "${stringResource(R.string.settings_anim_speed)}: ${SPEED_LABELS[speedIndex]}",
+                    value = speedIndex.toFloat(),
+                    range = 0f..(DuoPrefs.REVEAL_CHOICES.size - 1).toFloat(),
+                    steps = DuoPrefs.REVEAL_CHOICES.size - 2,
+                    enabled = settings.enabled && settings.animationsEnabled
+                ) { value ->
+                    val index = (DuoPrefs.REVEAL_CHOICES.size - 1 - value.toInt())
+                        .coerceIn(0, DuoPrefs.REVEAL_CHOICES.size - 1)
+                    update(settings.copy(revealMs = DuoPrefs.REVEAL_CHOICES[index]))
+                }
+
+                SettingSwitch(
+                    label = stringResource(R.string.settings_anim_arrival),
+                    detail = stringResource(R.string.settings_anim_arrival_detail),
+                    checked = settings.arrivalEnabled,
+                    enabled = settings.enabled && settings.animationsEnabled,
+                    preview = {
+                        DuoRivePreview(fireReveal = true) { demo() }
+                    }
+                ) { update(settings.copy(arrivalEnabled = it)) }
+                SettingSwitch(
+                    label = stringResource(R.string.settings_anim_departure),
+                    detail = stringResource(R.string.settings_anim_departure_detail),
+                    checked = settings.departureEnabled,
+                    enabled = settings.enabled && settings.animationsEnabled,
+                    preview = {
+                        DuoRivePreview(fireReveal = true) { phase ->
+                            if (phase < 0.5f) demo() else demo().copy(visible = false)
+                        }
+                    }
+                ) { update(settings.copy(departureEnabled = it)) }
+                SettingSwitch(
+                    label = stringResource(R.string.settings_anim_charging),
+                    detail = stringResource(R.string.settings_anim_charging_detail),
+                    checked = settings.chargingEnabled,
+                    enabled = settings.enabled && settings.animationsEnabled,
+                    preview = {
+                        DuoRivePreview { phase -> demo(charging = phase >= 0.5f) }
+                    }
+                ) { update(settings.copy(chargingEnabled = it)) }
+            }
+        }
+
+        // ------------------------------------------------------------------- Appearance
+        if (matches(stringResource(R.string.section_look), stringResource(R.string.settings_renderer),
+                stringResource(R.string.settings_renderer_detail))
+        ) Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionTitle(stringResource(R.string.section_look))
+                SettingSwitch(
+                    label = stringResource(R.string.settings_renderer),
+                    detail = stringResource(R.string.settings_renderer_detail),
+                    checked = settings.useRive,
+                    enabled = settings.enabled
+                ) { update(settings.copy(useRive = it)) }
+            }
+        }
+
+        // ------------------------------------------------------------------ Tap actions
         val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
-        if (matches(stringResource(R.string.settings_gestures), stringResource(R.string.settings_tap),
+        if (matches(stringResource(R.string.section_actions), stringResource(R.string.settings_tap),
                 stringResource(R.string.settings_double_tap), stringResource(R.string.settings_long_press))
         ) Card {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(R.string.settings_gestures), style = MaterialTheme.typography.titleMedium)
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionTitle(stringResource(R.string.section_actions))
                 Text(
                     text = if (autoExpand) {
                         stringResource(R.string.settings_gestures_note)
@@ -231,18 +298,17 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        if (matches(stringResource(R.string.settings_diagnostics), stringResource(R.string.settings_share),
-                stringResource(R.string.settings_save_file), stringResource(R.string.settings_donate))
+        // ------------------------------------------------------------------------ About
+        val emptyStatus = stringResource(R.string.settings_no_status)
+        if (matches(stringResource(R.string.section_about), stringResource(R.string.settings_status),
+                stringResource(R.string.settings_share), stringResource(R.string.settings_save_file),
+                stringResource(R.string.settings_donate))
         ) Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(R.string.settings_diagnostics), style = MaterialTheme.typography.titleMedium)
+                SectionTitle(stringResource(R.string.section_about))
                 Text(
                     text = status.ifEmpty { emptyStatus },
                     style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = stringResource(R.string.settings_gate_hint),
-                    style = MaterialTheme.typography.bodySmall
                 )
                 if (history.isNotEmpty()) {
                     Text(stringResource(R.string.settings_history), style = MaterialTheme.typography.labelLarge)
@@ -255,63 +321,48 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 }
                 Button(
                     onClick = {
-                        // Reuses the settings broadcast: the module re-resolves the stage, re-applies the layout
-                        // and reports again, which is exactly what "did it take effect?" means.
+                        // Reuses the settings broadcast: the module re-resolves the stage, re-applies the
+                        // layout and reports again, which is exactly what "did it take effect?" means.
                         context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_recheck)) }
                 Button(
-                    onClick = {
-                        val report = buildString {
-                            appendLine("Duo Status Bar diagnostics")
-                            appendLine("settings: $settings")
-                            appendLine("module: ").append(status.ifEmpty { "no report yet" })
-                            if (history.isNotEmpty()) {
-                                appendLine("history:")
-                                history.forEach { appendLine("  $it") }
-                            }
-                        }
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, report)
-                        }
-                        context.startActivity(Intent.createChooser(send, "Share diagnostics"))
-                    },
+                    onClick = { shareText(context, buildDiagnostics(settings, status, history)) },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_share)) }
                 Button(
                     onClick = {
                         val file = writeDiagnostics(context, buildDiagnostics(settings, status, history))
-                        if (file != null) {
-                            val share = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_STREAM, file)
-                                putExtra(Intent.EXTRA_TEXT, "Duo Status Bar diagnostics")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(Intent.createChooser(share, "Save diagnostics"))
-                        }
+                        if (file != null) shareFile(context, file)
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_save_file)) }
                 Button(
-                    onClick = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL))
-                        )
-                    },
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL))) },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_donate)) }
+                Text(
+                    text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }
 }
 
-/** FR-28: where the donate button goes. */
+/** FR-28: where the support button goes. */
 private const val DONATE_URL = "https://paypal.me/kroomfahd"
 
-/** The report the diagnostics buttons send - one text, shared or written to a file. */
+/** FR-25: the five arrival speeds, slowest first, matching [DuoPrefs.REVEAL_CHOICES] reversed. */
+private val SPEED_LABELS = listOf("Slow", "Relaxed", "Normal", "Brisk", "Fast")
+
+/** Asks the module to restart System UI so a size change takes effect. */
+private fun restartSystemUi(context: Context) {
+    context.sendBroadcast(Intent(DuoPrefs.ACTION_RESTART_SYSTEMUI))
+}
+
+/** The report the About buttons send — one text, shared or written to a file. */
 private fun buildDiagnostics(settings: DuoSettings, status: String, history: List<String>): String =
     buildString {
         appendLine("Duo Status Bar diagnostics")
@@ -323,6 +374,24 @@ private fun buildDiagnostics(settings: DuoSettings, status: String, history: Lis
         }
     }
 
+private fun shareText(context: Context, report: String) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, report)
+    }
+    context.startActivity(Intent.createChooser(send, "Share diagnostics"))
+}
+
+private fun shareFile(context: Context, file: Uri) {
+    val share = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_STREAM, file)
+        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar diagnostics")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(share, "Save diagnostics"))
+}
+
 /**
  * FR-28: writes the report to the app's own diagnostics directory and returns a shareable Uri.
  *
@@ -330,7 +399,7 @@ private fun buildDiagnostics(settings: DuoSettings, status: String, history: Lis
  * the app's external files dir and is handed out through a FileProvider, so nothing else is exposed.
  * Returns null (and the caller shares nothing) if the directory is unavailable.
  */
-private fun writeDiagnostics(context: android.content.Context, report: String): Uri? = try {
+private fun writeDiagnostics(context: Context, report: String): Uri? = try {
     val dir = context.getExternalFilesDir("diagnostics")
     if (dir == null) {
         null
@@ -345,62 +414,88 @@ private fun writeDiagnostics(context: android.content.Context, report: String): 
     null
 }
 
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+}
+
 /**
- * FR-17: drag the element along a mock status bar instead of guessing a number.
+ * FR-17: set the element's horizontal position on a status-bar-shaped preview.
  *
- * The strip hosts the **same Canvas element** the status bar uses (no native code, so it can never break the
- * settings app), driven by the same [DuoMapping], and writes the horizontal offset the module applies as
- * `translationX` — so what is dragged here is what the phone does, not a picture of it.
+ * It is drawn to look like the real bar — a dark pill with the clock on the left and the element where
+ * the battery sits — and the element is the **same Canvas element** the status bar falls back to, driven
+ * by the same [DuoMapping]. Dragging anywhere on the bar moves it, and the value is shown so it can be
+ * set exactly.
  */
 @Composable
-private fun PositionEditor(offsetDp: Int, onOffset: (Int) -> Unit) {
+private fun PositionEditor(offsetDp: Int, enabled: Boolean, onOffset: (Int) -> Unit) {
     val density = LocalDensity.current
     var drag by remember { mutableFloatStateOf(offsetDp.toFloat()) }
-    // Keep in step when the value changes from elsewhere (a re-read, or another screen).
     LaunchedEffect(offsetDp) { drag = offsetDp.toFloat() }
     val limit = DuoPrefs.MAX_OFFSET.toFloat()
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .pointerInput(Unit) {
-                detectDragGestures { _, amount ->
-                    val next = (drag + amount.x / density.density).coerceIn(-limit, limit)
-                    drag = next
-                    onOffset(next.toInt())
-                }
-            },
-        contentAlignment = Alignment.CenterEnd
-    ) {
-        Text(
-            text = stringResource(R.string.settings_drag_hint),
-            style = MaterialTheme.typography.bodySmall,
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(stringResource(R.string.settings_position), style = MaterialTheme.typography.bodyMedium)
+        Box(
             modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 10.dp)
-        )
-        AndroidView(
-            modifier = Modifier
-                .size(40.dp)
-                .padding(end = 18.dp),
-            factory = { ctx -> DuoCanvasView(ctx).also { it.start() } },
-            update = { view ->
-                (view as? DuoElement)?.render(
-                    DuoMapping.visual(
-                        level = 78,
-                        charging = false,
-                        saver = false,
-                        showPercent = true,
-                        wifiLevel = 3,
-                        cellLevel = 4,
-                        airplane = false
+                .fillMaxWidth()
+                .height(40.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF101014))
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    detectDragGestures { _, amount ->
+                        val next = (drag + amount.x / density.density).coerceIn(-limit, limit)
+                        drag = next
+                        onOffset(next.toInt())
+                    }
+                },
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                text = "9:41",
+                color = Color.White,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(start = 14.dp)
+            )
+            AndroidView(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp)
+                    .size(32.dp),
+                factory = { ctx -> DuoCanvasView(ctx).also { it.start() } },
+                update = { view ->
+                    (view as? DuoElement)?.render(
+                        DuoMapping.visual(
+                            level = 78,
+                            charging = false,
+                            saver = false,
+                            showPercent = true,
+                            wifiLevel = 3,
+                            cellLevel = 4,
+                            airplane = false
+                        )
                     )
-                )
-                view.translationX = drag * density.density
-            }
-        )
+                    view.translationX = drag * density.density
+                }
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(R.string.settings_position_hint),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f)
+            )
+            Text("${drag.toInt()} dp", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.width(8.dp))
+            TextButton(
+                onClick = {
+                    drag = 0f
+                    onOffset(0)
+                },
+                enabled = enabled
+            ) { Text(stringResource(R.string.settings_position_reset)) }
+        }
     }
 }
 
@@ -438,8 +533,7 @@ private fun demo(
     charging: Boolean = false,
     showPercent: Boolean = true,
     airplane: Boolean = false,
-    dnd: Boolean = false,
-    middleBlend: Float = 1f
+    dnd: Boolean = false
 ) = DuoMapping.visual(
     level = level,
     charging = charging,
@@ -460,6 +554,7 @@ private fun LabelledSlider(
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     steps: Int = 0,
+    enabled: Boolean = true,
     preview: (@Composable () -> Unit)? = null,
     onChange: (Float) -> Unit
 ) {
@@ -472,7 +567,7 @@ private fun LabelledSlider(
                 modifier = Modifier.padding(start = if (preview == null) 0.dp else 12.dp)
             )
         }
-        Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps)
+        Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps, enabled = enabled)
     }
 }
 

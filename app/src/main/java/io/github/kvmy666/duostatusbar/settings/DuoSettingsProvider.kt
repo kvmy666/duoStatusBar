@@ -96,7 +96,11 @@ class DuoSettingsProvider : ContentProvider() {
             settings.tapAction,
             settings.doubleTapAction,
             settings.longPressAction,
-            DuoPrefs.nearestReveal(settings.revealMs)
+            DuoPrefs.nearestReveal(settings.revealMs),
+            if (settings.animationsEnabled) 1 else 0,
+            if (settings.arrivalEnabled) 1 else 0,
+            if (settings.departureEnabled) 1 else 0,
+            if (settings.chargingEnabled) 1 else 0
         )
     }
 }

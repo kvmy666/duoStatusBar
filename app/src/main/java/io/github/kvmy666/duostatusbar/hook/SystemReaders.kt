@@ -51,6 +51,33 @@ internal object SystemReaders {
         current
     }
 
+    /** Whether the Wi-Fi radio is on at all — distinct from "connected", which is a signal level. */
+    fun isWifiEnabled(context: Context, current: Boolean): Boolean = try {
+        (context.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.isWifiEnabled ?: current
+    } catch (t: Throwable) {
+        L.w("isWifiEnabled: ${t.message}")
+        current
+    }
+
+    /**
+     * The cellular generation the phone is on ("5G"/"4G"/"3G"/"2G"), or empty when there is no
+     * service. Empty is a real answer here (unknown type), so it is returned as-is rather than
+     * masked by the last value; only a failed read keeps the caller's value (FR-21).
+     */
+    fun networkGeneration(context: Context, airplane: Boolean, current: String): String = try {
+        if (airplane) ""
+        else {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            val data = tm?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+            val type = if (data != TelephonyManager.NETWORK_TYPE_UNKNOWN) data
+            else tm?.voiceNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+            DuoMapping.networkGeneration(type)
+        }
+    } catch (t: Throwable) {
+        L.w("networkGeneration: ${t.message}")
+        current
+    }
+
     fun isAirplaneOn(context: Context): Boolean = try {
         Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) == 1
     } catch (_: Throwable) {

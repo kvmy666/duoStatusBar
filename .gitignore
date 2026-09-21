@@ -18,6 +18,10 @@ keystore.properties
 *.jks
 *.keystore
 
+# ---- secrets (never commit) ----
+.env
+.env.*
+
 # ---- reverse-engineering artefacts ----
 # SystemUI/system files pulled from the device: local analysis only, never published.
 reverse/

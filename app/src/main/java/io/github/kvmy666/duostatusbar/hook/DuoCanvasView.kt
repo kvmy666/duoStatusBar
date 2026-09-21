@@ -117,6 +117,19 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
             canvas.restore()
         }
 
+        // FR-06: with Wi-Fi off the slot shows the cellular generation. Same face and weight as the
+        // Rive label; the ring's percentage is drawn below and does not overlap it.
+        if (visual.middleMode == DuoMapping.MIDDLE_NETWORK && visual.networkText.isNotEmpty()) {
+            label.color = visual.fgColor
+            label.textSize = NETWORK_FONT_SIZE * k
+            canvas.drawText(
+                visual.networkText,
+                cx,
+                cy + NETWORK_SLOT_Y * k - (label.descent() + label.ascent()) / 2f,
+                label
+            )
+        }
+
         if (visual.boltOpacity > 0f) {
             drawBolt(canvas, cx, cy, size)
             return
@@ -161,6 +174,10 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
 
         /** Middle slot, design units below the ring centre — the Wi-Fi centre the moon replaces. */
         const val DND_SLOT_Y = 17f
+
+        /** The cellular label's centre, matching the Rive text node (group-relative y 1). */
+        const val NETWORK_SLOT_Y = 1f
+        const val NETWORK_FONT_SIZE = 30f
 
         /**
          * The DND crescent, generated from the device's own `drawable/stat_sys_dnd` by

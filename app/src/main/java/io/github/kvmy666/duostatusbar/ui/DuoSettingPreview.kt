@@ -1,6 +1,10 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -8,7 +12,10 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -51,17 +58,25 @@ fun DuoSettingPreview(
         }
     }
 
-    AndroidView(
-        modifier = modifier.size(size),
-        factory = { context -> DuoCanvasView(context).also { it.start() } },
-        update = { view ->
-            (view as? DuoElement)?.render(off.lerp(on, phase))
-            val scale = scaleFrom + (1f - scaleFrom) * phase
-            view.scaleX = scale
-            view.scaleY = scale
-            view.translationX = slideDp * phase * view.resources.displayMetrics.density
-        }
-    )
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(DEMO_BACKGROUND),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context -> DuoCanvasView(context).also { it.start() } },
+            update = { view ->
+                (view as? DuoElement)?.render(off.lerp(on, phase))
+                val scale = scaleFrom + (1f - scaleFrom) * phase
+                view.scaleX = scale
+                view.scaleY = scale
+                view.translationX = slideDp * phase * view.resources.displayMetrics.density
+            }
+        )
+    }
 }
 
 /**
@@ -86,3 +101,10 @@ private const val MOVE = 0.30f
 
 /** Long enough to read, short enough that several rows are not all in step. */
 private const val DEMO_PERIOD_MS = 2400L
+
+/**
+ * The chip the demo is drawn on. The element is white, so it needs a dark backing to be visible on a
+ * light card — without this the row demos were effectively invisible in light mode, which is exactly
+ * what "the GIFs aren't showing what the toggle does" looked like.
+ */
+private val DEMO_BACKGROUND = Color(0xFF101014)

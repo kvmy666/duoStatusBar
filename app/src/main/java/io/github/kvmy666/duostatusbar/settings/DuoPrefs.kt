@@ -40,6 +40,15 @@ data class DuoSettings(
      */
     val revealMs: Int = 1000,
     /**
+     * The Animations section (FR-25). `animationsEnabled` is the master switch; when it is off none of
+     * the decorative motion plays. The three switches below pick which of them are allowed when the
+     * master is on. Off means the change is instant, not that the feature stops working.
+     */
+    val animationsEnabled: Boolean = true,
+    val arrivalEnabled: Boolean = true,
+    val departureEnabled: Boolean = true,
+    val chargingEnabled: Boolean = true,
+    /**
      * FR-05/18: what a gesture on the element asks Auto Expand to do. Its action keys, or `no_action`.
      * The defaults mean the element consumes no touches at all — no gestures, no conflicts.
      */
@@ -53,6 +62,14 @@ object DuoPrefs {
     const val AUTHORITY = "io.github.kvmy666.duostatusbar.settings"
     const val ACTION_SETTINGS_CHANGED = "io.github.kvmy666.duostatusbar.SETTINGS_CHANGED"
 
+    /**
+     * Sent by the app when the user taps "Restart System UI". The module lives inside System UI, so it is
+     * the only side that can restart it: it kills its own process and Android brings System UI straight
+     * back. Needed because the size only takes effect on a fresh start (resizing it live is what used to
+     * take System UI down).
+     */
+    const val ACTION_RESTART_SYSTEMUI = "io.github.kvmy666.duostatusbar.RESTART_SYSTEMUI"
+
     const val COL_ENABLED = "enabled"
     const val COL_USE_RIVE = "use_rive"
     const val COL_SHOW_PERCENT = "show_percent"
@@ -63,11 +80,16 @@ object DuoPrefs {
     const val COL_DOUBLE_TAP = "double_tap_action"
     const val COL_LONG_PRESS = "long_press_action"
     const val COL_REVEAL_MS = "reveal_ms"
+    const val COL_ANIMATIONS = "animations_enabled"
+    const val COL_ARRIVAL = "arrival_enabled"
+    const val COL_DEPARTURE = "departure_enabled"
+    const val COL_CHARGING = "charging_enabled"
 
     /** The column set the module expects; kept in one place so both sides cannot drift. */
     val COLUMNS = arrayOf(
         COL_ENABLED, COL_USE_RIVE, COL_SHOW_PERCENT, COL_SIZE_PERCENT, COL_OFFSET_X, COL_REVISION,
-        COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS, COL_REVEAL_MS
+        COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS, COL_REVEAL_MS,
+        COL_ANIMATIONS, COL_ARRIVAL, COL_DEPARTURE, COL_CHARGING
     )
 
     private const val PREFS = "duo_settings"
@@ -85,6 +107,10 @@ object DuoPrefs {
             sizePercent = p.getInt(COL_SIZE_PERCENT, 100),
             offsetX = p.getInt(COL_OFFSET_X, 0),
             revealMs = nearestReveal(p.getInt(COL_REVEAL_MS, DEFAULT_REVEAL_MS)),
+            animationsEnabled = p.getBoolean(COL_ANIMATIONS, true),
+            arrivalEnabled = p.getBoolean(COL_ARRIVAL, true),
+            departureEnabled = p.getBoolean(COL_DEPARTURE, true),
+            chargingEnabled = p.getBoolean(COL_CHARGING, true),
             tapAction = p.getString(COL_TAP, "no_action") ?: "no_action",
             doubleTapAction = p.getString(COL_DOUBLE_TAP, "no_action") ?: "no_action",
             longPressAction = p.getString(COL_LONG_PRESS, "no_action") ?: "no_action"
@@ -102,6 +128,10 @@ object DuoPrefs {
             .putInt(COL_SIZE_PERCENT, settings.sizePercent.coerceIn(MIN_SIZE, MAX_SIZE))
             .putInt(COL_OFFSET_X, settings.offsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET))
             .putInt(COL_REVEAL_MS, nearestReveal(settings.revealMs))
+            .putBoolean(COL_ANIMATIONS, settings.animationsEnabled)
+            .putBoolean(COL_ARRIVAL, settings.arrivalEnabled)
+            .putBoolean(COL_DEPARTURE, settings.departureEnabled)
+            .putBoolean(COL_CHARGING, settings.chargingEnabled)
             .putString(COL_TAP, settings.tapAction)
             .putString(COL_DOUBLE_TAP, settings.doubleTapAction)
             .putString(COL_LONG_PRESS, settings.longPressAction)

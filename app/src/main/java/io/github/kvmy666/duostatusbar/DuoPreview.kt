@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -23,9 +26,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.rive.runtime.kotlin.RiveAnimationView
@@ -35,6 +41,7 @@ import app.rive.runtime.kotlin.core.ViewModelInstance
 import io.github.kvmy666.duostatusbar.hook.DuoBinder
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
+import io.github.kvmy666.duostatusbar.ui.demoPhase
 import kotlinx.coroutines.delay
 
 /**
@@ -63,6 +70,9 @@ fun DuoPreview(
     var dnd by remember { mutableStateOf(false) }
     var wifi by remember { mutableFloatStateOf(3f) }
     var cell by remember { mutableFloatStateOf(4f) }
+    /** FR-06: with Wi-Fi off the middle slot shows the cellular generation instead of the glyph. */
+    var wifiOn by remember { mutableStateOf(true) }
+    var generation by remember { mutableIntStateOf(0) }
     var revealTick by remember { mutableIntStateOf(0) }
     val instance = remember { mutableStateOf<ViewModelInstance?>(null) }
 
@@ -75,7 +85,9 @@ fun DuoPreview(
         wifiLevel = wifi.toInt(),
         cellLevel = cell.toInt(),
         airplane = airplane,
-        dnd = dnd
+        dnd = dnd,
+        wifiOn = wifiOn,
+        networkText = GENERATIONS[generation]
     )
 
     // The state machine fires on the false -> true edge, so the request is cleared afterwards.
@@ -128,10 +140,84 @@ fun DuoPreview(
         Toggle("Do Not Disturb (moon)", dnd) { dnd = it }
         LabelledSlider("Wi-Fi ${wifi.toInt()} of 3", wifi, 0f..3f, steps = 2) { wifi = it }
         LabelledSlider("Cellular ${cell.toInt()} of 4", cell, 0f..4f, steps = 3) { cell = it }
+        Toggle("Wi-Fi off (cellular label in the slot)", wifiOn) { wifiOn = it }
+        LabelledSlider(
+            "Generation ${GENERATIONS[generation]}",
+            generation.toFloat(), 0f..3f, steps = 2
+        ) { generation = it.toInt() }
         Button(onClick = { revealTick++ }) { Text("Replay reveal ($revealMs ms)") }
         Text(
             text = "tint #${"%08X".format(visual.tint)} · ${DuoBinder.PROPERTY_COUNT} properties bound per snapshot",
             style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+/**
+ * FR-09: a small, looping Rive demonstration of one animation setting.
+ *
+ * It shows the *real* element, so the difference a switch makes is the real motion rather than a picture
+ * of it: [visualAt] returns the snapshot for the current phase and the state machine animates between
+ * them, which is what makes the arrival, the departure and the charging journey visible here.
+ */
+@Composable
+fun DuoRivePreview(
+    modifier: Modifier = Modifier,
+    size: Dp = 56.dp,
+    periodMs: Long = RIVE_DEMO_PERIOD_MS,
+    fireReveal: Boolean = false,
+    scaleFrom: Float = 1f,
+    visualAt: (Float) -> DuoVisual
+) {
+    val instance = remember { mutableStateOf<ViewModelInstance?>(null) }
+    val lastVisual = remember { mutableStateOf<DuoVisual?>(null) }
+    var phase by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(periodMs) {
+        val start = withFrameNanos { it }
+        while (true) {
+            val now = withFrameNanos { it }
+            phase = demoPhase((((now - start) / 1_000_000L) % periodMs).toFloat() / periodMs)
+        }
+    }
+    // The arrival is a trigger, not a state, so it is fired once per loop rather than driven by phase.
+    LaunchedEffect(fireReveal, periodMs) {
+        if (!fireReveal) return@LaunchedEffect
+        while (true) {
+            delay(periodMs)
+            val vm = instance.value ?: continue
+            try {
+                DuoBinder.requestReveal(vm, 1000)
+                delay(160)
+                DuoBinder.requestReveal(vm, 0)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Color(0xFF101014)),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx -> createRiveView(ctx, instance) },
+            update = { view ->
+                val visual = visualAt(phase)
+                // Only push when the snapshot actually changes, and only once the view model has bound:
+                // the phase moves every frame, but the state machine needs one write per state.
+                val vm = instance.value
+                if (vm != null && visual != lastVisual.value) {
+                    pushVisual(vm, visual)
+                    lastVisual.value = visual
+                }
+                val scale = scaleFrom + (1f - scaleFrom) * phase
+                view.scaleX = scale
+                view.scaleY = scale
+            }
         )
     }
 }
@@ -205,6 +291,12 @@ private const val MAX_POLLS = 25
 
 /** FR-09: the pause between loops of the reveal in the preview, so the bounce stays readable. */
 private const val LOOP_GAP_MS = 700L
+
+/** FR-09: one full off -> on -> off cycle for the Rive row demos. */
+private const val RIVE_DEMO_PERIOD_MS = 2800L
+
+/** FR-06: the labels the middle slot can show when Wi-Fi is off, best first. */
+private val GENERATIONS = listOf("5G", "4G", "3G", "2G")
 
 @Composable
 private fun LabelledSlider(

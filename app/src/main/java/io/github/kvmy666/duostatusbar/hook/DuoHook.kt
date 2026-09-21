@@ -14,6 +14,8 @@ import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -47,7 +49,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     fun install() {
         L.guard("DuoHook install") {
-            L.i("=== Duo Status Bar: SystemUI integration ===")
+            L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
             hookApplication()
         }
     }
@@ -92,6 +94,20 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         L.guard("DuoHook settings receiver") {
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                    // The size only takes effect on a fresh start, so the app asks for one here. This
+                    // module is the only side that can do it: it lives inside System UI, and killing its
+                    // own process makes Android bring System UI straight back.
+                    if (intent?.action == DuoPrefs.ACTION_RESTART_SYSTEMUI) {
+                        L.i("restart requested by the app - restarting System UI")
+                        handler.postDelayed({
+                            try {
+                                android.os.Process.killProcess(android.os.Process.myPid())
+                            } catch (t: Throwable) {
+                                L.w("restart failed: ${t.javaClass.simpleName}: ${t.message}")
+                            }
+                        }, RESTART_DELAY_MS)
+                        return
+                    }
                     L.guard("DuoHook settings changed") {
                         val stage = DuoGuard(ctx).stage()
                         val settings = host?.refreshSettings()
@@ -106,7 +122,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             ctx.registerReceiver(
                 receiver,
-                IntentFilter(DuoSettingsClient.ACTION_SETTINGS_CHANGED),
+                IntentFilter().apply {
+                    addAction(DuoSettingsClient.ACTION_SETTINGS_CHANGED)
+                    addAction(DuoPrefs.ACTION_RESTART_SYSTEMUI)
+                },
                 Context.RECEIVER_EXPORTED
             )
             L.i("listening for app settings changes")
@@ -328,6 +347,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
         /** After a shade drag settles, the ROM re-shows its icon views once more. */
         const val SHADE_SETTLE_MS = 400L
+
+        /** Give the restart broadcast a moment to finish before the process goes. */
+        const val RESTART_DELAY_MS = 300L
         const val RETRY_MS = 2_000L
         const val MAX_ATTEMPTS = 6
     }
