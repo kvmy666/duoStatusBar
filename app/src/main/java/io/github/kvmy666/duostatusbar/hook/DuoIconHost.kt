@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class DuoIconHost(private val context: Context) {
 
     private var host: LinearLayout? = null
+    private var root: View? = null
     private var element: DuoElement? = null
     private val guard = DuoGuard(context)
     private val rom = RomDetection.forThisRom(
@@ -139,6 +140,7 @@ internal class DuoIconHost(private val context: Context) {
                 Log.w(TAG, "system_icons not found - status bar left untouched")
                 return false
             }
+            root = statusBarRoot
             val candidate = createElement(statusBarRoot, stage)
             if (factsLogged.compareAndSet(false, true)) {
                 DuoSbFacts.report(context, statusBarRoot, target, slotWidthPx(target))
@@ -217,10 +219,41 @@ internal class DuoIconHost(private val context: Context) {
     fun reapplyHiding() {
         val target = host ?: return
         val keep = element?.ui ?: return
+        if (!ensureElementAttached()) {
+            // Never leave a hole: if the element cannot live in the rebuilt strip, the stock icons come back
+            // rather than an empty stretch of status bar. The next hide pass remembers them again.
+            Log.w(TAG, "element could not be re-attached - restoring the stock icons instead of leaving a gap")
+            restoreStockViews()
+            return
+        }
         try {
             hideEverythingExcept(target, keep)
         } catch (t: Throwable) {
             Log.w(TAG, "reapplyHiding: ${t.message}")
+        }
+    }
+
+    /**
+     * Rotation (and a changed icon set on some ROMs) re-inflates the whole strip, so our view is gone from the
+     * tree while `host` still points at the *old* container. Hiding the stock icons in the new strip at that
+     * moment would produce an empty status bar — the one failure this module must never cause. So the element
+     * is re-attached first, and if that is not possible the caller is told to put the stock icons back.
+     */
+    private fun ensureElementAttached(): Boolean {
+        val view = element?.ui ?: return true
+        val target = host ?: return false
+        if (view.parent === target && view.isAttachedToWindow) return true
+        return try {
+            (view.parent as? ViewGroup)?.removeView(view)
+            val fresh = root?.let { findStatusIconsHost(it) } ?: target
+            host = fresh
+            fresh.addView(view)
+            applyLayout()
+            Log.i(TAG, "element re-attached into ${fresh.javaClass.simpleName} after the strip was rebuilt")
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "re-attach failed: ${t.javaClass.simpleName}: ${t.message}")
+            false
         }
     }
 
@@ -234,6 +267,7 @@ internal class DuoIconHost(private val context: Context) {
         element = null
         restoreStockViews()
         host = null
+        root = null
     }
 
     // ----------------------------------------------------------------------------- internals
