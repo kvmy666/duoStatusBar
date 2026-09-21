@@ -44,6 +44,8 @@ docs/evidence/*-statusbar.png
 # ---- misc ----
 Thumbs.db
 desktop.ini
+__pycache__/
+*.pyc
 
 # build error logs
 *.err

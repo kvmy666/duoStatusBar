@@ -169,6 +169,33 @@
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:75" />
             </Shape>
 
+            <!-- =============================== DND moon ===============================
+                 The middle slot's second occupant (FR-06): while Do Not Disturb is on, the Wi-Fi
+                 fades out and this crescent fades in. The path is NOT drawn by hand - it is the
+                 real `drawable/stat_sys_dnd` from the target device's SystemUI, read with
+                 `aapt2 dump xmltree` and converted to Rive cubic handles by
+                 tools/dnd-moon-to-rive.py, which resamples the result against the source cubics
+                 and refuses to emit a mismatch. The shape sits at the Wi-Fi centre (-0.5, 17) and
+                 is scaled to the slot. -->
+
+            <Shape x="-0.5" y="17" opacity="0" name="dndMoon" id="0:52">
+                <PointsPath isClosed="true" name="Path" id="0:53">
+                    <CubicDetachedVertex x="-1.839" y="-16.341" inRotation="0.000000" inDistance="0.000" outRotation="-0.982794" outDistance="0.541" />
+                    <CubicDetachedVertex x="-1.809" y="-17.841" inRotation="1.012197" inDistance="0.566" outRotation="-2.158799" outDistance="0.541" />
+                    <CubicDetachedVertex x="-3.189" y="-18.441" inRotation="-0.165149" inDistance="0.547" outRotation="2.963567" outDistance="8.809" />
+                    <CubicDetachedVertex x="-18.459" y="-0.141" inRotation="-1.570796" inDistance="9.150" outRotation="1.570796" outDistance="10.260" />
+                    <CubicDetachedVertex x="0.141" y="18.459" inRotation="3.141593" inDistance="10.260" outRotation="0.000000" outDistance="9.150" />
+                    <CubicDetachedVertex x="18.441" y="3.159" inRotation="1.748221" inDistance="8.839" outRotation="-1.396124" outDistance="0.518" />
+                    <CubicDetachedVertex x="17.841" y="1.809" inRotation="0.540420" inDistance="0.525" outRotation="-2.582993" outDistance="0.566" />
+                    <CubicDetachedVertex x="16.341" y="1.839" inRotation="-0.632749" inDistance="0.558" outRotation="2.518684" outDistance="2.623" />
+                    <CubicDetachedVertex x="8.751" y="4.239" inRotation="0.000000" inDistance="2.850" outRotation="3.141593" outDistance="7.200" />
+                    <CubicDetachedVertex x="-4.269" y="-8.781" inRotation="1.570796" inDistance="7.200" outRotation="-1.570796" outDistance="2.820" />
+                    <CubicDetachedVertex x="-1.869" y="-16.341" inRotation="2.177784" inDistance="2.630" outRotation="0.000000" outDistance="0.000" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:87" />
+            </Shape>
+
             <!-- ========================== cellular spheres ==========================
                  r 5.5, on a downward arc concentric with the ring.                     -->
 
@@ -393,6 +420,7 @@
         <ViewModelPropertyNumber name="percentFontSize" id="0:84" />
         <ViewModelPropertyBoolean name="airplaneState" id="0:85" />
         <ViewModelPropertyBoolean name="revealRequest" id="0:86" />
+        <ViewModelPropertyNumber name="dndOpacity" id="0:87" />
 
         <ViewModelInstance exports="true" name="Default" id="0:61">
             <ViewModelInstanceNumber viewModelPropertyId="0:62" propertyValue="0.9010" />
@@ -414,6 +442,7 @@
             <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="33" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:85" propertyValue="false" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:86" propertyValue="false" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:87" propertyValue="0" />
         </ViewModelInstance>
     </ViewModel>
 

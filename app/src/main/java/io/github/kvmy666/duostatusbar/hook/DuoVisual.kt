@@ -16,6 +16,8 @@ data class DuoVisual(
     val percentFontSize: Float,
     val boltOpacity: Float,
     val airplaneOpacity: Float,
+    /** The Do Not Disturb crescent in the middle slot; 0 unless DND is on (FR-06). */
+    val dndOpacity: Float,
     val wifiOuterOpacity: Float,
     val wifiMidOpacity: Float,
     val wifiDotOpacity: Float,
@@ -88,9 +90,14 @@ object DuoMapping {
         wifiLevel: Int,
         cellLevel: Int,
         airplane: Boolean,
+        dnd: Boolean = false,
         fgColor: Int = WHITE
     ): DuoVisual {
-        val (outer, middle, dot) = wifiOpacities(if (airplane) 0 else wifiLevel)
+        // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, else Wi-Fi.
+        // Note `wifiOpacities(0)` is not "hidden" - level 0 is the dimmed "no network" state - so a
+        // taken slot is zeroed explicitly here rather than by feeding 0 into the level ramp.
+        val middleTaken = airplane || dnd
+        val (outer, middle, dot) = wifiOpacities(wifiLevel)
         val cells = cellOpacities(if (airplane) 0 else cellLevel)
         val percent = if (showPercent && !charging) level.toString() else ""
         return DuoVisual(
@@ -102,9 +109,10 @@ object DuoMapping {
             percentFontSize = percentFontSize(percent.ifEmpty { "50" }),
             boltOpacity = if (charging) 1f else 0f,
             airplaneOpacity = if (airplane) 1f else 0f,
-            wifiOuterOpacity = if (airplane) 0f else outer,
-            wifiMidOpacity = if (airplane) 0f else middle,
-            wifiDotOpacity = if (airplane) 0f else dot,
+            dndOpacity = if (dnd && !airplane) 1f else 0f,
+            wifiOuterOpacity = if (middleTaken) 0f else outer,
+            wifiMidOpacity = if (middleTaken) 0f else middle,
+            wifiDotOpacity = if (middleTaken) 0f else dot,
             cell1Opacity = cells[0],
             cell2Opacity = cells[1],
             cell3Opacity = cells[2],

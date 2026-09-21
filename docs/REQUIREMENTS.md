@@ -14,7 +14,7 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-03b | Identical behaviour on home screen, inside apps, lock screen, portrait **and** landscape | 3 | `[ ]` |
 | FR-04 | Animations powered by Rive | 2, 4 | `[~]` |
 | FR-05 | Integration with Auto Expand (my other module): tap/double-tap/… actions from the status bar | 6 | `[ ]` |
-| FR-06 | States: Wi-Fi, 4G/5G, DND, airplane mode, charging | 3 | `[ ]` |
+| FR-06 | States: Wi-Fi, 4G/5G, DND, airplane mode, charging | 3 | `[~]` |
 | FR-07 | No conflict with live notifications — user chooses Duo, notifications, or both | 8 | `[ ]` |
 | FR-08 | Stock battery / signal / Wi-Fi are **really** removed (not covered); silent mode and the rest hidden too | 3 | `[x]` |
 | FR-09 | Every setting in the app has an **infinite looping animation** explaining on/off behaviour | 5 | `[ ]` |

@@ -43,6 +43,7 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
     private val boltPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val moonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val arcBounds = RectF()
 
     override val ui: View get() = this
@@ -104,6 +105,16 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
             canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.RIGHT_START, rightSweep, false, ring)
         }
 
+        // FR-06: the DND crescent takes the middle slot (0, 17 design units below the ring centre).
+        if (visual.dndOpacity > 0f) {
+            moonPaint.color = withAlpha(visual.fgColor, visual.dndOpacity)
+            canvas.save()
+            canvas.translate(cx, cy + DND_SLOT_Y * k)
+            canvas.scale(k, k)
+            canvas.drawPath(moonPath, moonPaint)
+            canvas.restore()
+        }
+
         if (visual.boltOpacity > 0f) {
             drawBolt(canvas, cx, cy, size)
             return
@@ -143,6 +154,30 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         val boltPath = Path().apply {
             moveTo(0.58f, 0.02f); lineTo(0.24f, 0.56f); lineTo(0.45f, 0.56f)
             lineTo(0.36f, 0.98f); lineTo(0.76f, 0.40f); lineTo(0.53f, 0.40f)
+            close()
+        }
+
+        /** Middle slot, design units below the ring centre — the Wi-Fi centre the moon replaces. */
+        const val DND_SLOT_Y = 17f
+
+        /**
+         * The DND crescent, generated from the device's own `drawable/stat_sys_dnd` by
+         * `tools/dnd-moon-to-rive.py --android`. Same geometry as the Rive path, so the fallback and
+         * the real element cannot disagree (this project does not ship a second, hand-drawn moon).
+         */
+        val moonPath = Path().apply {
+            moveTo(-1.839f, -16.341f)
+            cubicTo(-1.539f, -16.791f, -1.509f, -17.361f, -1.809f, -17.841f)
+            cubicTo(-2.109f, -18.291f, -2.649f, -18.531f, -3.189f, -18.441f)
+            cubicTo(-11.859f, -16.881f, -18.459f, -9.291f, -18.459f, -0.141f)
+            cubicTo(-18.459f, 10.119f, -10.119f, 18.459f, 0.141f, 18.459f)
+            cubicTo(9.291f, 18.459f, 16.881f, 11.859f, 18.441f, 3.159f)
+            cubicTo(18.531f, 2.649f, 18.291f, 2.079f, 17.841f, 1.809f)
+            cubicTo(17.361f, 1.509f, 16.791f, 1.509f, 16.341f, 1.839f)
+            cubicTo(14.211f, 3.369f, 11.601f, 4.239f, 8.751f, 4.239f)
+            cubicTo(1.551f, 4.239f, -4.269f, -1.581f, -4.269f, -8.781f)
+            cubicTo(-4.269f, -11.601f, -3.369f, -14.181f, -1.869f, -16.341f)
+            cubicTo(-1.869f, -16.341f, -1.839f, -16.341f, -1.839f, -16.341f)
             close()
         }
     }

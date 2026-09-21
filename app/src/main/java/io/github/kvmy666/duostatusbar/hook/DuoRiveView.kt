@@ -5,7 +5,9 @@ import android.view.View
 import android.widget.FrameLayout
 import app.rive.runtime.kotlin.RiveAnimationView
 import app.rive.runtime.kotlin.core.Alignment
+import app.rive.runtime.kotlin.core.Direction
 import app.rive.runtime.kotlin.core.Fit
+import app.rive.runtime.kotlin.core.Loop
 import app.rive.runtime.kotlin.core.RendererType
 import app.rive.runtime.kotlin.core.ViewModelInstance
 import io.github.kvmy666.duostatusbar.L
@@ -106,7 +108,13 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
                 val found = machine?.viewModelInstance
                 if (found != null) {
                     viewModelInstance = found
-                    L.i("Duo view ready (machines=${rive?.stateMachines?.size}, inputs=${machine.inputNames})")
+                    // The state machine must actually be running: a data bind only applies while one is,
+                    // and the render loop only runs while the renderer is playing. With `autoplay` alone
+                    // the machine sat idle (`playingStateMachines=0`), so live changes were written but
+                    // never drawn - the element only ever showed its bind-time frame. Start it explicitly.
+                    rive?.play(STATE_MACHINE, Loop.LOOP, Direction.AUTO, true, true)
+                    L.i("Duo view ready (machines=${rive?.stateMachines?.size}, " +
+                            "playing=${rive?.playingStateMachines?.size}, inputs=${machine.inputNames})")
                     pendingVisual?.let { render(it) }
                     pendingVisual = null
                     readyActions.toList().forEach { it() }
@@ -140,6 +148,16 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         }
         if (failures > 0) {
             L.w("$failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
+        }
+        // The writes land in the view model, but the drawing only follows if the renderer is running -
+        // and the renderer's loop stops once the state machine settles into a hold state (measured:
+        // `isPlaying=false` after the first frame, so every later change was written and never drawn).
+        // `start()` is the renderer's own "run the loop" call and is idempotent (`if (isPlaying) return`),
+        // so asking for it on every snapshot is cheap and keeps the element live (FR-16/FR-06).
+        try {
+            rive?.artboardRenderer?.start()
+        } catch (t: Throwable) {
+            L.w("renderer start: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 

@@ -14,16 +14,22 @@ import org.junit.Test
  */
 class DuoMappingTest {
 
-    private fun visual(level: Int, charging: Boolean = false, saver: Boolean = false, airplane: Boolean = false) =
-        DuoMapping.visual(
-            level = level,
-            charging = charging,
-            saver = saver,
-            showPercent = true,
-            wifiLevel = 3,
-            cellLevel = 4,
-            airplane = airplane
-        )
+    private fun visual(
+        level: Int,
+        charging: Boolean = false,
+        saver: Boolean = false,
+        airplane: Boolean = false,
+        dnd: Boolean = false
+    ) = DuoMapping.visual(
+        level = level,
+        charging = charging,
+        saver = saver,
+        showPercent = true,
+        wifiLevel = 3,
+        cellLevel = 4,
+        airplane = airplane,
+        dnd = dnd
+    )
 
     // ---------------------------------------------------------------------------- ring geometry
 
@@ -136,6 +142,29 @@ class DuoMappingTest {
         assertEquals(0f, v.wifiDotOpacity, 0.0001f)
         assertTrue(v.airplaneState)
         v.let { assertEquals(listOf(0.3f, 0.3f, 0.3f, 0.3f), listOf(it.cell1Opacity, it.cell2Opacity, it.cell3Opacity, it.cell4Opacity)) }
+    }
+
+    @Test
+    fun `dnd shows the moon and clears the middle slot`() {
+        val v = visual(70, dnd = true)
+        assertEquals(1f, v.dndOpacity, 0.0001f)
+        assertEquals(0f, v.wifiOuterOpacity, 0.0001f)
+        assertEquals(0f, v.wifiMidOpacity, 0.0001f)
+        assertEquals(0f, v.wifiDotOpacity, 0.0001f)
+        // Cellular is not the middle slot: the spheres stay lit while DND is on.
+        assertEquals(listOf(1f, 1f, 1f, 1f), listOf(v.cell1Opacity, v.cell2Opacity, v.cell3Opacity, v.cell4Opacity))
+    }
+
+    @Test
+    fun `dnd is off by default`() {
+        assertEquals(0f, visual(70).dndOpacity, 0.0001f)
+    }
+
+    @Test
+    fun `airplane beats dnd for the middle slot`() {
+        val v = visual(70, airplane = true, dnd = true)
+        assertEquals(1f, v.airplaneOpacity, 0.0001f)
+        assertEquals(0f, v.dndOpacity, 0.0001f)
     }
 
     @Test

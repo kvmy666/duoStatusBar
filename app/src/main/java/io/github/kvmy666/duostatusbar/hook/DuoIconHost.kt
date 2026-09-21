@@ -336,12 +336,20 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private fun hideRemoving(view: View) {
-        rememberOriginal(view)
-        view.visibility = View.GONE
-        view.layoutParams?.let { lp ->
-            lp.width = 0
-            lp.height = 0
-            view.layoutParams = lp
+        val lp = view.layoutParams
+        val alreadyHidden = view.visibility == View.GONE && lp != null && lp.width == 0 && lp.height == 0
+        // Re-applying layoutParams on every layout pass is what turns "hide again" into a feedback loop:
+        // setting them requests another layout, which fires the listener that calls back in here. Once a
+        // view is already gone, touching nothing ends the loop (measured: render was being called at
+        // frame rate, thousands of times a second).
+        if (!alreadyHidden) {
+            rememberOriginal(view)
+            view.visibility = View.GONE
+            lp?.let {
+                it.width = 0
+                it.height = 0
+                view.layoutParams = it
+            }
         }
         if (view is ViewGroup) hideDescendants(view)
     }

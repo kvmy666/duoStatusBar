@@ -59,6 +59,7 @@ fun DuoPreview(
     var charging by remember { mutableStateOf(false) }
     var saver by remember { mutableStateOf(false) }
     var airplane by remember { mutableStateOf(false) }
+    var dnd by remember { mutableStateOf(false) }
     var wifi by remember { mutableFloatStateOf(3f) }
     var cell by remember { mutableFloatStateOf(4f) }
     var revealTick by remember { mutableIntStateOf(0) }
@@ -72,7 +73,8 @@ fun DuoPreview(
         showPercent = true,
         wifiLevel = wifi.toInt(),
         cellLevel = cell.toInt(),
-        airplane = airplane
+        airplane = airplane,
+        dnd = dnd
     )
 
     // The state machine fires on the false -> true edge, so the request is cleared afterwards.
@@ -122,6 +124,7 @@ fun DuoPreview(
         Toggle("Charging (bolt, green)", charging) { charging = it }
         Toggle("Battery saver (yellow)", saver) { saver = it }
         Toggle("Airplane mode (morph)", airplane) { airplane = it }
+        Toggle("Do Not Disturb (moon)", dnd) { dnd = it }
         LabelledSlider("Wi-Fi ${wifi.toInt()} of 3", wifi, 0f..3f, steps = 2) { wifi = it }
         LabelledSlider("Cellular ${cell.toInt()} of 4", cell, 0f..4f, steps = 3) { cell = it }
         Button(onClick = { revealTick++ }) { Text("Replay reveal (500 ms)") }

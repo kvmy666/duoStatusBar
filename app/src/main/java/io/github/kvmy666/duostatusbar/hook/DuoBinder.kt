@@ -22,7 +22,7 @@ object DuoBinder {
     const val REVEAL_MS = 500L
 
     /** Number of properties a complete snapshot writes — used to report partial failures. */
-    const val PROPERTY_COUNT = 18
+    const val PROPERTY_COUNT = 19
 
     private const val REVEAL_REQUEST = "revealRequest"
     private const val AIRPLANE_STATE = "airplaneState"
@@ -40,6 +40,7 @@ object DuoBinder {
             "percentFontSize" to v.percentFontSize,
             "boltOpacity" to v.boltOpacity,
             "airplaneOpacity" to v.airplaneOpacity,
+            "dndOpacity" to v.dndOpacity,
             "wifiOuterOpacity" to v.wifiOuterOpacity,
             "wifiMidOpacity" to v.wifiMidOpacity,
             "wifiDotOpacity" to v.wifiDotOpacity,

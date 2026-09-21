@@ -1,9 +1,11 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.PowerManager
@@ -22,6 +24,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private var charging = false
     private var saver = false
     private var airplane = false
+    private var dnd = false
     private var wifiLevel = 3
     private var cellLevel = 4
     private var registered = false
@@ -44,6 +47,15 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     }
                     Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
                         airplane = SystemReaders.isAirplaneOn(context)
+                        render()
+                    }
+                    // FR-06: the middle slot shows the moon while DND/silent is on. Both signals are
+                    // event-driven (no polling): the zen filter, and the ringer dropping to silent.
+                    NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED,
+                    AudioManager.RINGER_MODE_CHANGED_ACTION -> {
+                        val was = dnd
+                        dnd = SystemReaders.isDndOn(context)
+                        if (dnd != was) L.i("dnd -> $dnd (middle slot now shows the moon)")
                         render()
                     }
                     // FR-25: reveal on every screen-on and every unlock.
@@ -70,6 +82,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 addAction(Intent.ACTION_BATTERY_CHANGED)
                 addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
                 addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+                addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
+                addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(Intent.ACTION_CONFIGURATION_CHANGED)
@@ -79,8 +93,9 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
             saver = SystemReaders.isPowerSaveOn(context)
             airplane = SystemReaders.isAirplaneOn(context)
+            dnd = SystemReaders.isDndOn(context)
             refresh()
-            L.i("state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane")
+            L.i("state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane dnd=$dnd")
         } catch (t: Throwable) {
             L.e("monitor start failed: ${t.javaClass.simpleName}: ${t.message}")
         }
@@ -114,7 +129,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     showPercent = host.showPercent,
                     wifiLevel = wifiLevel,
                     cellLevel = cellLevel,
-                    airplane = airplane
+                    airplane = airplane,
+                    dnd = dnd
                 )
             )
         } catch (t: Throwable) {

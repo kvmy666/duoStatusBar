@@ -1,6 +1,8 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.app.NotificationManager
 import android.content.Context
+import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.provider.Settings
@@ -58,6 +60,26 @@ internal object SystemReaders {
     fun isPowerSaveOn(context: Context): Boolean = try {
         (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode ?: false
     } catch (_: Throwable) {
+        false
+    }
+
+    /**
+     * Do Not Disturb / silent, as one state (the design groups them: DESIGN-duo.md §4 "DND / silent").
+     *
+     * DND is read through the notification policy, not a settings string, so it covers every zen mode
+     * (priority, alarms, total silence, bedtime). "Silent" is the ringer truly silenced; vibrate is not
+     * silent, so it is deliberately excluded - the moon means "this will not make a sound", and a phone
+     * that still vibrates has not said that.
+     */
+    fun isDndOn(context: Context): Boolean = try {
+        val filter = (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)
+            ?.currentInterruptionFilter
+        val zenActive = filter != null && filter != NotificationManager.INTERRUPTION_FILTER_ALL
+        val ringer = (context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.ringerMode
+        val silent = ringer == AudioManager.RINGER_MODE_SILENT
+        zenActive || silent
+    } catch (t: Throwable) {
+        L.w("isDndOn: ${t.message}")
         false
     }
 }

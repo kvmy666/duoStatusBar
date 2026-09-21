@@ -53,7 +53,16 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[ ]` Keyguard status bar and landscape: the attach is layout-driven, so it follows a re-inflate, but
   neither has been verified on the device yet.
 * `[x]` `DuoStateMonitor` + `SystemReaders`: battery/charging/saver, Wi-Fi level, cell level, airplane,
-  broadcast-driven (no polling); the mapping is covered by 16 unit tests. DND still to add.
+  **DND/silent** — all broadcast-driven (no polling); the mapping is covered by 29 unit tests.
+  The DND crescent is the middle slot's second occupant (FR-06): it is **extracted from the device's own
+  `stat_sys_dnd`** (not redrawn) by `tools/dnd-moon-to-rive.py`, which resamples its own output against the
+  source and refuses a mismatch. Verified on the device (`docs/evidence/phase3-live-render-and-dnd.md`).
+* `[x]` **Live rendering fixed.** The element used to freeze after its first frame: the Rive state machine
+  was never started, so data binds stopped applying and the renderer's loop stopped, and every later change
+  was written but never drawn. `DuoRiveView` now plays the machine and restarts the renderer's loop after
+  each snapshot. Two dead ends are recorded in the evidence: calling `draw()` directly raced the loop and
+  killed SystemUI (the breaker then refused Rive), and a layout feedback loop was rendering at frame rate.
+  Visual confirmation of the live behaviours is the remaining human check (below).
 * `[x]` `DuoGuard`: stage gate + death counter in `Settings.Global`, refuses Rive after two deaths.
 * `[x]` Stage 1 was reached on the device: `Duo attached on attempt 0` + `renderer=Canvas` + `attached=true`
   (LSPosed log, 2026-09-21 13:39). The icon-hiding line and the visual check come from the next run, once

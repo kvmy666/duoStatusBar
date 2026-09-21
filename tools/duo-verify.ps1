@@ -131,14 +131,18 @@ $checks = [ordered]@{
 if ($Stage -eq 'off') {
     $checks['nothing was hooked'] = 'gated off|nothing hooked'
 } else {
+    # Each claim accepts a second, later line on purpose: LSPosed intermittently drops entries from its
+    # log file (the per-module sequence ids skip), and the attach-time lines are the ones that vanish.
+    # The status report and the readiness lines are emitted after the async work and survive, and they
+    # are the module's own evidence that the same fact held.
     $checks['the status bar was found']    = 'status bar window found'
-    $checks['the icon strip was found']    = 'container system_icons'
-    $checks['hardware acceleration known'] = 'verdict:'
+    $checks['the icon strip was found']    = 'container system_icons|Duo injected into'
+    $checks['hardware acceleration known'] = 'verdict:|Duo view ready'
     $checks['the element was injected']    = 'Duo injected into'
 }
 if ($Stage -eq 'icons') { $checks['the Canvas element was used'] = 'element: Canvas' }
 if ($Stage -eq 'rive') {
-    $checks['the Rive element was chosen'] = 'element: Rive'
+    $checks['the Rive element was chosen'] = 'element: Rive|renderer=Rive'
     $checks['the Rive runtime came up'] = 'Rive runtime ready: defaultRendererType='
     $checks['the Rive view is live'] = 'Duo view ready'
     $checks['the app sees the Rive renderer'] = 'renderer=Rive'
