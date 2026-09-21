@@ -10,9 +10,9 @@ package io.github.kvmy666.duostatusbar.hook
 data class DuoVisual(
     val trimLeftEnd: Float,
     val trimRightEnd: Float,
-    /** Top-gap edges (fractions of the circle from 12 o'clock): the ring closes when they meet. */
-    val gapLeft: Float,
-    val gapRight: Float,
+    /** The two halves' track arc lengths (trim fractions); the right one is 0 when the gap closes. */
+    val leftArc: Float,
+    val rightArc: Float,
     val trackOpacity: Float,
     val percentText: String,
     val percentOpacity: Float,
@@ -48,14 +48,34 @@ object DuoMapping {
     val RIGHT_START = GAP_PERCENT_DEG / 720f
     val LEFT_FULL = 1f - RIGHT_START
 
-    /** Fraction from 12 o'clock to the top gap's right edge (the left edge mirrors it). */
-    fun gapRight(charging: Boolean, showPercent: Boolean): Float = when {
-        charging -> GAP_CHARGING_DEG / 720f
-        showPercent -> GAP_PERCENT_DEG / 720f
-        else -> 0f
-    }
+    /**
+     * The two halves' arc lengths, as trim fractions. Each half is one trimmed window anchored by
+     * `offset` and sized by `end`, so these are *lengths*, not positions.
+     *
+     * With the gap open each half covers [LEFT_START]..[LEFT_FULL] / [RIGHT_START]..[RIGHT_FULL].
+     * With it closed the left half grows past 12 o'clock to cover the whole [DRAWN_ARC] on its own
+     * and the right half goes to zero - there is deliberately no pair of windows meeting at 12
+     * o'clock, because each would end in a round cap and the two caps would overlap: the left body
+     * painted over the right body (user-reported bug), and the track's two 0.22 caps stacked to 0.46
+     * and showed as a bright blob.
+     */
+    /** The whole drawn arc once the gap is closed: bottom-left endpoint, through 12 o'clock, round. */
+    const val DRAWN_ARC = (1f - LEFT_START) + RIGHT_FULL
 
-    fun gapLeft(gapRight: Float): Float = 1f - gapRight
+    /** The top gap is closed exactly when neither the digits nor the bolt occupy it. */
+    fun gapClosed(charging: Boolean, showPercent: Boolean): Boolean = !charging && !showPercent
+
+    /** One half's arc length for the current gap: the bolt's narrower gap makes the halves longer. */
+    fun halfArc(charging: Boolean): Float =
+        1f - (if (charging) GAP_CHARGING_DEG else GAP_PERCENT_DEG) / 720f - LEFT_START
+
+    /** Left half's arc length: half the drawn arc, or all of it once the gap closes. */
+    fun leftArc(charging: Boolean, showPercent: Boolean): Float =
+        if (gapClosed(charging, showPercent)) DRAWN_ARC else halfArc(charging)
+
+    /** Right half's arc length: half the drawn arc, or nothing once the gap closes. */
+    fun rightArc(charging: Boolean, showPercent: Boolean): Float =
+        if (gapClosed(charging, showPercent)) 0f else halfArc(charging)
 
     const val GREEN_CHARGING = 0xFF34C759.toInt()
     const val YELLOW_SAVER = 0xFFF2B900.toInt()
@@ -70,13 +90,17 @@ object DuoMapping {
         else -> WHITE
     }
 
-    /** Left half of the ring, 0 % -> 50 %: bottom-left endpoint up to the gap's left edge. */
-    fun trimLeft(level: Int, gapLeft: Float): Float =
-        LEFT_START + (gapLeft - LEFT_START) * (level.coerceIn(0, 50) / 50f)
+    /**
+     * Left half's filled arc: 0 % -> 50 % of [halfArc] normally. With the gap closed it owns the
+     * whole [DRAWN_ARC] instead, so 0 % -> 100 % of that.
+     */
+    fun trimLeft(level: Int, charging: Boolean, closed: Boolean): Float =
+        if (closed) DRAWN_ARC * (level.coerceIn(0, 100) / 100f)
+        else halfArc(charging) * (level.coerceIn(0, 50) / 50f)
 
-    /** Right half of the ring, 50 % -> 100 %: gap's right edge down to the bottom-right endpoint. */
-    fun trimRight(level: Int, gapRight: Float): Float =
-        gapRight + (RIGHT_FULL - gapRight) * ((level.coerceIn(50, 100) - 50) / 50f)
+    /** Right half's filled arc: 50 % -> 100 % of [halfArc], and nothing while the gap is closed. */
+    fun trimRight(level: Int, charging: Boolean, closed: Boolean): Float =
+        if (closed) 0f else halfArc(charging) * ((level.coerceIn(50, 100) - 50) / 50f)
 
     /**
      * Wi-Fi layers, bottom-up: nothing connected dims everything, then the dot, the middle arc and
@@ -121,13 +145,12 @@ object DuoMapping {
         val (outer, middle, dot) = wifiOpacities(wifiLevel)
         val cells = cellOpacities(if (airplane) 0 else cellLevel)
         val percent = if (showPercent && !charging) level.toString() else ""
-        val gRight = gapRight(charging, showPercent)
-        val gLeft = gapLeft(gRight)
+        val closed = gapClosed(charging, showPercent)
         return DuoVisual(
-            trimLeftEnd = trimLeft(level, gLeft),
-            trimRightEnd = trimRight(level, gRight),
-            gapLeft = gLeft,
-            gapRight = gRight,
+            trimLeftEnd = trimLeft(level, charging, closed),
+            trimRightEnd = trimRight(level, charging, closed),
+            leftArc = leftArc(charging, showPercent),
+            rightArc = rightArc(charging, showPercent),
             trackOpacity = 0.22f,
             percentText = percent.ifEmpty { " " },
             percentOpacity = if (percent.isEmpty()) 0f else 1f,

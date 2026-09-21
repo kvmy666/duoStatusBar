@@ -52,11 +52,18 @@
                  Left segment  = 0.6631 -> 0.9010   (fill 0% .. 50%)
                  Right segment = 0.0990 -> 0.3369   (fill 50% .. 100%)                     -->
 
+            <!-- Each half is ONE trimmed window, anchored with `offset` and sized by `end` (the arc
+                 length). `offset` is what lets a window run past 1.0, so when the top gap closes the
+                 left half simply grows past 12 o'clock and covers the whole drawn arc by itself - the
+                 right half shrinks to nothing. That is the whole point: two windows that MEET at 12
+                 o'clock each end in a round cap, and those caps overlap (the left half's cap paints
+                 over the right half's start, and the track's two 0.22 caps stack to 0.46 and show as
+                 a bright blob). One window has no junction to overlap at. -->
             <Shape opacity="0.22" name="ringTrackL" id="0:10">
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="8" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Track" />
-                    <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim">
+                    <TrimPath start="0" end="0.2379" offset="0.6631" name="Trim">
                         <DataBindContext propertyKey="115" sourcePathIds="0:60-0:88" />
                     </TrimPath>
                 </Stroke>
@@ -67,8 +74,8 @@
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="8" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Track" />
-                    <TrimPath start="0.0990" end="0.3369" offset="0" name="Trim">
-                        <DataBindContext propertyKey="114" sourcePathIds="0:60-0:89" />
+                    <TrimPath start="0" end="0.2379" offset="0.0990" name="Trim">
+                        <DataBindContext propertyKey="115" sourcePathIds="0:60-0:89" />
                     </TrimPath>
                 </Stroke>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:64" />
@@ -82,7 +89,7 @@
                     <SolidColor colorValue="FFFFFFFF" name="Color">
                         <DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" />
                     </SolidColor>
-                    <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim">
+                    <TrimPath start="0" end="0.2379" offset="0.6631" name="Trim">
                         <DataBindContext propertyKey="115" sourcePathIds="0:60-0:62" />
                     </TrimPath>
                 </Stroke>
@@ -95,10 +102,9 @@
                     <SolidColor colorValue="FFFFFFFF" name="Color">
                         <DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" />
                     </SolidColor>
-                    <TrimPath start="0.0990" end="0.0990" offset="0" name="Trim">
-                        <!-- start follows the top gap's right edge, so the ring closes when the number is
-                             hidden and narrows for the bolt while charging (FR-25 / DESIGN §4). -->
-                        <DataBindContext propertyKey="114" sourcePathIds="0:60-0:89" />
+                    <!-- Anchored at the top gap's right edge; `end` is the arc length, so it is 0 when
+                         the gap is closed and the left half owns the whole ring (FR-25 / DESIGN §4). -->
+                    <TrimPath start="0" end="0.2379" offset="0.0990" name="Trim">
                         <DataBindContext propertyKey="115" sourcePathIds="0:60-0:63" />
                     </TrimPath>
                 </Stroke>
@@ -129,13 +135,46 @@
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:68" />
             </Shape>
 
-            <!-- The dot is a rounded **triangle** in the reference (image 1), not a blob: flat top,
-                 rounded downward point. 12 wide, 11 tall, corners rounded to ~3.2. -->
-            <Shape x="-0.5" y="13.8" name="wifiDot" id="0:16">
+            <!-- The dot is a rounded **triangle** in the reference, not a blob. It is traced from the
+                 reference render rather than re-derived, because a triangle-plus-corner-radius never
+                 matched: `tools/extract-wifi-dot.py` takes the 0.5 contour, resamples it evenly and
+                 converts to design units about the Wi-Fi centre. 14.06 x 10.94 units, centred 3.20
+                 above the Wi-Fi centre. Shape sits at the Wi-Fi centre (17) so the vertices are the
+                 extracted numbers verbatim. -->
+            <Shape x="-0.5" y="17" name="wifiDot" id="0:16">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="-7.08" y="-5.5" radius="4.7" />
-                    <StraightVertex x="7.08" y="-5.5" radius="4.7" />
-                    <StraightVertex x="0" y="5.5" radius="4.7" />
+                    <StraightVertex x="-0.34" y="-8.67" />
+                    <StraightVertex x="-1.54" y="-8.59" />
+                    <StraightVertex x="-2.70" y="-8.32" />
+                    <StraightVertex x="-3.84" y="-7.96" />
+                    <StraightVertex x="-4.91" y="-7.43" />
+                    <StraightVertex x="-5.89" y="-6.73" />
+                    <StraightVertex x="-6.71" y="-5.86" />
+                    <StraightVertex x="-7.07" y="-4.73" />
+                    <StraightVertex x="-6.89" y="-3.55" />
+                    <StraightVertex x="-6.24" y="-2.55" />
+                    <StraightVertex x="-5.40" y="-1.70" />
+                    <StraightVertex x="-4.53" y="-0.86" />
+                    <StraightVertex x="-3.68" y="-0.02" />
+                    <StraightVertex x="-2.81" y="0.81" />
+                    <StraightVertex x="-1.94" y="1.63" />
+                    <StraightVertex x="-0.88" y="2.18" />
+                    <StraightVertex x="0.31" y="2.27" />
+                    <StraightVertex x="1.45" y="1.93" />
+                    <StraightVertex x="2.39" y="1.20" />
+                    <StraightVertex x="3.25" y="0.36" />
+                    <StraightVertex x="4.11" y="-0.48" />
+                    <StraightVertex x="4.96" y="-1.32" />
+                    <StraightVertex x="5.82" y="-2.16" />
+                    <StraightVertex x="6.61" y="-3.06" />
+                    <StraightVertex x="6.99" y="-4.19" />
+                    <StraightVertex x="6.90" y="-5.36" />
+                    <StraightVertex x="6.25" y="-6.35" />
+                    <StraightVertex x="5.34" y="-7.13" />
+                    <StraightVertex x="4.32" y="-7.76" />
+                    <StraightVertex x="3.21" y="-8.19" />
+                    <StraightVertex x="2.05" y="-8.50" />
+                    <StraightVertex x="0.86" y="-8.64" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:69" />
@@ -381,18 +420,18 @@
         <LinearAnimation duration="1" name="WifiIdle" id="0:100" loopValue="loop">
             <KeyedObject objectId="0:110">
                 <KeyedProperty propertyKey="115">
-                    <KeyFrameDouble value="0.3222" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="0.2394" interpolationType="hold" frame="0" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="116">
-                    <KeyFrameDouble value="0.8389" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="0.8803" interpolationType="hold" frame="0" />
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:111">
                 <KeyedProperty propertyKey="115">
-                    <KeyFrameDouble value="0.3222" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="0.2367" interpolationType="hold" frame="0" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="116">
-                    <KeyFrameDouble value="0.8389" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="0.8817" interpolationType="hold" frame="0" />
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:51">
@@ -411,21 +450,21 @@
         <LinearAnimation duration="12" name="PlaneMorph" id="0:102">
             <KeyedObject objectId="0:110">
                 <KeyedProperty propertyKey="115">
-                    <KeyFrameDouble value="0.3222" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0.2394" interpolationType="cubic" frame="0" />
                     <KeyFrameDouble value="0" interpolationType="cubic" frame="7" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="116">
-                    <KeyFrameDouble value="0.8389" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0.8803" interpolationType="cubic" frame="0" />
                     <KeyFrameDouble value="0.5" interpolationType="cubic" frame="7" />
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:111">
                 <KeyedProperty propertyKey="115">
-                    <KeyFrameDouble value="0.3222" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0.2367" interpolationType="cubic" frame="0" />
                     <KeyFrameDouble value="0" interpolationType="cubic" frame="7" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="116">
-                    <KeyFrameDouble value="0.8389" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0.8817" interpolationType="cubic" frame="0" />
                     <KeyFrameDouble value="0.5" interpolationType="cubic" frame="7" />
                 </KeyedProperty>
             </KeyedObject>
@@ -472,9 +511,10 @@
         <ViewModelPropertyBoolean name="airplaneState" id="0:85" />
         <ViewModelPropertyBoolean name="revealRequest" id="0:86" />
         <ViewModelPropertyNumber name="dndOpacity" id="0:87" />
-        <!-- Top-gap edges, so the ring can close (percentage off) or narrow (charging). -->
-        <ViewModelPropertyNumber name="gapLeft" id="0:88" />
-        <ViewModelPropertyNumber name="gapRight" id="0:89" />
+        <!-- Each half's track arc length, so the ring can close (percentage off) or narrow (charging):
+             the left grows to the whole drawn arc and the right shrinks to nothing. -->
+        <ViewModelPropertyNumber name="leftArc" id="0:88" />
+        <ViewModelPropertyNumber name="rightArc" id="0:89" />
 
         <ViewModelInstance exports="true" name="Default" id="0:61">
             <ViewModelInstanceNumber viewModelPropertyId="0:62" propertyValue="0.9010" />
@@ -497,8 +537,8 @@
             <ViewModelInstanceBoolean viewModelPropertyId="0:85" propertyValue="false" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:86" propertyValue="false" />
             <ViewModelInstanceNumber viewModelPropertyId="0:87" propertyValue="0" />
-            <ViewModelInstanceNumber viewModelPropertyId="0:88" propertyValue="0.9010" />
-            <ViewModelInstanceNumber viewModelPropertyId="0:89" propertyValue="0.0990" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:88" propertyValue="0.2379" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:89" propertyValue="0.2379" />
         </ViewModelInstance>
     </ViewModel>
 

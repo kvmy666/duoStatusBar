@@ -36,8 +36,8 @@ object DuoBinder {
         val numbers = arrayOf(
             "trimLeftEnd" to v.trimLeftEnd,
             "trimRightEnd" to v.trimRightEnd,
-            "gapLeft" to v.gapLeft,
-            "gapRight" to v.gapRight,
+            "leftArc" to v.leftArc,
+            "rightArc" to v.rightArc,
             "trackOpacity" to v.trackOpacity,
             "percentOpacity" to v.percentOpacity,
             "percentFontSize" to v.percentFontSize,

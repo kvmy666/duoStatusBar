@@ -93,16 +93,18 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         ring.color = withAlpha(visual.fgColor, TRACK_ALPHA)
         canvas.drawCircle(cx, cy, radius, ring)
 
-        // Progress: left arc 0-50 %, right arc 50-100 %, exactly as the .riv splits it.
+        // Progress: left arc 0-50 %, right arc 50-100 %, exactly as the .riv splits it. The trim ends
+        // are arc *lengths* now, so they are the sweeps directly; the right one is 0 when the gap is
+        // closed and the left half covers the whole ring on its own.
         arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
         ring.color = visual.tint
-        val leftSweep = (visual.trimLeftEnd - DuoMapping.LEFT_START) * 360f
+        val leftSweep = visual.trimLeftEnd * 360f
         if (leftSweep > MIN_SWEEP) {
             canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.LEFT_START, leftSweep, false, ring)
         }
-        val rightSweep = (visual.trimRightEnd - visual.gapRight) * 360f
+        val rightSweep = visual.trimRightEnd * 360f
         if (rightSweep > MIN_SWEEP) {
-            canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * visual.gapRight, rightSweep, false, ring)
+            canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.RIGHT_START, rightSweep, false, ring)
         }
 
         // FR-06: the DND crescent takes the middle slot (0, 17 design units below the ring centre).

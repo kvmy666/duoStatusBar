@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,61 +34,67 @@ class DuoMappingTest {
 
     // ---------------------------------------------------------------------------- ring geometry
 
-    /** The percent-on gap: 71.3 deg, the case the reference screenshots show. */
-    private val gapRight = DuoMapping.gapRight(charging = false, showPercent = true)
-    private val gapLeft = DuoMapping.gapLeft(gapRight)
+    // The percent-on case the reference screenshots show: the gap is open, so there are two halves.
+    private val half = DuoMapping.halfArc(charging = false)
 
     @Test
     fun `ring is empty at zero percent`() {
-        assertEquals(DuoMapping.LEFT_START, DuoMapping.trimLeft(0, gapLeft), 0.0001f)
-        assertEquals(gapRight, DuoMapping.trimRight(0, gapRight), 0.0001f)
+        assertEquals(0f, DuoMapping.trimLeft(0, charging = false, closed = false), 0.0001f)
+        assertEquals(0f, DuoMapping.trimRight(0, charging = false, closed = false), 0.0001f)
     }
 
     @Test
     fun `left half fills completely at fifty percent`() {
-        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(50, gapLeft), 0.0001f)
+        assertEquals(half, DuoMapping.trimLeft(50, charging = false, closed = false), 0.0001f)
         // The right half only starts moving above 50 %.
-        assertEquals(gapRight, DuoMapping.trimRight(50, gapRight), 0.0001f)
+        assertEquals(0f, DuoMapping.trimRight(50, charging = false, closed = false), 0.0001f)
     }
 
     @Test
     fun `ring is full at one hundred percent`() {
-        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(100, gapLeft), 0.0001f)
-        assertEquals(DuoMapping.RIGHT_FULL, DuoMapping.trimRight(100, gapRight), 0.0001f)
+        assertEquals(half, DuoMapping.trimLeft(100, charging = false, closed = false), 0.0001f)
+        assertEquals(half, DuoMapping.trimRight(100, charging = false, closed = false), 0.0001f)
     }
 
     @Test
     fun `halfway through the right half is halfway along its arc`() {
-        val half = (gapRight + DuoMapping.RIGHT_FULL) / 2f
-        assertEquals(half, DuoMapping.trimRight(75, gapRight), 0.0001f)
+        assertEquals(half / 2f, DuoMapping.trimRight(75, charging = false, closed = false), 0.0001f)
     }
 
     @Test
     fun `out of range levels are clamped, not extrapolated`() {
-        assertEquals(DuoMapping.LEFT_START, DuoMapping.trimLeft(-20, gapLeft), 0.0001f)
-        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(500, gapLeft), 0.0001f)
-        assertEquals(DuoMapping.RIGHT_FULL, DuoMapping.trimRight(500, gapRight), 0.0001f)
+        assertEquals(0f, DuoMapping.trimLeft(-20, charging = false, closed = false), 0.0001f)
+        assertEquals(half, DuoMapping.trimLeft(500, charging = false, closed = false), 0.0001f)
+        assertEquals(half, DuoMapping.trimRight(500, charging = false, closed = false), 0.0001f)
     }
 
     // ---------------------------------------------------------------------------------- top gap
 
     @Test
-    fun `the gap closes when the percentage is off so the ring is continuous`() {
-        val right = DuoMapping.gapRight(charging = false, showPercent = false)
-        val left = DuoMapping.gapLeft(right)
-        assertEquals(0f, right, 0.0001f)
-        assertEquals(1f, left, 0.0001f)
-        // The two halves meet at 12 o'clock: the left ends at 1.0 and the right starts at 0.0.
-        assertEquals(1f, DuoMapping.trimLeft(50, left), 0.0001f)
-        assertEquals(0f, DuoMapping.trimRight(50, right), 0.0001f)
+    fun `closing the gap gives the left half the whole ring and empties the right`() {
+        assertTrue(DuoMapping.gapClosed(charging = false, showPercent = false))
+        // No pair of windows meeting at 12 o'clock, so no two round caps overlap there: the left
+        // half covers the whole drawn arc on its own and the right half is zero. Two windows that
+        // met would put the left body over the right body (user-reported bug).
+        assertEquals(DuoMapping.DRAWN_ARC, DuoMapping.leftArc(charging = false, showPercent = false), 0.0001f)
+        assertEquals(0f, DuoMapping.rightArc(charging = false, showPercent = false), 0.0001f)
+        assertEquals(DuoMapping.DRAWN_ARC / 2f, DuoMapping.trimLeft(50, charging = false, closed = true), 0.0001f)
+        assertEquals(0f, DuoMapping.trimRight(50, charging = false, closed = true), 0.0001f)
+        assertEquals(DuoMapping.DRAWN_ARC, DuoMapping.trimLeft(100, charging = false, closed = true), 0.0001f)
     }
 
     @Test
-    fun `charging narrows the gap to fit the bolt`() {
-        val charging = DuoMapping.gapRight(charging = true, showPercent = true)
-        val digits = DuoMapping.gapRight(charging = false, showPercent = true)
-        assertTrue(charging < digits)
-        assertEquals(DuoMapping.GAP_CHARGING_DEG / 720f, charging, 0.0001f)
+    fun `the digits keep the gap open and the bolt narrows it`() {
+        assertEquals(half, DuoMapping.leftArc(charging = false, showPercent = true), 0.0001f)
+        assertEquals(half, DuoMapping.rightArc(charging = false, showPercent = true), 0.0001f)
+        assertFalse(DuoMapping.gapClosed(charging = true, showPercent = true))
+        // A narrower gap means each half is longer.
+        assertTrue(DuoMapping.halfArc(charging = true) > half)
+        assertEquals(
+            half + (DuoMapping.GAP_PERCENT_DEG - DuoMapping.GAP_CHARGING_DEG) / 720f,
+            DuoMapping.leftArc(charging = true, showPercent = true),
+            0.0001f
+        )
     }
 
     // ------------------------------------------------------------------------------- battery tint
@@ -195,8 +202,11 @@ class DuoMappingTest {
     @Test
     fun `every field of the snapshot is populated for a full battery`() {
         val v = visual(100)
-        assertEquals(DuoMapping.LEFT_FULL, v.trimLeftEnd, 0.0001f)
-        assertEquals(DuoMapping.RIGHT_FULL, v.trimRightEnd, 0.0001f)
+        // The trim ends are arc lengths now, so a full battery fills both halves completely.
+        assertEquals(DuoMapping.halfArc(charging = false), v.trimLeftEnd, 0.0001f)
+        assertEquals(DuoMapping.halfArc(charging = false), v.trimRightEnd, 0.0001f)
+        assertEquals(DuoMapping.halfArc(charging = false), v.leftArc, 0.0001f)
+        assertEquals(DuoMapping.halfArc(charging = false), v.rightArc, 0.0001f)
         assertTrue(v.trackOpacity > 0f)
         assertEquals(DuoMapping.WHITE, v.fgColor)
     }
