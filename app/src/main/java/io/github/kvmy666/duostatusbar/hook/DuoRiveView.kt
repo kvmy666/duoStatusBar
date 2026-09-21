@@ -161,9 +161,13 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         }
     }
 
-    /** Re-fires the 500 ms reveal (screen on, unlock, first attach). Never throws. */
+    /** Re-fires the reveal (screen on, unlock, first attach). Never throws. */
     override fun reveal() {
-        val vm = viewModelInstance ?: return
+        val vm = viewModelInstance ?: run {
+            L.w("reveal skipped - no view model instance yet")
+            return
+        }
+        L.i("reveal fired")
         try {
             // The state machine fires on the false -> true edge, so the request is cleared after it runs.
             DuoBinder.requestReveal(vm, true)

@@ -62,8 +62,12 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                         if (dnd != was) L.i("dnd -> $dnd (middle slot now shows the moon)")
                         render()
                     }
-                    // FR-25: reveal on every screen-on and every unlock.
-                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> host.duo?.reveal()
+                    // FR-25: reveal on every screen-on and every unlock. The ring re-fills from 0 with
+                    // it, so the fill animation is part of the arrival rather than a one-off at boot.
+                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                        host.duo?.reveal()
+                        restartFill()
+                    }
                     // Rotation re-inflates the strip: hide the stock views again.
                     Intent.ACTION_CONFIGURATION_CHANGED -> {
                         host.reapplyHiding()
@@ -142,6 +146,12 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
             }
             start()
         }
+    }
+
+    /** Draws the ring from empty again, then fills to the current level - the reveal's fill half. */
+    private fun restartFill() {
+        displayedLevel = 0
+        setLevel(level)
     }
 
     private fun render() {

@@ -302,22 +302,45 @@
             </StateMachineLayer>
         </StateMachine>
 
-        <!-- Reveal, one shot. 60 frames at 60 fps = **1 s** (user feedback: the 500 ms version was too
-             subtle to notice on boot; the prototype runs at 1 s and the timing can come back down
-             later). 0-200 ms scale up to 1.12, 200-600 ms settle to 1.05, 600-1000 ms spring to 1.0. -->
+        <!-- ============================== entrance ==============================
+             One shot, 60 frames = 1 s. The element grows out of a point, overshoots, and springs
+             back, with a small rotational settle and a quick fade - the "arrive" moment. Three
+             properties move together (scale, rotation, opacity), all on the one group node, so the
+             whole body moves as a unit (FR-25: synced parts).
+
+             Timing (frames @ 60 fps):
+                 scale   0 -> 1.25 (18) -> 0.92 (32) -> 1.06 (44) -> 1.0 (60)   overshoot + spring
+                 rotation -25 deg -> +6 deg (32) -> 0 (60)                      settle from a tilt
+                 opacity 0 -> 1 (12), hold                                       the point becomes a body
+
+             Keys live on the group node (0:3) only: scaleX 16, scaleY 17, rotation 15, opacity 18.
+             Those four are owned by this layer and Idle - no other layer or data bind touches them,
+             so animation and binding never fight (the same rule the airplane morph follows). -->
         <LinearAnimation duration="60" name="Reveal" id="0:93">
             <KeyedObject objectId="0:3">
                 <KeyedProperty propertyKey="16">
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0" />
-                    <KeyFrameDouble value="1.12" interpolationType="cubic" frame="12" />
-                    <KeyFrameDouble value="1.05" interpolationType="cubic" frame="36" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="1.25" interpolationType="cubic" frame="18" />
+                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="32" />
+                    <KeyFrameDouble value="1.06" interpolationType="cubic" frame="44" />
                     <KeyFrameDouble value="1" interpolationType="cubic" frame="60" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="17">
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0" />
-                    <KeyFrameDouble value="1.12" interpolationType="cubic" frame="12" />
-                    <KeyFrameDouble value="1.05" interpolationType="cubic" frame="36" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="1.25" interpolationType="cubic" frame="18" />
+                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="32" />
+                    <KeyFrameDouble value="1.06" interpolationType="cubic" frame="44" />
                     <KeyFrameDouble value="1" interpolationType="cubic" frame="60" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="-0.4363" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="0.1047" interpolationType="cubic" frame="32" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="60" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="12" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="60" />
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
@@ -333,6 +356,13 @@
                     <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <!-- Pinned back to rest too, so the entrance can re-fire from a known state. -->
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
                     <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
                 </KeyedProperty>
             </KeyedObject>
