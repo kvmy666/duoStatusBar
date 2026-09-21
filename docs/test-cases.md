@@ -91,8 +91,34 @@ original status bar is untouched.
 | G-4 | Battery impact | idle 8 h → no measurable extra drain beyond the stock bar |
 | G-5 | Memory | the Duo view stays a few KB, no per-frame allocation |
 
+## H. The gate, the staged rollout and the app channel
+
+Cases for the mechanism that exists because a **native** fault cannot be caught in-process
+(`docs/evidence/phase3-attempt1-crash.txt`). Each one is built so that a failure is *visible and harmless*
+instead of a broken status bar, and `tools/duo-verify.ps1` automates the checks for H-1…H-5.
+
+| ID | Case | Steps | Expected |
+|---|---|---|---|
+| H-1 | Off really means off | install, enable in LSPosed (scope System UI), restart, read the log | `gated off - nothing hooked` and **no** other DuoSB line: nothing hooked, nothing hidden |
+| H-2 | Kill switch wins | `settings put global duo_statusbar_stage 0`, restart System UI | the adb override beats the app's settings; stock bar back |
+| H-3 | Stage 1, no native code | `…stage 1`, restart | `element: Canvas` + `Duo injected into`; no Rive library is loaded anywhere in the log |
+| H-4 | Stage 2, Rive | app: Rive on (or `…stage 2`), restart | `Rive runtime ready: defaultRendererType=Canvas` and `Duo view ready` |
+| H-5 | The acceleration fact | any attached stage | `--- window facts ---` including `verdict: …`, logged **before** any Rive object exists |
+| H-6 | Crash breaker | if H-4 dies: let it restart twice | `Rive refused: 2 failed attempts recorded`, Canvas is used, the bar still works |
+| H-7 | Breaker reset | `settings put global duo_statusbar_rive_attempts 0`, restart | Rive is attempted again |
+| H-8 | App toggle, live | flip the master switch in the app | log shows `settings rev N`; the element appears **without** restarting System UI |
+| H-9 | Size and position, live | drag the element on the mock strip | the real element moves/resizes immediately (FR-17) |
+| H-10 | Percentage, live | toggle the percentage | the number appears/disappears without a restart (FR-16) |
+| H-11 | Switching off restores | turn the master switch off | the element is removed **and the stock icons return exactly as they were** (FR-21) |
+| H-12 | Strip rebuilt (rotation) | rotate with the element on | `element re-attached …`, the bar is never empty; if re-attach fails, the stock icons are restored |
+| H-13 | Channel failure is survivable | force-stop the app, restart System UI | `settings unreadable … using defaults`; the module stays off and nothing else breaks |
+| H-14 | Gestures off by default | with default settings, tap/long-press the element and pull the shade down from there | nothing is consumed; the shade opens normally (FR-18) |
+| H-15 | Hand-off to Auto Expand | set a tap action, tap the element | `asked Auto Expand for '…'` and that action runs |
+
 ## Linked tests (re-run together)
 
 * **B ↔ C ↔ D**: hiding, state and animation share the same view → re-run B-1, C-1, D-1 together.
 * **F ↔ B**: gesture handling and hit-testing share the Duo view's bounds.
+* **H ↔ everything on the bar**: the gate decides whether B/C/D can happen at all — always run H-1 with them,
+  and H-11 whenever hiding changed, because "restores exactly" is the promise that makes the module safe.
 * Everything else is independent: a change in E (settings UI) never requires re-running C or D.
