@@ -99,7 +99,8 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 SettingSwitch(
                     label = stringResource(R.string.settings_master),
                     detail = stringResource(R.string.settings_master_detail),
-                    checked = settings.enabled
+                    checked = settings.enabled,
+                    preview = { DuoSettingPreview(off = demo(level = 0), on = demo()) }
                 ) { update(settings.copy(enabled = it)) }
                 SettingSwitch(
                     label = stringResource(R.string.settings_renderer),
@@ -111,7 +112,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     label = stringResource(R.string.settings_percent),
                     detail = stringResource(R.string.settings_percent_detail),
                     checked = settings.showPercent,
-                    enabled = settings.enabled
+                    enabled = settings.enabled,
+                    preview = {
+                        DuoSettingPreview(
+                            off = demo(showPercent = false),
+                            on = demo(showPercent = true)
+                        )
+                    }
                 ) { update(settings.copy(showPercent = it)) }
             }
         }
@@ -128,7 +135,14 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 LabelledSlider(
                     label = "${stringResource(R.string.settings_size)} ${settings.sizePercent}%",
                     value = settings.sizePercent.toFloat(),
-                    range = DuoPrefs.MIN_SIZE.toFloat()..DuoPrefs.MAX_SIZE.toFloat()
+                    range = DuoPrefs.MIN_SIZE.toFloat()..DuoPrefs.MAX_SIZE.toFloat(),
+                    preview = {
+                        DuoSettingPreview(
+                            off = demo(),
+                            on = demo(),
+                            scaleFrom = DuoPrefs.MIN_SIZE.toFloat() / DuoPrefs.MAX_SIZE
+                        )
+                    }
                 ) { update(settings.copy(sizePercent = it.toInt())) }
                 Text(
                     text = "${stringResource(R.string.settings_offset)}: ${settings.offsetX} dp",
@@ -297,6 +311,7 @@ private fun SettingSwitch(
     detail: String?,
     checked: Boolean,
     enabled: Boolean = true,
+    preview: (@Composable () -> Unit)? = null,
     onChange: (Boolean) -> Unit
 ) {
     Row(
@@ -304,7 +319,8 @@ private fun SettingSwitch(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f)) {
+        preview?.invoke()
+        Column(Modifier.weight(1f).padding(start = if (preview == null) 0.dp else 12.dp)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
@@ -312,15 +328,51 @@ private fun SettingSwitch(
     }
 }
 
+/**
+ * FR-09: the fixed snapshot the setting demos morph from and to.
+ *
+ * One battery level for every demo, so the rows are comparable and the only thing that changes between
+ * the two ends is the setting being demonstrated.
+ */
+private fun demo(
+    level: Int = DEMO_LEVEL,
+    charging: Boolean = false,
+    showPercent: Boolean = true,
+    airplane: Boolean = false,
+    dnd: Boolean = false,
+    middleBlend: Float = 1f
+) = DuoMapping.visual(
+    level = level,
+    charging = charging,
+    saver = false,
+    showPercent = showPercent,
+    wifiLevel = 3,
+    cellLevel = 4,
+    airplane = airplane,
+    dnd = dnd,
+    middleBlend = middleBlend
+)
+
+/** FR-09: a level that shows a clear half-full ring rather than an empty or full one. */
+private const val DEMO_LEVEL = 72
+
 @Composable
 private fun LabelledSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
+    preview: (@Composable () -> Unit)? = null,
     onChange: (Float) -> Unit
 ) {
     Column {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            preview?.invoke()
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(start = if (preview == null) 0.dp else 12.dp)
+            )
+        }
         Slider(value = value, onValueChange = onChange, valueRange = range)
     }
 }

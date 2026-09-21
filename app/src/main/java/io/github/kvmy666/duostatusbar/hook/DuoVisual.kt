@@ -31,7 +31,44 @@ data class DuoVisual(
     val tint: Int,
     val fgColor: Int,
     val airplaneState: Boolean
-)
+) {
+    /**
+     * Interpolates between two snapshots, for the FR-09 setting demos that morph one setting between
+     * its off and on states.
+     *
+     * Every drawn quantity is a Float, so those interpolate; the things that cannot be half-way
+     * (colours, the text, the boolean that drives the state machine) snap at the mid-point. Pure and
+     * unit-tested, because a demo that quietly shows the wrong thing is worse than no demo.
+     */
+    fun lerp(other: DuoVisual, t: Float): DuoVisual {
+        val f = t.coerceIn(0f, 1f)
+        fun at(a: Float, b: Float) = a + (b - a) * f
+        val past = f >= 0.5f
+        return copy(
+            trimLeftEnd = at(trimLeftEnd, other.trimLeftEnd),
+            trimRightEnd = at(trimRightEnd, other.trimRightEnd),
+            leftArc = at(leftArc, other.leftArc),
+            rightArc = at(rightArc, other.rightArc),
+            trackOpacity = at(trackOpacity, other.trackOpacity),
+            percentOpacity = at(percentOpacity, other.percentOpacity),
+            percentFontSize = at(percentFontSize, other.percentFontSize),
+            boltOpacity = at(boltOpacity, other.boltOpacity),
+            airplaneOpacity = at(airplaneOpacity, other.airplaneOpacity),
+            dndOpacity = at(dndOpacity, other.dndOpacity),
+            wifiOuterOpacity = at(wifiOuterOpacity, other.wifiOuterOpacity),
+            wifiMidOpacity = at(wifiMidOpacity, other.wifiMidOpacity),
+            wifiDotOpacity = at(wifiDotOpacity, other.wifiDotOpacity),
+            cell1Opacity = at(cell1Opacity, other.cell1Opacity),
+            cell2Opacity = at(cell2Opacity, other.cell2Opacity),
+            cell3Opacity = at(cell3Opacity, other.cell3Opacity),
+            cell4Opacity = at(cell4Opacity, other.cell4Opacity),
+            percentText = if (past) other.percentText else percentText,
+            tint = if (past) other.tint else tint,
+            fgColor = if (past) other.fgColor else fgColor,
+            airplaneState = if (past) other.airplaneState else airplaneState
+        )
+    }
+}
 
 object DuoMapping {
 

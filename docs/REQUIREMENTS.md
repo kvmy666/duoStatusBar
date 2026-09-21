@@ -12,19 +12,19 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-02 | Run on multiple custom ROMs, not one vendor only | 7 | `[ ]` |
 | FR-03 | Everything the user can customise (size, shape, on/off) is exposed in the app settings | 5 | `[ ]` |
 | FR-03b | Identical behaviour on home screen, inside apps, lock screen, portrait **and** landscape | 3 | `[ ]` |
-| FR-04 | Animations powered by Rive | 2, 4 | `[~]` |
+| FR-04 | Animations powered by Rive | 2, 4 | `[x]` |
 | FR-05 | Integration with Auto Expand (my other module): tap/double-tap/… actions from the status bar | 6 | `[ ]` |
 | FR-06 | States: Wi-Fi, 4G/5G, DND, airplane mode, charging | 3 | `[x]` |
 | FR-07 | No conflict with live notifications — user chooses Duo, notifications, or both | 8 | `[ ]` |
 | FR-08 | Stock battery / signal / Wi-Fi are **really** removed (not covered); silent mode and the rest hidden too | 3 | `[x]` |
-| FR-09 | Every setting in the app has an **infinite looping animation** explaining on/off behaviour | 5 | `[ ]` |
+| FR-09 | Every setting in the app has an **infinite looping animation** explaining on/off behaviour | 5 | `[~]` |
 | FR-10 | Premium Material design, built on established frameworks (no hand-rolled UI kit) | 5 | `[ ]` |
 | FR-11 | "Red Wine" primary colour with derived secondaries | 0, 5 | `[~]` |
 | FR-12 | Best/easiest tech, prefer ready-made solutions over building from scratch | 0 | `[x]` |
 | FR-13 | Derive the Duo element from existing open-source work (clone → understand → build) | 0, 1 | `[x]` |
 | FR-14 | Research Apple's behaviour (blogs + Apple docs), e.g. exactly what happens when charging | 1 | `[x]` |
 | FR-15 | State colours: saver = its colour, `<20%` = red, charging = green | 3 | `[~]` |
-| FR-16 | Optional charging/battery percentage in the middle, splitting the indicator in two halves | 3, 5 | `[ ]` |
+| FR-16 | Optional charging/battery percentage in the middle, splitting the indicator in two halves | 3, 5 | `[~]` |
 | FR-17 | Live dragging so the user controls the position inside the status bar | 5 | `[ ]` |
 | FR-18 | Tapping it triggers user actions **without** conflicting with Auto Expand; clear separation when both exist | 6 | `[ ]` |
 | FR-19 | `plan` + requirements `.md` with checkmarks · `draw.io` architecture file · function-dependency file | 0, 1 | `[x]` |
@@ -33,7 +33,7 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-22 | Plan split into small phases, executed incrementally / agile | all | `[x]` |
 | FR-23 | Ambiguity is returned to you instead of being decided silently | all | `[x]` |
 | FR-24 | Load the skills/plugins/MCPs needed, maximum freedom, minimum token cost | 0 | `[x]` |
-| FR-25 | The unlock/lock animation set (scale-up → fill from 0 → shrink → bounce, ≤0.5 s, synced parts; Wi-Fi layers; spheres; airplane merge/spawn; middle-slot choice; shade header icons) | 4, 8 | `[ ]` |
+| FR-25 | The unlock/lock animation set (scale-up → fill from 0 → shrink → bounce, ≤0.5 s, synced parts; Wi-Fi layers; spheres; airplane merge/spawn; middle-slot choice; shade header icons) | 4, 8 | `[~]` |
 | FR-26 | Never guess hook names — pull logcat / read the device | all | `[x]` |
 | FR-27 | Read only the status-bar-relevant parts of the Auto Expand project | 0, 6 | `[x]` |
 | FR-28 | Git + a commit per successful phase; simple README with images/GIFs, download count, bug report (issues + Telegram @kvmy1), Buy Me a Coffee via paypal.me/kroomfahd; in-app PayPal button | all, 9 | `[~]` |
@@ -43,10 +43,10 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | ID | Requirement | Status |
 |---|---|---|
 | NFR-1 | No measurable jank added to SystemUI: animations complete in ≤ 500 ms and run on the UI thread only | `[ ]` |
-| NFR-2 | Battery impact: event-driven updates, no polling loops | `[ ]` |
+| NFR-2 | Battery impact: event-driven updates, no polling loops | `[x]` |
 | NFR-3 | Memory: the Duo view must stay a few KB; no bitmap allocation per frame | `[ ]` |
-| NFR-4 | If the module fails, the stock status bar must remain usable (fail-silent + auto-disable after N strikes) | `[ ]` |
-| NFR-5 | All prefs survive reboot and are readable inside the SystemUI process | `[ ]` |
+| NFR-4 | If the module fails, the stock status bar must remain usable (fail-silent + auto-disable after N strikes) | `[x]` |
+| NFR-5 | All prefs survive reboot and are readable inside the SystemUI process | `[x]` |
 
 ## Decisions already locked (your approvals)
 

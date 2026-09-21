@@ -89,33 +89,44 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
     than left as a hole.
   See `docs/evidence/phase3-log-sinks-and-fallback.md` and `docs/evidence/phase3-rive-live.md`.
 
-## Phase 4 — Animation (FR-25) — iterating on user design feedback
+## Phase 4 — Animation (FR-25) — design pass done, verified against the reference ✅ DONE
 
-Design/animation pass in progress (2026-09-21), driven by the user's review of the live element:
+Design/animation pass driven by the user's review of the live element (2026-09-21). Everything below was
+measured, not eyeballed, using the CLI's headless renderer:
 
 * `[x]` **Ring closes when the percentage is off.** The top gap was a fixed 71.3° hole; it is now two bound
   properties (71.3° digits / 55.6° bolt / 0° closed), so the ring is continuous without the number.
-* `[x]` **Reveal raised to 1 s** (prototype; the 500 ms cut was too subtle on boot).
-* `[x]` **Animated fill**: the ring chases the battery level over 600 ms instead of snapping, from 0 on
+* `[x]` **Reveal raised to 4 s** (user asked for 4× the 1 s cut); **animated fill** over 2.4 s, from 0 on
   first attach.
-* `[ ]` Wi-Fi re-authored to match the reference (the dot should be a rounded triangle, not an ellipse).
-* `[ ]` Proportions: number, airplane, moon sizes against the ring (and a possible flashlight glyph — needs
-  the user to say what it is).
-
-
+* `[x]` **Wi-Fi re-authored to match the Apple glyph.** Two real bugs found by measuring:
+  * `WifiIdle`/`PlaneMorph` *key the arcs' TrimPath* (±58°) and `WifiIdle` loops forever, so the authored
+    trim was overridden at runtime and every earlier Wi-Fi edit was a no-op on screen. The keyframes now
+    carry the measured values.
+  * the Ellipse radius had been set from Apple's outer *edge* instead of its *centreline*, putting both arcs
+    a full stroke too far out.
+  Verified by overlaying my render on a high-res Apple reference: Wi-Fi-region IoU 0.52 → **0.958**. The dot
+  is traced from the reference (`tools/extract-wifi-dot.py`), because a triangle-plus-corner-radius never
+  matched.
+* `[x]` **Ring halves no longer overlap.** Each half was a window from one gap edge to the other, so with the
+  gap closed their round caps met at 12 o'clock — the left body painted over the right, and the track's two
+  0.22 caps stacked to 0.46 as a bright blob. Each half is now one window anchored with `offset` and sized by
+  `end` (an arc length); the left half grows past 12 o'clock and the right goes to zero, so there is no
+  junction to overlap at.
+* `[x]` **New DND crescent and airplane**, traced from the supplied art
+  (`tools/trace-shape-to-rive.py`), both scaled to the Wi-Fi's measured 49.6 × 36.9 footprint and centred on
+  the same point.
+* `[x]` **Middle-slot crossfade**: the slot used to cut (the Wi-Fi's opacities and the plane's were written
+  in the same frame). `DuoVisual.visual` takes a `middleBlend` and `DuoStateMonitor` tweens it over 200 ms,
+  matching the PlaneMorph.
 * `[x]` State machine bound and driven from the view model (`revealRequest`, `airplaneState`) — the runtime's
   own input setters are Kotlin `internal`, so the view model is the only public route.
-* `[x]` Reveal timeline: **30 frames at 60 fps = 500 ms** (scale 1 → 1.12 at 100 ms → 1.05 at 300 ms → 1),
-  one shot, re-firable on the false→true edge; the state leaves only on the animation's 100 % exit time, so
-  FR-25's budget is structural rather than a timing hope. The whole element scales because a single `Node`
-  parents everything — that is the "synced group".
-* `[x]` Airplane merge/spawn: the wifi arcs collapse (7 frames) then the plane grows (11 frames) =
+* `[x]` Airplane merge/spawn: the Wi-Fi arcs collapse (7 frames) then the plane grows (11 frames) =
   **200 ms**, with 80 ms layer mixes. Units confirmed with `rive schema` (animations: frames; transitions: ms).
+* `[x]` Visual pass on real hardware — and the CLI's `--screenshot` is **not** broken: it renders headlessly
+  with `--advance`/`--viewport`/`--data`, which is now the main design loop (`docs/rive-pipeline.md`).
 * `[ ]` Middle-slot choice: the element takes the battery slot's column (83 px, measured) — whether the design
   means a different "middle" still needs re-checking against the two reference screenshots.
-* `[ ]` Visual pass on real hardware (reveal bounce + morph). The CLI's `--screenshot` is currently broken
-  (CLI 1.1.0, see docs/rive-pipeline.md), so the in-app preview is the only visual surface for now.
-* Commit.
+* `[ ]` A flashlight glyph: mentioned as a possible middle-slot occupant, needs the user to say what it is.
 
 ## Phase 5 — Settings app (FR-03/09/10/11/16/17/28)
 
@@ -131,8 +142,16 @@ Design/animation pass in progress (2026-09-21), driven by the user's review of t
   the element off restores them instead of leaving an empty stretch of status bar.
 * `[x]` Dragging the element (FR-17): a mock status bar in the app hosting the **same Canvas element** the
   phone uses, dragged to set the offset — no native code, so it cannot break the settings app.
-* `[ ]` Per-setting looping previews beyond the global one (FR-09), settings search, and exporting the
-  diagnostics as a *file* rather than a shared text. The donate button (FR-28) is in.
+* `[x]` **Per-setting looping previews (FR-09)**: every row that has a visible behaviour carries a small
+  looping demonstration of its own off → on → off. It morphs two snapshots (`DuoVisual.lerp`) built from the
+  same `DuoMapping` the status bar uses, and draws them with the Canvas element - several run at once, and
+  each Rive view is a native instance. Wired to: the master switch (element absent ↔ present), the percentage
+  (ring closed ↔ gap + digits), and the size slider (min ↔ max). The position row is its own demo already -
+  dragging it moves the real element - and the renderer + gesture rows have no visual to demonstrate, which
+  is recorded rather than faked.
+* `[ ]` Settings search, and exporting the diagnostics as a *file* rather than a shared text. The donate
+  button (FR-28) is in.
+* `[ ]` Human review of the settings UI on the phone (the demo rows in particular).
 * Commit.
 
 ## Phase 6 — Auto Expand integration (FR-05/18/27)

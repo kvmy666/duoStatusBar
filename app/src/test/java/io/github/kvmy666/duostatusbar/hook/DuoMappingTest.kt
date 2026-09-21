@@ -213,6 +213,27 @@ class DuoMappingTest {
     }
 
     @Test
+    fun `a demo can morph between two snapshots without leaving either state`() {
+        val off = visual(72, middleBlend = 0f)
+        val on = visual(72, airplane = true, middleBlend = 1f)
+        // The ends are the states themselves, not an approximation of them.
+        assertEquals(off, off.lerp(on, 0f))
+        assertEquals(on, off.lerp(on, 1f))
+        // Half-way is actually half-way for the things that can be half-way...
+        val mid = off.lerp(on, 0.5f)
+        assertEquals((off.wifiOuterOpacity + on.wifiOuterOpacity) / 2f, mid.wifiOuterOpacity, 0.0001f)
+        assertEquals((off.airplaneOpacity + on.airplaneOpacity) / 2f, mid.airplaneOpacity, 0.0001f)
+        // ...and the things that cannot are one state or the other, never a third thing.
+        assertTrue(mid.airplaneState == off.airplaneState || mid.airplaneState == on.airplaneState)
+        assertTrue(mid.tint == off.tint || mid.tint == on.tint)
+        assertEquals(off.percentText, off.lerp(on, 0.49f).percentText)
+        assertEquals(on.percentText, off.lerp(on, 0.51f).percentText)
+        // Out-of-range t is clamped rather than extrapolated.
+        assertEquals(off, off.lerp(on, -1f))
+        assertEquals(on, off.lerp(on, 2f))
+    }
+
+    @Test
     fun `airplane beats dnd for the middle slot`() {
         val v = visual(70, airplane = true, dnd = true)
         assertEquals(1f, v.airplaneOpacity, 0.0001f)
