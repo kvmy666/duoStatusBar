@@ -95,8 +95,13 @@ object DuoMapping {
         return (1..4).map { if (it <= n) 1f else 0.3f }
     }
 
-    /** Font size shrinks for 3 digits so `100` still fits the gap (iOST does the same). */
-    fun percentFontSize(text: String): Float = if (text.length >= 3) 33f else 42f
+    /**
+     * Font size, measured against the reference: the digits' cap height is 0.218 of the ring diameter
+     * (`tools/measure-element.py` on `duo-reference-02`: 43 px digits / 197 px ring), so ~22.5 units in
+     * the 103-unit ring - a font of 32 for Montserrat (cap height ~0.7 em). Three digits shrink further
+     * so `100` still fits the gap.
+     */
+    fun percentFontSize(text: String): Float = if (text.length >= 3) 26f else 32f
 
     fun visual(
         level: Int,

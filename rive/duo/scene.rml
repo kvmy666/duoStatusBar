@@ -24,7 +24,7 @@
 
             <Text x="-3.5" y="-60" width="80" height="42" alignValue="center" originX="0.5" originY="0"
                 sizingValue="fixed" overflowValue="visible" name="percent" id="0:30">
-                <TextStylePaint fontSize="42" fontAssetId="0:40" name="PercentStyle" id="0:31">
+                <TextStylePaint fontSize="32" fontAssetId="0:40" name="PercentStyle" id="0:31">
                     <DataBindContext propertyKey="274" sourcePathIds="0:60-0:84" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -128,8 +128,14 @@
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:68" />
             </Shape>
 
-            <Shape name="wifiDot" id="0:16">
-                <Ellipse x="-0.5" y="13.5" width="14" height="12" originX="0.5" originY="0.5" name="Path" />
+            <!-- The dot is a rounded **triangle** in the reference (image 1), not a blob: flat top,
+                 rounded downward point. 12 wide, 11 tall, corners rounded to ~3.2. -->
+            <Shape x="-0.5" y="13.5" name="wifiDot" id="0:16">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-6" y="-5.5" radius="3.2" />
+                    <StraightVertex x="6" y="-5.5" radius="3.2" />
+                    <StraightVertex x="0" y="5.5" radius="3.2" />
+                </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:69" />
             </Shape>
@@ -156,21 +162,23 @@
                  Occupies the Wi-Fi slot when airplane mode is on: the Wi-Fi layers collapse into
                  the dot, then this scales up from inside it (FR-25).                              -->
 
+            <!-- Scaled x1.6 (was ~16 units wide, a speck next to the 62-unit Wi-Fi): the plane now
+                 reads at the same weight as the arcs it replaces. -->
             <Shape x="-0.5" y="13.5" opacity="0" name="airplane" id="0:51">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="0" y="-8" radius="0.8" />
-                    <StraightVertex x="1.6" y="-2.2" radius="0.8" />
-                    <StraightVertex x="8" y="2.2" radius="0.8" />
-                    <StraightVertex x="8" y="4.2" radius="0.8" />
-                    <StraightVertex x="1.6" y="2.6" radius="0.8" />
-                    <StraightVertex x="1.2" y="6.5" radius="0.8" />
-                    <StraightVertex x="3.5" y="8.5" radius="0.8" />
-                    <StraightVertex x="-3.5" y="8.5" radius="0.8" />
-                    <StraightVertex x="-1.2" y="6.5" radius="0.8" />
-                    <StraightVertex x="-1.6" y="2.6" radius="0.8" />
-                    <StraightVertex x="-8" y="4.2" radius="0.8" />
-                    <StraightVertex x="-8" y="2.2" radius="0.8" />
-                    <StraightVertex x="-1.6" y="-2.2" radius="0.8" />
+                    <StraightVertex x="0" y="-12.8" radius="1.28" />
+                    <StraightVertex x="2.56" y="-3.52" radius="1.28" />
+                    <StraightVertex x="12.8" y="3.52" radius="1.28" />
+                    <StraightVertex x="12.8" y="6.72" radius="1.28" />
+                    <StraightVertex x="2.56" y="4.16" radius="1.28" />
+                    <StraightVertex x="1.92" y="10.4" radius="1.28" />
+                    <StraightVertex x="5.6" y="13.6" radius="1.28" />
+                    <StraightVertex x="-5.6" y="13.6" radius="1.28" />
+                    <StraightVertex x="-1.92" y="10.4" radius="1.28" />
+                    <StraightVertex x="-2.56" y="4.16" radius="1.28" />
+                    <StraightVertex x="-12.8" y="6.72" radius="1.28" />
+                    <StraightVertex x="-12.8" y="3.52" radius="1.28" />
+                    <StraightVertex x="-2.56" y="-3.52" radius="1.28" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:75" />
@@ -187,17 +195,17 @@
 
             <Shape x="-0.5" y="17" opacity="0" name="dndMoon" id="0:52">
                 <PointsPath isClosed="true" name="Path" id="0:53">
-                    <CubicDetachedVertex x="-1.839" y="-16.341" inRotation="0.000000" inDistance="0.000" outRotation="-0.982794" outDistance="0.541" />
-                    <CubicDetachedVertex x="-1.809" y="-17.841" inRotation="1.012197" inDistance="0.566" outRotation="-2.158799" outDistance="0.541" />
-                    <CubicDetachedVertex x="-3.189" y="-18.441" inRotation="-0.165149" inDistance="0.547" outRotation="2.963567" outDistance="8.809" />
-                    <CubicDetachedVertex x="-18.459" y="-0.141" inRotation="-1.570796" inDistance="9.150" outRotation="1.570796" outDistance="10.260" />
-                    <CubicDetachedVertex x="0.141" y="18.459" inRotation="3.141593" inDistance="10.260" outRotation="0.000000" outDistance="9.150" />
-                    <CubicDetachedVertex x="18.441" y="3.159" inRotation="1.748221" inDistance="8.839" outRotation="-1.396124" outDistance="0.518" />
-                    <CubicDetachedVertex x="17.841" y="1.809" inRotation="0.540420" inDistance="0.525" outRotation="-2.582993" outDistance="0.566" />
-                    <CubicDetachedVertex x="16.341" y="1.839" inRotation="-0.632749" inDistance="0.558" outRotation="2.518684" outDistance="2.623" />
-                    <CubicDetachedVertex x="8.751" y="4.239" inRotation="0.000000" inDistance="2.850" outRotation="3.141593" outDistance="7.200" />
-                    <CubicDetachedVertex x="-4.269" y="-8.781" inRotation="1.570796" inDistance="7.200" outRotation="-1.570796" outDistance="2.820" />
-                    <CubicDetachedVertex x="-1.869" y="-16.341" inRotation="2.177784" inDistance="2.630" outRotation="0.000000" outDistance="0.000" />
+                    <CubicDetachedVertex x="-2.084" y="-18.520" inRotation="0.000000" inDistance="0.000" outRotation="-0.982794" outDistance="0.613" />
+                    <CubicDetachedVertex x="-2.050" y="-20.220" inRotation="1.012197" inDistance="0.642" outRotation="-2.158799" outDistance="0.613" />
+                    <CubicDetachedVertex x="-3.614" y="-20.900" inRotation="-0.165149" inDistance="0.620" outRotation="2.963567" outDistance="9.984" />
+                    <CubicDetachedVertex x="-20.920" y="-0.160" inRotation="-1.570796" inDistance="10.370" outRotation="1.570796" outDistance="11.628" />
+                    <CubicDetachedVertex x="0.160" y="20.920" inRotation="3.141593" inDistance="11.628" outRotation="0.000000" outDistance="10.370" />
+                    <CubicDetachedVertex x="20.900" y="3.580" inRotation="1.748221" inDistance="10.017" outRotation="-1.396124" outDistance="0.587" />
+                    <CubicDetachedVertex x="20.220" y="2.050" inRotation="0.540420" inDistance="0.595" outRotation="-2.582993" outDistance="0.642" />
+                    <CubicDetachedVertex x="18.520" y="2.084" inRotation="-0.632749" inDistance="0.632" outRotation="2.518684" outDistance="2.972" />
+                    <CubicDetachedVertex x="9.918" y="4.804" inRotation="0.000000" inDistance="3.230" outRotation="3.141593" outDistance="8.160" />
+                    <CubicDetachedVertex x="-4.838" y="-9.952" inRotation="1.570796" inDistance="8.160" outRotation="-1.570796" outDistance="3.196" />
+                    <CubicDetachedVertex x="-2.118" y="-18.520" inRotation="2.177784" inDistance="2.980" outRotation="0.000000" outDistance="0.000" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:87" />
@@ -484,7 +492,7 @@
             <ViewModelInstanceColor viewModelPropertyId="0:81" propertyValue="FFFFFFFF" />
             <ViewModelInstanceColor viewModelPropertyId="0:82" propertyValue="FFFFFFFF" />
             <ViewModelInstanceString viewModelPropertyId="0:83" propertyValue="100" />
-            <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="33" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="26" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:85" propertyValue="false" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:86" propertyValue="false" />
             <ViewModelInstanceNumber viewModelPropertyId="0:87" propertyValue="0" />

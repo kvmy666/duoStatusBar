@@ -153,9 +153,9 @@ class DuoMappingTest {
 
     @Test
     fun `three digits shrink so they still fit the gap`() {
-        assertEquals(33f, DuoMapping.percentFontSize("100"), 0.0001f)
-        assertEquals(42f, DuoMapping.percentFontSize("42"), 0.0001f)
-        assertEquals(33f, visual(100).percentFontSize, 0.0001f)
+        assertEquals(26f, DuoMapping.percentFontSize("100"), 0.0001f)
+        assertEquals(32f, DuoMapping.percentFontSize("42"), 0.0001f)
+        assertEquals(26f, visual(100).percentFontSize, 0.0001f)
     }
 
     @Test
