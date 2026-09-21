@@ -137,7 +137,7 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 | Phase | What only you can do |
 |---|---|
 | 0 | Install the APK, enable the module in LSPosed (scope **System UI**), reboot, keep the phone connected |
-| 3-4 | Look at the screen and tell me what looks wrong; record short clips |
+| 3-4 | Re-enable **wireless debugging** after a reboot (adbd does not come back on its own), then run `tools/duo-verify.ps1 -Stage icons` and `-Stage rive`; look at the screen and say what looks wrong |
 | 5 | Review the settings UI on the phone |
 | 6 | Have Auto Expand installed while testing taps |
 | 9 | Record the final GIFs/screenshots for the README |
