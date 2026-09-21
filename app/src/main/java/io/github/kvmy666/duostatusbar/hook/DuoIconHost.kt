@@ -1,10 +1,15 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import io.github.kvmy666.duostatusbar.hook.integration.AutoExpand
+import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -30,6 +35,13 @@ internal class DuoIconHost(private val context: Context) {
     private var host: LinearLayout? = null
     private var element: DuoElement? = null
     private val guard = DuoGuard(context)
+    private val rom = RomDetection.forThisRom(
+        Build.MANUFACTURER.orEmpty(),
+        Build.BRAND.orEmpty(),
+        Build.PRODUCT.orEmpty(),
+        Build.DISPLAY.orEmpty()
+    )
+    private val romLogged = AtomicBoolean(false)
     private val logged = AtomicBoolean(false)
     private val gateLogged = AtomicBoolean(false)
     private val factsLogged = AtomicBoolean(false)
@@ -68,9 +80,39 @@ internal class DuoIconHost(private val context: Context) {
             view.layoutParams = LinearLayout.LayoutParams(slotWidthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
             view.requestLayout()
+            installGestures(view)
         } catch (t: Throwable) {
             Log.w(TAG, "applyLayout: ${t.message}")
         }
+    }
+
+    /**
+     * FR-05/18: gestures are opt-in per action, and the hand-off is to Auto Expand — this module never
+     * implements the actions itself, so the two modules cannot disagree about what a tap means.
+     *
+     * With the default settings (`no_action` everywhere) no listener is installed and the view is not
+     * clickable, so touches fall straight through to whoever handled them before: the status bar's own
+     * gestures, including Auto Expand's zones.
+     */
+    private fun installGestures(view: View) {
+        val tap = settings.tapAction
+        val doubleTap = settings.doubleTapAction
+        val longPress = settings.longPressAction
+        if (tap == AutoExpand.NO_ACTION && doubleTap == AutoExpand.NO_ACTION && longPress == AutoExpand.NO_ACTION) {
+            view.setOnTouchListener(null)
+            view.isClickable = false
+            return
+        }
+        val detector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapUp(e: MotionEvent): Boolean = AutoExpand.request(context, tap)
+            override fun onDoubleTap(e: MotionEvent): Boolean = AutoExpand.request(context, doubleTap)
+            override fun onLongPress(e: MotionEvent) {
+                AutoExpand.request(context, longPress)
+            }
+        })
+        view.isClickable = true
+        view.setOnTouchListener { _, event -> detector.onTouchEvent(event) }
+        Log.i(TAG, "gestures on: tap=$tap doubleTap=$doubleTap longPress=$longPress (handled by Auto Expand)")
     }
 
     /**
@@ -263,7 +305,7 @@ internal class DuoIconHost(private val context: Context) {
     /** The battery slot's column — 83 px measured on the target device — or the best available estimate. */
     private fun measuredSlotWidth(container: ViewGroup): Int {
         val measured = try {
-            val id = context.resources.getIdentifier("battery", "id", SYSTEMUI_PACKAGE)
+            val id = context.resources.getIdentifier(rom.batteryId, "id", rom.systemUiPackage)
             if (id != 0) container.findViewById<View>(id)?.width ?: 0 else 0
         } catch (_: Throwable) {
             0
@@ -274,20 +316,22 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private fun findStatusIconsHost(root: View): LinearLayout? {
-        for (name in CONTAINER_IDS) {
-            val id = context.resources.getIdentifier(name, "id", SYSTEMUI_PACKAGE)
+        if (romLogged.compareAndSet(false, true)) {
+            Log.i(TAG, "ROM adapter: ${rom.id} (${rom.label}) - ${rom.notes}")
+        }
+        for (name in rom.containerIds) {
+            val id = context.resources.getIdentifier(name, "id", rom.systemUiPackage)
             if (id == 0) continue
             val found = root.findViewById<View>(id)
             Log.d(TAG, "container $name -> ${found?.javaClass?.simpleName ?: "null"}")
             (found as? LinearLayout)?.let { return it }
         }
+        Log.w(TAG, "no container id resolved (tried ${rom.containerIds}) - status bar left untouched")
         return null
     }
 
     private companion object {
         const val TAG = "DuoSB"
         const val SURVIVAL_MS = 4_000L
-        const val SYSTEMUI_PACKAGE = "com.android.systemui"
-        val CONTAINER_IDS = listOf("system_icons", "system_icons_container", "status_bar_end_side_content")
     }
 }

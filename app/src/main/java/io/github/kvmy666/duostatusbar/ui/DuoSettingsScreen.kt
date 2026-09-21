@@ -2,6 +2,7 @@ package io.github.kvmy666.duostatusbar.ui
 
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,7 +12,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -28,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.kvmy666.duostatusbar.DuoPreview
 import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import kotlinx.coroutines.delay
@@ -120,6 +125,36 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         }
 
         val emptyStatus = stringResource(R.string.settings_no_status)
+        val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
+        Card {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(stringResource(R.string.settings_gestures), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = if (autoExpand) {
+                        stringResource(R.string.settings_gestures_note)
+                    } else {
+                        stringResource(R.string.settings_gestures_missing)
+                    },
+                    style = MaterialTheme.typography.bodySmall
+                )
+                ActionPicker(
+                    label = stringResource(R.string.settings_tap),
+                    selectedKey = settings.tapAction,
+                    enabled = autoExpand && settings.enabled
+                ) { update(settings.copy(tapAction = it)) }
+                ActionPicker(
+                    label = stringResource(R.string.settings_double_tap),
+                    selectedKey = settings.doubleTapAction,
+                    enabled = autoExpand && settings.enabled
+                ) { update(settings.copy(doubleTapAction = it)) }
+                ActionPicker(
+                    label = stringResource(R.string.settings_long_press),
+                    selectedKey = settings.longPressAction,
+                    enabled = autoExpand && settings.enabled
+                ) { update(settings.copy(longPressAction = it)) }
+            }
+        }
+
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.settings_diagnostics), style = MaterialTheme.typography.titleMedium)
@@ -179,5 +214,39 @@ private fun LabelledSlider(
     Column {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Slider(value = value, onValueChange = onChange, valueRange = range)
+    }
+}
+
+/** Pick one of Auto Expand's actions for a gesture. A plain dropdown: no experimental API needed. */
+@Composable
+private fun ActionPicker(
+    label: String,
+    selectedKey: String,
+    enabled: Boolean,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Box {
+            OutlinedButton(
+                onClick = { expanded = true },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(DuoActions.label(selectedKey))
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DuoActions.ALL.forEach { (key, name) ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = {
+                            expanded = false
+                            onSelect(key)
+                        }
+                    )
+                }
+            }
+        }
     }
 }

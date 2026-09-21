@@ -33,7 +33,14 @@ data class DuoSettings(
     /** FR-03/17: element size as a percentage of the measured slot. */
     val sizePercent: Int = 100,
     /** FR-17: horizontal nudge inside the slot, in dp, from the drag editor. */
-    val offsetX: Int = 0
+    val offsetX: Int = 0,
+    /**
+     * FR-05/18: what a gesture on the element asks Auto Expand to do. Its action keys, or `no_action`.
+     * The defaults mean the element consumes no touches at all — no gestures, no conflicts.
+     */
+    val tapAction: String = "no_action",
+    val doubleTapAction: String = "no_action",
+    val longPressAction: String = "no_action"
 )
 
 object DuoPrefs {
@@ -47,10 +54,14 @@ object DuoPrefs {
     const val COL_SIZE_PERCENT = "size_percent"
     const val COL_OFFSET_X = "offset_x"
     const val COL_REVISION = "revision"
+    const val COL_TAP = "tap_action"
+    const val COL_DOUBLE_TAP = "double_tap_action"
+    const val COL_LONG_PRESS = "long_press_action"
 
     /** The column set the module expects; kept in one place so both sides cannot drift. */
     val COLUMNS = arrayOf(
-        COL_ENABLED, COL_USE_RIVE, COL_SHOW_PERCENT, COL_SIZE_PERCENT, COL_OFFSET_X, COL_REVISION
+        COL_ENABLED, COL_USE_RIVE, COL_SHOW_PERCENT, COL_SIZE_PERCENT, COL_OFFSET_X, COL_REVISION,
+        COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS
     )
 
     private const val PREFS = "duo_settings"
@@ -64,7 +75,10 @@ object DuoPrefs {
             useRive = p.getBoolean(COL_USE_RIVE, true),
             showPercent = p.getBoolean(COL_SHOW_PERCENT, true),
             sizePercent = p.getInt(COL_SIZE_PERCENT, 100),
-            offsetX = p.getInt(COL_OFFSET_X, 0)
+            offsetX = p.getInt(COL_OFFSET_X, 0),
+            tapAction = p.getString(COL_TAP, "no_action") ?: "no_action",
+            doubleTapAction = p.getString(COL_DOUBLE_TAP, "no_action") ?: "no_action",
+            longPressAction = p.getString(COL_LONG_PRESS, "no_action") ?: "no_action"
         )
     }
 
@@ -78,6 +92,9 @@ object DuoPrefs {
             .putBoolean(COL_SHOW_PERCENT, settings.showPercent)
             .putInt(COL_SIZE_PERCENT, settings.sizePercent.coerceIn(MIN_SIZE, MAX_SIZE))
             .putInt(COL_OFFSET_X, settings.offsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET))
+            .putString(COL_TAP, settings.tapAction)
+            .putString(COL_DOUBLE_TAP, settings.doubleTapAction)
+            .putString(COL_LONG_PRESS, settings.longPressAction)
             .putLong(KEY_REVISION, next)
             .apply()
         return next

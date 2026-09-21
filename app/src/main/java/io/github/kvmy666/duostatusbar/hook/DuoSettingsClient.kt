@@ -22,7 +22,10 @@ internal data class ModuleSettings(
     val showPercent: Boolean,
     val sizePercent: Int,
     val offsetX: Int,
-    val revision: Long
+    val revision: Long,
+    val tapAction: String,
+    val doubleTapAction: String,
+    val longPressAction: String
 ) {
     companion object {
         val DEFAULT = ModuleSettings(
@@ -31,7 +34,10 @@ internal data class ModuleSettings(
             showPercent = true,
             sizePercent = 100,
             offsetX = 0,
-            revision = 0L
+            revision = 0L,
+            tapAction = "no_action",
+            doubleTapAction = "no_action",
+            longPressAction = "no_action"
         )
     }
 }
@@ -57,7 +63,10 @@ internal object DuoSettingsClient {
                     showPercent = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SHOW_PERCENT)) == 1,
                     sizePercent = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SIZE_PERCENT)),
                     offsetX = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_OFFSET_X)),
-                    revision = cursor.getLong(cursor.getColumnIndexOrThrow(DuoPrefs.COL_REVISION))
+                    revision = cursor.getLong(cursor.getColumnIndexOrThrow(DuoPrefs.COL_REVISION)),
+                    tapAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_TAP)) ?: "no_action",
+                    doubleTapAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DOUBLE_TAP)) ?: "no_action",
+                    longPressAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_LONG_PRESS)) ?: "no_action"
                 )
             }
         } ?: ModuleSettings.DEFAULT

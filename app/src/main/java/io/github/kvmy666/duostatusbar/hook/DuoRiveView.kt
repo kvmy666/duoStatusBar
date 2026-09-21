@@ -59,6 +59,9 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
                 .setAutoplay(true)
                 .setAutoBind(true)
                 .setShouldLoadCDNAssets(false)
+                // Touch feedback is not needed from Rive: any gesture the user asks for is handled one level
+                // up and handed to Auto Expand. Letting Rive consume touches would swallow it instead.
+                .setTouchPassThrough(true)
             val view = RiveAnimationView(builder)
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             rive = view

@@ -96,11 +96,32 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 
 ## Phase 6 — Auto Expand integration (FR-05/18/27)
 
-* Shared gesture contract, coexistence flag, per-side ownership, conflict matrix documented. Commit.
+* `[x]` Shared gesture contract, taken from Auto Expand's own code rather than invented: its privileged
+  broadcast (`…ZONE_PRIVILEGED_ACTION` + extra `zone_action_key`), sent with `setPackage("com.android.systemui")`
+  — which is where both modules live, so the request is a same-process broadcast with the shape its own
+  dispatcher uses (`hook/integration/AutoExpand.kt`).
+* `[x]` Ownership split: **Duo draws, Auto Expand acts.** This module implements no second copy of any action,
+  so the two can never disagree about what a tap means. The action keys and labels are mirrored in
+  `settings/DuoActions.kt`, with the ones needing extra data left out on purpose.
+* `[x]` Conflict is opt-in by construction: with the default `no_action` the element installs no touch
+  listener, is not clickable, and does not consume a single event — Auto Expand's zones keep working untouched.
+* `[x]` Rive's own pointer handling is switched off (`setTouchPassThrough(true)`) so it cannot swallow a
+  gesture meant for the hand-off.
+* `[ ]` On-device verification with both modules installed at once.
+* Commit.
 
 ## Phase 7 — Multi-ROM hardening (FR-01/02)
 
-* ROM adapter layer with capability detection (AOSP / ColorOS-OOS / HyperOS), safe-mode. Commit.
+* `[x]` `RomAdapter` + `RomDetection`: the ROM is picked from build identity by a **pure function** (5 unit
+  tests), and each adapter carries the icon-strip ids, the battery id, and a `notes` field stating whether the
+  values were **measured** or are **unverified** — the project's evidence rule, in code.
+* `[x]` Every adapter probes the AOSP spelling first, so a stock-like ROM needs no special case; the runtime
+  logs each id it tried and what it found, which is how the next adapter gets written from evidence instead
+  of guesswork.
+* `[x]` "Safe mode" is structural rather than a flag: an unrecognised ROM simply never resolves the strip, so
+  nothing is hidden, the stock bar stays, and the log says exactly what was tried.
+* `[ ]` Measure a HyperOS/MIUI device and replace the unverified adapter with real ids.
+* Commit.
 
 ## Phase 8 — Shade header (FR-07/25)
 

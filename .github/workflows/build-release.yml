@@ -1,0 +1,83 @@
+name: Build Release APK
+
+on:
+  push:
+    tags:
+      - '[0-9]*-*'   # VersionCode-VersionName, e.g. 1-0.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest --console=plain
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+
+      - name: Build release APK
+        env:
+          KEYSTORE_FILE: ../keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --console=plain
+
+      - name: Version name from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION_NAME="${TAG#*-}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK
+        run: mv app/build/outputs/apk/release/app-release.apk DuoStatusBar-${{ steps.version.outputs.name }}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: v${{ steps.version.outputs.name }}
+          files: DuoStatusBar-${{ steps.version.outputs.name }}.apk
+          generate_release_notes: true
+          make_latest: true
+
+      - name: Publish to Xposed-Modules-Repo
+        env:
+          GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
+        if: env.GH_TOKEN != ''
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.name }}"
+          APK_FILE="DuoStatusBar-${VERSION}.apk"
+          REPO="Xposed-Modules-Repo/io.github.kvmy666.duostatusbar"
+
+          if gh release view "${TAG}" --repo "$REPO" > /dev/null 2>&1; then
+            gh release upload "${TAG}" "$APK_FILE" --repo "$REPO" --clobber
+          else
+            gh release create "${TAG}" "$APK_FILE" \
+              --repo "$REPO" \
+              --title "v${VERSION}" \
+              --latest \
+              --notes "Release v${VERSION}"
+          fi
+
+          # Force this release to be the mirror's "Latest": modules.lsposed.org keys the in-app store off
+          # that pointer, and a stale one freezes the store at an old version.
+          gh release edit "${TAG}" --repo "$REPO" --latest --draft=false --prerelease=false
