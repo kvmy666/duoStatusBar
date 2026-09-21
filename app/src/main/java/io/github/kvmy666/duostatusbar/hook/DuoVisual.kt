@@ -10,6 +10,9 @@ package io.github.kvmy666.duostatusbar.hook
 data class DuoVisual(
     val trimLeftEnd: Float,
     val trimRightEnd: Float,
+    /** Top-gap edges (fractions of the circle from 12 o'clock): the ring closes when they meet. */
+    val gapLeft: Float,
+    val gapRight: Float,
     val trackOpacity: Float,
     val percentText: String,
     val percentOpacity: Float,
@@ -32,14 +35,27 @@ data class DuoVisual(
 
 object DuoMapping {
 
-    // Ring geometry, straight out of docs/DESIGN-duo.md. The drawn arc is split by the top gap:
-    // left segment 0.6631 -> 0.9010 covers 0-50 %, right segment 0.0990 -> 0.3369 covers 50-100 %.
+    // Ring geometry, straight out of docs/DESIGN-duo.md. The fill runs from the bottom-left endpoint
+    // clockwise: left segment covers 0-50 %, right segment covers 50-100 %, and the top gap between
+    // them holds the number (or the bolt). The gap is a *variable*: 71.3 deg with the digits, 55.6 deg
+    // with the bolt, and 0 (the ring closes) when the number is off - DESIGN §4.
     const val LEFT_START = 0.6631f
-    const val LEFT_FULL = 0.9010f
-    const val RIGHT_START = 0.0990f
     const val RIGHT_FULL = 0.3369f
-    private const val LEFT_SPAN = LEFT_FULL - LEFT_START
-    private const val RIGHT_SPAN = RIGHT_FULL - RIGHT_START
+    const val GAP_PERCENT_DEG = 71.3f
+    const val GAP_CHARGING_DEG = 55.6f
+
+    /** The percent-on gap edges; the "closed" case is 0 and 1. */
+    val RIGHT_START = GAP_PERCENT_DEG / 720f
+    val LEFT_FULL = 1f - RIGHT_START
+
+    /** Fraction from 12 o'clock to the top gap's right edge (the left edge mirrors it). */
+    fun gapRight(charging: Boolean, showPercent: Boolean): Float = when {
+        charging -> GAP_CHARGING_DEG / 720f
+        showPercent -> GAP_PERCENT_DEG / 720f
+        else -> 0f
+    }
+
+    fun gapLeft(gapRight: Float): Float = 1f - gapRight
 
     const val GREEN_CHARGING = 0xFF34C759.toInt()
     const val YELLOW_SAVER = 0xFFF2B900.toInt()
@@ -54,13 +70,13 @@ object DuoMapping {
         else -> WHITE
     }
 
-    /** Left half of the ring, 0 % -> 50 %. */
-    fun trimLeft(level: Int): Float =
-        LEFT_START + LEFT_SPAN * (level.coerceIn(0, 50) / 50f)
+    /** Left half of the ring, 0 % -> 50 %: bottom-left endpoint up to the gap's left edge. */
+    fun trimLeft(level: Int, gapLeft: Float): Float =
+        LEFT_START + (gapLeft - LEFT_START) * (level.coerceIn(0, 50) / 50f)
 
-    /** Right half of the ring, 50 % -> 100 %. Stays at its start (invisible) below 50 %. */
-    fun trimRight(level: Int): Float =
-        RIGHT_START + RIGHT_SPAN * ((level.coerceIn(50, 100) - 50) / 50f)
+    /** Right half of the ring, 50 % -> 100 %: gap's right edge down to the bottom-right endpoint. */
+    fun trimRight(level: Int, gapRight: Float): Float =
+        gapRight + (RIGHT_FULL - gapRight) * ((level.coerceIn(50, 100) - 50) / 50f)
 
     /**
      * Wi-Fi layers, bottom-up: nothing connected dims everything, then the dot, the middle arc and
@@ -100,9 +116,13 @@ object DuoMapping {
         val (outer, middle, dot) = wifiOpacities(wifiLevel)
         val cells = cellOpacities(if (airplane) 0 else cellLevel)
         val percent = if (showPercent && !charging) level.toString() else ""
+        val gRight = gapRight(charging, showPercent)
+        val gLeft = gapLeft(gRight)
         return DuoVisual(
-            trimLeftEnd = trimLeft(level),
-            trimRightEnd = trimRight(level),
+            trimLeftEnd = trimLeft(level, gLeft),
+            trimRightEnd = trimRight(level, gRight),
+            gapLeft = gLeft,
+            gapRight = gRight,
             trackOpacity = 0.22f,
             percentText = percent.ifEmpty { " " },
             percentOpacity = if (percent.isEmpty()) 0f else 1f,

@@ -56,7 +56,9 @@
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="8" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Track" />
-                    <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim" />
+                    <TrimPath start="0.6631" end="0.9010" offset="0" name="Trim">
+                        <DataBindContext propertyKey="115" sourcePathIds="0:60-0:88" />
+                    </TrimPath>
                 </Stroke>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:64" />
             </Shape>
@@ -65,7 +67,9 @@
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="8" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Track" />
-                    <TrimPath start="0.0990" end="0.3369" offset="0" name="Trim" />
+                    <TrimPath start="0.0990" end="0.3369" offset="0" name="Trim">
+                        <DataBindContext propertyKey="114" sourcePathIds="0:60-0:89" />
+                    </TrimPath>
                 </Stroke>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:64" />
             </Shape>
@@ -92,6 +96,9 @@
                         <DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" />
                     </SolidColor>
                     <TrimPath start="0.0990" end="0.0990" offset="0" name="Trim">
+                        <!-- start follows the top gap's right edge, so the ring closes when the number is
+                             hidden and narrows for the bolt while charging (FR-25 / DESIGN §4). -->
+                        <DataBindContext propertyKey="114" sourcePathIds="0:60-0:89" />
                         <DataBindContext propertyKey="115" sourcePathIds="0:60-0:63" />
                     </TrimPath>
                 </Stroke>
@@ -425,6 +432,9 @@
         <ViewModelPropertyBoolean name="airplaneState" id="0:85" />
         <ViewModelPropertyBoolean name="revealRequest" id="0:86" />
         <ViewModelPropertyNumber name="dndOpacity" id="0:87" />
+        <!-- Top-gap edges, so the ring can close (percentage off) or narrow (charging). -->
+        <ViewModelPropertyNumber name="gapLeft" id="0:88" />
+        <ViewModelPropertyNumber name="gapRight" id="0:89" />
 
         <ViewModelInstance exports="true" name="Default" id="0:61">
             <ViewModelInstanceNumber viewModelPropertyId="0:62" propertyValue="0.9010" />
@@ -447,6 +457,8 @@
             <ViewModelInstanceBoolean viewModelPropertyId="0:85" propertyValue="false" />
             <ViewModelInstanceBoolean viewModelPropertyId="0:86" propertyValue="false" />
             <ViewModelInstanceNumber viewModelPropertyId="0:87" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:88" propertyValue="0.9010" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:89" propertyValue="0.0990" />
         </ViewModelInstance>
     </ViewModel>
 

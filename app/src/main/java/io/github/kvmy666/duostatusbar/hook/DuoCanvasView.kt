@@ -100,9 +100,9 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         if (leftSweep > MIN_SWEEP) {
             canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.LEFT_START, leftSweep, false, ring)
         }
-        val rightSweep = (visual.trimRightEnd - DuoMapping.RIGHT_START) * 360f
+        val rightSweep = (visual.trimRightEnd - visual.gapRight) * 360f
         if (rightSweep > MIN_SWEEP) {
-            canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.RIGHT_START, rightSweep, false, ring)
+            canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * visual.gapRight, rightSweep, false, ring)
         }
 
         // FR-06: the DND crescent takes the middle slot (0, 17 design units below the ring centre).

@@ -33,36 +33,61 @@ class DuoMappingTest {
 
     // ---------------------------------------------------------------------------- ring geometry
 
+    /** The percent-on gap: 71.3 deg, the case the reference screenshots show. */
+    private val gapRight = DuoMapping.gapRight(charging = false, showPercent = true)
+    private val gapLeft = DuoMapping.gapLeft(gapRight)
+
     @Test
     fun `ring is empty at zero percent`() {
-        assertEquals(DuoMapping.LEFT_START, DuoMapping.trimLeft(0), 0.0001f)
-        assertEquals(DuoMapping.RIGHT_START, DuoMapping.trimRight(0), 0.0001f)
+        assertEquals(DuoMapping.LEFT_START, DuoMapping.trimLeft(0, gapLeft), 0.0001f)
+        assertEquals(gapRight, DuoMapping.trimRight(0, gapRight), 0.0001f)
     }
 
     @Test
     fun `left half fills completely at fifty percent`() {
-        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(50), 0.0001f)
+        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(50, gapLeft), 0.0001f)
         // The right half only starts moving above 50 %.
-        assertEquals(DuoMapping.RIGHT_START, DuoMapping.trimRight(50), 0.0001f)
+        assertEquals(gapRight, DuoMapping.trimRight(50, gapRight), 0.0001f)
     }
 
     @Test
     fun `ring is full at one hundred percent`() {
-        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(100), 0.0001f)
-        assertEquals(DuoMapping.RIGHT_FULL, DuoMapping.trimRight(100), 0.0001f)
+        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(100, gapLeft), 0.0001f)
+        assertEquals(DuoMapping.RIGHT_FULL, DuoMapping.trimRight(100, gapRight), 0.0001f)
     }
 
     @Test
     fun `halfway through the right half is halfway along its arc`() {
-        val half = (DuoMapping.RIGHT_START + DuoMapping.RIGHT_FULL) / 2f
-        assertEquals(half, DuoMapping.trimRight(75), 0.0001f)
+        val half = (gapRight + DuoMapping.RIGHT_FULL) / 2f
+        assertEquals(half, DuoMapping.trimRight(75, gapRight), 0.0001f)
     }
 
     @Test
     fun `out of range levels are clamped, not extrapolated`() {
-        assertEquals(DuoMapping.LEFT_START, DuoMapping.trimLeft(-20), 0.0001f)
-        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(500), 0.0001f)
-        assertEquals(DuoMapping.RIGHT_FULL, DuoMapping.trimRight(500), 0.0001f)
+        assertEquals(DuoMapping.LEFT_START, DuoMapping.trimLeft(-20, gapLeft), 0.0001f)
+        assertEquals(DuoMapping.LEFT_FULL, DuoMapping.trimLeft(500, gapLeft), 0.0001f)
+        assertEquals(DuoMapping.RIGHT_FULL, DuoMapping.trimRight(500, gapRight), 0.0001f)
+    }
+
+    // ---------------------------------------------------------------------------------- top gap
+
+    @Test
+    fun `the gap closes when the percentage is off so the ring is continuous`() {
+        val right = DuoMapping.gapRight(charging = false, showPercent = false)
+        val left = DuoMapping.gapLeft(right)
+        assertEquals(0f, right, 0.0001f)
+        assertEquals(1f, left, 0.0001f)
+        // The two halves meet at 12 o'clock: the left ends at 1.0 and the right starts at 0.0.
+        assertEquals(1f, DuoMapping.trimLeft(50, left), 0.0001f)
+        assertEquals(0f, DuoMapping.trimRight(50, right), 0.0001f)
+    }
+
+    @Test
+    fun `charging narrows the gap to fit the bolt`() {
+        val charging = DuoMapping.gapRight(charging = true, showPercent = true)
+        val digits = DuoMapping.gapRight(charging = false, showPercent = true)
+        assertTrue(charging < digits)
+        assertEquals(DuoMapping.GAP_CHARGING_DEG / 720f, charging, 0.0001f)
     }
 
     // ------------------------------------------------------------------------------- battery tint
