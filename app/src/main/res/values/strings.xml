@@ -17,6 +17,8 @@
     <string name="settings_loop">Loop the reveal</string>
     <string name="settings_diagnostics">Diagnostics</string>
     <string name="settings_share">Share diagnostics</string>
+    <string name="settings_save_file">Save diagnostics to a file</string>
+    <string name="settings_search">Search settings</string>
     <string name="settings_recheck">Re-check the status bar</string>
     <string name="settings_donate">Donate</string>
     <string name="settings_history">Recent reports</string>

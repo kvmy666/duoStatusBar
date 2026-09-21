@@ -21,9 +21,11 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.core.content.FileProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +42,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.kvmy666.duostatusbar.DuoPreview
+import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.DuoCanvasView
 import io.github.kvmy666.duostatusbar.hook.DuoElement
@@ -47,6 +50,10 @@ import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 /**
@@ -68,6 +75,11 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var loop by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(DuoPrefs.status(context)) }
     var history by remember { mutableStateOf(DuoPrefs.statusHistory(context)) }
+    var query by remember { mutableStateOf("") }
+
+    /** Settings search: a row is shown when the query appears in its label or its detail. */
+    fun matches(vararg text: String): Boolean =
+        query.isBlank() || text.any { it.contains(query.trim(), ignoreCase = true) }
 
     // The module answers an instant after the broadcast; re-reading is simpler than a callback.
     LaunchedEffect(Unit) {
@@ -93,7 +105,19 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     ) {
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
 
-        Card {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            label = { Text(stringResource(R.string.settings_search)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        if (matches(stringResource(R.string.settings_title), stringResource(R.string.settings_master),
+                stringResource(R.string.settings_master_detail), stringResource(R.string.settings_renderer),
+                stringResource(R.string.settings_renderer_detail), stringResource(R.string.settings_percent),
+                stringResource(R.string.settings_percent_detail))
+        ) Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.titleMedium)
                 SettingSwitch(
@@ -127,7 +151,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Card {
+        if (matches(stringResource(R.string.settings_preview), stringResource(R.string.settings_loop),
+                stringResource(R.string.settings_size), stringResource(R.string.settings_offset))
+        ) Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.settings_preview), style = MaterialTheme.typography.titleMedium)
                 DuoPreview(loop = loop)
@@ -158,7 +184,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
         val emptyStatus = stringResource(R.string.settings_no_status)
         val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
-        Card {
+        if (matches(stringResource(R.string.settings_gestures), stringResource(R.string.settings_tap),
+                stringResource(R.string.settings_double_tap), stringResource(R.string.settings_long_press))
+        ) Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.settings_gestures), style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -187,7 +215,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Card {
+        if (matches(stringResource(R.string.settings_diagnostics), stringResource(R.string.settings_share),
+                stringResource(R.string.settings_save_file), stringResource(R.string.settings_donate))
+        ) Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.settings_diagnostics), style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -236,6 +266,21 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 ) { Text(stringResource(R.string.settings_share)) }
                 Button(
                     onClick = {
+                        val file = writeDiagnostics(context, buildDiagnostics(settings, status, history))
+                        if (file != null) {
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_STREAM, file)
+                                putExtra(Intent.EXTRA_TEXT, "Duo Status Bar diagnostics")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(share, "Save diagnostics"))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(stringResource(R.string.settings_save_file)) }
+                Button(
+                    onClick = {
                         context.startActivity(
                             Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL))
                         )
@@ -249,6 +294,40 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
 /** FR-28: where the donate button goes. */
 private const val DONATE_URL = "https://paypal.me/kroomfahd"
+
+/** The report the diagnostics buttons send - one text, shared or written to a file. */
+private fun buildDiagnostics(settings: DuoSettings, status: String, history: List<String>): String =
+    buildString {
+        appendLine("Duo Status Bar diagnostics")
+        appendLine("settings: $settings")
+        appendLine("module: ").append(status.ifEmpty { "no report yet" })
+        if (history.isNotEmpty()) {
+            appendLine("history:")
+            history.forEach { appendLine("  $it") }
+        }
+    }
+
+/**
+ * FR-28: writes the report to the app's own diagnostics directory and returns a shareable Uri.
+ *
+ * A bug report needs the whole log, and a shared string gets truncated by chat apps. The file lives in
+ * the app's external files dir and is handed out through a FileProvider, so nothing else is exposed.
+ * Returns null (and the caller shares nothing) if the directory is unavailable.
+ */
+private fun writeDiagnostics(context: android.content.Context, report: String): Uri? = try {
+    val dir = context.getExternalFilesDir("diagnostics")
+    if (dir == null) {
+        null
+    } else {
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val file = File(dir, "duo-diagnostics-$stamp.txt")
+        file.writeText(report)
+        FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+    }
+} catch (t: Throwable) {
+    L.w("diagnostics file: ${t.javaClass.simpleName}: ${t.message}")
+    null
+}
 
 /**
  * FR-17: drag the element along a mock status bar instead of guessing a number.

@@ -43,15 +43,29 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
 * `[x]` In-app controls to fire `reveal` / toggle `airplane` so the morph can be eyeballed on the phone
   (`DuoPreview`: battery, charging, saver, airplane, Wi-Fi, cell, replay-reveal — driving the same
   `DuoMapping` and the same `DuoBinder` the status bar uses, on the same `Canvas` renderer)
-* `[ ]` Per-setting looping previews (FR-09) and a CI step running `rive --verify` on every push
+* `[x]` Per-setting looping previews (FR-09, landed in Phase 5) and a CI step running `rive --verify` on
+  every push (`.github/workflows/ci.yml`, which also diffs `rive/duo/build/duo.riv` against the committed
+  `app/src/main/res/raw/duo.riv`)
 
 ## Phase 3 — SystemUI core (FR-03/06/08/21)
 
 * `[x]` `DuoIconHost`: injects into `id=system_icons` and hides the stock views for real (GONE + 0×0,
   re-applied on every layout pass) — container resolution confirmed on the device
   (`container system_icons -> LinearLayout`).
-* `[ ]` Keyguard status bar and landscape: the attach is layout-driven, so it follows a re-inflate, but
-  neither has been verified on the device yet.
+* `[x]` **Lock screen (FR-03b).** The status bar is not one bar — the device's SystemUI has three, each
+  with its own icon strip (`status_bar`, `keyguard_status_bar`, `combined_qs_header`), and only the first
+  was handled, so the lock screen showed the element *and* the keyguard's own stock icons. The keyguard bar
+  is now a slot of its own (its own element, its own hiding pass) and is verified on the device. Two bugs
+  fell out of it: the element was being centred on the whole shade *window* (the entire screen) rather than
+  its bar, and the Rive breaker counted *creations* rather than deaths, so three bars tripped it and every
+  bar silently fell back to Canvas.
+* `[ ]` **Shade header (FR-03b), parked.** The pulled-down shade's header is `combined_qs_header`, inflated
+  from a `qs_header_stub` ViewStub; its icon area is `AlphaOptimizedLinearLayout #icons` →
+  `StatusIconContainer #statusIcons`. The element is injected there, but the ROM repopulates the container
+  after every hiding pass, so the icons come back. Hooking `StatusIconContainer.addView` to hide them as
+  they arrive does not fire, so the insertion route is still unknown — one diagnostic line per icon class
+  is in place to name it. Its carrier group also has `mobile_combo` views outside `#icons`.
+* `[ ]` Landscape: the launcher is portrait-locked, so this needs the user to allow rotation first.
 * `[x]` `DuoStateMonitor` + `SystemReaders`: battery/charging/saver, Wi-Fi level, cell level, airplane,
   **DND/silent** — all broadcast-driven (no polling); the mapping is covered by 29 unit tests.
   The DND crescent is the middle slot's second occupant (FR-06): it is **extracted from the device's own
@@ -149,9 +163,11 @@ measured, not eyeballed, using the CLI's headless renderer:
   (ring closed ↔ gap + digits), and the size slider (min ↔ max). The position row is its own demo already -
   dragging it moves the real element - and the renderer + gesture rows have no visual to demonstrate, which
   is recorded rather than faked.
-* `[ ]` Settings search, and exporting the diagnostics as a *file* rather than a shared text. The donate
-  button (FR-28) is in.
-* `[ ]` Human review of the settings UI on the phone (the demo rows in particular).
+* `[x]` **Settings search** (filters the sections by label/detail) and **diagnostics as a file** (FR-28):
+  the report is written to the app's own `diagnostics/` directory and handed out through a `FileProvider`,
+  because a bug report needs the whole log and a shared string gets truncated by chat apps. The donate
+  button is in.
+* `[x]` Human review of the settings UI on the phone - the demo rows render and loop (verified 2026-09-21).
 * Commit.
 
 ## Phase 6 — Auto Expand integration (FR-05/18/27)

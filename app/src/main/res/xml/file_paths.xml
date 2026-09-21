@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FR-28: only the diagnostics directory is ever shared, and only the files the app writes there. -->
+<paths>
+    <external-files-path
+        name="diagnostics"
+        path="diagnostics/" />
+</paths>

@@ -35,6 +35,18 @@
             android:exported="true"
             android:enabled="true" />
 
+        <!-- Diagnostics as a file (FR-28): a bug report needs the whole log, not a shared string that
+             chat apps truncate. Not exported, and only the diagnostics directory is shared. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="io.github.kvmy666.duostatusbar.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- ============ Xposed / LSPosed module declaration ============ -->
         <!-- xposedmodule marks this APK as a module; without it LSPosed ignores us. -->
         <meta-data
