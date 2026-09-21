@@ -304,6 +304,25 @@ internal class DuoIconHost(private val context: Context) {
     /** FR-25: how long an arrival takes, in ms — asked by the monitor when it fires one. */
     val revealMs: Int get() = settings.revealMs
 
+    /**
+     * Shows or hides every element's view outright.
+     *
+     * The always-on display is a different thing from the lock screen, and the element was trying to be
+     * both: the AOD cycles doze -> suspend -> off -> on several times a second, and each cycle re-laid
+     * out the bar the element lives in, so it flickered. The AOD has its own minimal status bar, so the
+     * honest answer is to take the element off the display while it is dozing rather than leave it
+     * half-drawn.
+     */
+    fun setElementsVisible(on: Boolean) {
+        for (target in listOfNotNull(element) + extras.mapNotNull { it.element }) {
+            try {
+                target.ui.visibility = if (on) View.VISIBLE else View.GONE
+            } catch (t: Throwable) {
+                L.w("visibility: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
     /** FR-25: fires the arrival on every bar, so the lock screen wakes with the rest of the element. */
     fun revealAll(ms: Int) {
         for (target in listOfNotNull(element) + extras.mapNotNull { it.element }) {

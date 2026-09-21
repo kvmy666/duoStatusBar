@@ -51,14 +51,11 @@ object DuoBinder {
             "rightArc" to v.rightArc,
             "trackOpacity" to v.trackOpacity,
             "percentFontSize" to v.percentFontSize,
-            "wifiOuterOpacity" to v.wifiOuterOpacity,
-            "wifiMidOpacity" to v.wifiMidOpacity,
+            // The signal ramps are Rive blend layers now: one axis each, not six opacities.
+            "wifiLevel" to v.wifiLevel.toFloat(),
+            "cellLevel" to v.cellLevel.toFloat(),
             // The whole middle-slot hand-over is one Rive layer; this only says which occupant.
-            "middleMode" to v.middleMode.toFloat(),
-            "cell1Opacity" to v.cell1Opacity,
-            "cell2Opacity" to v.cell2Opacity,
-            "cell3Opacity" to v.cell3Opacity,
-            "cell4Opacity" to v.cell4Opacity
+            "middleMode" to v.middleMode.toFloat()
         )
         for ((name, value) in numbers) {
             if (!write(name) { vm.getNumberProperty(name).value = value }) failures++

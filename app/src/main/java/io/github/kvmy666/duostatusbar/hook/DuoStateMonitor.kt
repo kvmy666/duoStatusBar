@@ -39,6 +39,11 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     /** When the last arrival fired, for the AOD burst guard. */
     private var lastRevealAt = 0L
 
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Removes the pending hide when the screen comes back before the departure has finished. */
+    private val hideRunnable = Runnable { host.setElementsVisible(false) }
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
             try {
@@ -79,18 +84,33 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     // over and over instead of sitting still. isInteractive() is false throughout the
                     // AOD, which is exactly the line between "the user woke the phone" and "the panel
                     // blinked".
-                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> if (isInteractive() && revealAllowed()) {
-                        visible = true
-                        host.revealAll(host.revealMs)
-                        restartFill()
+                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                        // The element comes back on ANY screen-on, the AOD's included: it belongs to the
+                        // status bar, and the AOD has one. What it must not do there is *arrive* - the AOD
+                        // pulses several times a second, and an arrival per pulse is the flashing this
+                        // started as. So the display is restored unconditionally and the animation only
+                        // when the user actually woke the phone.
+                        handler.removeCallbacks(hideRunnable)
+                        host.setElementsVisible(true)
+                        if (isInteractive() && revealAllowed()) {
+                            visible = true
+                            host.revealAll(host.revealMs)
+                            restartFill()
+                        }
                     }
                     // FR-25: the departure plays as the screen goes, so the element leaves with the rest
                     // of the display rather than blinking out with it. Tied to the SCREEN, not the lock:
                     // the lock screen is supposed to show the element (FR-03b), so locking must not
                     // dismiss it. Same AOD guard, for the same reason.
-                    Intent.ACTION_SCREEN_OFF -> if (isInteractive()) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        // The departure plays as the panel goes, then the element comes off the display
+                        // entirely. It has to be the whole view, not just the Rive `visible` flag: on the
+                        // always-on display the bar is re-laid out several times a second, and an element
+                        // that is only half hidden flickers with it. The AOD has its own status bar, so
+                        // the element has no business being there.
                         visible = false
                         render()
+                        handler.postDelayed(hideRunnable, DEPART_HIDE_MS)
                     }
                     // Rotation re-inflates the strip: hide the stock views again.
                     Intent.ACTION_CONFIGURATION_CHANGED -> {
@@ -138,6 +158,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         if (!registered) return
         registered = false
         runCatching { fill?.cancel() }
+        runCatching { handler.removeCallbacks(hideRunnable) }
         runCatching { context.unregisterReceiver(receiver) }
     }
 
@@ -249,5 +270,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
         /** A burst of SCREEN_ON within this window is one arrival, not several. */
         const val REVEAL_DEBOUNCE_MS = 900L
+
+        /** How long the departure gets before the element is taken off the display. */
+        const val DEPART_HIDE_MS = 450L
     }
 }

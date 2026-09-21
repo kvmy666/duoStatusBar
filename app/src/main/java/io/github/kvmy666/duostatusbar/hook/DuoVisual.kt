@@ -34,6 +34,13 @@ data class DuoVisual(
      */
     val middleMode: Int,
     /**
+     * The two signal axes the Rive blend layers read: Wi-Fi 0-3, cellular 0-4. One number each rather
+     * than six opacities, because Rive blends between pose animations and gets the per-sphere cascade
+     * for free as the eased axis sweeps past each sphere's threshold.
+     */
+    val wifiLevel: Int,
+    val cellLevel: Int,
+    /**
      * Charging drives the bolt's journey - it is born in the middle slot and travels up into the ring's
      * gap - so that whole sequence is one Rive layer, and this is the only thing the host says about it.
      */
@@ -73,6 +80,8 @@ data class DuoVisual(
             fgColor = if (past) other.fgColor else fgColor,
             // The middle slot's hand-over is a Rive layer, not a tween: this only picks which occupant.
             middleMode = if (past) other.middleMode else middleMode,
+            wifiLevel = if (past) other.wifiLevel else wifiLevel,
+            cellLevel = if (past) other.cellLevel else cellLevel,
             charging = if (past) other.charging else charging,
             visible = if (past) other.visible else visible
         )
@@ -212,6 +221,8 @@ object DuoMapping {
             tint = tint(level, charging, saver),
             fgColor = fgColor,
             middleMode = mode,
+            wifiLevel = wifiLevel,
+            cellLevel = cellLevel,
             charging = charging,
             visible = visible
         )
