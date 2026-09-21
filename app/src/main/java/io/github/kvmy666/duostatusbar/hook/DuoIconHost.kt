@@ -35,6 +35,30 @@ internal class DuoIconHost(private val context: Context) {
     private var host: LinearLayout? = null
     private var root: View? = null
     private var element: DuoElement? = null
+
+    /**
+     * FR-03b: the status bar is not one bar. Read out of the device's SystemUI
+     * (`reverse/SystemUI-device.apk`), three of them carry their own icon strip:
+     *
+     *     status_bar          system_icons               the home screen / in-app bar  (attached first)
+     *     keyguard_status_bar system_icons               the lock screen
+     *     combined_qs_header  shade_header_system_icons  the pulled-down shade's header
+     *
+     * The latter two live in the `NotificationShade` window and draw their own stock icons over the
+     * element, which is why the lock screen and the shade looked untouched. Each gets a slot: its own
+     * element and its own hiding pass, on the same rule as the main bar - never hide a strip the
+     * element is not drawing in.
+     */
+    /** Names already reported as "not inflated yet", so the retry loop does not spam the log. */
+    private val missingLogged = HashSet<String>()
+
+    private inner class ExtraBar(val name: String) {
+        var container: ViewGroup? = null
+        var bar: View? = null
+        var element: DuoElement? = null
+    }
+
+    private val extras = ArrayList<ExtraBar>()
     private val guard = DuoGuard(context)
     private val rom = RomDetection.forThisRom(
         Build.MANUFACTURER.orEmpty(),
@@ -50,6 +74,185 @@ internal class DuoIconHost(private val context: Context) {
     private val hiddenOriginals = ArrayList<HiddenState>()
 
     val duo: DuoElement? get() = element
+
+    /** Pushes a snapshot at every element that is drawing, in every bar. */
+    fun render(v: DuoVisual) {
+        for (target in listOfNotNull(element) + extras.mapNotNull { it.element }) {
+            try {
+                target.render(v)
+            } catch (t: Throwable) {
+                L.w("render: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /**
+     * FR-03b: puts the element into one of the *other* status bars - the keyguard's, or the shade
+     * header's. [stripId] is the id of that bar's icon strip, measured from the device's SystemUI:
+     * `system_icons` for the keyguard bar, `shade_header_system_icons` for the shade header.
+     *
+     * Only ever runs after the main bar is live, on the same rule as the main bar: never hide a strip
+     * the element is not drawing in. If anything fails, that bar keeps its stock icons.
+     */
+    fun attachExtra(name: String, root: View, stripId: String): Boolean {
+        if (extras.any { it.name == name }) return true
+        if (element == null) return false
+        return try {
+            val stage = guard.stage()
+            if (stage == DuoGuard.OFF) return false
+            val id = context.resources.getIdentifier(stripId, "id", rom.systemUiPackage)
+            if (id == 0) {
+                L.w("$name: no id for $stripId - leaving its stock icons")
+                return false
+            }
+            val found = root.findViewById<View>(id)
+            if (found == null) {
+                if (missingLogged.add(name)) {
+                    L.i("$name: $stripId not in this window yet (id=$id) - waiting for it to be inflated")
+                }
+                return false
+            }
+            val target = found as? ViewGroup ?: return false
+            if (target === host) return true // same strip as the main bar: nothing extra to do
+            val slot = ExtraBar(name)
+            // Centre on the *bar*, not the window it lives in: the shade window is the whole screen, so
+            // centring on it put the element 1300 px down the lock screen (measured).
+            val bar = findBar(target) ?: target
+            val candidate = createElement(root, stage)
+            slot.container = target
+            slot.bar = bar
+            slot.element = candidate
+            extras.add(slot)
+            allowOverflow(target)
+            val side = elementSidePx(target, bar)
+            candidate.ui.layoutParams = layoutParamsFor(target, side)
+            target.addView(candidate.ui)
+            applyExtraLayout(slot)
+            candidate.onReady {
+                if (slot.element !== candidate) return@onReady
+                hideEverythingExcept(target, candidate.ui)
+                candidate.reveal()
+                L.i("Duo injected into $name (${bar.javaClass.simpleName}, ${side}px) - FR-03b")
+            }
+            candidate.onFailed {
+                // Optional bar: drop the element and leave its stock icons alone.
+                L.w("$name element did not bind - leaving its stock icons")
+                runCatching { target.removeView(candidate.ui) }
+                runCatching { candidate.teardown() }
+                extras.remove(slot)
+            }
+            true
+        } catch (t: Throwable) {
+            L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
+    }
+
+    /**
+     * FR-03b, the shade header. It is not in the shade window's tree at all - `ShadeHeaderController`
+     * builds it - so it is handed over directly by the hook instead of being searched for.
+     *
+     * Its icon area is the `shade_header_system_icons` frame (measured from `combined_qs_header.xml`),
+     * found by walking up from the `statusIcons` container the controller itself binds to.
+     */
+    fun attachShadeHeader(header: View): Boolean {
+        if (extras.any { it.name == "shade header" }) return true
+        if (missingLogged.add("shade header tree")) dumpTree(header, 0)
+        val area = findShadeIconsArea(header)
+        if (area == null) {
+            if (missingLogged.add("shade header")) {
+                L.w("shade header: no icon area found in ${header.javaClass.simpleName}")
+            }
+            return false
+        }
+        return attachExtraView("shade header", area)
+    }
+
+    /**
+     * Diagnostic: the shade header's tree, once. The header is not the layout the AOSP resource dump
+     * suggests (`combined_qs_header`) - this device builds it differently - so its real icon container
+     * has to be read off the running view, not guessed.
+     */
+    private fun dumpTree(view: View, depth: Int) {
+        if (depth > 12) return
+        val id = try {
+            if (view.id == -1) "-" else context.resources.getResourceEntryName(view.id)
+        } catch (_: Throwable) {
+            "?"
+        }
+        L.i("  ".repeat(depth) + "${view.javaClass.simpleName} #$id ${view.width}x${view.height}")
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) dumpTree(view.getChildAt(i), depth + 1)
+        }
+    }
+
+    private fun findShadeIconsArea(header: View): ViewGroup? {
+        val id = context.resources.getIdentifier("shade_header_system_icons", "id", rom.systemUiPackage)
+        (if (id != 0) header.findViewById<View>(id) as? ViewGroup else null)?.let { return it }
+        // Fall back to the parent of the icon container the controller binds to.
+        val icons = context.resources.getIdentifier("statusIcons", "id", rom.systemUiPackage)
+        val container = if (icons != 0) header.findViewById<View>(icons) else null
+        return container?.parent as? ViewGroup
+    }
+
+    /** Attaches into an already-known container (the shade header's icon area). */
+    private fun attachExtraView(name: String, target: ViewGroup): Boolean {
+        if (extras.any { it.name == name }) return true
+        if (element == null) return false
+        return try {
+            val stage = guard.stage()
+            if (stage == DuoGuard.OFF) return false
+            if (target === host) return true
+            val slot = ExtraBar(name)
+            val candidate = createElement(target, stage)
+            slot.container = target
+            slot.bar = target
+            slot.element = candidate
+            extras.add(slot)
+            allowOverflow(target)
+            val side = elementSidePx(target, target)
+            candidate.ui.layoutParams = layoutParamsFor(target, side)
+            target.addView(candidate.ui)
+            applyExtraLayout(slot)
+            candidate.onReady {
+                if (slot.element !== candidate) return@onReady
+                hideEverythingExcept(target, candidate.ui)
+                candidate.reveal()
+                L.i("Duo injected into $name (${target.javaClass.simpleName}, ${side}px) - FR-03b")
+            }
+            candidate.onFailed {
+                L.w("$name element did not bind - leaving its stock icons")
+                runCatching { target.removeView(candidate.ui) }
+                runCatching { candidate.teardown() }
+                extras.remove(slot)
+            }
+            true
+        } catch (t: Throwable) {
+            L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
+    }
+
+    /** The container decides the LayoutParams type: the strips are LinearLayouts, the shade header is not. */
+    private fun layoutParamsFor(container: ViewGroup, side: Int): ViewGroup.LayoutParams = when (container) {
+        is LinearLayout -> LinearLayout.LayoutParams(side, side)
+        is android.widget.FrameLayout -> android.widget.FrameLayout.LayoutParams(side, side)
+        else -> ViewGroup.LayoutParams(side, side)
+    }
+
+    private fun applyExtraLayout(slot: ExtraBar) {
+        val target = slot.container ?: return
+        val view = slot.element?.ui ?: return
+        try {
+            val side = elementSidePx(target, slot.bar)
+            view.layoutParams = layoutParamsFor(target, side)
+            view.translationX = settings.offsetX * context.resources.displayMetrics.density
+            view.translationY = windowCenterShiftY(target, slot.bar)
+            view.requestLayout()
+        } catch (t: Throwable) {
+            L.w("${slot.name} layout: ${t.message}")
+        }
+    }
 
     /** FR-16: whether the percentage should be drawn — asked by the state monitor on every render. */
     val showPercent: Boolean get() = settings.showPercent
@@ -67,6 +270,7 @@ internal class DuoIconHost(private val context: Context) {
                     "percent=${fresh.showPercent}, rive=${fresh.useRive}"
             )
             applyLayout()
+            for (slot in extras) applyExtraLayout(slot)
         }
         return fresh
     }
@@ -76,12 +280,12 @@ internal class DuoIconHost(private val context: Context) {
         val target = host ?: return
         val view = element?.ui ?: return
         try {
-            val side = elementSidePx(target)
+            val side = elementSidePx(target, root)
             view.layoutParams = LinearLayout.LayoutParams(side, side)
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
             // The strip sits low in the window, so centring on it wastes the space above. Centre the
             // element in the whole status bar instead, which is what lets it grow to the window height.
-            view.translationY = windowCenterShiftY(target)
+            view.translationY = windowCenterShiftY(target, root)
             view.requestLayout()
             installGestures(view)
         } catch (t: Throwable) {
@@ -98,17 +302,20 @@ internal class DuoIconHost(private val context: Context) {
      * setting and is allowed to overflow the strip, capped only by the status bar window's own height so
      * it can never grow past the bar.
      */
-    private fun elementSidePx(container: ViewGroup): Int {
+    private fun elementSidePx(container: ViewGroup, windowRoot: View?): Int {
         val scaled = measuredSlotWidth(container) * settings.sizePercent / 100
         // Cap at the status bar window's own height: that is the largest the element can be without the
         // ROM clipping it, so the size setting stays meaningful all the way up.
-        val window = (root?.height ?: 0).takeIf { it > 0 } ?: return scaled
-        return scaled.coerceAtMost(window)
+        val height = (windowRoot?.height ?: 0).takeIf { it > 0 } ?: return scaled
+        return scaled.coerceAtMost(height)
     }
 
-    /** How far to move the element so its centre matches the status bar window's centre. */
-    private fun windowCenterShiftY(container: ViewGroup): Float {
-        val window = (root?.height ?: 0).takeIf { it > 0 } ?: return 0f
+    /** How far to move the element so its centre matches its status bar window's centre. */
+    private fun windowCenterShiftY(container: ViewGroup, windowRoot: View?): Float {
+        // The strip is its own bar (the shade header's icon area): nothing to centre against, and the
+        // arithmetic below would move it to the window's top instead.
+        if (windowRoot == null || windowRoot === container) return 0f
+        val height = (windowRoot.height).takeIf { it > 0 } ?: return 0f
         val location = IntArray(2)
         try {
             container.getLocationInWindow(location)
@@ -116,7 +323,7 @@ internal class DuoIconHost(private val context: Context) {
             return 0f
         }
         val stripCenter = location[1] + container.height / 2f
-        return window / 2f - stripCenter
+        return height / 2f - stripCenter
     }
 
     /** Lets the element draw outside the 61 px icon strip, up to the status bar window's bounds. */
@@ -188,7 +395,7 @@ internal class DuoIconHost(private val context: Context) {
                 DuoSbFacts.report(context, statusBarRoot, target, slotWidthPx(target))
             }
             refreshSettings()
-            val side = elementSidePx(target)
+            val side = elementSidePx(target, root)
             allowOverflow(target)
             candidate.ui.layoutParams = LinearLayout.LayoutParams(side, side)
             target.addView(candidate.ui)
@@ -300,6 +507,9 @@ internal class DuoIconHost(private val context: Context) {
      * this runs again on layout changes rather than only once.
      */
     fun reapplyHiding() {
+        // FR-03b: the keyguard bar and the shade header are re-shown on every shade/lock transition,
+        // so they get the same pass.
+        reapplyExtraHiding()
         val target = host ?: return
         val keep = element?.ui ?: return
         // Never hide the stock icons over an element that is not drawing yet: a layout pass can arrive
@@ -350,10 +560,32 @@ internal class DuoIconHost(private val context: Context) {
             element?.teardown()
         } catch (_: Throwable) {
         }
+        for (slot in extras) {
+            try {
+                slot.element?.let { slot.container?.removeView(it.ui) }
+                slot.element?.teardown()
+            } catch (_: Throwable) {
+            }
+        }
+        extras.clear()
         element = null
         restoreStockViews()
         host = null
         root = null
+    }
+
+    /** FR-03b: the same hide pass for every extra bar, once its own element is drawing. */
+    private fun reapplyExtraHiding() {
+        for (slot in extras) {
+            val target = slot.container ?: continue
+            val keep = slot.element?.ui ?: continue
+            if (!(slot.element?.isReady ?: false)) continue
+            try {
+                hideEverythingExcept(target, keep)
+            } catch (t: Throwable) {
+                L.w("${slot.name} hiding: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
     }
 
     // ----------------------------------------------------------------------------- internals
@@ -363,7 +595,7 @@ internal class DuoIconHost(private val context: Context) {
      * element off can put them back without a restart. Hiding is not destruction (FR-08): the views stay in
      * the tree, they simply draw nothing and occupy nothing.
      */
-    private fun hideEverythingExcept(container: ViewGroup, keep: View) {
+    private fun hideEverythingExcept(container: ViewGroup, keep: View?) {
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
             if (child === keep) continue
@@ -373,6 +605,8 @@ internal class DuoIconHost(private val context: Context) {
             L.i("stock status-bar views removed (GONE + 0x0), not overlaid - FR-08")
         }
     }
+
+
 
     private fun hideDescendants(group: ViewGroup) {
         for (i in 0 until group.childCount) {
@@ -441,6 +675,22 @@ internal class DuoIconHost(private val context: Context) {
         if (measured > 0) return measured
         if (container.height > 0) return container.height // square, like the reference element
         return (27.4f * context.resources.displayMetrics.density).toInt() // 83 px at density 3.025
+    }
+
+    /**
+     * The keyguard's status bar itself - `com.android.systemui.statusbar.phone.KeyguardStatusBarView`,
+     * read out of the device's SystemUI (`reverse/SystemUI-device.apk`, `layout/keyguard_status_bar.xml`),
+     * not guessed. Walking up from the strip rather than looking the id up keeps it working on a ROM
+     * that spells the id differently, and gives the right height to centre the element in.
+     */
+    private fun findBar(strip: View): View? {
+        var view: View? = strip
+        while (view != null) {
+            val name = view.javaClass.simpleName
+            if (name.contains("KeyguardStatusBar") || name.contains("ShadeHeader")) return view
+            view = view.parent as? View
+        }
+        return null
     }
 
     private fun findStatusIconsHost(root: View): LinearLayout? {

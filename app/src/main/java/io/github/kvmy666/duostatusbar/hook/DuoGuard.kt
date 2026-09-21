@@ -99,8 +99,16 @@ internal class DuoGuard(private val context: Context) {
         0
     }
 
-    /** Call immediately before handing the .riv to Rive: a crash after this point is counted. */
+    /**
+     * Call immediately before handing the .riv to Rive: a crash after this point is counted.
+     *
+     * Counted once per process, not once per view. There are three status bars now (main, keyguard,
+     * shade header) and each gets an element, so counting creations tripped the breaker at two and
+     * dropped every bar to Canvas. A crash takes the whole process with it, so the risk has been taken
+     * the moment the first view is created - the later ones add nothing to count.
+     */
     fun noteRiveAttempt() {
+        if (!notedThisProcess.compareAndSet(false, true)) return
         put(KEY_ATTEMPTS, attempts() + 1)
     }
 
@@ -108,6 +116,9 @@ internal class DuoGuard(private val context: Context) {
     fun clearRiveAttempts() {
         put(KEY_ATTEMPTS, 0)
     }
+
+    /** Set once per process; see [noteRiveAttempt]. */
+    private val notedThisProcess = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private fun put(key: String, value: Int) {
         try {
@@ -125,6 +136,7 @@ internal class DuoGuard(private val context: Context) {
         const val RIVE = 2
         const val KEY_STAGE = "duo_statusbar_stage"
         const val KEY_ATTEMPTS = "duo_statusbar_rive_attempts"
+        /** How many *processes* may die to Rive before it is given up on. */
         private const val MAX_ATTEMPTS = 2
 
         /** Sentinel for "the user never set an override": `getInt` cannot return null, so it needs one. */

@@ -10,6 +10,7 @@ import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.L
@@ -33,6 +34,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private var host: DuoIconHost? = null
     private var monitor: DuoStateMonitor? = null
     private var statusBarRoot: View? = null
+
+    /**
+     * The keyguard/shade window (FR-03b). On the lock screen the `StatusBar` window still draws our
+     * element, but the keyguard's own status bar is a *second* bar in this window and sits on top of
+     * it, so its stock icons have to be hidden too or the lock screen shows both.
+     */
+    private var shadeRoot: View? = null
+
+    /** The pulled-down shade's header, handed over by [hookShadeHeader]. */
+    private var shadeHeader: View? = null
 
     fun install() {
         L.guard("DuoHook install") {
@@ -61,8 +72,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             }
                             L.i("application ready: ${ctx.packageName} (stage $stage)")
                             host = DuoIconHost(ctx)
-                            hookWindowManagerAddView()
-                            hookSettingsChanges(ctx)
+            hookWindowManagerAddView()
+            hookShadeHeader()
+            hookSettingsChanges(ctx)
                         }
                     }
                 }
@@ -131,12 +143,20 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             override fun afterHookedMethod(param: MethodHookParam) {
                 L.guard("DuoHook addView") {
                     val view = param.args.getOrNull(0) as? View ?: return
-                    if (statusBarRoot != null) return
                     val layoutParams = view.layoutParams ?: return
-                    if (XposedHelpers.getIntField(layoutParams, "type") != TYPE_STATUS_BAR) return
-                    statusBarRoot = view
-                    L.i("status bar window found: ${view.javaClass.name}")
-                    scheduleAttach(attempt = 0)
+                    when (XposedHelpers.getIntField(layoutParams, "type")) {
+                        TYPE_STATUS_BAR -> {
+                            if (statusBarRoot != null) return
+                            statusBarRoot = view
+                            L.i("status bar window found: ${view.javaClass.name}")
+                            scheduleAttach(attempt = 0)
+                        }
+                        TYPE_NOTIFICATION_SHADE -> {
+                            if (shadeRoot != null) return
+                            shadeRoot = view
+                            L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
+                        }
+                    }
                 }
             }
         }
@@ -167,6 +187,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         attachLayoutListener(root)
                     }
                     if (!attaching.compareAndSet(false, true)) return@guard
+                    // The keyguard and the shade header may already be on screen (the element attaches
+                    // at boot, they come later, but a re-attach after rotation can land either way).
+                    shadeRoot?.let { shade -> attachExtraBars(shade) }
                     L.i("Duo attached on attempt $attempt")
                     report(ctx, DuoGuard(ctx).stage(), null)
                 } else {
@@ -184,12 +207,76 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     monitor?.refresh()
                 }
             }
+            // The keyguard's bar is inflated into the shade window when the lock screen appears, and the
+            // shade window is the one that changes then - so its layout pass is the trigger for the
+            // second hiding pass (FR-03b).
+            val shade = shadeRoot
+            shade?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                L.guard("DuoHook onShadeLayout") {
+                    attachExtraBars(shade)
+                    // Opening the shade re-shows the main bar's icon views, so the hide pass has to run
+                    // again here - the status bar's own layout pass does not fire for a shade drag. The
+                    // ROM also re-shows them *after* the drag settles, so this runs again a moment later.
+                    host?.reapplyHiding()
+                    handler.postDelayed({
+                        L.guard("DuoHook shade settle") {
+                            host?.reapplyHiding()
+                            shadeHeader?.let { host?.attachShadeHeader(it) }
+                        }
+                    }, SHADE_SETTLE_MS)
+                }
+            }
+        }
+    }
+
+    /**
+     * FR-03b: the two extra bars that carry their own icon strip, both inside the shade window. The ids
+     * are read out of the device's SystemUI (`reverse/SystemUI-device.apk`): the lock screen's
+     * `KeyguardStatusBarView` uses `system_icons`, and the pulled-down shade's header
+     * (`combined_qs_header`) uses `shade_header_system_icons`. Both draw their own stock icons, which is
+     * why the lock screen and the shade looked untouched until they were handled.
+     */
+    private fun attachExtraBars(shade: View) {
+        val host = host ?: return
+        host.attachExtra("keyguard bar", shade, "system_icons")
+        // The shade header is not in this window; it arrives through hookShadeHeader. It is built early,
+        // often before the main bar has attached, so this is also where a failed attempt is retried.
+        shadeHeader?.let { host.attachShadeHeader(it) }
+    }
+
+    /**
+     * FR-03b: the pulled-down shade's header is built by `ShadeHeaderController`, not inflated into the
+     * shade window, so it cannot be found by searching - it is taken from the controller's own
+     * constructor. Measured from the device's SystemUI: `com.android.systemui.shade.ShadeHeaderController`
+     * takes the header `View` as its first argument and binds `R.id.statusIcons` inside it.
+     */
+    private fun hookShadeHeader() {
+        L.guard("DuoHook shade header") {
+            val cls = XposedHelpers.findClass(
+                "com.android.systemui.shade.ShadeHeaderController", lp.classLoader
+            )
+            XposedBridge.hookAllConstructors(cls, object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    L.guard("DuoHook shade header ctor") {
+                        val view = param.args.firstOrNull() as? View ?: return@guard
+                        L.i("shade header view: ${view.javaClass.name}")
+                        shadeHeader = view
+                        view.post { shadeHeader?.let { host?.attachShadeHeader(it) } }
+                    }
+                }
+            })
         }
     }
 
     private companion object {
         const val TYPE_STATUS_BAR = 2000
+
+        /** `WindowManager.LayoutParams.TYPE_NOTIFICATION_SHADE`, which is @hide. */
+        const val TYPE_NOTIFICATION_SHADE = 2040
         const val FIRST_DELAY_MS = 2_500L
+
+        /** After a shade drag settles, the ROM re-shows its icon views once more. */
+        const val SHADE_SETTLE_MS = 400L
         const val RETRY_MS = 2_000L
         const val MAX_ATTEMPTS = 6
     }

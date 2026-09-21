@@ -184,9 +184,10 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     }
 
     private fun render() {
-        val view = host.duo ?: return
+        // Every element the host owns - the main bar's and, on the lock screen, the keyguard bar's.
+        if (host.duo == null) return
         try {
-            view.render(
+            host.render(
                 DuoMapping.visual(
                     level = displayedLevel,
                     charging = charging,
