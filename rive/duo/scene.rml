@@ -132,9 +132,9 @@
                  rounded downward point. 12 wide, 11 tall, corners rounded to ~3.2. -->
             <Shape x="-0.5" y="13.5" name="wifiDot" id="0:16">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="-6" y="-5.5" radius="3.2" />
-                    <StraightVertex x="6" y="-5.5" radius="3.2" />
-                    <StraightVertex x="0" y="5.5" radius="3.2" />
+                    <StraightVertex x="-6.5" y="-5.2" radius="1.4" />
+                    <StraightVertex x="6.5" y="-5.2" radius="1.4" />
+                    <StraightVertex x="0" y="6" radius="1.4" />
                 </PointsPath>
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:69" />
@@ -311,44 +311,44 @@
         </StateMachine>
 
         <!-- ============================== entrance ==============================
-             One shot, 60 frames = 1 s. The element grows out of a point, overshoots, and springs
-             back, with a small rotational settle and a quick fade - the "arrive" moment. Three
-             properties move together (scale, rotation, opacity), all on the one group node, so the
-             whole body moves as a unit (FR-25: synced parts).
+             One shot, 240 frames = **4 s** (user feedback: 4x slower than the 1 s cut). The element
+             grows out of a point, overshoots, and springs back, with a small rotational settle and a
+             quick fade - the "arrive" moment. Three properties move together (scale, rotation,
+             opacity), all on the one group node, so the whole body moves as a unit (FR-25: synced).
 
              Timing (frames @ 60 fps):
-                 scale   0 -> 1.25 (18) -> 0.92 (32) -> 1.06 (44) -> 1.0 (60)   overshoot + spring
-                 rotation -25 deg -> +6 deg (32) -> 0 (60)                      settle from a tilt
-                 opacity 0 -> 1 (12), hold                                       the point becomes a body
+                 scale   0 -> 1.25 (72) -> 0.92 (128) -> 1.06 (176) -> 1.0 (240)  overshoot + spring
+                 rotation -25 deg -> +6 deg (128) -> 0 (240)                     settle from a tilt
+                 opacity 0 -> 1 (48), hold                                        the point becomes a body
 
              Keys live on the group node (0:3) only: scaleX 16, scaleY 17, rotation 15, opacity 18.
              Those four are owned by this layer and Idle - no other layer or data bind touches them,
              so animation and binding never fight (the same rule the airplane morph follows). -->
-        <LinearAnimation duration="60" name="Reveal" id="0:93">
+        <LinearAnimation duration="240" name="Reveal" id="0:93">
             <KeyedObject objectId="0:3">
                 <KeyedProperty propertyKey="16">
                     <KeyFrameDouble value="0" interpolationType="cubic" frame="0" />
-                    <KeyFrameDouble value="1.25" interpolationType="cubic" frame="18" />
-                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="32" />
-                    <KeyFrameDouble value="1.06" interpolationType="cubic" frame="44" />
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="60" />
+                    <KeyFrameDouble value="1.25" interpolationType="cubic" frame="72" />
+                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="128" />
+                    <KeyFrameDouble value="1.06" interpolationType="cubic" frame="176" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="240" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="17">
                     <KeyFrameDouble value="0" interpolationType="cubic" frame="0" />
-                    <KeyFrameDouble value="1.25" interpolationType="cubic" frame="18" />
-                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="32" />
-                    <KeyFrameDouble value="1.06" interpolationType="cubic" frame="44" />
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="60" />
+                    <KeyFrameDouble value="1.25" interpolationType="cubic" frame="72" />
+                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="128" />
+                    <KeyFrameDouble value="1.06" interpolationType="cubic" frame="176" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="240" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="15">
                     <KeyFrameDouble value="-0.4363" interpolationType="cubic" frame="0" />
-                    <KeyFrameDouble value="0.1047" interpolationType="cubic" frame="32" />
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="60" />
+                    <KeyFrameDouble value="0.1047" interpolationType="cubic" frame="128" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="240" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="18">
                     <KeyFrameDouble value="0" interpolationType="cubic" frame="0" />
-                    <KeyFrameDouble value="1" interpolationType="cubic" frame="12" />
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="60" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="48" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="240" />
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>

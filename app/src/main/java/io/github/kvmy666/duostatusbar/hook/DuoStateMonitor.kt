@@ -177,7 +177,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private companion object {
         const val TAG = "DuoSB"
 
-        /** How long the ring takes to fill to a new percentage. */
-        const val FILL_MS = 600L
+        /** How long the ring takes to fill to a new percentage (4x slower per user feedback). */
+        const val FILL_MS = 2_400L
     }
 }

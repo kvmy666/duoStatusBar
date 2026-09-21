@@ -82,12 +82,17 @@ battery level — this reproduces the mapping above without the dash-offset tric
 | `300 – 500 ms` | spring back `1.05 → 1.00`, ~2 visible bounces (damping ≈ 0.35) |
 | **total** | **≤ 500 ms** |
 
-> **Prototype timing (2026-09-21):** on user feedback the reveal was raised to **1 s** (60 frames) — the
-> 500 ms version was too subtle to notice on boot. The table above is the target; the prototype runs the
-> same shape at 2×. It comes back down once the motion reads well. The ring fill is also animated now: the
-> value chases the battery level over 600 ms (`DuoStateMonitor`), from 0 on first attach, instead of
-> snapping — the "fill from 0" the table's `0 – 200 ms` row describes, done in the host because a keyed
-> Rive value cannot target a live level.
+> **Prototype timing (2026-09-21):** on user feedback the reveal was raised first to 1 s, then **4 s**
+> (240 frames) — the 500 ms version was too subtle to notice on boot. The table above is the target; the
+> prototype runs the same shape at 8×. It comes back down once the motion reads well. The ring fill is also
+> animated: the value chases the battery level over 2.4 s (`DuoStateMonitor`), from 0 on first attach and
+> again on every reveal, instead of snapping — the "fill from 0" the table's `0 – 200 ms` row describes,
+> done in the host because a keyed Rive value cannot target a live level.
+>
+> **Size ceiling (2026-09-21):** the element was capped at the 61 px icon strip, so the size setting did
+> nothing above ~75 % (100 % and 140 % were identical). The view is now a square that follows the setting,
+> is centred on the status bar window rather than the strip, and is capped only at the window's own height;
+> `DuoPrefs.MAX_SIZE` is 200.
 
 All parts belong to one Rive state machine and one scale group, so they start and end together (FR-25).
 Airplane toggle: Wi-Fi arcs collapse into the centre dot (120 ms), then the plane scales `0 → 1` from

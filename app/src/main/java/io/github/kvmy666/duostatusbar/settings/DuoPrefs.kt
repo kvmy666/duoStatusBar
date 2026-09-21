@@ -134,7 +134,9 @@ object DuoPrefs {
             .sorted()
 
     // Same bounds the module clamps to, so the two sides cannot disagree about what a legal value is.
+    // Raised to 200 so the element can grow to the status bar's own height (the module caps the drawn
+    // side at the window height, so 200 % is the ceiling that is actually reachable).
     const val MIN_SIZE = 60
-    const val MAX_SIZE = 140
+    const val MAX_SIZE = 200
     const val MAX_OFFSET = 40
 }

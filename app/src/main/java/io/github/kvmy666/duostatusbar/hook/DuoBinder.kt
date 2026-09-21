@@ -19,8 +19,8 @@ object DuoBinder {
     private const val TAG = "DuoSB"
 
     /** How long the reveal timeline runs; the host clears the request just after it finishes.
-     *  Matches the 1 s Reveal in `rive/duo/scene.rml` (raised from 500 ms on user feedback). */
-    const val REVEAL_MS = 1_000L
+     *  Matches the 4 s Reveal in `rive/duo/scene.rml` (raised from 1 s on user feedback). */
+    const val REVEAL_MS = 4_000L
 
     /** Number of properties a complete snapshot writes — used to report partial failures. */
     const val PROPERTY_COUNT = 21

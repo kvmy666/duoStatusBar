@@ -76,12 +76,56 @@ internal class DuoIconHost(private val context: Context) {
         val target = host ?: return
         val view = element?.ui ?: return
         try {
-            view.layoutParams = LinearLayout.LayoutParams(slotWidthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
+            val side = elementSidePx(target)
+            view.layoutParams = LinearLayout.LayoutParams(side, side)
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
+            // The strip sits low in the window, so centring on it wastes the space above. Centre the
+            // element in the whole status bar instead, which is what lets it grow to the window height.
+            view.translationY = windowCenterShiftY(target)
             view.requestLayout()
             installGestures(view)
         } catch (t: Throwable) {
             L.w("applyLayout: ${t.message}")
+        }
+    }
+
+    /**
+     * The element's side in px.
+     *
+     * The slot is only 61 px tall, and the drawing is `Fit.CONTAIN` (square), so sizing the view to the
+     * strip's height capped the element at 61 px and the size setting did nothing above ~75 % - measured
+     * on the device: 100 % and 140 % looked identical. The view is now a **square** that follows the
+     * setting and is allowed to overflow the strip, capped only by the status bar window's own height so
+     * it can never grow past the bar.
+     */
+    private fun elementSidePx(container: ViewGroup): Int {
+        val scaled = measuredSlotWidth(container) * settings.sizePercent / 100
+        // Cap at the status bar window's own height: that is the largest the element can be without the
+        // ROM clipping it, so the size setting stays meaningful all the way up.
+        val window = (root?.height ?: 0).takeIf { it > 0 } ?: return scaled
+        return scaled.coerceAtMost(window)
+    }
+
+    /** How far to move the element so its centre matches the status bar window's centre. */
+    private fun windowCenterShiftY(container: ViewGroup): Float {
+        val window = (root?.height ?: 0).takeIf { it > 0 } ?: return 0f
+        val location = IntArray(2)
+        try {
+            container.getLocationInWindow(location)
+        } catch (_: Throwable) {
+            return 0f
+        }
+        val stripCenter = location[1] + container.height / 2f
+        return window / 2f - stripCenter
+    }
+
+    /** Lets the element draw outside the 61 px icon strip, up to the status bar window's bounds. */
+    private fun allowOverflow(view: View) {
+        var v: View? = view
+        while (v is ViewGroup) {
+            v.clipChildren = false
+            v.clipToPadding = false
+            v = v.parent as? View
         }
     }
 
@@ -144,8 +188,9 @@ internal class DuoIconHost(private val context: Context) {
                 DuoSbFacts.report(context, statusBarRoot, target, slotWidthPx(target))
             }
             refreshSettings()
-            val width = slotWidthPx(target)
-            candidate.ui.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
+            val side = elementSidePx(target)
+            allowOverflow(target)
+            candidate.ui.layoutParams = LinearLayout.LayoutParams(side, side)
             target.addView(candidate.ui)
             host = target
             element = candidate
