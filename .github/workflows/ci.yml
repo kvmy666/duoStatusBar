@@ -32,6 +32,16 @@ jobs:
           cmp rive/duo/build/duo.riv app/src/main/res/raw/duo.riv
           echo "rive/duo/build/duo.riv == app/src/main/res/raw/duo.riv"
 
+      # The app↔module channel is addressed by an authority string that exists twice: as a manifest attribute
+      # and as DuoPrefs.AUTHORITY. A unit test cannot compare them (Robolectric does not register manifest
+      # providers), so CI does — a mismatch would silently disable the entire settings channel.
+      - name: The provider authority must match the constant the module asks for
+        run: |
+          AUTHORITY='io.github.kvmy666.duostatusbar.settings'
+          grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
+          grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
+          echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
+
       # Best effort: the compiled .riv is checked above, so a missing CLI never breaks the build.
       - name: Rive project checks
         run: |

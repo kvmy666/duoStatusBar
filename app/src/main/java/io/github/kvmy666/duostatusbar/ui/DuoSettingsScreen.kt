@@ -2,13 +2,17 @@ package io.github.kvmy666.duostatusbar.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -23,16 +27,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import io.github.kvmy666.duostatusbar.DuoPreview
 import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.hook.DuoCanvasView
+import io.github.kvmy666.duostatusbar.hook.DuoElement
+import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
@@ -119,11 +130,11 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     value = settings.sizePercent.toFloat(),
                     range = DuoPrefs.MIN_SIZE.toFloat()..DuoPrefs.MAX_SIZE.toFloat()
                 ) { update(settings.copy(sizePercent = it.toInt())) }
-                LabelledSlider(
-                    label = "${stringResource(R.string.settings_offset)} ${settings.offsetX} dp",
-                    value = settings.offsetX.toFloat(),
-                    range = -DuoPrefs.MAX_OFFSET.toFloat()..DuoPrefs.MAX_OFFSET.toFloat()
-                ) { update(settings.copy(offsetX = it.toInt())) }
+                Text(
+                    text = "${stringResource(R.string.settings_offset)}: ${settings.offsetX} dp",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                PositionEditor(settings.offsetX) { update(settings.copy(offsetX = it)) }
             }
         }
 
@@ -220,6 +231,65 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
 /** FR-28: where the donate button goes. */
 private const val DONATE_URL = "https://paypal.me/kroomfahd"
+
+/**
+ * FR-17: drag the element along a mock status bar instead of guessing a number.
+ *
+ * The strip hosts the **same Canvas element** the status bar uses (no native code, so it can never break the
+ * settings app), driven by the same [DuoMapping], and writes the horizontal offset the module applies as
+ * `translationX` — so what is dragged here is what the phone does, not a picture of it.
+ */
+@Composable
+private fun PositionEditor(offsetDp: Int, onOffset: (Int) -> Unit) {
+    val density = LocalDensity.current
+    var drag by remember { mutableFloatStateOf(offsetDp.toFloat()) }
+    // Keep in step when the value changes from elsewhere (a re-read, or another screen).
+    LaunchedEffect(offsetDp) { drag = offsetDp.toFloat() }
+    val limit = DuoPrefs.MAX_OFFSET.toFloat()
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(Unit) {
+                detectDragGestures { _, amount ->
+                    val next = (drag + amount.x / density.density).coerceIn(-limit, limit)
+                    drag = next
+                    onOffset(next.toInt())
+                }
+            },
+        contentAlignment = Alignment.CenterEnd
+    ) {
+        Text(
+            text = stringResource(R.string.settings_drag_hint),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 10.dp)
+        )
+        AndroidView(
+            modifier = Modifier
+                .size(40.dp)
+                .padding(end = 18.dp),
+            factory = { ctx -> DuoCanvasView(ctx).also { it.start() } },
+            update = { view ->
+                (view as? DuoElement)?.render(
+                    DuoMapping.visual(
+                        level = 78,
+                        charging = false,
+                        saver = false,
+                        showPercent = true,
+                        wifiLevel = 3,
+                        cellLevel = 4,
+                        airplane = false
+                    )
+                )
+                view.translationX = drag * density.density
+            }
+        )
+    }
+}
 
 @Composable
 private fun SettingSwitch(

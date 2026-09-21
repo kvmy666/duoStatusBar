@@ -12,6 +12,7 @@
     <string name="settings_percent_detail">FR-16: the number sits in the ring\'s top gap and splits the indicator in two halves.</string>
     <string name="settings_size">Size</string>
     <string name="settings_offset">Position</string>
+    <string name="settings_drag_hint">Mock status bar — drag the element along it</string>
     <string name="settings_preview">Preview</string>
     <string name="settings_loop">Loop the reveal</string>
     <string name="settings_diagnostics">Diagnostics</string>

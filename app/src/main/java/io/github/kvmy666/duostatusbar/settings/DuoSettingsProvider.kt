@@ -35,16 +35,7 @@ class DuoSettingsProvider : ContentProvider() {
         return try {
             val s = DuoPrefs.read(ctx)
             MatrixCursor(DuoPrefs.COLUMNS).apply {
-                addRow(
-                    arrayOf<Any>(
-                        if (s.enabled) 1 else 0,
-                        if (s.useRive) 1 else 0,
-                        if (s.showPercent) 1 else 0,
-                        s.sizePercent,
-                        s.offsetX,
-                        DuoPrefs.revision(ctx)
-                    )
-                )
+                addRow(rowFor(s, DuoPrefs.revision(ctx)))
             }
         } catch (t: Throwable) {
             Log.w(TAG, "query failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -86,5 +77,25 @@ class DuoSettingsProvider : ContentProvider() {
         const val METHOD_STATUS = "status"
         const val EXTRA_STATUS = "status"
         const val EXTRA_OK = "ok"
+
+        /**
+         * The single row the module reads: one value per column in [DuoPrefs.COLUMNS], booleans as 1/0.
+         *
+         * Pure on purpose. The provider's own plumbing needs a framework context, which unit tests cannot
+         * convincingly supply — but the *shape* of what crosses the uid boundary is exactly the part that
+         * breaks silently (a reordered column means the module reads the size as the offset), so it is
+         * separated out and tested directly.
+         */
+        internal fun rowFor(settings: DuoSettings, revision: Long): Array<Any> = arrayOf(
+            if (settings.enabled) 1 else 0,
+            if (settings.useRive) 1 else 0,
+            if (settings.showPercent) 1 else 0,
+            settings.sizePercent,
+            settings.offsetX,
+            revision,
+            settings.tapAction,
+            settings.doubleTapAction,
+            settings.longPressAction
+        )
     }
 }
