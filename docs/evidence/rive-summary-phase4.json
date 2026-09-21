@@ -1,0 +1,11 @@
+﻿{
+  "schema": 1,
+  "summary": true,
+  "problems": [
+    {"severity": "warning", "kind": "artboard-without-style", "file": "scene.rml", "line": 16, "message": "Artboard has no <LayoutComponentStyle> child linked by styleId; add one and point styleId at it, or nothing inside it can lay out in the editor"}
+  ],
+  "artboards": [
+    {"name": "Duo", "objects": 196, "types": {"AnimationState": 4, "AnyState": 2, "Artboard": 1, "BindablePropertyBoolean": 3, "DataBindContext": 23, "Ellipse": 11, "EntryState": 2, "ExitState": 2, "Fill": 8, "KeyFrameDouble": 28, "KeyedObject": 8, "KeyedProperty": 16, "LinearAnimation": 4, "Node": 1, "PointsPath": 2, "Shape": 13, "SolidColor": 15, "StateMachine": 1, "StateMachineLayer": 2, "StateTransition": 6, "StraightVertex": 19, "Stroke": 7, "Text": 1, "TextStylePaint": 1, "TextValueRun": 1, "TransitionPropertyViewModelComparator": 3, "TransitionValueBooleanComparator": 3, "TransitionViewModelCondition": 3, "TrimPath": 6}}
+  ],
+  "roots": {"objects": 42, "types": {"Backboard": 1, "FontAsset": 1, "ViewModel": 1, "ViewModelInstance": 1, "ViewModelInstanceBoolean": 2, "ViewModelInstanceColor": 2, "ViewModelInstanceNumber": 14, "ViewModelInstanceString": 1, "ViewModelPropertyBoolean": 2, "ViewModelPropertyColor": 2, "ViewModelPropertyNumber": 14, "ViewModelPropertyString": 1}}
+}

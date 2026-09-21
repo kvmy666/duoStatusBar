@@ -70,17 +70,19 @@ private fun Phase0Screen() {
 
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Phase 0 — diagnostics build", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Live status-bar integration", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "The module also installs a log-only probe into System UI. It changes " +
-                        "nothing on screen; it reports what this ROM actually contains so the real " +
-                        "hooks are written from evidence instead of guesses.",
+                    text = "The module installs but stays gated OFF, so System UI is untouched until " +
+                        "you ask for it. There is no toggle in this screen yet (Phase 5) — for now:",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Text(text = "Enable in LSPosed → Modules → Duo Status Bar (scope: System UI).",
-                    style = MaterialTheme.typography.bodyMedium)
-                Text(text = "Then read: adb logcat -s DuoSB",
-                    style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = "adb shell settings put global duo_statusbar_stage 1   # icons, no Rive\n" +
+                        "adb shell settings put global duo_statusbar_stage 2   # icons + Rive\n" +
+                        "adb shell settings put global duo_statusbar_stage 0   # off",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(text = "Then read: adb logcat -s DuoSB", style = MaterialTheme.typography.bodySmall)
             }
         }
     }

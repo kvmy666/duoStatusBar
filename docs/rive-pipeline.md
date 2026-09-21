@@ -66,6 +66,9 @@ still hides a bind pointing at a property that does not exist.
 | Bound value has no visible effect, and the *authored* value equals the intended bound value | Nothing is wrong — you cannot see a bind whose value matches the literal. | Set the view model's default instance to something visibly different while testing (that is how the missing state machine was caught). |
 | **App crashes at startup**: `UnsatisfiedLinkError: No implementation found for long app.rive.runtime.kotlin.core.FileAssetLoader.constructor()` | rive-android 10.x removes its **own** AndroidX-Startup initializer from the merged manifest (`<meta-data android:name="…RiveInitializer" tools:node="remove"/>`), and this version has no `Rive.init()`. Nothing loads `librive-android.so`, so every JNI call fails. | Call the public initializer explicitly: `app.rive.runtime.kotlin.RiveInitializer().create(context)` before the first Rive object. In this project that is `RiveInit.ensure(context)` (reflective, dependency-free — deliberately, because the same call has to work inside SystemUI in Phase 3, where our compile classpath is irrelevant to the host process). |
 | On a real device the artboard draws its **authored** literals (e.g. `50`) even though the default instance says `100` | A view model default instance is a **build-time default**: the CLI previewer applies it, a runtime does not. | The host must push every property — which is the design anyway (`DuoStateBinder` sets all of them on each state change). Treat instance values as “what the previewer shows”, never as runtime behaviour. |
+| **SystemUI dies with no log line at all** (SIGSEGV; the process restarts, hits the same code, loops). Nothing is catchable — no `try`/`catch`, no `Thread.setDefaultUncaughtExceptionHandler`. | Inside a **foreign** process, `RiveInitializer.create()` cannot work: it is exactly `Rive.init(context, RendererType.Rive)`, whose first statement is `ReLinker.recursively().loadLibrary(context, "rive-android")` — resolved against *the Context's* package. SystemUI ships no `librive-android.so`, so it throws, and therefore the next statement `defaultRendererType = type` **never runs**. That leaves null in the static that `Renderer`'s generated constructor reads unchecked (`type = Rive.getDefaultRendererType()`), and `RiveTextureView.onAttachedToWindow → createRenderer() → Renderer.make()` hands the null to native code. | Do the three steps yourself and never call `RiveInitializer` in a guest process: (1) `System.load(absolutePath)` for each `nativeLibraryDir` `.so`, C++ runtime first — proven to work inside SystemUI where `loadLibrary` fails; (2) set the private static `Rive.defaultRendererType` to `RendererType.Canvas`; (3) call the public `Rive.initializeCppEnvironment()`. Then assert it reads back non-null and only create the view if it does (`RiveInit`). Passing the type explicitly on the builder too makes a null impossible by construction. |
+| A native fault cannot be contained, so **any safety net must live outside the process** | A signal tears the process down before Kotlin runs; an in-process strike counter never gets to increment. | Keep the gate and the death counter in `Settings.Global` (`DuoGuard`): stage 0/1/2 written *before* the risky call, cleared only after the drawing survives. A build can then never wedge the host, and one boot is enough to stop a loop. |
+| Rive draws nothing and no error appears, though the runtime initialised fine | `RiveAnimationView` is a `TextureView`: Rive always renders into a `Surface` made from its `SurfaceTexture` (`onSurfaceTextureAvailable` → `new Surface(st)` → `renderer.setSurface`). That requires a **hardware accelerated window** — the renderer backend (Canvas/Rive/Skia) does not change it. | Check `root.isHardwareAccelerated` (and `FLAG_HARDWARE_ACCELERATED` on the window params) *before* constructing the view, and fall back to the no-native Canvas element when it is false. `DuoSbFacts` logs both, which is what turns "will it work here?" into a measured fact. |
 
 ## Driving the file from Android (read out of rive-android 10.2.0's own bytecode, not from memory)
 
@@ -73,7 +76,8 @@ The *public* API is narrower than the Rive editor implies, and it decides what t
 
 | Want to… | Public API | Note |
 |---|---|---|
-| Initialise the runtime | `RiveInitializer().create(context)` | Nothing does it for you (see the trap table) |
+| Initialise the runtime | **In your own app**: `RiveInitializer().create(context)`. **In a foreign process** (SystemUI): `System.load` + set `Rive.defaultRendererType` + `Rive.initializeCppEnvironment()` — see the trap table, the initializer cannot work there | Nothing does it for you (see the trap table) |
+| Choose the renderer backend | `RiveAnimationView.Builder(context).setRendererType(RendererType.Canvas)` | Also the only way to guarantee the type is non-null: unset means "read the static", which is the null above. Needs a hardware accelerated window regardless |
 | Set any value the file draws | `stateMachine.getViewModelInstance().getNumberProperty("x").value = …` — and `getColorProperty` / `getStringProperty` / `getBooleanProperty` / `getEnumProperty` | The reason every visual parameter in `duo.riv` is a view-model property |
 | Fire the reveal | `getTriggerProperty("reveal").trigger()` | public ✅ |
 | Play a one-off animation | `RiveAnimationView.play(name, Loop, Direction, …)` | public, but a plain animation does **not** run binds |
@@ -85,6 +89,41 @@ The *public* API is narrower than the Rive editor implies, and it decides what t
 (propertyKey 634) → `TransitionValueBooleanComparator`. Everything the host needs is reachable through
 public API, while the animations themselves (500 ms reveal bounce, 200 ms airplane morph) still live in
 the `.riv`.
+
+## Timings in the shipped file (measured 2026-09-21, rive CLI 1.1.0)
+
+Animation durations are **frames at 60 fps**; transition durations are **milliseconds** — confirmed with
+`rive schema StateTransition` ("Duration of the transition (mix time) in milliseconds"), not assumed:
+
+| Element | Authored as | Real time |
+|---|---|---|
+| `Reveal` (scale bounce, one shot) | `LinearAnimation duration="30"`, keyframes at frames 0/6/18/30 (scale 1 → 1.12 → 1.05 → 1) | **500 ms** |
+| Reveal end condition | `enableExitTime` + `exitTime="100"` + `exitTimeIsPercetange="true"` | only after the animation's full 500 ms |
+| `PlaneMorph` (airplane) | `duration="12"`: wifi arcs collapse (frames 0→7), plane fades in (frames 0→11) | **200 ms** |
+| Airplane layer mix, both directions | `StateTransition duration="80"` | **80 ms** |
+| `Idle` / `WifiIdle` | `duration="1"` with `hold` keyframes | hold states |
+
+FR-25 asks for the reveal to fit in 500 ms: the authored timeline *is* 30 frames at 60 fps and the state
+leaves the reveal only on its 100 % exit time, so the budget is structural rather than a timing hope.
+`rive inspect rive\duo --summary` reports the same structure (4 `LinearAnimation`, 28 `KeyFrameDouble`,
+16 `KeyedProperty`, 6 `StateTransition`, 3 `TransitionViewModelCondition`) — those counts are what a CI
+check should compare against, since they move the moment anyone edits the animations by accident.
+
+One **accepted** warning remains: `artboard-without-style` ("nothing inside it can lay out in the editor").
+Adding a `LayoutComponentStyle` would introduce runtime Layout objects, which change how children are
+positioned — a behaviour change that cannot be visually verified while `--screenshot` is broken (below), so
+it stays out until it can be. The two `states-overlap` warnings were fixed (idle states moved off the
+implicit 0,0), with the object histogram unchanged afterwards, which is the evidence that it was metadata
+only.
+
+### Known issue: `--screenshot` stopped working in CLI 1.1.0 (2026-09-21)
+
+`rive rive\duo --screenshot[=<p>]` now logs `deferred replay: inline` and writes no PNG — reproduced with the
+exact command form that worked the day before, and with `--screenshot` alone (no other flags). `--verify`,
+`--once`, `--test` and `inspect` are unaffected, and the log file shows the screenshot attempts never reach
+the render stage. Until it is fixed, visual checks come from the phone (the in-app preview renders the same
+`duo.riv`), and headless verification relies on `--verify` plus the `inspect --summary` counts above.
+
 
 ### How to verify a bind actually applied (recipe)
 
@@ -109,6 +148,8 @@ leaves one half empty, and a missing bind looks exactly like the authored value.
 `Artboard.viewModelInstanceId` → the instance to show, `ViewModel.defaultInstanceId` → the same
 instance, `DefaultInstance` marked `exports="true"`, **and** the state machine inside the artboard.
 
+
+## The artboard group (geometry the host never touches)
 
 One `Node` (the group) sits at the ring's centre `(60, 61.5)` so the whole element can be scaled as a
 body — the reveal animation scales that single node. Children are written relative to it:

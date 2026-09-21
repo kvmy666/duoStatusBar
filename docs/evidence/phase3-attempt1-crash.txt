@@ -1,0 +1,80 @@
+Phase 3, attempt 1 — native crash in SystemUI (raw evidence)
+============================================================
+Device   : CPH2747 (OnePlus 15), Android 16 / OxygenOS 16.0.9.400, KernelSU + LSPosed 2.2.0
+Transport: adb 192.168.100.245:6666
+Build    : app-debug.apk with rive-android 10.2.0, SystemUI scope only
+
+Symptom
+-------
+`adb logcat -d -s DuoSB`, after install + SystemUI restart:
+
+    MainHook loaded into system (process=com.android.systemui)
+    container system_icons -> LinearLayout
+    Rive init failed: InvocationTargetException: null
+    start failed: UnsatisfiedLinkError: No implementation found for long
+      app.rive.runtime.kotlin.core.FileAssetLoader.constructor() ...
+    Rive view failed to start - status bar left untouched
+    (repeated 6 times) giving up after 6 attempts - status bar left untouched
+
+Then the device left adb entirely: `adb devices` -> offline, reconnect -> refused/(10061).
+
+Two things are important in that log:
+  * there is no stack trace, no "FATAL", nothing after the last line — the process died
+    inside native code, which is why no crash report appeared;
+  * every call site was already inside `L.guard`/`try`, and the guard did its job (nothing
+    was hidden, the stock bar stayed up) — yet the process still died. The fault was *below*
+    Java, so no in-process handler could ever have contained it.
+
+Root cause, read out of rive-android 10.2.0's own bytecode (javap -c -p, not from memory)
+----------------------------------------------------------------------------------------
+    app.rive.runtime.kotlin.core.Rive.init(Context, RendererType):
+        ReLinker.recursively().loadLibrary(context, "rive-android")   // resolved in *context's* package
+        Rive.defaultRendererType = defaultRenderer;                   // private STATIC field
+        initializeCppEnvironment();                                   // -> private native cppInitialize()
+
+    Rive.init$default(...):  if ((mask & 2) != 0) defaultRenderer = RendererType.Rive
+    RiveInitializer.create(Context):  one-line call to init$default(...)
+
+So inside SystemUI step 1 throws — com.android.systemui ships no librive-android.so — and
+therefore step 2 never executes: `defaultRendererType` is left **null**.
+
+That null is then read with no null check:
+
+    Renderer(RendererType, boolean, int mask, DefaultConstructorMarker):
+        if ((mask & 1) != 0) type = Rive.getDefaultRendererType();    // null
+    RiveArtboardRenderer(boolean, RendererType, RiveFileController, int, DefaultConstructorMarker):
+        type = Rive.getDefaultRendererType();  putfield type          // null stored
+
+and the view builds its renderer on attach:
+
+    RiveTextureView.onAttachedToWindow() -> createRenderer() -> Renderer.make()   // native
+
+null reaching native `Renderer.make()` = SIGSEGV, before any log line. That is attempt 1.
+
+Same bytecode also settles the second question: RiveAnimationView extends RiveTextureView
+extends android.view.TextureView, and its renderer always draws into a Surface built from the
+SurfaceTexture (onSurfaceTextureAvailable -> new Surface(st) -> renderer.setSurface(...)).
+A hardware accelerated window is therefore required regardless of which backend is chosen.
+
+Fix applied
+-----------
+* RiveInit — never call RiveInitializer in a guest process. Do the same three steps directly:
+  `System.load(absolutePath)` for every .so in our nativeLibraryDir (C++ runtime first),
+  reflectively set `Rive.defaultRendererType = RendererType.Canvas`,
+  call the public `Rive.initializeCppEnvironment()`, then require a non-null read-back.
+* DuoRiveView — `Builder(context).setRendererType(RendererType.Canvas)`, so the type can never
+  be the static's null; Fit.CONTAIN; artboard/state machine named explicitly.
+* DuoGuard — gate + death counter in Settings.Global, because a native fault cannot be caught
+  in-process. Default stage 0 means the module hooks nothing at all after install.
+* DuoIconHost — refuse Rive when the window is not hardware accelerated (use DuoCanvasView);
+  record the attempt *before* creating the view, clear it after it has survived 4 s.
+* DuoSbFacts — log isHardwareAccelerated + FLAG_HARDWARE_ACCELERATED before any Rive object
+  exists, so the one remaining unknown is answered by measurement instead of a wager.
+
+Where the gate could live (measured on this device)
+---------------------------------------------------
+* `su` works (uid=0, context u:r:ksu:s0) but `/data/user_de/0/com.android.systemui` is
+  "Permission denied" even to it, so the gate cannot live in SystemUI's data directory.
+* `adb shell settings put global duo_statusbar_stage 1` works with no permission at all, and
+  `Settings.Global` reads are unrestricted. SystemUI holds `WRITE_SECURE_SETTINGS: granted=true`,
+  so the module can write the attempt counter back. Hence Settings.Global.

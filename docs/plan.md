@@ -40,20 +40,43 @@ id=battery`; 18/24 candidate classes exist with their real method names; 6 AOSP 
   scales up out of the same point)
 * `[x]` `duo.riv` (397 KB) rendered **live on the device** in the app preview — asset pipeline proven
   end-to-end, including the Rive runtime init that the library does not do for you
-* `[ ]` In-app controls to fire `reveal` / toggle `airplane` so the morph can be eyeballed on the phone
+* `[x]` In-app controls to fire `reveal` / toggle `airplane` so the morph can be eyeballed on the phone
+  (`DuoPreview`: battery, charging, saver, airplane, Wi-Fi, cell, replay-reveal — driving the same
+  `DuoMapping` and the same `DuoBinder` the status bar uses, on the same `Canvas` renderer)
 * `[ ]` Per-setting looping previews (FR-09) and a CI step running `rive --verify` on every push
 
 ## Phase 3 — SystemUI core (FR-03/06/08/21)
 
-* `DuoIconHider`: real removal of the stock icons using the method names confirmed in Phase 0.
-* `DuoInjector`: add the Duo view to the status bar and the keyguard status bar.
-* `DuoStateBinder`: battery/charging/saver, Wi-Fi level, cell level, airplane, DND.
-* `SafetyGuard`: strike counter + auto-disable. Commit.
+* `[x]` `DuoIconHost`: injects into `id=system_icons` and hides the stock views for real (GONE + 0×0,
+  re-applied on every layout pass) — container resolution confirmed on the device
+  (`container system_icons -> LinearLayout`).
+* `[ ]` Keyguard status bar and landscape: the attach is layout-driven, so it follows a re-inflate, but
+  neither has been verified on the device yet.
+* `[x]` `DuoStateMonitor` + `SystemReaders`: battery/charging/saver, Wi-Fi level, cell level, airplane,
+  broadcast-driven (no polling); the mapping is covered by 16 unit tests. DND still to add.
+* `[x]` `DuoGuard`: stage gate + death counter in `Settings.Global`, refuses Rive after two deaths.
+* `[ ]` On-device verification of stage 1 (Canvas only, no native code) — ready, phone pending.
+* `[ ]` On-device verification of stage 2 (Rive). First attempt died natively: `Rive.init` throws on its
+  ReLinker step inside SystemUI, so `defaultRendererType` was left **null** and native renderer creation
+  segfaulted (nothing catchable in-process — see `docs/evidence/phase3-attempt1-crash.txt`). Fix in:
+  `RiveInit` performs those three steps itself with the type pinned to `Canvas`, `DuoSbFacts` measures
+  hardware acceleration before any Rive object exists, `DuoGuard` breaks any crash loop.
 
 ## Phase 4 — Animation (FR-25)
 
-* Bind the state machine, implement the reveal timeline, verify ≤ 500 ms and the synced group.
-* Airplane merge/spawn, middle-slot choice. Commit.
+* `[x]` State machine bound and driven from the view model (`revealRequest`, `airplaneState`) — the runtime's
+  own input setters are Kotlin `internal`, so the view model is the only public route.
+* `[x]` Reveal timeline: **30 frames at 60 fps = 500 ms** (scale 1 → 1.12 at 100 ms → 1.05 at 300 ms → 1),
+  one shot, re-firable on the false→true edge; the state leaves only on the animation's 100 % exit time, so
+  FR-25's budget is structural rather than a timing hope. The whole element scales because a single `Node`
+  parents everything — that is the "synced group".
+* `[x]` Airplane merge/spawn: the wifi arcs collapse (7 frames) then the plane grows (11 frames) =
+  **200 ms**, with 80 ms layer mixes. Units confirmed with `rive schema` (animations: frames; transitions: ms).
+* `[ ]` Middle-slot choice: the element takes the battery slot's column (83 px, measured) — whether the design
+  means a different "middle" still needs re-checking against the two reference screenshots.
+* `[ ]` Visual pass on real hardware (reveal bounce + morph). The CLI's `--screenshot` is currently broken
+  (CLI 1.1.0, see docs/rive-pipeline.md), so the in-app preview is the only visual surface for now.
+* Commit.
 
 ## Phase 5 — Settings app (FR-03/09/10/11/16/17/28)
 

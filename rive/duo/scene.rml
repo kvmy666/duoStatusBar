@@ -219,7 +219,7 @@
                 <AnimationState x="200" y="0" animationId="0:93" id="0:92">
                     <StateTransition stateToId="0:96" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
                 </AnimationState>
-                <AnimationState x="0" y="0" animationId="0:97" id="0:96">
+                <AnimationState x="0" y="140" animationId="0:97" id="0:96">
                     <StateTransition stateToId="0:92" duration="0">
                         <TransitionViewModelCondition opValue="equal">
                             <TransitionPropertyViewModelComparator>
@@ -241,7 +241,7 @@
                 <EntryState>
                     <StateTransition stateToId="0:99" />
                 </EntryState>
-                <AnimationState x="0" y="0" animationId="0:100" id="0:99">
+                <AnimationState x="0" y="140" animationId="0:100" id="0:99">
                     <StateTransition stateToId="0:101" duration="80">
                         <TransitionViewModelCondition opValue="equal">
                             <TransitionPropertyViewModelComparator>

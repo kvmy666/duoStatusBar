@@ -2,6 +2,7 @@ package io.github.kvmy666.duostatusbar
 
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.callbacks.XC_LoadPackage
+import io.github.kvmy666.duostatusbar.hook.DuoHook
 import io.github.kvmy666.duostatusbar.probe.ProbeHook
 
 /**
@@ -18,7 +19,7 @@ class MainHook : IXposedHookLoadPackage {
             L.i("MainHook loaded into ${lpparam.packageName} (process=${lpparam.processName})")
 
             when (lpparam.packageName) {
-                "com.android.systemui" -> ProbeHook(lpparam).install()
+                "com.android.systemui" -> DuoHook(lpparam).install()
                 else -> Unit // out of scope: do nothing at all
             }
         } catch (t: Throwable) {
