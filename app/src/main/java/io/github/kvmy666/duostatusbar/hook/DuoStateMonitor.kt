@@ -9,7 +9,9 @@ import android.content.IntentFilter
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.hardware.display.DisplayManager
 import android.os.PowerManager
+import android.view.Display
 import io.github.kvmy666.duostatusbar.L
 
 /**
@@ -34,6 +36,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private var wifiLevel = 3
     private var cellLevel = 4
     private var registered = false
+    /** When the last arrival fired, for the AOD burst guard. */
+    private var lastRevealAt = 0L
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
@@ -68,7 +72,14 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     }
                     // FR-25: reveal on every screen-on and every unlock. The ring re-fills from 0 with
                     // it, so the fill animation is part of the arrival rather than a one-off at boot.
-                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                    //
+                    // Only when the device is actually interactive. The always-on display cycles
+                    // doze -> suspend -> off -> on, and every one of those fires SCREEN_ON: measured on
+                    // the device, one lock/AOD cycle produced ~25 arrivals, so the element re-arrived
+                    // over and over instead of sitting still. isInteractive() is false throughout the
+                    // AOD, which is exactly the line between "the user woke the phone" and "the panel
+                    // blinked".
+                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> if (isInteractive() && revealAllowed()) {
                         visible = true
                         host.revealAll(host.revealMs)
                         restartFill()
@@ -76,8 +87,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     // FR-25: the departure plays as the screen goes, so the element leaves with the rest
                     // of the display rather than blinking out with it. Tied to the SCREEN, not the lock:
                     // the lock screen is supposed to show the element (FR-03b), so locking must not
-                    // dismiss it.
-                    Intent.ACTION_SCREEN_OFF -> {
+                    // dismiss it. Same AOD guard, for the same reason.
+                    Intent.ACTION_SCREEN_OFF -> if (isInteractive()) {
                         visible = false
                         render()
                     }
@@ -128,6 +139,46 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         registered = false
         runCatching { fill?.cancel() }
         runCatching { context.unregisterReceiver(receiver) }
+    }
+
+    /**
+     * Whether the user is actually looking at the phone, as opposed to the always-on display.
+     *
+     * Read live rather than cached: the whole point is the AOD's rapid doze/suspend cycling, and a
+     * cached answer would be stale exactly when it matters. Defaults to true when unreadable, so a
+     * failure means "behave as before" rather than "never animate again".
+     */
+    /**
+     * Rate-limits arrivals to one per [REVEAL_DEBOUNCE_MS].
+     *
+     * `isInteractive()` is the principled filter, but it is not perfect: the AOD still produced ~6
+     * arrivals per cycle after it (measured), because some of the doze transitions report interactive
+     * for a moment. A status bar element that re-arrives six times while the phone is in a pocket is a
+     * bug whatever the reason, so a burst is collapsed to a single arrival as well.
+     */
+    private fun revealAllowed(): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastRevealAt < REVEAL_DEBOUNCE_MS) return false
+        lastRevealAt = now
+        return true
+    }
+
+    private fun isInteractive(): Boolean = try {
+        // The display's own state, not PowerManager.isInteractive(): during the AOD the panel pulses
+        // DOZE -> ON -> DOZE and isInteractive() reports true for those moments, which is how a single
+        // AOD cycle still produced 3 arrivals after the first fix. Only STATE_ON means the user is
+        // actually looking at the phone.
+        val displays = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+        val display = displays?.getDisplay(Display.DEFAULT_DISPLAY)
+        if (display != null) {
+            display.state == Display.STATE_ON
+        } else {
+            val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            power?.isInteractive ?: true
+        }
+    } catch (t: Throwable) {
+        L.w("isInteractive: ${t.javaClass.simpleName}: ${t.message}")
+        true
     }
 
     /** Re-reads Wi-Fi and cellular, then redraws. Never throws. */
@@ -195,5 +246,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
         /** How long the ring takes to fill to a new percentage (4x slower per user feedback). */
         const val FILL_MS = 2_400L
+
+        /** A burst of SCREEN_ON within this window is one arrival, not several. */
+        const val REVEAL_DEBOUNCE_MS = 900L
     }
 }
