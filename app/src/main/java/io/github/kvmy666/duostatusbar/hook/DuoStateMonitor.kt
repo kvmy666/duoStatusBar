@@ -44,7 +44,9 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                         val target = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, level) * 100 / scale
                         val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
                         val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, 0)
+                        val wasCharging = charging
                         charging = plugged || status == BatteryManager.BATTERY_STATUS_CHARGING
+                        if (charging != wasCharging) L.i("charging -> $charging")
                         setLevel(target)
                     }
                     PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {

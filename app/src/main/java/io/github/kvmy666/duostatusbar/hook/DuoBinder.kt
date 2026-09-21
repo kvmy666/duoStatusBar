@@ -38,6 +38,7 @@ object DuoBinder {
     private const val REVEAL_MS = "revealMs"
     private const val PERCENT_TEXT = "percentText"
     private const val VISIBLE = "visible"
+    private const val CHARGING = "charging"
 
     /** Writes the whole snapshot. Returns how many properties failed to bind (0 is perfect). */
     fun apply(vm: ViewModelInstance, v: DuoVisual): Int {
@@ -49,9 +50,7 @@ object DuoBinder {
             "leftArc" to v.leftArc,
             "rightArc" to v.rightArc,
             "trackOpacity" to v.trackOpacity,
-            "percentOpacity" to v.percentOpacity,
             "percentFontSize" to v.percentFontSize,
-            "boltOpacity" to v.boltOpacity,
             "wifiOuterOpacity" to v.wifiOuterOpacity,
             "wifiMidOpacity" to v.wifiMidOpacity,
             // The whole middle-slot hand-over is one Rive layer; this only says which occupant.
@@ -73,6 +72,8 @@ object DuoBinder {
         if (!write(PERCENT_TEXT) { vm.getStringProperty(PERCENT_TEXT).value = v.percentText }) failures++
         // False plays the departure, true brings the element back (screen off / on).
         if (!write(VISIBLE) { vm.getBooleanProperty(VISIBLE).value = v.visible }) failures++
+        // Drives the Charge layer: the bolt's journey from the middle slot to the ring's gap.
+        if (!write(CHARGING) { vm.getBooleanProperty(CHARGING).value = v.charging }) failures++
 
         return failures
     }

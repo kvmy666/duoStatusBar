@@ -33,6 +33,11 @@ data class DuoVisual(
      * out of it - is one Rive state machine layer, so this is the only thing the host says about it.
      */
     val middleMode: Int,
+    /**
+     * Charging drives the bolt's journey - it is born in the middle slot and travels up into the ring's
+     * gap - so that whole sequence is one Rive layer, and this is the only thing the host says about it.
+     */
+    val charging: Boolean,
     /** False plays the departure (screen off); true brings the element back. */
     val visible: Boolean = true
 ) {
@@ -68,6 +73,7 @@ data class DuoVisual(
             fgColor = if (past) other.fgColor else fgColor,
             // The middle slot's hand-over is a Rive layer, not a tween: this only picks which occupant.
             middleMode = if (past) other.middleMode else middleMode,
+            charging = if (past) other.charging else charging,
             visible = if (past) other.visible else visible
         )
     }
@@ -206,6 +212,7 @@ object DuoMapping {
             tint = tint(level, charging, saver),
             fgColor = fgColor,
             middleMode = mode,
+            charging = charging,
             visible = visible
         )
     }
