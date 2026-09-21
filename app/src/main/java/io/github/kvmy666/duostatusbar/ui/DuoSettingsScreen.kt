@@ -100,7 +100,11 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     label = stringResource(R.string.settings_master),
                     detail = stringResource(R.string.settings_master_detail),
                     checked = settings.enabled,
-                    preview = { DuoSettingPreview(off = demo(level = 0), on = demo()) }
+                    preview = {
+                        // Off is the element *absent*, so the demo shows an empty ring with no
+                        // number rather than a ring reading "0".
+                        DuoSettingPreview(off = demo(level = 0, showPercent = false), on = demo())
+                    }
                 ) { update(settings.copy(enabled = it)) }
                 SettingSwitch(
                     label = stringResource(R.string.settings_renderer),

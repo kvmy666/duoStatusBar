@@ -41,7 +41,7 @@ import kotlinx.coroutines.delay
  * The real `duo.riv` with live controls — same asset, same mapping and same binding code as the status
  * bar, so what is judged here is what ships (Phase 2 controls, and the tuning surface for Phase 4).
  *
- * The point is the two things a still image cannot show: the 500 ms reveal and the airplane morph.
+ * The point is the two things a still image cannot show: the reveal and the airplane morph.
  * Every control writes state; state goes through [DuoMapping] exactly as SystemUI does it; [DuoBinder]
  * pushes it at the drawing. A wiring mistake therefore shows up here, on a screen, instead of in the
  * status bar.
@@ -127,7 +127,7 @@ fun DuoPreview(
         Toggle("Do Not Disturb (moon)", dnd) { dnd = it }
         LabelledSlider("Wi-Fi ${wifi.toInt()} of 3", wifi, 0f..3f, steps = 2) { wifi = it }
         LabelledSlider("Cellular ${cell.toInt()} of 4", cell, 0f..4f, steps = 3) { cell = it }
-        Button(onClick = { revealTick++ }) { Text("Replay reveal (500 ms)") }
+        Button(onClick = { revealTick++ }) { Text("Replay reveal (${DuoBinder.REVEAL_MS / 1000} s)") }
         Text(
             text = "tint #${"%08X".format(visual.tint)} · ${DuoBinder.PROPERTY_COUNT} properties bound per snapshot",
             style = MaterialTheme.typography.bodySmall
