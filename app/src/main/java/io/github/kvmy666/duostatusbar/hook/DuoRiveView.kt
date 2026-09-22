@@ -42,6 +42,8 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
 
     override val ui: View get() = this
 
+    override val rendererName: String get() = "Rive"
+
     /** True once the drawing is live; the host uses this to decide whether it may hide stock icons. */
     override val isReady: Boolean get() = viewModelInstance != null
 

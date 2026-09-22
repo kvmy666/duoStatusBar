@@ -21,6 +21,9 @@ internal interface DuoElement {
     /** The view to insert into the status bar. */
     val ui: View
 
+    /** A short name for diagnostics: `"Rive"` or `"Canvas"`. */
+    val rendererName: String
+
     /** True once something is actually being drawn. */
     val isReady: Boolean
 

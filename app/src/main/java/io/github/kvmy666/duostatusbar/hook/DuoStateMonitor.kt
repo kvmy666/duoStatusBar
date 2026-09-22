@@ -55,88 +55,14 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         override fun onReceive(c: Context?, intent: Intent?) {
             try {
                 when (intent?.action) {
-                    Intent.ACTION_BATTERY_CHANGED -> {
-                        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
-                        val target = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, level) * 100 / scale
-                        val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
-                        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, 0)
-                        val wasCharging = charging
-                        charging = plugged || status == BatteryManager.BATTERY_STATUS_CHARGING
-                        if (charging != wasCharging) L.i("charging -> $charging")
-                        setLevel(target)
-                    }
-                    PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {
-                        saver = SystemReaders.isPowerSaveOn(context)
-                        render()
-                    }
-                    Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
-                        airplane = SystemReaders.isAirplaneOn(context)
-                        // Re-read the network generation too: airplane on blanks it, airplane off
-                        // restores the label the slot may need if Wi-Fi is also off.
-                        refresh()
-                    }
-                    // FR-06: the middle slot shows the moon while DND/silent is on. Both signals are
-                    // event-driven (no polling): the zen filter, and the ringer dropping to silent.
+                    Intent.ACTION_BATTERY_CHANGED -> onBatteryChanged(intent)
+                    PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> onPowerSaveChanged()
+                    Intent.ACTION_AIRPLANE_MODE_CHANGED -> onAirplaneChanged()
                     NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED,
-                    AudioManager.RINGER_MODE_CHANGED_ACTION -> {
-                        val was = dnd
-                        dnd = SystemReaders.isDndOn(context)
-                        if (dnd != was) L.i("dnd -> $dnd (middle slot now shows the moon)")
-                        render()
-                    }
-                    // FR-25: reveal on every screen-on and every unlock. The ring re-fills from 0 with
-                    // it, so the fill animation is part of the arrival rather than a one-off at boot.
-                    //
-                    // Only when the device is actually interactive. The always-on display cycles
-                    // doze -> suspend -> off -> on, and every one of those fires SCREEN_ON: measured on
-                    // the device, one lock/AOD cycle produced ~25 arrivals, so the element re-arrived
-                    // over and over instead of sitting still. isInteractive() is false throughout the
-                    // AOD, which is exactly the line between "the user woke the phone" and "the panel
-                    // blinked".
-                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
-                        // The element comes back on ANY screen-on, the AOD's included: it belongs to the
-                        // status bar, and the AOD has one. What it must not do there is *arrive* - the AOD
-                        // pulses several times a second, and an arrival per pulse is the flashing this
-                        // started as. So the display is restored unconditionally and the animation only
-                        // when the user actually woke the phone.
-                        handler.removeCallbacks(hideRunnable)
-                        host.setElementsVisible(true)
-                        visible = true
-                        // FR-25: the arrival animation is optional. With it off the element simply
-                        // appears; the fill still catches up below.
-                        if (host.arrivalEnabled && isInteractive() && revealAllowed()) {
-                            host.revealAll(host.revealMs)
-                            restartFill()
-                        } else {
-                            setLevel(level)
-                        }
-                    }
-                    // FR-25: the departure plays as the screen goes, so the element leaves with the rest
-                    // of the display rather than blinking out with it. Tied to the SCREEN, not the lock:
-                    // the lock screen is supposed to show the element (FR-03b), so locking must not
-                    // dismiss it. Same AOD guard, for the same reason.
-                    Intent.ACTION_SCREEN_OFF -> {
-                        // The departure plays as the panel goes, then the element comes off the display
-                        // entirely. It has to be the whole view, not just the Rive `visible` flag: on the
-                        // always-on display the bar is re-laid out several times a second, and an element
-                        // that is only half hidden flickers with it. The AOD has its own status bar, so
-                        // the element has no business being there.
-                        handler.removeCallbacks(hideRunnable)
-                        if (host.departureEnabled) {
-                            visible = false
-                            render()
-                            handler.postDelayed(hideRunnable, DEPART_HIDE_MS)
-                        } else {
-                            // No departure animation: take the element off the display at once, and
-                            // leave `visible` alone so the Rive machine never plays the Depart timeline.
-                            host.setElementsVisible(false)
-                        }
-                    }
-                    // Rotation re-inflates the strip: hide the stock views again.
-                    Intent.ACTION_CONFIGURATION_CHANGED -> {
-                        host.reapplyHiding()
-                        render()
-                    }
+                    AudioManager.RINGER_MODE_CHANGED_ACTION -> onDndChanged()
+                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> onScreenOn()
+                    Intent.ACTION_SCREEN_OFF -> onScreenOff()
+                    Intent.ACTION_CONFIGURATION_CHANGED -> onRotation()
                     WifiManager.RSSI_CHANGED_ACTION,
                     WifiManager.WIFI_STATE_CHANGED_ACTION,
                     // Which network is actually carrying data can change without the Wi-Fi radio doing
@@ -149,6 +75,90 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 L.e("receiver ${intent?.action}: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
+    }
+
+    private fun onBatteryChanged(intent: Intent) {
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+        val target = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, level) * 100 / scale
+        val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, 0)
+        val wasCharging = charging
+        charging = plugged || status == BatteryManager.BATTERY_STATUS_CHARGING
+        if (charging != wasCharging) L.i("charging -> $charging")
+        setLevel(target)
+    }
+
+    private fun onPowerSaveChanged() {
+        saver = SystemReaders.isPowerSaveOn(context)
+        render()
+    }
+
+    private fun onAirplaneChanged() {
+        airplane = SystemReaders.isAirplaneOn(context)
+        // Re-read the network generation too: airplane on blanks it, airplane off restores the label
+        // the slot may need if Wi-Fi is also off.
+        refresh()
+    }
+
+    // FR-06: the middle slot shows the moon while DND/silent is on. Both signals are event-driven (no
+    // polling): the zen filter, and the ringer dropping to silent.
+    private fun onDndChanged() {
+        val was = dnd
+        dnd = SystemReaders.isDndOn(context)
+        if (dnd != was) L.i("dnd -> $dnd (middle slot now shows the moon)")
+        render()
+    }
+
+    // FR-25: reveal on every screen-on and every unlock. The ring re-fills from 0 with it, so the fill
+    // animation is part of the arrival rather than a one-off at boot.
+    //
+    // Only when the device is actually interactive. The always-on display cycles doze -> suspend -> off
+    // -> on, and every one of those fires SCREEN_ON: measured on the device, one lock/AOD cycle produced
+    // ~25 arrivals, so the element re-arrived over and over instead of sitting still. isInteractive() is
+    // false throughout the AOD, which is exactly the line between "the user woke the phone" and "the
+    // panel blinked".
+    private fun onScreenOn() {
+        // The element comes back on ANY screen-on, the AOD's included: it belongs to the status bar, and
+        // the AOD has one. What it must not do there is *arrive* - the AOD pulses several times a second,
+        // and an arrival per pulse is the flashing this started as. So the display is restored
+        // unconditionally and the animation only when the user actually woke the phone.
+        handler.removeCallbacks(hideRunnable)
+        host.setElementsVisible(true)
+        visible = true
+        // FR-25: the arrival animation is optional. With it off the element simply appears; the fill
+        // still catches up below.
+        if (host.arrivalEnabled && isInteractive() && revealAllowed()) {
+            host.revealAll(host.revealMs)
+            restartFill()
+        } else {
+            setLevel(level)
+        }
+    }
+
+    // FR-25: the departure plays as the screen goes, so the element leaves with the rest of the display
+    // rather than blinking out with it. Tied to the SCREEN, not the lock: the lock screen is supposed to
+    // show the element (FR-03b), so locking must not dismiss it. Same AOD guard, for the same reason.
+    private fun onScreenOff() {
+        // The departure plays as the panel goes, then the element comes off the display entirely. It has
+        // to be the whole view, not just the Rive `visible` flag: on the always-on display the bar is
+        // re-laid out several times a second, and an element that is only half hidden flickers with it.
+        // The AOD has its own status bar, so the element has no business being there.
+        handler.removeCallbacks(hideRunnable)
+        if (host.departureEnabled) {
+            visible = false
+            render()
+            handler.postDelayed(hideRunnable, DEPART_HIDE_MS)
+        } else {
+            // No departure animation: take the element off the display at once, and leave `visible`
+            // alone so the Rive machine never plays the Depart timeline.
+            host.setElementsVisible(false)
+        }
+    }
+
+    /** Rotation re-inflates the strip: hide the stock views again. */
+    private fun onRotation() {
+        host.reapplyHiding()
+        render()
     }
 
     fun start() {
@@ -190,13 +200,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     }
 
     /**
-     * Whether the user is actually looking at the phone, as opposed to the always-on display.
-     *
-     * Read live rather than cached: the whole point is the AOD's rapid doze/suspend cycling, and a
-     * cached answer would be stale exactly when it matters. Defaults to true when unreadable, so a
-     * failure means "behave as before" rather than "never animate again".
-     */
-    /**
      * Rate-limits arrivals to one per [REVEAL_DEBOUNCE_MS].
      *
      * `isInteractive()` is the principled filter, but it is not perfect: the AOD still produced ~6
@@ -211,6 +214,13 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         return true
     }
 
+    /**
+     * Whether the user is actually looking at the phone, as opposed to the always-on display.
+     *
+     * Read live rather than cached: the whole point is the AOD's rapid doze/suspend cycling, and a
+     * cached answer would be stale exactly when it matters. Defaults to true when unreadable, so a
+     * failure means "behave as before" rather than "never animate again".
+     */
     private fun isInteractive(): Boolean = try {
         // The display's own state, not PowerManager.isInteractive(): during the AOD the panel pulses
         // DOZE -> ON -> DOZE and isInteractive() reports true for those moments, which is how a single

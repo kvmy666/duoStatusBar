@@ -47,6 +47,7 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
     private val arcBounds = RectF()
 
     override val ui: View get() = this
+    override val rendererName: String get() = "Canvas"
     override val isReady: Boolean get() = true
 
     override fun start(): Boolean = true

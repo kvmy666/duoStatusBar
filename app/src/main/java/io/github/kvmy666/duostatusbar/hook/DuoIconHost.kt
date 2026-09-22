@@ -2,15 +2,12 @@ package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
 import android.os.Build
-import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import io.github.kvmy666.duostatusbar.L
-import io.github.kvmy666.duostatusbar.hook.integration.AutoExpand
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Puts the Duo element into the status bar and takes the stock icons out of it.
@@ -49,12 +46,8 @@ internal class DuoIconHost(private val context: Context) {
      * element and its own hiding pass, on the same rule as the main bar - never hide a strip the
      * element is not drawing in.
      */
-    /** Names already reported as "not inflated yet", so the retry loop does not spam the log. */
-    private val missingLogged = HashSet<String>()
-
-    /** Diagnostics: one line per icon class, so the log says where the icons actually land. */
-    private val addedLogged = HashSet<String>()
-    private val unmanagedLogged = HashSet<String>()
+    /** One-shot log gates, so a repeated pass cannot spam the log (see [LogOnce]). */
+    private val logOnce = LogOnce()
 
     private inner class ExtraBar(val name: String, val center: Boolean = true) {
         var container: ViewGroup? = null
@@ -66,7 +59,7 @@ internal class DuoIconHost(private val context: Context) {
         /**
          * The slot width captured *before* the stock icons were hidden. Re-measuring later would read
          * the hidden battery's 0-width and fall back to the strip height, which changes the element's
-         * size mid-session and forces a live relayout (see [slotBasePx]).
+         * size mid-session and forces a live relayout (see [SlotGeometry]).
          */
         var basePx = 0
     }
@@ -85,16 +78,17 @@ internal class DuoIconHost(private val context: Context) {
             var parent: View? = view.parent as? View
             while (parent != null) {
                 if (parent === host || extras.any { it.container === parent }) {
-                    if (addedLogged.add(view.javaClass.simpleName)) {
+                    val container = parent
+                    logOnce.once("added:${view.javaClass.simpleName}") {
                         L.i("hiding a status icon as it arrives: ${view.javaClass.simpleName} in " +
-                                "${parent.javaClass.simpleName}")
+                                "${container.javaClass.simpleName}")
                     }
-                    hideRemoving(view)
+                    hider.hide(view)
                     return
                 }
                 parent = parent.parent as? View
             }
-            if (unmanagedLogged.add(view.javaClass.simpleName)) {
+            logOnce.once("unmanaged:${view.javaClass.simpleName}") {
                 L.i("status icon arrived in an unmanaged container: ${view.javaClass.simpleName} " +
                         "parent=${(view.parent as? View)?.javaClass?.simpleName}")
             }
@@ -111,44 +105,19 @@ internal class DuoIconHost(private val context: Context) {
         Build.PRODUCT.orEmpty(),
         Build.DISPLAY.orEmpty()
     )
-    private val romLogged = AtomicBoolean(false)
-    private val logged = AtomicBoolean(false)
-    private val gateLogged = AtomicBoolean(false)
-    private val factsLogged = AtomicBoolean(false)
     private var settings = ModuleSettings.DEFAULT
-    /**
-     * The size the element is actually drawn at. It is captured once, when the element attaches, and
-     * deliberately **not** updated by [refreshSettings]: resizing the Rive view live is what took System
-     * UI down, so a size change only takes effect on the next start (the app shows a Restart button).
-     */
-    private var appliedSize = 0
 
-    /**
-     * The slot width captured **once**, at attach, before the stock icons are hidden.
-     *
-     * This is the fix for a user-reported crash: the old code re-measured the slot on every settings
-     * change, reading the battery view's width. But the module *hides* the battery (width 0), so the
-     * measurement silently fell back to the strip's height. A position drag or a size change then made
-     * [applyLayout] resize the live Rive `TextureView` (`requestLayout()`), and that native resize is
-     * what restarted System UI and tripped the Rive breaker, which is why the element then fell back to
-     * Canvas with the number in the middle. Pinning the base makes the size stable for the whole run.
-     */
-    private var slotBasePx = 0
-    private val hiddenOriginals = ArrayList<HiddenState>()
+    /** Size and position maths; owns the size/slot base captured once at attach (FR-03/17). */
+    private val geometry = SlotGeometry(context, rom)
 
-    /** The clock the module restyles, and what it looked like, so switching off restores it exactly. */
-    private var clockView: android.widget.TextView? = null
-    private var clockOriginalTypeface: android.graphics.Typeface? = null
+    /** Hides and restores the stock views (FR-08/21); owns their remembered original state. */
+    private val hider = StockIconHider()
 
-    /**
-     * The element's gesture detector, or null when every action is `no_action`. It is driven from the
-     * status-bar touch hook ([handleElementTouch]), not the view, because the status bar swallows
-     * touches before they reach the injected view.
-     */
-    private var gestureDetector: GestureDetector? = null
+    /** Restyles the status-bar clock and remembers its original so switching off restores it. */
+    private val clock = ClockFontController(context, rom)
 
-    /** True while a gesture that started on the element is still in progress. */
-    private var elementGestureActive = false
+    /** The element's own tap gestures (FR-05/18), driven from the status-bar touch hook. */
+    private val gestures = ElementGestures(context)
 
     val duo: DuoElement? get() = element
 
@@ -184,42 +153,17 @@ internal class DuoIconHost(private val context: Context) {
             }
             val found = root.findViewById<View>(id)
             if (found == null) {
-                if (missingLogged.add(name)) {
+                logOnce.once("missing:$name") {
                     L.i("$name: $stripId not in this window yet (id=$id) - waiting for it to be inflated")
                 }
                 return false
             }
             val target = found as? ViewGroup ?: return false
             if (target === host) return true // same strip as the main bar: nothing extra to do
-            val slot = ExtraBar(name)
             // Centre on the *bar*, not the window it lives in: the shade window is the whole screen, so
             // centring on it put the element 1300 px down the lock screen (measured).
             val bar = findBar(target) ?: target
-            val candidate = createElement(root, stage)
-            slot.container = target
-            slot.bar = bar
-            slot.basePx = measuredSlotWidth(target)
-            slot.element = candidate
-            extras.add(slot)
-            allowOverflow(target)
-            val side = elementSidePx(target, bar, slot.basePx)
-            candidate.ui.layoutParams = layoutParamsFor(target, side)
-            target.addView(candidate.ui)
-            applyExtraLayout(slot)
-            candidate.onReady {
-                if (slot.element !== candidate) return@onReady
-                hideEverythingExcept(target, candidate.ui)
-                candidate.reveal(settings.revealMs)
-                L.i("Duo injected into $name (${bar.javaClass.simpleName}, ${side}px) - FR-03b")
-            }
-            candidate.onFailed {
-                // Optional bar: drop the element and leave its stock icons alone.
-                L.w("$name element did not bind - leaving its stock icons")
-                runCatching { target.removeView(candidate.ui) }
-                runCatching { candidate.teardown() }
-                extras.remove(slot)
-            }
-            true
+            attachInto(name, target, bar, center = true, elementRoot = root, stage = stage, logClass = bar.javaClass.simpleName)
         } catch (t: Throwable) {
             L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
             false
@@ -237,7 +181,7 @@ internal class DuoIconHost(private val context: Context) {
         if (extras.any { it.name == "shade header" }) return true
         val area = findShadeIconsArea(header)
         if (area == null) {
-            if (missingLogged.add("shade header")) {
+            logOnce.once("missing:shade header") {
                 L.w("shade header: no icon area found in ${header.javaClass.simpleName}")
             }
             return false
@@ -245,24 +189,6 @@ internal class DuoIconHost(private val context: Context) {
         // Centred on the header, not the icon area: the area is a 0x0 strip at the header's end
         // (measured - it is laid out later), and the header is what has a real height to cap against.
         return attachExtraView("shade header", area, header, center = false)
-    }
-
-    /**
-     * Diagnostic: the shade header's tree, once. The header is not the layout the AOSP resource dump
-     * suggests (`combined_qs_header`) - this device builds it differently - so its real icon container
-     * has to be read off the running view, not guessed.
-     */
-    private fun dumpTree(view: View, depth: Int) {
-        if (depth > 12) return
-        val id = try {
-            if (view.id == -1) "-" else context.resources.getResourceEntryName(view.id)
-        } catch (_: Throwable) {
-            "?"
-        }
-        L.i("  ".repeat(depth) + "${view.javaClass.simpleName} #$id ${view.width}x${view.height}")
-        if (view is ViewGroup) {
-            for (i in 0 until view.childCount) dumpTree(view.getChildAt(i), depth + 1)
-        }
     }
 
     private fun findShadeIconsArea(header: View): ViewGroup? {
@@ -287,35 +213,56 @@ internal class DuoIconHost(private val context: Context) {
             val stage = guard.stage()
             if (stage == DuoGuard.OFF) return false
             if (target === host) return true
-            val slot = ExtraBar(name, center)
-            val candidate = createElement(target, stage)
-            slot.container = target
-            slot.bar = cap ?: target
-            slot.basePx = measuredSlotWidth(target)
-            slot.element = candidate
-            extras.add(slot)
-            allowOverflow(target)
-            val side = elementSidePx(target, slot.bar, slot.basePx)
-            candidate.ui.layoutParams = layoutParamsFor(target, side)
-            target.addView(candidate.ui)
-            applyExtraLayout(slot)
-            candidate.onReady {
-                if (slot.element !== candidate) return@onReady
-                hideEverythingExcept(target, candidate.ui)
-                candidate.reveal(settings.revealMs)
-                L.i("Duo injected into $name (${target.javaClass.simpleName}, ${side}px) - FR-03b")
-            }
-            candidate.onFailed {
-                L.w("$name element did not bind - leaving its stock icons")
-                runCatching { target.removeView(candidate.ui) }
-                runCatching { candidate.teardown() }
-                extras.remove(slot)
-            }
-            true
+            attachInto(name, target, cap, center, elementRoot = target, stage = stage, logClass = target.javaClass.simpleName)
         } catch (t: Throwable) {
             L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
+    }
+
+    /**
+     * The shared body of every extra-bar attach: inject the element, hide that bar's stock icons once it
+     * is drawing, and drop it cleanly if it never binds.
+     *
+     * [elementRoot] is what the renderer's hardware-acceleration check reads (the window for the
+     * keyguard bar, the icon area for the shade header); [logClass] is the class name the success line
+     * reports, which differs per bar and must stay stable.
+     */
+    private fun attachInto(
+        name: String,
+        target: ViewGroup,
+        cap: View?,
+        center: Boolean,
+        elementRoot: View,
+        stage: Int,
+        logClass: String
+    ): Boolean {
+        val slot = ExtraBar(name, center)
+        val candidate = createElement(elementRoot, stage)
+        slot.container = target
+        slot.bar = cap ?: target
+        slot.basePx = geometry.measuredWidth(target)
+        slot.element = candidate
+        extras.add(slot)
+        allowOverflow(target)
+        val side = geometry.sidePx(target, slot.bar, slot.basePx)
+        candidate.ui.layoutParams = layoutParamsFor(target, side)
+        target.addView(candidate.ui)
+        applyExtraLayout(slot)
+        candidate.onReady {
+            if (slot.element !== candidate) return@onReady
+            hider.hideAllExcept(target, candidate.ui)
+            candidate.reveal(settings.revealMs)
+            L.i("Duo injected into $name ($logClass, ${side}px) - FR-03b")
+        }
+        candidate.onFailed {
+            // Optional bar: drop the element and leave its stock icons alone.
+            L.w("$name element did not bind - leaving its stock icons")
+            runCatching { target.removeView(candidate.ui) }
+            runCatching { candidate.teardown() }
+            extras.remove(slot)
+        }
+        return true
     }
 
     /** The container decides the LayoutParams type: the strips are LinearLayouts, the shade header is not. */
@@ -329,7 +276,7 @@ internal class DuoIconHost(private val context: Context) {
         val target = slot.container ?: return
         val view = slot.element?.ui ?: return
         try {
-            val side = elementSidePx(target, slot.bar, slot.basePx)
+            val side = geometry.sidePx(target, slot.bar, slot.basePx)
             val lp = view.layoutParams
             // Same rule as applyLayout: never request a layout pass unless the size actually changed.
             if (lp == null || lp.width != side || lp.height != side) {
@@ -337,7 +284,7 @@ internal class DuoIconHost(private val context: Context) {
                 view.requestLayout()
             }
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
-            view.translationY = if (slot.center) windowCenterShiftY(target, slot.bar) else 0f
+            view.translationY = if (slot.center) geometry.windowCenterShiftY(target, slot.bar) else 0f
         } catch (t: Throwable) {
             L.w("${slot.name} layout: ${t.message}")
         }
@@ -403,10 +350,10 @@ internal class DuoIconHost(private val context: Context) {
             } else {
                 // The safe path: size and position are saved but wait for the next start. Gestures and
                 // the clock's font are not geometry, so they can still change live.
-                element?.ui?.let { installGestures(it) }
+                element?.ui?.let { gestures.install(it, settings.tapAction, settings.doubleTapAction, settings.longPressAction) }
                 L.i("live apply off - size/position take effect after Restart System UI")
             }
-            applyClockFont()
+            clock.apply(root, settings.systemClockFont)
         }
         return fresh
     }
@@ -416,7 +363,7 @@ internal class DuoIconHost(private val context: Context) {
         val target = host ?: return
         val view = element?.ui ?: return
         try {
-            val side = elementSidePx(target, root)
+            val side = geometry.sidePx(target, root)
             val lp = view.layoutParams
             // Only touch the view's bounds when the size actually changes. Re-assigning layoutParams
             // (even to the same numbers) requests a layout pass, and a layout pass on the Rive
@@ -429,50 +376,11 @@ internal class DuoIconHost(private val context: Context) {
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
             // The strip sits low in the window, so centring on it wastes the space above. Centre the
             // element in the whole status bar instead, which is what lets it grow to the window height.
-            view.translationY = windowCenterShiftY(target, root)
-            installGestures(view)
+            view.translationY = geometry.windowCenterShiftY(target, root)
+            gestures.install(view, settings.tapAction, settings.doubleTapAction, settings.longPressAction)
         } catch (t: Throwable) {
             L.w("applyLayout: ${t.message}")
         }
-    }
-
-    /**
-     * The element's side in px.
-     *
-     * The slot is only 61 px tall, and the drawing is `Fit.CONTAIN` (square), so sizing the view to the
-     * strip's height capped the element at 61 px and the size setting did nothing above ~75 % - measured
-     * on the device: 100 % and 140 % looked identical. The view is now a **square** that follows the
-     * setting and is allowed to overflow the strip, capped only by the status bar window's own height so
-     * it can never grow past the bar.
-     */
-    private fun elementSidePx(container: ViewGroup, windowRoot: View?, base: Int = 0): Int {
-        // The base is pinned at attach (see [slotBasePx]); re-measuring here is only a last resort.
-        val measured = when {
-            base > 0 -> base
-            slotBasePx > 0 -> slotBasePx
-            else -> measuredSlotWidth(container)
-        }
-        val scaled = measured * appliedSize / 100
-        // Cap at the status bar window's own height: that is the largest the element can be without the
-        // ROM clipping it, so the size setting stays meaningful all the way up.
-        val height = (windowRoot?.height ?: 0).takeIf { it > 0 } ?: return scaled
-        return scaled.coerceAtMost(height)
-    }
-
-    /** How far to move the element so its centre matches its status bar window's centre. */
-    private fun windowCenterShiftY(container: ViewGroup, windowRoot: View?): Float {
-        // The strip is its own bar (the shade header's icon area): nothing to centre against, and the
-        // arithmetic below would move it to the window's top instead.
-        if (windowRoot == null || windowRoot === container) return 0f
-        val height = (windowRoot.height).takeIf { it > 0 } ?: return 0f
-        val location = IntArray(2)
-        try {
-            container.getLocationInWindow(location)
-        } catch (_: Throwable) {
-            return 0f
-        }
-        val stripCenter = location[1] + container.height / 2f
-        return height / 2f - stripCenter
     }
 
     /** Lets the element draw outside the 61 px icon strip, up to the status bar window's bounds. */
@@ -486,98 +394,12 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /**
-     * FR-05/18: gestures are opt-in per action, and the hand-off is to Auto Expand — this module never
-     * implements the actions itself, so the two modules cannot disagree about what a tap means.
+     * Feeds a status-bar touch to the element's gestures when it lands on the element (FR-05/18).
      *
-     * With the default settings (`no_action` everywhere) no listener is installed and the view is not
-     * clickable, so touches fall straight through to whoever handled them before: the status bar's own
-     * gestures, including Auto Expand's zones.
+     * Called from a `dispatchTouchEvent` hook on the status bar, above the point where the bar swallows
+     * touches, because the injected view never receives them. See [ElementGestures.handle].
      */
-    private fun installGestures(view: View) {
-        val tap = settings.tapAction
-        val doubleTap = settings.doubleTapAction
-        val longPress = settings.longPressAction
-        if (tap == AutoExpand.NO_ACTION && doubleTap == AutoExpand.NO_ACTION && longPress == AutoExpand.NO_ACTION) {
-            gestureDetector = null
-            view.setOnTouchListener(null)
-            view.isClickable = false
-            return
-        }
-        val detector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
-            // `onDown` must claim the gesture, or the detector never tracks it and no tap is ever
-            // confirmed.
-            override fun onDown(e: MotionEvent): Boolean = true
-            // `onSingleTapConfirmed`, not `onSingleTapUp`: the latter fires on the FIRST tap of a
-            // double-tap, so a double-tap ran the single-tap action as well (user-reported: a double
-            // tap meant for power saver also toggled Wi-Fi and switched the slot to the 4G label).
-            // The confirmed callback only fires once the double-tap window has passed.
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                L.i("gesture: single tap")
-                return AutoExpand.request(context, tap)
-            }
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                L.i("gesture: double tap")
-                return AutoExpand.request(context, doubleTap)
-            }
-            override fun onLongPress(e: MotionEvent) {
-                L.i("gesture: long press")
-                AutoExpand.request(context, longPress)
-            }
-        })
-        gestureDetector = detector
-        // The detector is driven from the status-bar touch hook ([handleElementTouch], installed by
-        // DuoHook), the same layer Auto Expand uses, because the status bar swallows touches before
-        // they reach the injected view. The view is left clickable so Auto Expand's zones recognise it
-        // and yield; it gets no touch listener of its own, so an event can never be handled twice.
-        view.setOnTouchListener(null)
-        view.isClickable = true
-        L.i("gestures on: tap=$tap doubleTap=$doubleTap longPress=$longPress (driven from the status-bar touch hook)")
-    }
-
-    /**
-     * Feeds a status-bar touch to the element's gestures when it lands on the element.
-     *
-     * The status bar consumes touches before they reach the injected view on the target ROM, so the
-     * view's own listener never fired and the element's actions did nothing (only Auto Expand's zones
-     * reacted). This is called from a `dispatchTouchEvent` hook on the status bar, above that
-     * consumption, and mirrors what Auto Expand does. Once a gesture starts on the element it keeps
-     * receiving the stream until UP/CANCEL, so a finger that drifts is not dropped mid-gesture.
-     */
-    fun handleElementTouch(event: MotionEvent): Boolean {
-        val detector = gestureDetector ?: return false
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                val view = element?.ui ?: return false
-                val location = IntArray(2)
-                try {
-                    view.getLocationOnScreen(location)
-                } catch (_: Throwable) {
-                    return false
-                }
-                val left = location[0]
-                val top = location[1]
-                val right = left + view.width
-                val bottom = top + view.height
-                elementGestureActive = event.rawX >= left && event.rawX <= right &&
-                    event.rawY >= top && event.rawY <= bottom
-                // A DOWN that is not on the element must not reach the detector at all: feeding it
-                // would start a gesture whose UP is then skipped, so the detector would sit on the
-                // press and fire a long press (power saving) on a tap somewhere else entirely.
-                if (!elementGestureActive) return false
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (!elementGestureActive) return false
-                elementGestureActive = false
-            }
-            else -> if (!elementGestureActive) return false
-        }
-        return try {
-            detector.onTouchEvent(event)
-        } catch (t: Throwable) {
-            L.w("element touch: ${t.javaClass.simpleName}: ${t.message}")
-            false
-        }
-    }
+    fun handleElementTouch(event: MotionEvent): Boolean = gestures.handle(event, element?.ui)
 
     /**
      * Finds `system_icons`, injects the Duo element, hides what it replaces. True on success.
@@ -593,7 +415,7 @@ internal class DuoIconHost(private val context: Context) {
         return try {
             val stage = guard.stage()
             if (stage == DuoGuard.OFF) {
-                if (gateLogged.compareAndSet(false, true)) {
+                logOnce.once("gate") {
                     L.i("gated off - enable with: ${guard.enableHint}")
                 }
                 return false
@@ -606,23 +428,23 @@ internal class DuoIconHost(private val context: Context) {
             root = statusBarRoot
             // Pin the slot width now, while the battery view still has its real width: once the stock
             // icons are hidden it reads 0 and the fallback would change the size mid-session.
-            slotBasePx = measuredSlotWidth(target)
+            val basePx = geometry.measuredWidth(target)
             val candidate = createElement(statusBarRoot, stage)
             refreshSettings()
             // Capture the size once per process: live size changes are deferred to a restart (see
-            // [appliedSize]) because resizing the Rive view live used to take System UI down.
-            appliedSize = settings.sizePercent
-            if (factsLogged.compareAndSet(false, true)) {
-                DuoSbFacts.report(context, statusBarRoot, target, slotWidthPx(target))
+            // [SlotGeometry.appliedSize]) because resizing the Rive view live used to take System UI down.
+            geometry.capture(settings.sizePercent, basePx)
+            logOnce.once("facts") {
+                DuoSbFacts.report(context, statusBarRoot, target, geometry.widthPx(target))
             }
-            val side = elementSidePx(target, root)
+            val side = geometry.sidePx(target, root)
             allowOverflow(target)
             candidate.ui.layoutParams = LinearLayout.LayoutParams(side, side)
             target.addView(candidate.ui)
             host = target
             element = candidate
             applyLayout()
-            applyClockFont()
+            clock.apply(root, settings.systemClockFont)
             // The stock icons are hidden and the first reveal fires only once the element reports itself
             // live. A Rive state machine binds *after* this method returns (it needs the view attached to a
             // window), so hiding here would cover an empty slot; Canvas reports ready immediately.
@@ -640,7 +462,7 @@ internal class DuoIconHost(private val context: Context) {
     private fun onElementReady(candidate: DuoElement, target: LinearLayout) {
         if (element !== candidate) return
         try {
-            hideEverythingExcept(target, candidate.ui)
+            hider.hideAllExcept(target, candidate.ui)
             candidate.reveal(settings.revealMs)
             val width = candidate.ui.layoutParams?.width ?: 0
             L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
@@ -668,7 +490,7 @@ internal class DuoIconHost(private val context: Context) {
         } catch (t: Throwable) {
             L.w("fallback remove: ${t.message}")
         }
-        canvas.ui.layoutParams = LinearLayout.LayoutParams(slotWidthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
+        canvas.ui.layoutParams = LinearLayout.LayoutParams(geometry.widthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
         target.addView(canvas.ui)
         element = canvas
         applyLayout()
@@ -732,7 +554,7 @@ internal class DuoIconHost(private val context: Context) {
         // so they get the same pass.
         reapplyExtraHiding()
         // The clock is re-inflated with the strip on some ROMs, so its font is re-applied here too.
-        applyClockFont()
+        clock.apply(root, settings.systemClockFont)
         val target = host ?: return
         val keep = element?.ui ?: return
         // Never hide the stock icons over an element that is not drawing yet: a layout pass can arrive
@@ -742,11 +564,11 @@ internal class DuoIconHost(private val context: Context) {
             // Never leave a hole: if the element cannot live in the rebuilt strip, the stock icons come back
             // rather than an empty stretch of status bar. The next hide pass remembers them again.
             L.w("element could not be re-attached - restoring the stock icons instead of leaving a gap")
-            restoreStockViews()
+            hider.restore()
             return
         }
         try {
-            hideEverythingExcept(target, keep)
+            hider.hideAllExcept(target, keep)
         } catch (t: Throwable) {
             L.w("reapplyHiding: ${t.message}")
         }
@@ -792,60 +614,11 @@ internal class DuoIconHost(private val context: Context) {
         }
         extras.clear()
         element = null
-        restoreStockViews()
-        restoreClockFont()
-        slotBasePx = 0
+        hider.restore()
+        clock.restore()
+        geometry.reset()
         host = null
         root = null
-    }
-
-    /**
-     * FR-16/28: draw the status-bar clock in the phone's own system font, matching the element's digits.
-     *
-     * The module never hides or moves the clock — this only swaps its `Typeface`, remembers the original
-     * so switching off restores it exactly, and does nothing when the setting is off or the clock cannot
-     * be found. The same OEM font the Rive digits bundle (`SysSans`) is preferred, falling back to the
-     * platform `sans-serif` so the feature still works on a ROM that spells its font differently.
-     */
-    private fun applyClockFont() {
-        if (!settings.systemClockFont) {
-            restoreClockFont()
-            return
-        }
-        try {
-            val root = this.root ?: return
-            val id = context.resources.getIdentifier(rom.clockId, "id", rom.systemUiPackage)
-            if (id == 0) return
-            val clock = root.findViewById<View>(id) as? android.widget.TextView ?: return
-            if (clockView !== clock) {
-                clockView = clock
-                clockOriginalTypeface = clock.typeface
-                L.i("clock font -> system (${clock.javaClass.simpleName} id=${rom.clockId})")
-            }
-            clock.typeface = systemTypeface()
-        } catch (t: Throwable) {
-            L.w("clock font: ${t.javaClass.simpleName}: ${t.message}")
-        }
-    }
-
-    private fun restoreClockFont() {
-        val clock = clockView ?: return
-        try {
-            clock.typeface = clockOriginalTypeface
-            L.i("clock font restored")
-        } catch (t: Throwable) {
-            L.w("clock restore: ${t.message}")
-        }
-        clockView = null
-        clockOriginalTypeface = null
-    }
-
-    private fun systemTypeface(): android.graphics.Typeface = try {
-        val file = java.io.File("/system/fonts/SysSans-En-Regular.ttf")
-        if (file.exists()) android.graphics.Typeface.createFromFile(file)
-        else android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
-    } catch (t: Throwable) {
-        android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
     }
 
     /** FR-03b: the same hide pass for every extra bar, once its own element is drawing. */
@@ -855,7 +628,7 @@ internal class DuoIconHost(private val context: Context) {
             val keep = slot.element?.ui ?: continue
             if (!(slot.element?.isReady ?: false)) continue
             try {
-                hideEverythingExcept(target, keep)
+                hider.hideAllExcept(target, keep)
             } catch (t: Throwable) {
                 L.w("${slot.name} hiding: ${t.javaClass.simpleName}: ${t.message}")
             }
@@ -863,93 +636,6 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     // ----------------------------------------------------------------------------- internals
-
-    /**
-     * Hides every stock view in the strip **and remembers exactly what it looked like**, so switching the
-     * element off can put them back without a restart. Hiding is not destruction (FR-08): the views stay in
-     * the tree, they simply draw nothing and occupy nothing.
-     */
-    private fun hideEverythingExcept(container: ViewGroup, keep: View?) {
-        for (i in 0 until container.childCount) {
-            val child = container.getChildAt(i)
-            if (child === keep) continue
-            hideRemoving(child)
-        }
-        if (logged.compareAndSet(false, true)) {
-            L.i("stock status-bar views removed (GONE + 0x0), not overlaid - FR-08")
-        }
-    }
-
-
-
-    private fun hideDescendants(group: ViewGroup) {
-        for (i in 0 until group.childCount) {
-            hideRemoving(group.getChildAt(i))
-        }
-    }
-
-    private fun hideRemoving(view: View) {
-        val lp = view.layoutParams
-        val alreadyHidden = view.visibility == View.GONE && lp != null && lp.width == 0 && lp.height == 0
-        // Re-applying layoutParams on every layout pass is what turns "hide again" into a feedback loop:
-        // setting them requests another layout, which fires the listener that calls back in here. Once a
-        // view is already gone, touching nothing ends the loop (measured: render was being called at
-        // frame rate, thousands of times a second).
-        if (!alreadyHidden) {
-            rememberOriginal(view)
-            view.visibility = View.GONE
-            lp?.let {
-                it.width = 0
-                it.height = 0
-                view.layoutParams = it
-            }
-        }
-        if (view is ViewGroup) hideDescendants(view)
-    }
-
-    private fun rememberOriginal(view: View) {
-        if (hiddenOriginals.any { it.view === view }) return
-        val lp = view.layoutParams
-        hiddenOriginals.add(HiddenState(view, view.visibility, lp?.width ?: 0, lp?.height ?: 0))
-    }
-
-    /** Puts every hidden view back as it was. Used when the element is switched off or torn down. */
-    fun restoreStockViews() {
-        for (state in hiddenOriginals) {
-            try {
-                state.view.visibility = state.visibility
-                state.view.layoutParams?.let { lp ->
-                    lp.width = state.width
-                    lp.height = state.height
-                    state.view.layoutParams = lp
-                }
-            } catch (t: Throwable) {
-                L.w("restore: ${t.message}")
-            }
-        }
-        hiddenOriginals.clear()
-    }
-
-    private data class HiddenState(val view: View, val visibility: Int, val width: Int, val height: Int)
-
-    /** The Duo element takes the battery slot's column, scaled by the size setting (FR-03). */
-    private fun slotWidthPx(container: ViewGroup): Int {
-        val base = if (slotBasePx > 0) slotBasePx else measuredSlotWidth(container)
-        return (base * appliedSize / 100).coerceAtLeast(1)
-    }
-
-    /** The battery slot's column — 83 px measured on the target device — or the best available estimate. */
-    private fun measuredSlotWidth(container: ViewGroup): Int {
-        val measured = try {
-            val id = context.resources.getIdentifier(rom.batteryId, "id", rom.systemUiPackage)
-            if (id != 0) container.findViewById<View>(id)?.width ?: 0 else 0
-        } catch (_: Throwable) {
-            0
-        }
-        if (measured > 0) return measured
-        if (container.height > 0) return container.height // square, like the reference element
-        return (27.4f * context.resources.displayMetrics.density).toInt() // 83 px at density 3.025
-    }
 
     /**
      * The keyguard's status bar itself - `com.android.systemui.statusbar.phone.KeyguardStatusBarView`,
@@ -968,7 +654,7 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private fun findStatusIconsHost(root: View): LinearLayout? {
-        if (romLogged.compareAndSet(false, true)) {
+        logOnce.once("rom") {
             L.i("ROM adapter: ${rom.id} (${rom.label}) - ${rom.notes}")
         }
         for (name in rom.containerIds) {
@@ -983,7 +669,6 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private companion object {
-        const val TAG = "DuoSB"
         const val SURVIVAL_MS = 4_000L
     }
 }

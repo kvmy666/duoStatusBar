@@ -3,7 +3,6 @@ package io.github.kvmy666.duostatusbar
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.hook.DuoHook
-import io.github.kvmy666.duostatusbar.probe.ProbeHook
 
 /**
  * Module entry point — declared in `assets/xposed_init`, instantiated by LSPosed.

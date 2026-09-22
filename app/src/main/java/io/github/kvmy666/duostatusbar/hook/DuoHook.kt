@@ -77,6 +77,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
+    /** The single host for this process, created on first use. */
+    private fun ensureHost(ctx: Context): DuoIconHost {
+        host?.let { return it }
+        return DuoIconHost(ctx).also { host = it }
+    }
+
     private fun hookApplication() {
         L.guard("DuoHook hook Application") {
             XposedHelpers.findAndHookMethod(
@@ -96,11 +102,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 return@guard
                             }
                             L.i("application ready: ${ctx.packageName} (stage $stage)")
-                            host = DuoIconHost(ctx)
-            hookWindowManagerAddView()
-            hookShadeHeader()
-            hookStatusIconContainer()
-            hookSettingsChanges(ctx)
+                            ensureHost(ctx)
+                            hookWindowManagerAddView()
+                            hookShadeHeader()
+                            hookStatusIconContainer()
+                            hookSettingsChanges(ctx)
                         }
                     }
                 }
@@ -154,11 +160,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun report(ctx: Context, stage: Int, settings: ModuleSettings?) {
         L.guard("DuoHook status report") {
             val element = host?.duo
-            val renderer = when (element) {
-                is DuoRiveView -> "Rive"
-                is DuoCanvasView -> "Canvas"
-                else -> "none"
-            }
+            val renderer = element?.rendererName ?: "none"
             val status = buildString {
                 append("stage=").append(stage)
                 append(" · renderer=").append(renderer)
@@ -216,8 +218,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             L.guard("DuoHook attach #$attempt") {
                 val root = statusBarRoot ?: return@guard
                 val ctx = app ?: return@guard
-                if (host == null) host = DuoIconHost(ctx)
-                val attached = host?.attach(root) ?: false
+                val attached = ensureHost(ctx).attach(root)
                 if (attached) {
                     if (monitor == null) {
                         monitor = DuoStateMonitor(ctx, host!!).also { it.start() }
