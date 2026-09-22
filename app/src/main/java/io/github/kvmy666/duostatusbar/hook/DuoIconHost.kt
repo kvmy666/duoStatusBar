@@ -560,6 +560,10 @@ internal class DuoIconHost(private val context: Context) {
                 val bottom = top + view.height
                 elementGestureActive = event.rawX >= left && event.rawX <= right &&
                     event.rawY >= top && event.rawY <= bottom
+                // A DOWN that is not on the element must not reach the detector at all: feeding it
+                // would start a gesture whose UP is then skipped, so the detector would sit on the
+                // press and fire a long press (power saving) on a tap somewhere else entirely.
+                if (!elementGestureActive) return false
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (!elementGestureActive) return false
