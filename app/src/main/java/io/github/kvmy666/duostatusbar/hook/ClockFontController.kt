@@ -21,6 +21,9 @@ internal class ClockFontController(private val context: Context, private val rom
     private var clockView: TextView? = null
     private var clockOriginalTypeface: Typeface? = null
 
+    /** The system typeface, built once: assigning a fresh one every pass forced a relayout loop. */
+    private var cachedTypeface: Typeface? = null
+
     /**
      * Applies the setting: the system font when [enabled], otherwise the remembered original. Safe to
      * call repeatedly (every layout pass); it only logs when the clock view itself changes.
@@ -40,7 +43,13 @@ internal class ClockFontController(private val context: Context, private val rom
                 clockOriginalTypeface = clock.typeface
                 L.i("clock font -> system (${clock.javaClass.simpleName} id=${rom.clockId})")
             }
-            clock.typeface = systemTypeface()
+            // Only touch the typeface when it actually changes. Building a new Typeface and assigning it
+            // on every layout pass forced a re-layout each time, which re-fired the layout listener and
+            // kept the status bar in a continuous relayout loop - a real battery drain.
+            val tf = systemTypeface()
+            if (clock.typeface !== tf) {
+                clock.typeface = tf
+            }
         } catch (t: Throwable) {
             L.w("clock font: ${t.javaClass.simpleName}: ${t.message}")
         }
@@ -59,11 +68,16 @@ internal class ClockFontController(private val context: Context, private val rom
         clockOriginalTypeface = null
     }
 
-    private fun systemTypeface(): Typeface = try {
-        val file = File("/system/fonts/SysSans-En-Regular.ttf")
-        if (file.exists()) Typeface.createFromFile(file)
-        else Typeface.create("sans-serif", Typeface.NORMAL)
-    } catch (t: Throwable) {
-        Typeface.create("sans-serif", Typeface.NORMAL)
+    private fun systemTypeface(): Typeface {
+        cachedTypeface?.let { return it }
+        val tf = try {
+            val file = File("/system/fonts/SysSans-En-Regular.ttf")
+            if (file.exists()) Typeface.createFromFile(file)
+            else Typeface.create("sans-serif", Typeface.NORMAL)
+        } catch (t: Throwable) {
+            Typeface.create("sans-serif", Typeface.NORMAL)
+        }
+        cachedTypeface = tf
+        return tf
     }
 }

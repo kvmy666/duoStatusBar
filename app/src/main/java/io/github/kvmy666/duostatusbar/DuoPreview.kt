@@ -39,6 +39,7 @@ import app.rive.runtime.kotlin.core.Fit
 import app.rive.runtime.kotlin.core.RendererType
 import app.rive.runtime.kotlin.core.ViewModelInstance
 import io.github.kvmy666.duostatusbar.hook.DuoBinder
+import io.github.kvmy666.duostatusbar.hook.DuoBinding
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 import io.github.kvmy666.duostatusbar.ui.demoPhase
@@ -74,7 +75,7 @@ fun DuoPreview(
     var wifiOn by remember { mutableStateOf(true) }
     var generation by remember { mutableIntStateOf(0) }
     var revealTick by remember { mutableIntStateOf(0) }
-    val instance = remember { mutableStateOf<ViewModelInstance?>(null) }
+    val instance = remember { mutableStateOf<DuoBinding?>(null) }
 
     // The one picture, from the same mapping the status bar uses.
     val visual = DuoMapping.visual(
@@ -92,12 +93,12 @@ fun DuoPreview(
 
     // The state machine fires on the false -> true edge, so the request is cleared afterwards.
     LaunchedEffect(revealTick) {
-        val vm = instance.value ?: return@LaunchedEffect
+        val binding = instance.value ?: return@LaunchedEffect
         try {
-            DuoBinder.requestReveal(vm, revealMs)
+            binding.requestReveal(revealMs)
             delay(revealMs + 60L)
         } finally {
-            DuoBinder.requestReveal(vm, 0)
+            binding.requestReveal(0)
         }
     }
 
@@ -105,12 +106,12 @@ fun DuoPreview(
     LaunchedEffect(loop, revealTick) {
         if (!loop) return@LaunchedEffect
         while (true) {
-            val vm = instance.value ?: break
+            val binding = instance.value ?: break
             try {
-                DuoBinder.requestReveal(vm, revealMs)
+                binding.requestReveal(revealMs)
                 delay(revealMs + 60L)
             } finally {
-                DuoBinder.requestReveal(vm, 0)
+                binding.requestReveal(0)
             }
             delay(LOOP_GAP_MS)
         }
@@ -171,7 +172,7 @@ fun DuoRivePreview(
     slideDp: Float = 0f,
     visualAt: (Float) -> DuoVisual
 ) {
-    val instance = remember { mutableStateOf<ViewModelInstance?>(null) }
+    val instance = remember { mutableStateOf<DuoBinding?>(null) }
     val lastVisual = remember { mutableStateOf<DuoVisual?>(null) }
     var phase by remember { mutableFloatStateOf(0f) }
 
@@ -187,11 +188,11 @@ fun DuoRivePreview(
         if (!fireReveal) return@LaunchedEffect
         while (true) {
             delay(periodMs)
-            val vm = instance.value ?: continue
+            val binding = instance.value ?: continue
             try {
-                DuoBinder.requestReveal(vm, 1000)
+                binding.requestReveal(1000)
                 delay(160)
-                DuoBinder.requestReveal(vm, 0)
+                binding.requestReveal(0)
             } catch (_: Throwable) {
             }
         }
@@ -211,9 +212,9 @@ fun DuoRivePreview(
                 val visual = visualAt(phase)
                 // Only push when the snapshot actually changes, and only once the view model has bound:
                 // the phase moves every frame, but the state machine needs one write per state.
-                val vm = instance.value
-                if (vm != null && visual != lastVisual.value) {
-                    pushVisual(vm, visual)
+                val binding = instance.value
+                if (binding != null && visual != lastVisual.value) {
+                    pushVisual(binding, visual)
                     lastVisual.value = visual
                 }
                 val scale = scaleFrom + (1f - scaleFrom) * phase
@@ -235,15 +236,15 @@ fun DuoRiveStill(
     modifier: Modifier = Modifier,
     translationXDp: Float = 0f
 ) {
-    val instance = remember { mutableStateOf<ViewModelInstance?>(null) }
+    val instance = remember { mutableStateOf<DuoBinding?>(null) }
     val lastVisual = remember { mutableStateOf<DuoVisual?>(null) }
     AndroidView(
         modifier = modifier,
         factory = { ctx -> createRiveView(ctx, instance) },
         update = { view ->
-            val vm = instance.value
-            if (vm != null && visual != lastVisual.value) {
-                pushVisual(vm, visual)
+            val binding = instance.value
+            if (binding != null && visual != lastVisual.value) {
+                pushVisual(binding, visual)
                 lastVisual.value = visual
             }
             view.translationX = translationXDp * view.resources.displayMetrics.density
@@ -254,7 +255,7 @@ fun DuoRiveStill(
 /** Builds the Rive view with the same renderer and layout the status bar uses. */
 private fun createRiveView(
     context: Context,
-    instance: MutableState<ViewModelInstance?>
+    instance: MutableState<DuoBinding?>
 ): RiveAnimationView {
     val view = try {
         RiveInit.ensure(context)
@@ -272,14 +273,14 @@ private fun createRiveView(
         L.e("Rive preview setup failed: ${t.javaClass.simpleName}: ${t.message}")
         return RiveAnimationView(context)
     }
-    watchForViewModelInstance(view, onFound = { instance.value = it })
+    watchForViewModelInstance(view, onFound = { vm -> instance.value = DuoBinder.bind(vm, view.file?.lock) })
     return view
 }
 
-private fun pushVisual(vm: ViewModelInstance?, visual: DuoVisual) {
-    if (vm == null) return
+private fun pushVisual(binding: DuoBinding?, visual: DuoVisual) {
+    if (binding == null) return
     try {
-        val failures = DuoBinder.apply(vm, visual)
+        val failures = binding.apply(visual)
         if (failures > 0) {
             L.w("preview: $failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
         }

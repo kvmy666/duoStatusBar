@@ -53,9 +53,14 @@
     <string name="section_about">About</string>
     <string name="settings_status">Status</string>
     <string name="settings_no_status">Waiting for the module… If this stays empty, enable Duo Status Bar in LSPosed (scope: System UI) and restart your phone.</string>
+    <string name="settings_module_never">The module has not loaded into System UI yet. In LSPosed, enable Duo Status Bar and tick System UI in its scope, then reboot (or restart System UI).</string>
+    <string name="settings_module_loaded">Module loaded into System UI at %1$s</string>
+    <string name="settings_module_loaded_recent">Module is loaded into System UI (see status above)</string>
     <string name="settings_recheck">Refresh status</string>
     <string name="settings_share">Share status</string>
     <string name="settings_save_file">Save status to a file</string>
+    <string name="settings_collect_log">Collect full log (root)</string>
+    <string name="settings_collecting">Collecting…</string>
     <string name="settings_history">Recent activity</string>
     <string name="settings_donate">Support the developer</string>
     <string name="settings_version">Duo Status Bar %1$s</string>

@@ -12,19 +12,30 @@ import org.junit.Test
 class RomDetectionTest {
 
     @Test
-    fun `oneplus is recognised as coloros and keeps the measured ids`() {
+    fun `oneplus is recognised as oxygenos and keeps the measured ids`() {
         val rom = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16")
-        assertEquals("coloros", rom.id)
+        assertEquals("oxygenos", rom.id)
         assertEquals("system_icons", rom.containerIds.first())
         assertEquals("battery", rom.batteryId)
         assertTrue("measured, not guessed", rom.notes.contains("measured"))
     }
 
     @Test
-    fun `oppo without oxygen is still coloros`() {
-        val rom = RomDetection.forThisRom("OPPO", "OPPO", "CPH2451", "OPPO/CPH2451:15")
+    fun `oppo maps to the unverified coloros adapter`() {
+        val rom = RomDetection.forThisRom("OPPO", "OPPO", "CPH2451", "OPPO/CPH2451:14")
         assertEquals("coloros", rom.id)
         assertTrue(rom.label.contains("ColorOS"))
+        assertTrue("must admit it is unverified", rom.notes.contains("unverified"))
+    }
+
+    @Test
+    fun `samsung maps to the unverified one ui adapter`() {
+        val rom = RomDetection.forThisRom(
+            "samsung", "samsung", "dm1q", "samsung/dm1q/dm1q:14/UP1A/eng:user"
+        )
+        assertEquals("samsung", rom.id)
+        assertTrue(rom.label.contains("One UI"))
+        assertTrue("must admit it is unverified", rom.notes.contains("unverified"))
     }
 
     @Test
@@ -45,6 +56,8 @@ class RomDetectionTest {
     fun `every adapter probes the aosp id first and names the systemui package`() {
         val roms = listOf(
             RomDetection.forThisRom("OnePlus", "OnePlus", "p", "d"),
+            RomDetection.forThisRom("OPPO", "OPPO", "p", "d"),
+            RomDetection.forThisRom("samsung", "samsung", "p", "d"),
             RomDetection.forThisRom("Xiaomi", "Redmi", "p", "d"),
             RomDetection.forThisRom("Google", "google", "p", "d")
         )

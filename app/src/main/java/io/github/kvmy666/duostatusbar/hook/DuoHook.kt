@@ -35,6 +35,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The status-bar touch hook is installed once per process. */
     private val touchHooked = AtomicBoolean(false)
+
+    /** The debug diagnostic dump is written to the log once per process, not on every settings change. */
+    private val diagnosticsLogged = AtomicBoolean(false)
     private var app: Application? = null
     private var host: DuoIconHost? = null
     private var monitor: DuoStateMonitor? = null
@@ -97,6 +100,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             // the status bar until someone asks it to.
                             val guard = DuoGuard(ctx)
                             val stage = guard.stage()
+                            // Heartbeat before the gate: it is how the app tells "LSPosed never injected
+                            // the module" apart from "the module ran but is switched off". Two signals:
+                            // a Settings.Global stamp, and a provider report. The provider needs no
+                            // permission, so the About screen cannot show a false "never" on a ROM that
+                            // denies SystemUI WRITE_SECURE_SETTINGS (the Global write then fails silently).
+                            L.guard("DuoHook heartbeat") {
+                                guard.noteLoaded()
+                                DuoSettingsClient.report(ctx, "loaded · stage=$stage")
+                            }
                             if (stage == DuoGuard.OFF) {
                                 L.i("gated off - nothing hooked. Enable with: ${guard.enableHint}, then restart SystemUI")
                                 return@guard
@@ -175,6 +187,22 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             L.i("status -> app: $status")
             DuoSettingsClient.report(ctx, status)
+            reportDiagnostics(ctx, stage, settings, element)
+        }
+    }
+
+    /**
+     * Sends the full diagnostic dump to the app (so its "Save status to a file" button ships it) and
+     * writes it to the log once per process. Always on — not debug-only — so any release user can pull a
+     * complete bug report without a special build.
+     */
+    private fun reportDiagnostics(ctx: Context, stage: Int, settings: ModuleSettings?, element: DuoElement?) {
+        val dump = Diag.collect(ctx, statusBarRoot, stage, settings, element)
+        DuoSettingsClient.reportDump(ctx, dump)
+        if (diagnosticsLogged.compareAndSet(false, true)) {
+            L.i("--- diagnostic dump (debug build) ---")
+            Diag.log(dump)
+            L.i("--- end diagnostic dump ---")
         }
     }
 
@@ -284,8 +312,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         L.guard("DuoHook layout listener") {
             root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 L.guard("DuoHook onLayout") {
+                    // Hide pass only. Do NOT re-read system state here: the status bar re-lays out on
+                    // every clock tick, and refreshing Wi-Fi/cell/etc plus re-rendering Rive on each one
+                    // kept SystemUI awake at ~1 Hz — the battery drain. State is already broadcast-driven.
                     host?.reapplyHiding()
-                    monitor?.refresh()
                 }
             }
             // The keyguard's bar is inflated into the shade window when the lock screen appears, and the

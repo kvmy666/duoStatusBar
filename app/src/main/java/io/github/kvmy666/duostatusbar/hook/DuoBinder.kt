@@ -13,6 +13,23 @@ import io.github.kvmy666.duostatusbar.L
  *
  * Every write is individually guarded: one renamed or missing property produces a warning naming it and
  * the rest of the snapshot still lands, so a partially-wrong file degrades instead of going blank.
+ *
+ * ## Why every write goes through [DuoBinding] and its lock
+ *
+ * Rive's renderer advances on the main thread while holding `File.lock`, and inside that it calls
+ * `ViewModelInstance.pollChanges`, which **iterates the view model's property map**. `getNumberProperty`
+ * and friends **insert into that map on first use**. So a write that runs on another thread — or a
+ * re-entrant one — while `advance` iterates the map throws `ConcurrentModificationException` and takes the
+ * host process down. That is a real crash seen on a Redmi/Afterlife Android 14 build:
+ *
+ *     ConcurrentModificationException
+ *       ViewModelInstance.pollChanges
+ *       RiveFileController.advance
+ *       RiveArtboardRenderer.advance
+ *
+ * Taking the *same* `File.lock` around every write makes the write and the renderer's iteration mutually
+ * exclusive, so the map can never be modified mid-iteration. [bind] captures the lock once, next to the
+ * view model, so callers cannot forget it.
  */
 object DuoBinder {
 
@@ -42,8 +59,15 @@ object DuoBinder {
     private const val CHARGING = "charging"
     private const val ANIMATE_CHARGE = "animateCharge"
 
+    /**
+     * Binds a view model for writing. [lock] must be the Rive file's own lock (`RiveAnimationView.file.lock`)
+     * so the writes serialize with the renderer's `advance`; when it is unavailable the view model itself is
+     * used as the monitor, which still serializes writes with each other.
+     */
+    fun bind(vm: ViewModelInstance, lock: Any?): DuoBinding = DuoBinding(vm, lock ?: vm)
+
     /** Writes the whole snapshot. Returns how many properties failed to bind (0 is perfect). */
-    fun apply(vm: ViewModelInstance, v: DuoVisual): Int {
+    internal fun write(vm: ViewModelInstance, v: DuoVisual): Int {
         var failures = 0
 
         val numbers = arrayOf(
@@ -82,7 +106,7 @@ object DuoBinder {
     }
 
     /** Fires an arrival of [ms] milliseconds; 0 clears the request. See [REVEAL_CLEAR_MS]. */
-    fun requestReveal(vm: ViewModelInstance, ms: Int): Boolean =
+    internal fun writeReveal(vm: ViewModelInstance, ms: Int): Boolean =
         write(REVEAL_MS) { vm.getNumberProperty(REVEAL_MS).value = ms.toFloat() }
 
     private inline fun write(name: String, block: () -> Unit): Boolean = try {
@@ -92,4 +116,19 @@ object DuoBinder {
         L.w("bind $name: ${t.javaClass.simpleName}: ${t.message}")
         false
     }
+}
+
+/**
+ * A view model paired with the lock its writes must take (see [DuoBinder]). Created by [DuoBinder.bind];
+ * both surfaces hold one and write only through it.
+ */
+class DuoBinding internal constructor(
+    private val vm: ViewModelInstance,
+    private val lock: Any
+) {
+    /** Writes the whole snapshot under the Rive lock. Returns how many properties failed to bind. */
+    fun apply(v: DuoVisual): Int = synchronized(lock) { DuoBinder.write(vm, v) }
+
+    /** Fires an arrival of [ms] ms under the Rive lock; 0 clears the request. */
+    fun requestReveal(ms: Int): Boolean = synchronized(lock) { DuoBinder.writeReveal(vm, ms) }
 }

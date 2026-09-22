@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.settings
 
 import android.content.Context
+import android.provider.Settings
 
 /**
  * The user's settings, and the contract that carries them into System UI (FR-03/16/17).
@@ -110,6 +111,7 @@ object DuoPrefs {
     private const val KEY_REVISION = "revision"
     private const val KEY_STATUS = "last_status"
     private const val KEY_HISTORY = "status_history"
+    private const val KEY_DUMP = "last_dump"
     private const val HISTORY_LIMIT = 20
 
     fun read(context: Context): DuoSettings {
@@ -188,6 +190,33 @@ object DuoPrefs {
             .getStringSet(KEY_HISTORY, emptySet())
             .orEmpty()
             .sorted()
+
+    /**
+     * The debug diagnostic dump the module last sent (build identity, id probes, view tree, readers).
+     * Empty in release builds, where the module never sends one.
+     */
+    fun dump(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DUMP, "") ?: ""
+
+    fun writeDump(context: Context, dump: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_DUMP, dump)
+            .apply()
+    }
+
+    /**
+     * When the module last ran inside SystemUI (wall clock ms), or 0 if it never has.
+     *
+     * Read straight from `Settings.Global`, which a normal app may read without a permission. It is the
+     * one fact that separates "LSPosed never injected the module" from "the module is switched off", and
+     * the About screen says which one it is instead of showing a blank report.
+     */
+    fun moduleLoadTime(context: Context): Long = try {
+        Settings.Global.getLong(context.contentResolver, "duo_statusbar_last_load", 0L)
+    } catch (_: Throwable) {
+        0L
+    }
 
     // Same bounds the module clamps to, so the two sides cannot disagree about what a legal value is.
     // Raised to 200 so the element can grow to the status bar's own height (the module caps the drawn

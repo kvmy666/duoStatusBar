@@ -42,8 +42,10 @@ internal object RomDetection {
     ): RomAdapter {
         val haystack = listOf(manufacturer, brand, product, display).joinToString(" ").lowercase()
         return when {
-            haystack.contains("oneplus") || haystack.contains("oppo") || haystack.contains("oplus") ->
-                colorOs(haystack)
+            haystack.contains("samsung") -> samsung()
+            haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs()
+            haystack.contains("oppo") || haystack.contains("oplus") || haystack.contains("coloros") ->
+                colorOs()
             haystack.contains("xiaomi") || haystack.contains("redmi") || haystack.contains("poco") ->
                 hyperOs()
             else -> aosp()
@@ -53,18 +55,62 @@ internal object RomDetection {
     /**
      * Measured on the OnePlus 15 (CPH2747), Android 16 / OxygenOS 16.0.9.400: the strip is a `LinearLayout`
      * with the AOSP id `system_icons`, holding `statusIcons` (the stock icons) and `battery` (83 × 61 px).
+     *
+     * The later spellings are only fallbacks for a build that renamed the strip; the measured one is first.
      */
-    private fun colorOs(haystack: String): RomAdapter {
-        val oos = haystack.contains("oxygen") || haystack.contains("oneplus")
-        return RomAdapter(
-            id = "coloros",
-            label = if (oos) "OxygenOS / ColorOS" else "ColorOS",
-            systemUiPackage = AOSP,
-            containerIds = listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
-            batteryId = "battery",
-            notes = "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px"
-        )
-    }
+    private fun oxygenOs(): RomAdapter = RomAdapter(
+        id = "oxygenos",
+        label = "OxygenOS / OnePlus",
+        systemUiPackage = AOSP,
+        containerIds = listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
+        batteryId = "battery",
+        notes = "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px"
+    )
+
+    /**
+     * OPPO ColorOS 14 and 16 (Android 14 / 16).
+     *
+     * No ColorOS device has been measured. The ids are the AOSP ones the OnePlus build keeps plus the
+     * spellings seen in OPPO trees; the adapter says so, and the runtime logs which ids resolved — so a
+     * report turns these guesses into measured facts. The tree-walk fallback in the host still attaches
+     * when none of these match.
+     */
+    private fun colorOs(): RomAdapter = RomAdapter(
+        id = "coloros",
+        label = "ColorOS / OPPO (unverified)",
+        systemUiPackage = AOSP,
+        containerIds = listOf(
+            "system_icons",
+            "system_icons_container",
+            "status_bar_end_side_content",
+            "status_bar_contents",
+            "statusIcons"
+        ),
+        batteryId = "battery",
+        notes = "unverified: no ColorOS 14/16 device measured; AOSP ids first, then OPPO spellings"
+    )
+
+    /**
+     * Samsung One UI 6 (Android 14) and later.
+     *
+     * No Samsung device has been measured. One UI keeps many AOSP ids (`system_icons`, `statusIcons`,
+     * `battery`, `clock`) but re-hosts them in its own containers, so the AOSP names are tried first and
+     * the One UI spellings after; the tree-walk fallback covers the rest. Marked unverified on purpose.
+     */
+    private fun samsung(): RomAdapter = RomAdapter(
+        id = "samsung",
+        label = "Samsung One UI (unverified)",
+        systemUiPackage = AOSP,
+        containerIds = listOf(
+            "system_icons",
+            "system_icons_container",
+            "statusIcons",
+            "status_bar_contents",
+            "status_bar_end_side_content"
+        ),
+        batteryId = "battery",
+        notes = "unverified: no Samsung device measured; AOSP ids first, then One UI spellings"
+    )
 
     /**
      * No Xiaomi device has been tested. The ids are the AOSP ones plus the spellings seen in MIUI trees, and

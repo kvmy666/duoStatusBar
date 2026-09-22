@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -36,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +55,7 @@ import io.github.kvmy666.duostatusbar.DuoRivePreview
 import io.github.kvmy666.duostatusbar.DuoRiveStill
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
@@ -61,7 +64,10 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The settings screen (FR-03/09/10/11/16/17).
@@ -81,7 +87,11 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
     var status by remember { mutableStateOf(DuoPrefs.status(context)) }
     var history by remember { mutableStateOf(DuoPrefs.statusHistory(context)) }
+    var dump by remember { mutableStateOf(DuoPrefs.dump(context)) }
     var query by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    var collecting by remember { mutableStateOf(false) }
+    var moduleLoadAt by remember { mutableStateOf(DuoPrefs.moduleLoadTime(context)) }
 
     /** Settings search: a row is shown when the query appears in its label or its detail. */
     fun matches(vararg text: String): Boolean =
@@ -93,6 +103,8 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             delay(1500)
             status = DuoPrefs.status(context)
             history = DuoPrefs.statusHistory(context)
+            dump = DuoPrefs.dump(context)
+            moduleLoadAt = DuoPrefs.moduleLoadTime(context)
         }
     }
 
@@ -105,6 +117,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            // Issue #3: edge-to-edge draws under the system bars, so the content is inset away from the
+            // status bar and navigation bar instead of being clipped by them.
+            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -321,6 +336,15 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     text = status.ifEmpty { emptyStatus },
                     style = MaterialTheme.typography.bodyMedium
                 )
+                Text(
+                    text = when {
+                        moduleLoadAt > 0L ->
+                            stringResource(R.string.settings_module_loaded, formatTimestamp(moduleLoadAt))
+                        status.isNotEmpty() -> stringResource(R.string.settings_module_loaded_recent)
+                        else -> stringResource(R.string.settings_module_never)
+                    },
+                    style = MaterialTheme.typography.bodySmall
+                )
                 if (history.isNotEmpty()) {
                     Text(stringResource(R.string.settings_history), style = MaterialTheme.typography.labelLarge)
                     history.takeLast(3).forEach { entry ->
@@ -339,16 +363,43 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_recheck)) }
                 Button(
-                    onClick = { shareText(context, buildDiagnostics(settings, status, history)) },
+                    onClick = { shareText(context, buildDiagnostics(settings, status, history, dump, moduleLoadAt)) },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_share)) }
                 Button(
                     onClick = {
-                        val file = writeDiagnostics(context, buildDiagnostics(settings, status, history))
+                        val file = writeDiagnostics(
+                            context,
+                            buildDiagnostics(settings, status, history, dump, moduleLoadAt)
+                        )
                         if (file != null) shareFile(context, file)
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_save_file)) }
+                // Always available (not debug-only): the module dump above only exists once LSPosed has
+                // injected the module. When it has not, this is the only way to see why (LSPosed's log,
+                // logcat, build props). Requires root, which every LSPosed user has.
+                Button(
+                    onClick = {
+                        collecting = true
+                        scope.launch {
+                            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
+                            collecting = false
+                            val report = buildDiagnostics(settings, status, history, dump, moduleLoadAt) +
+                                    "\n\n===== root log capture =====\n" + logs
+                            val file = writeDiagnostics(context, report)
+                            if (file != null) shareFile(context, file)
+                        }
+                    },
+                    enabled = !collecting,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        stringResource(
+                            if (collecting) R.string.settings_collecting else R.string.settings_collect_log
+                        )
+                    )
+                }
                 Button(
                     onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL))) },
                     modifier = Modifier.fillMaxWidth()
@@ -371,19 +422,46 @@ private val SPEED_LABELS = listOf("Slow", "Relaxed", "Normal", "Brisk", "Fast")
 /** Asks the module to restart System UI so a size change takes effect. */
 private fun restartSystemUi(context: Context) {
     context.sendBroadcast(Intent(DuoPrefs.ACTION_RESTART_SYSTEMUI))
+    // If the module is not running inside SystemUI (it has never reported), the broadcast has no
+    // receiver and the button looks dead. A rooted device can restart SystemUI directly; this is the
+    // path other modules use and it is what makes the button work before LSPosed has injected anything.
+    if (DuoPrefs.status(context).isBlank()) {
+        Thread { runCatching { RootLogs.restartSystemUi() } }.start()
+    }
 }
 
 /** The report the About buttons send — one text, shared or written to a file. */
-private fun buildDiagnostics(settings: DuoSettings, status: String, history: List<String>): String =
+private fun buildDiagnostics(
+    settings: DuoSettings,
+    status: String,
+    history: List<String>,
+    dump: String,
+    moduleLoadAt: Long
+): String =
     buildString {
         appendLine("Duo Status Bar diagnostics")
         appendLine("settings: $settings")
+        appendLine(
+            "module load: " + if (moduleLoadAt <= 0L) {
+                "never (LSPosed has not injected the module into System UI)"
+            } else {
+                formatTimestamp(moduleLoadAt)
+            }
+        )
         appendLine("module: ").append(status.ifEmpty { "no report yet" })
         if (history.isNotEmpty()) {
             appendLine("history:")
             history.forEach { appendLine("  $it") }
         }
+        // The debug build's full dump (build identity, id probes, view tree, readers). Empty in release.
+        if (dump.isNotEmpty()) {
+            appendLine()
+            appendLine(dump)
+        }
     }
+
+private fun formatTimestamp(ms: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(ms))
 
 private fun shareText(context: Context, report: String) {
     val send = Intent(Intent.ACTION_SEND).apply {

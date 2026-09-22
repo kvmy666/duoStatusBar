@@ -19,10 +19,12 @@ android {
 
     defaultConfig {
         applicationId = "io.github.kvmy666.duostatusbar"
-        minSdk = 35
+        // Android 14 (API 34) is the floor: the hook targets AOSP/ColorOS/One UI SystemUI views that
+        // exist on 14, and nothing in the module needs an API-35 call. targetSdk stays 36.
+        minSdk = 34
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0.3"
+        versionCode = 6
+        versionName = "1.1.0"
         ndk {
             abiFilters += "arm64-v8a"
         }

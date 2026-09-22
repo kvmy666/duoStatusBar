@@ -59,6 +59,7 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
 
     override fun render(v: DuoVisual) {
         try {
+            if (v == visual) return
             visual = v
             invalidate()
         } catch (t: Throwable) {

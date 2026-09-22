@@ -29,7 +29,7 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
  */
 internal class DuoIconHost(private val context: Context) {
 
-    private var host: LinearLayout? = null
+    private var host: ViewGroup? = null
     private var root: View? = null
     private var element: DuoElement? = null
 
@@ -266,11 +266,15 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /** The container decides the LayoutParams type: the strips are LinearLayouts, the shade header is not. */
-    private fun layoutParamsFor(container: ViewGroup, side: Int): ViewGroup.LayoutParams = when (container) {
-        is LinearLayout -> LinearLayout.LayoutParams(side, side)
-        is android.widget.FrameLayout -> android.widget.FrameLayout.LayoutParams(side, side)
-        else -> ViewGroup.LayoutParams(side, side)
-    }
+    private fun layoutParamsFor(container: ViewGroup, side: Int): ViewGroup.LayoutParams =
+        layoutParamsFor(container, side, side)
+
+    private fun layoutParamsFor(container: ViewGroup, width: Int, height: Int): ViewGroup.LayoutParams =
+        when (container) {
+            is LinearLayout -> LinearLayout.LayoutParams(width, height)
+            is android.widget.FrameLayout -> android.widget.FrameLayout.LayoutParams(width, height)
+            else -> ViewGroup.LayoutParams(width, height)
+        }
 
     private fun applyExtraLayout(slot: ExtraBar) {
         val target = slot.container ?: return
@@ -370,7 +374,7 @@ internal class DuoIconHost(private val context: Context) {
             // TextureView is what took System UI down; the size is restart-only now, so this normally
             // does nothing at all and a settings change can never reshape the drawing.
             if (lp == null || lp.width != side || lp.height != side) {
-                view.layoutParams = LinearLayout.LayoutParams(side, side)
+                view.layoutParams = layoutParamsFor(target, side)
                 view.requestLayout()
             }
             view.translationX = settings.offsetX * context.resources.displayMetrics.density
@@ -439,7 +443,7 @@ internal class DuoIconHost(private val context: Context) {
             }
             val side = geometry.sidePx(target, root)
             allowOverflow(target)
-            candidate.ui.layoutParams = LinearLayout.LayoutParams(side, side)
+            candidate.ui.layoutParams = layoutParamsFor(target, side)
             target.addView(candidate.ui)
             host = target
             element = candidate
@@ -459,7 +463,7 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /** The element is live: now it is safe to take the stock icons out and fire the reveal (FR-08/25). */
-    private fun onElementReady(candidate: DuoElement, target: LinearLayout) {
+    private fun onElementReady(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
         try {
             hider.hideAllExcept(target, candidate.ui)
@@ -475,7 +479,7 @@ internal class DuoIconHost(private val context: Context) {
      * The Rive element never bound its view model. Rather than leave an empty slot, it is replaced by the
      * no-native Canvas element, which draws the ring and the percentage from the same mapping (FR-21).
      */
-    private fun onElementFailed(candidate: DuoElement, target: LinearLayout) {
+    private fun onElementFailed(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
         L.w("Rive element did not bind - falling back to Canvas")
         val canvas = try {
@@ -490,7 +494,7 @@ internal class DuoIconHost(private val context: Context) {
         } catch (t: Throwable) {
             L.w("fallback remove: ${t.message}")
         }
-        canvas.ui.layoutParams = LinearLayout.LayoutParams(geometry.widthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
+        canvas.ui.layoutParams = layoutParamsFor(target, geometry.widthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
         target.addView(canvas.ui)
         element = canvas
         applyLayout()
@@ -653,7 +657,16 @@ internal class DuoIconHost(private val context: Context) {
         return null
     }
 
-    private fun findStatusIconsHost(root: View): LinearLayout? {
+    /**
+     * Finds the strip the element goes into.
+     *
+     * First the ROM adapter's ids are probed in order. When none resolves — an unmeasured ROM such as
+     * ColorOS 14/16 or One UI — the strip is found by what it must *contain*: every ROM's icon strip holds
+     * the battery and/or the status-icons container, so walking up from those finds the parent without
+     * knowing its id. That fallback is what lets a device we have never seen attach instead of doing
+     * nothing, and the diagnostic dump records exactly which path was taken.
+     */
+    private fun findStatusIconsHost(root: View): ViewGroup? {
         logOnce.once("rom") {
             L.i("ROM adapter: ${rom.id} (${rom.label}) - ${rom.notes}")
         }
@@ -662,9 +675,32 @@ internal class DuoIconHost(private val context: Context) {
             if (id == 0) continue
             val found = root.findViewById<View>(id)
             L.d("container $name -> ${found?.javaClass?.simpleName ?: "null"}")
-            (found as? LinearLayout)?.let { return it }
+            (found as? ViewGroup)?.let { return it }
+        }
+        val anchor = stripAroundAnchors(root)
+        if (anchor != null) {
+            L.i("container id not found (tried ${rom.containerIds}) - using the strip around " +
+                    "battery/status icons: ${anchor.javaClass.simpleName}")
+            return anchor
         }
         L.w("no container id resolved (tried ${rom.containerIds}) - status bar left untouched")
+        return null
+    }
+
+    /**
+     * The last-resort strip: the direct parent of the battery view, or of the status-icons container. Its
+     * parent is what the ROM put the strip's children in, whatever the ROM calls that container.
+     */
+    private fun stripAroundAnchors(root: View): ViewGroup? {
+        for (anchorName in listOf(rom.batteryId, "statusIcons", "status_icons", "system_icons")) {
+            val id = context.resources.getIdentifier(anchorName, "id", rom.systemUiPackage)
+            if (id == 0) continue
+            val anchor = root.findViewById<View>(id) ?: continue
+            val parent = anchor.parent as? ViewGroup ?: continue
+            // Never hand back the status-bar window itself: injecting there would fight the bar's layout.
+            if (parent === root) continue
+            return parent
+        }
         return null
     }
 

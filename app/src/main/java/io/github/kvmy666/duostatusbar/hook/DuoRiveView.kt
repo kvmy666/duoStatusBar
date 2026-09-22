@@ -34,9 +34,18 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
 
     private var rive: RiveAnimationView? = null
     private var viewModelInstance: ViewModelInstance? = null
+
+    /**
+     * The view model paired with Rive's file lock, so every write serializes with the renderer's advance
+     * (see [DuoBinder] for the `ConcurrentModificationException` this prevents).
+     */
+    private var binding: DuoBinding? = null
     private var started = false
     private var polls = 0
     private var pendingVisual: DuoVisual? = null
+
+    /** The last snapshot actually written, so an identical one is skipped (battery-drain fix). */
+    private var lastVisual: DuoVisual? = null
     private val readyActions = ArrayList<() -> Unit>()
     private val failedActions = ArrayList<() -> Unit>()
 
@@ -111,6 +120,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
                 val found = machine?.viewModelInstance
                 if (found != null) {
                     viewModelInstance = found
+                    binding = DuoBinder.bind(found, rive?.file?.lock)
                     // The state machine must actually be running: a data bind only applies while one is,
                     // and the render loop only runs while the renderer is playing. With `autoplay` alone
                     // the machine sat idle (`playingStateMachines=0`), so live changes were written but
@@ -140,11 +150,16 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
 
     /** Pushes a full state snapshot into the drawing. Never throws. */
     override fun render(v: DuoVisual) {
+        // An identical snapshot changes nothing on screen, and each real write also re-wakes the Rive
+        // renderer (`artboardRenderer.start()` below). Skipping repeats is what keeps the element from
+        // re-rendering on every status-bar layout pass, which was a steady battery drain.
+        if (v == lastVisual) return
+        lastVisual = v
         // Before the instance binds there is nothing to write to; remember the newest state and replay it
         // the moment the machine is live, so the element never shows a stale first frame.
-        val vm = viewModelInstance ?: run { pendingVisual = v; return }
+        val target = binding ?: run { pendingVisual = v; return }
         val failures = try {
-            DuoBinder.apply(vm, v)
+            target.apply(v)
         } catch (t: Throwable) {
             L.e("render failed: ${t.javaClass.simpleName}: ${t.message}")
             return
@@ -166,7 +181,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
 
     /** Re-fires the reveal (screen on, unlock, first attach). Never throws. */
     override fun reveal(ms: Int) {
-        val vm = viewModelInstance ?: run {
+        val target = binding ?: run {
             L.w("reveal skipped - no view model instance yet")
             return
         }
@@ -175,8 +190,8 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
             // One number is both the trigger and the duration: the machine fires on a non-zero value, so
             // it has to be cleared or it re-fires the moment the arrival ends. Clearing early is what
             // makes it fire once - the machine has already latched the state by then.
-            DuoBinder.requestReveal(vm, ms)
-            postDelayed({ DuoBinder.requestReveal(vm, 0) }, DuoBinder.REVEAL_CLEAR_MS)
+            target.requestReveal(ms)
+            postDelayed({ target.requestReveal(0) }, DuoBinder.REVEAL_CLEAR_MS)
         } catch (t: Throwable) {
             L.e("reveal failed: ${t.javaClass.simpleName}: ${t.message}")
         }
@@ -190,7 +205,9 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         }
         rive = null
         viewModelInstance = null
+        binding = null
         pendingVisual = null
+        lastVisual = null
         readyActions.clear()
         failedActions.clear()
         started = false

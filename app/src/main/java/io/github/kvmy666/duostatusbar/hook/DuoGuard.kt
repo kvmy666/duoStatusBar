@@ -120,11 +120,31 @@ internal class DuoGuard(private val context: Context) {
     /** Set once per process; see [noteRiveAttempt]. */
     private val notedThisProcess = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    /**
+     * Records that the module's code actually ran inside SystemUI, with the wall-clock time.
+     *
+     * Written as early as possible — before the stage gate — because the app's diagnostics can otherwise
+     * not tell the two failure modes apart: "LSPosed never injected the module" and "the module ran but is
+     * switched off". A normal app can read `Settings.Global`, so the settings screen can say which one it
+     * is instead of showing a blank report.
+     */
+    fun noteLoaded() {
+        putLong(KEY_LAST_LOAD, System.currentTimeMillis())
+    }
+
     private fun put(key: String, value: Int) {
         try {
             Settings.Global.putInt(context.contentResolver, key, value)
         } catch (t: Throwable) {
             // Losing the counter costs the breaker, not the status bar - so never propagate.
+            L.w("guard write $key=$value: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    private fun putLong(key: String, value: Long) {
+        try {
+            Settings.Global.putLong(context.contentResolver, key, value)
+        } catch (t: Throwable) {
             L.w("guard write $key=$value: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
@@ -136,6 +156,9 @@ internal class DuoGuard(private val context: Context) {
         const val RIVE = 2
         const val KEY_STAGE = "duo_statusbar_stage"
         const val KEY_ATTEMPTS = "duo_statusbar_rive_attempts"
+
+        /** Wall-clock ms of the last time the module ran inside SystemUI; 0 means it never has. */
+        const val KEY_LAST_LOAD = "duo_statusbar_last_load"
         /** How many *processes* may die to Rive before it is given up on. */
         private const val MAX_ATTEMPTS = 2
 

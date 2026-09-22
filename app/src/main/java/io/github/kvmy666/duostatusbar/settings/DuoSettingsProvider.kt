@@ -52,6 +52,13 @@ class DuoSettingsProvider : ContentProvider() {
                 L.i("module status: $status")
                 Bundle().apply { putBoolean(EXTRA_OK, true) }
             }
+            METHOD_DUMP -> {
+                val ctx = context
+                val dump = extras?.getString(EXTRA_DUMP).orEmpty()
+                if (ctx != null && dump.isNotEmpty()) DuoPrefs.writeDump(ctx, dump)
+                L.i("module diagnostic dump stored (${dump.length} chars)")
+                Bundle().apply { putBoolean(EXTRA_OK, true) }
+            }
             else -> Bundle().apply { putBoolean(EXTRA_OK, false) }
         }
     } catch (t: Throwable) {
@@ -76,6 +83,9 @@ class DuoSettingsProvider : ContentProvider() {
         private const val TAG = "DuoSB"
         const val METHOD_STATUS = "status"
         const val EXTRA_STATUS = "status"
+        /** Debug-only: the full diagnostic dump, stored for the shareable report file. */
+        const val METHOD_DUMP = "dump"
+        const val EXTRA_DUMP = "dump"
         const val EXTRA_OK = "ok"
 
         /**

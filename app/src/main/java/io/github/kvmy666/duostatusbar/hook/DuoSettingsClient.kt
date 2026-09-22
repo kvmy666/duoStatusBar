@@ -109,4 +109,18 @@ internal object DuoSettingsClient {
             L.w("status report failed: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
+
+    /**
+     * Sends the debug diagnostic dump to the app so its "Save status to a file" button can ship it.
+     * Separate from [report] because the dump is large and debug-only: the compact status line is the
+     * release path. Never throws.
+     */
+    fun reportDump(context: Context, dump: String) {
+        try {
+            val extras = Bundle().apply { putString("dump", dump) }
+            context.contentResolver.call(uri, "dump", null, extras)
+        } catch (t: Throwable) {
+            L.w("dump report failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
 }
