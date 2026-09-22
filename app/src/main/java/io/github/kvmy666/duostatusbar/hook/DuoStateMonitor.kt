@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
+import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.hardware.display.DisplayManager
@@ -37,6 +38,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private var cellLevel = 4
     /** Whether the Wi-Fi radio is on: off hands the middle slot to the cellular generation (FR-06). */
     private var wifiOn = true
+    /** Whether Wi-Fi is the active data path; false means the phone is really on mobile data. */
+    private var wifiActive = true
     /** The cellular generation shown when Wi-Fi is off: "5G"/"4G"/"3G"/"2G", or empty. */
     private var networkText = ""
     private var registered = false
@@ -136,6 +139,10 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     }
                     WifiManager.RSSI_CHANGED_ACTION,
                     WifiManager.WIFI_STATE_CHANGED_ACTION,
+                    // Which network is actually carrying data can change without the Wi-Fi radio doing
+                    // anything (a captive portal drops the default route to cellular), so the active
+                    // path is re-read on connectivity changes too.
+                    ConnectivityManager.CONNECTIVITY_ACTION,
                     ACTION_SERVICE_STATE_CHANGED -> refresh()
                 }
             } catch (t: Throwable) {
@@ -160,6 +167,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 addAction(Intent.ACTION_CONFIGURATION_CHANGED)
                 addAction(WifiManager.RSSI_CHANGED_ACTION)
                 addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
+                addAction(ConnectivityManager.CONNECTIVITY_ACTION)
                 addAction(ACTION_SERVICE_STATE_CHANGED)
             }
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -225,6 +233,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     fun refresh() {
         try {
             wifiOn = SystemReaders.isWifiEnabled(context, wifiOn)
+            wifiActive = SystemReaders.isWifiActive(context, wifiActive)
             wifiLevel = SystemReaders.wifiLevel(context, wifiLevel)
             cellLevel = SystemReaders.cellLevel(context, airplane, cellLevel)
             networkText = SystemReaders.networkGeneration(context, airplane, networkText)
@@ -285,6 +294,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     dnd = dnd,
                     visible = visible,
                     wifiOn = wifiOn,
+                    wifiConnected = wifiActive && wifiLevel > 0,
                     networkText = networkText,
                     animateCharge = host.chargingEnabled
                 )

@@ -11,6 +11,7 @@ import app.rive.runtime.kotlin.core.Loop
 import app.rive.runtime.kotlin.core.RendererType
 import app.rive.runtime.kotlin.core.ViewModelInstance
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RiveInit
 import java.util.zip.ZipFile
 
@@ -204,6 +205,17 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
      * guest here: its own classloader first, then the APK path reported by PackageManager.
      */
     private fun loadRiveBytes(): ByteArray? {
+        // Route 1, the only one that survives a release build: the module's own resource table.
+        // R8/resource shrinking renames `res/raw/duo.riv` to a short name (`res/zy.riv` on 1.0.1),
+        // so reading by path - the routes below - silently fails and the element quietly falls back
+        // to Canvas. `openRawResource` resolves the id, not the name, so the rename cannot break it.
+        try {
+            val moduleContext = context.createPackageContext(MODULE_PACKAGE, 0)
+            moduleContext.resources.openRawResource(R.raw.duo).use { return it.readBytes() }
+        } catch (t: Throwable) {
+            L.w("module resource route failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        // Route 2: the module classloader (works in debug builds, where nothing is renamed).
         try {
             DuoRiveView::class.java.classLoader
                 ?.getResourceAsStream(RAW_ENTRY)
@@ -211,6 +223,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         } catch (t: Throwable) {
             L.w("classloader route failed: ${t.message}")
         }
+        // Route 3: the APK zip by path (unrenamed builds only).
         return try {
             val apk = context.packageManager.getApplicationInfo(MODULE_PACKAGE, 0).sourceDir
             ZipFile(apk).use { zip ->

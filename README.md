@@ -74,9 +74,9 @@ Open the app and you'll find:
 
 | Section | What you can do |
 |---|---|
-| **Battery icon** | Turn it on, show or hide the percentage, change the **size**, drag the **position** |
+| **Battery icon** | Turn it on, show or hide the percentage, change the **size**, drag the **position**, and choose whether changes apply **live** or after a restart |
 | **Animations** | A master switch, an animation **speed**, and separate toggles for **Appear**, **Disappear** and **Charging** |
-| **Appearance** | Use **smooth graphics** (turn off if your phone ever feels slow) |
+| **Appearance** | Use **smooth graphics** (turn off if your phone ever feels slow), and draw the status-bar **clock in the system font** so it matches the ring |
 | **Tap actions** | Choose what a single tap, double tap and long press do (with Auto Expand) |
 | **About** | See the module's status, share a report, or support the developer |
 

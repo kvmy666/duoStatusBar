@@ -15,6 +15,8 @@
     <string name="settings_size">Size</string>
     <string name="settings_size_restart">Changing the size needs a restart to take effect.</string>
     <string name="settings_restart">Restart System UI</string>
+    <string name="settings_live_apply">Apply changes live</string>
+    <string name="settings_live_apply_detail">When on, size and position move the icon straight away. Turn it off if the status bar ever restarts while you drag — then changes apply after you tap Restart System UI.</string>
     <string name="settings_position">Position</string>
     <string name="settings_position_hint">Drag the battery icon left or right</string>
     <string name="settings_position_reset">Reset</string>
@@ -36,6 +38,8 @@
     <string name="section_look">Appearance</string>
     <string name="settings_renderer">Smooth graphics</string>
     <string name="settings_renderer_detail">Draws the icon with the graphics chip. Turn it off if the icon looks wrong or your phone feels slow.</string>
+    <string name="settings_clock_font">System-font clock</string>
+    <string name="settings_clock_font_detail">Draws the status-bar clock in your phone\'s own font, so it matches the numbers inside the ring. The clock is never moved or hidden.</string>
 
     <!-- Tap actions -->
     <string name="section_actions">Tap actions</string>

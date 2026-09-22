@@ -209,6 +209,16 @@ class DuoMappingTest {
     }
 
     @Test
+    fun `an NR connection reads as 5G even when the data type is LTE`() {
+        // 5G NSA: the data network type is LTE, but the radio reports NR connected. Reading only the
+        // data type is what made a 5G phone show "4G" (user-reported bug).
+        assertEquals("5G", DuoMapping.networkGeneration(13, nrConnected = true))
+        assertEquals("5G", DuoMapping.networkGeneration(20, nrConnected = true))
+        // Not NR connected: the data type is all we have.
+        assertEquals("4G", DuoMapping.networkGeneration(13, nrConnected = false))
+    }
+
+    @Test
     fun `an unknown radio type shows no label`() {
         // UNKNOWN and IWLAN (Wi-Fi calling) are not a generation worth naming.
         assertEquals("", DuoMapping.networkGeneration(0))
@@ -225,6 +235,25 @@ class DuoMappingTest {
         assertEquals(
             DuoMapping.MIDDLE_OFF,
             DuoMapping.middleMode(airplane = false, dnd = false, wifiOn = false, hasNetwork = false)
+        )
+    }
+
+    @Test
+    fun `wifi on but not connected shows the cellular generation`() {
+        // The radio is on but there is no Wi-Fi network: the phone is on mobile data, so the slot must
+        // name the generation rather than show a dead Wi-Fi glyph (user-reported bug).
+        assertEquals(
+            DuoMapping.MIDDLE_NETWORK,
+            DuoMapping.middleMode(
+                airplane = false, dnd = false, wifiOn = true, hasNetwork = true, wifiConnected = false
+            )
+        )
+        // Connected Wi-Fi still wins the slot.
+        assertEquals(
+            DuoMapping.MIDDLE_WIFI,
+            DuoMapping.middleMode(
+                airplane = false, dnd = false, wifiOn = true, hasNetwork = true, wifiConnected = true
+            )
         )
     }
 

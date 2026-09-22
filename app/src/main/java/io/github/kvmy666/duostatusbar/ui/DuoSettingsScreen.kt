@@ -47,14 +47,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.DuoRivePreview
+import io.github.kvmy666.duostatusbar.DuoRiveStill
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
-import io.github.kvmy666.duostatusbar.hook.DuoCanvasView
-import io.github.kvmy666.duostatusbar.hook.DuoElement
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
@@ -130,7 +128,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 stringResource(R.string.section_element), stringResource(R.string.settings_master),
                 stringResource(R.string.settings_master_detail), stringResource(R.string.settings_percent),
                 stringResource(R.string.settings_percent_detail), stringResource(R.string.settings_size),
-                stringResource(R.string.settings_position)
+                stringResource(R.string.settings_position), stringResource(R.string.settings_live_apply)
             )
         ) Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -179,6 +177,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     enabled = settings.enabled,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_restart)) }
+
+                SettingSwitch(
+                    label = stringResource(R.string.settings_live_apply),
+                    detail = stringResource(R.string.settings_live_apply_detail),
+                    checked = settings.liveApply,
+                    enabled = settings.enabled
+                ) { update(settings.copy(liveApply = it)) }
 
                 PositionEditor(
                     offsetDp = settings.offsetX,
@@ -252,7 +257,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
         // ------------------------------------------------------------------- Appearance
         if (matches(stringResource(R.string.section_look), stringResource(R.string.settings_renderer),
-                stringResource(R.string.settings_renderer_detail))
+                stringResource(R.string.settings_renderer_detail), stringResource(R.string.settings_clock_font))
         ) Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SectionTitle(stringResource(R.string.section_look))
@@ -262,6 +267,12 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     checked = settings.useRive,
                     enabled = settings.enabled
                 ) { update(settings.copy(useRive = it)) }
+                SettingSwitch(
+                    label = stringResource(R.string.settings_clock_font),
+                    detail = stringResource(R.string.settings_clock_font_detail),
+                    checked = settings.systemClockFont,
+                    enabled = settings.enabled
+                ) { update(settings.copy(systemClockFont = it)) }
             }
         }
 
@@ -458,26 +469,21 @@ private fun PositionEditor(offsetDp: Int, enabled: Boolean, onOffset: (Int) -> U
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(start = 14.dp)
             )
-            AndroidView(
+            DuoRiveStill(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp)
                     .size(32.dp),
-                factory = { ctx -> DuoCanvasView(ctx).also { it.start() } },
-                update = { view ->
-                    (view as? DuoElement)?.render(
-                        DuoMapping.visual(
-                            level = 78,
-                            charging = false,
-                            saver = false,
-                            showPercent = true,
-                            wifiLevel = 3,
-                            cellLevel = 4,
-                            airplane = false
-                        )
-                    )
-                    view.translationX = drag * density.density
-                }
+                visual = DuoMapping.visual(
+                    level = 78,
+                    charging = false,
+                    saver = false,
+                    showPercent = true,
+                    wifiLevel = 3,
+                    cellLevel = 4,
+                    airplane = false
+                ),
+                translationXDp = drag
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -167,6 +167,8 @@ fun DuoRivePreview(
     periodMs: Long = RIVE_DEMO_PERIOD_MS,
     fireReveal: Boolean = false,
     scaleFrom: Float = 1f,
+    /** For the position setting: how far the element slides, in dp, at the on end. */
+    slideDp: Float = 0f,
     visualAt: (Float) -> DuoVisual
 ) {
     val instance = remember { mutableStateOf<ViewModelInstance?>(null) }
@@ -217,9 +219,36 @@ fun DuoRivePreview(
                 val scale = scaleFrom + (1f - scaleFrom) * phase
                 view.scaleX = scale
                 view.scaleY = scale
+                view.translationX = slideDp * phase * view.resources.displayMetrics.density
             }
         )
     }
+}
+
+/**
+ * The real Rive element, held still on one [visual]. Used where a demo must not cycle - the position
+ * editor, whose translation is the user's drag rather than a looping phase.
+ */
+@Composable
+fun DuoRiveStill(
+    visual: DuoVisual,
+    modifier: Modifier = Modifier,
+    translationXDp: Float = 0f
+) {
+    val instance = remember { mutableStateOf<ViewModelInstance?>(null) }
+    val lastVisual = remember { mutableStateOf<DuoVisual?>(null) }
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx -> createRiveView(ctx, instance) },
+        update = { view ->
+            val vm = instance.value
+            if (vm != null && visual != lastVisual.value) {
+                pushVisual(vm, visual)
+                lastVisual.value = visual
+            }
+            view.translationX = translationXDp * view.resources.displayMetrics.density
+        }
+    )
 }
 
 /** Builds the Rive view with the same renderer and layout the status bar uses. */

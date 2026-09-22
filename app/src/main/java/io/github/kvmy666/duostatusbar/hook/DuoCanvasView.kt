@@ -138,7 +138,14 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         if (text.isEmpty() || visual.percentOpacity <= 0f) return
         label.color = visual.fgColor
         label.textSize = visual.percentFontSize * k
-        canvas.drawText(text, cx, cy - (label.descent() + label.ascent()) / 2f, label)
+        // In the ring's TOP GAP, exactly where the Rive digits sit (design y -39 from the ring centre).
+        // Drawing it at the centre put it straight on top of the 4G/5G label - the reported conflict.
+        canvas.drawText(
+            text,
+            cx,
+            cy + PERCENT_SLOT_Y * k - (label.descent() + label.ascent()) / 2f,
+            label
+        )
     }
 
     /** Lightning bolt, unit coordinates scaled to the ring, shown while charging. */
@@ -178,6 +185,12 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         /** The cellular label's centre, matching the Rive text node (group-relative y 1). */
         const val NETWORK_SLOT_Y = 1f
         const val NETWORK_FONT_SIZE = 30f
+
+        /**
+         * The percentage's centre in the ring's top gap. The Rive text node spans y -60..-18 about the
+         * ring centre, so its centre is -39; drawing there keeps the digits above the middle-slot icon.
+         */
+        const val PERCENT_SLOT_Y = -39f
 
         /**
          * The DND crescent, generated from the device's own `drawable/stat_sys_dnd` by

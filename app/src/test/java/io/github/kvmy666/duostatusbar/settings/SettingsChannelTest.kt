@@ -80,6 +80,8 @@ class SettingsChannelTest {
         assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_PERCENT)])
         assertEquals(130, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SIZE_PERCENT)])
         assertEquals(7, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_OFFSET_X)])
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_LIVE_APPLY)])
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_CLOCK_FONT)])
         assertEquals(42L, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_REVISION)])
         assertEquals("toggle_flashlight", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_TAP)])
         assertEquals("no_action", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DOUBLE_TAP)])

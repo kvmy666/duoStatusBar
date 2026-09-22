@@ -32,6 +32,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     private val handler = Handler(Looper.getMainLooper())
     private val attaching = AtomicBoolean(false)
+
+    /** The status-bar touch hook is installed once per process. */
+    private val touchHooked = AtomicBoolean(false)
     private var app: Application? = null
     private var host: DuoIconHost? = null
     private var monitor: DuoStateMonitor? = null
@@ -46,6 +49,26 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The pulled-down shade's header, handed over by [hookShadeHeader]. */
     private var shadeHeader: View? = null
+
+    /**
+     * The debounced "settings changed" apply. A drag on the app's size/position slider broadcasts on
+     * every tick; running the whole re-read for each one puts a burst of binder calls on System UI's
+     * main thread. Waiting for the burst to settle keeps the bar responsive and, more importantly,
+     * keeps the watchdog from restarting System UI.
+     */
+    private val settingsApply = Runnable {
+        val ctx = app ?: return@Runnable
+        L.guard("DuoHook settings changed") {
+            val stage = DuoGuard(ctx).stage()
+            val settings = host?.refreshSettings()
+            when {
+                stage == DuoGuard.OFF -> host?.teardown()
+                host?.duo == null -> scheduleAttach(attempt = 0)
+                else -> monitor?.refresh()
+            }
+            report(ctx, stage, settings)
+        }
+    }
 
     fun install() {
         L.guard("DuoHook install") {
@@ -108,16 +131,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         }, RESTART_DELAY_MS)
                         return
                     }
-                    L.guard("DuoHook settings changed") {
-                        val stage = DuoGuard(ctx).stage()
-                        val settings = host?.refreshSettings()
-                        when {
-                            stage == DuoGuard.OFF -> host?.teardown()
-                            host?.duo == null -> scheduleAttach(attempt = 0)
-                            else -> monitor?.refresh()
-                        }
-                        report(ctx, stage, settings)
-                    }
+                    // Coalesce a burst of changes (a slider drag broadcasts on every tick) into one
+                    // apply. Each apply does synchronous provider reads on System UI's main thread, so
+                    // without this a drag could block it and get System UI restarted by the watchdog.
+                    handler.removeCallbacks(settingsApply)
+                    handler.postDelayed(settingsApply, SETTINGS_DEBOUNCE_MS)
                 }
             }
             ctx.registerReceiver(
@@ -210,6 +228,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // The keyguard and the shade header may already be on screen (the element attaches
                     // at boot, they come later, but a re-attach after rotation can land either way).
                     shadeRoot?.let { shade -> attachExtraBars(shade) }
+                    hookStatusBarTouch(root)
                     L.i("Duo attached on attempt $attempt")
                     report(ctx, DuoGuard(ctx).stage(), null)
                 } else {
@@ -217,6 +236,47 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 }
             }
         }, if (attempt == 0) FIRST_DELAY_MS else RETRY_MS)
+    }
+
+    /**
+     * FR-05/18: drives the element's own tap gestures from the status bar's touch stream.
+     *
+     * The status bar consumes touches before they reach the injected element view, so its OnTouch
+     * listener never fired and the element's configured actions did nothing - only Auto Expand's edge
+     * zones reacted. This hooks `dispatchTouchEvent` on the bar (the same layer Auto Expand uses) and
+     * lets [DuoIconHost.handleElementTouch] claim only the touches that land on the element. Auto
+     * Expand's zones yield to those touches, so one tap means one action.
+     *
+     * The runtime class is checked for a *declared* override: hooking an inherited
+     * `ViewGroup.dispatchTouchEvent` would intercept every touch in the process.
+     */
+    private fun hookStatusBarTouch(root: View) {
+        if (!touchHooked.compareAndSet(false, true)) return
+        L.guard("DuoHook status bar touch") {
+            // `dispatchTouchEvent` is inherited from ViewGroup, so this hooks the base method and the
+            // identity guard below keeps it to the status-bar window only (hooking without the guard
+            // would run for every touch in the process).
+            val method = try {
+                XposedHelpers.findMethodExact(
+                    root.javaClass, "dispatchTouchEvent", android.view.MotionEvent::class.java
+                )
+            } catch (t: Throwable) {
+                L.w("no dispatchTouchEvent on ${root.javaClass.simpleName}: ${t.message}")
+                return@guard
+            }
+            XposedBridge.hookMethod(method, object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    if (param.thisObject !== root) return
+                    try {
+                        val event = param.args.getOrNull(0) as? android.view.MotionEvent ?: return
+                        host?.handleElementTouch(event)
+                    } catch (t: Throwable) {
+                        L.w("element touch: ${t.javaClass.simpleName}: ${t.message}")
+                    }
+                }
+            })
+            L.i("status bar touch hook installed (${root.javaClass.simpleName}) - FR-05/18")
+        }
     }
 
     private fun attachLayoutListener(root: View) {
@@ -350,6 +410,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
         /** Give the restart broadcast a moment to finish before the process goes. */
         const val RESTART_DELAY_MS = 300L
+
+        /** How long a burst of settings changes is allowed to settle before one apply runs. */
+        const val SETTINGS_DEBOUNCE_MS = 250L
         const val RETRY_MS = 2_000L
         const val MAX_ATTEMPTS = 6
     }

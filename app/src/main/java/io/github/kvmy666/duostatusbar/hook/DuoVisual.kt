@@ -208,6 +208,12 @@ object DuoMapping {
         visible: Boolean = true,
         /** Whether the Wi-Fi radio is on. Off hands the middle slot to the cellular generation. */
         wifiOn: Boolean = true,
+        /**
+         * Whether Wi-Fi is the network actually carrying data. False (connected but no internet, or
+         * radio off) hands the slot to the cellular generation, so the element follows the active path
+         * rather than showing a Wi-Fi glyph while the user is on mobile data.
+         */
+        wifiConnected: Boolean = wifiLevel > 0,
         /** The cellular generation, e.g. "5G"; ignored unless the slot is actually holding it. */
         networkText: String = "",
         /** Whether the charging journey plays; false shows the bolt instantly. */
@@ -217,7 +223,10 @@ object DuoMapping {
         // Wi-Fi; with Wi-Fi off the slot shows the cellular generation instead. The hand-over itself
         // - the arcs collapsing, the dot fading, the new occupant growing out of it - is the
         // MiddleSlot layer's job, so all the host says is which occupant it should be.
-        val mode = middleMode(airplane, dnd, wifiOn, networkText.isNotEmpty())
+        // Wi-Fi only owns the slot when it is the active data path: a connected-but-internet-less AP
+        // still leaves the phone on mobile data, so the slot shows the cellular generation instead of a
+        // Wi-Fi glyph while the user is plainly on 4G/5G (user-reported).
+        val mode = middleMode(airplane, dnd, wifiOn, networkText.isNotEmpty(), wifiConnected)
         val (outer, middle, dot) = wifiOpacities(wifiLevel)
         val cells = cellOpacities(if (airplane) 0 else cellLevel)
         val percent = if (showPercent && !charging) level.toString() else ""
@@ -260,15 +269,26 @@ object DuoMapping {
     /** The cellular generation shown when Wi-Fi is off (FR-06): "5G"/"4G"/"3G"/"2G". */
     const val MIDDLE_NETWORK = 4
 
-    /** FR-06/FR-16: airplane wins the slot, then DND, then Wi-Fi, then the cellular generation. */
-    fun middleMode(airplane: Boolean, dnd: Boolean, wifiOn: Boolean = true, hasNetwork: Boolean = false): Int =
-        when {
-            airplane -> MIDDLE_AIRPLANE
-            dnd -> MIDDLE_DND
-            wifiOn -> MIDDLE_WIFI
-            hasNetwork -> MIDDLE_NETWORK
-            else -> MIDDLE_OFF
-        }
+    /**
+     * FR-06/FR-16: airplane wins the slot, then DND, then a **connected** Wi-Fi, then the cellular
+     * generation. [wifiConnected] is false when the radio is on but there is no network through it, in
+     * which case the phone is on mobile data and the generation is the honest thing to show.
+     */
+    fun middleMode(
+        airplane: Boolean,
+        dnd: Boolean,
+        wifiOn: Boolean = true,
+        hasNetwork: Boolean = false,
+        wifiConnected: Boolean = true
+    ): Int = when {
+        airplane -> MIDDLE_AIRPLANE
+        dnd -> MIDDLE_DND
+        wifiOn && wifiConnected -> MIDDLE_WIFI
+        hasNetwork -> MIDDLE_NETWORK
+        // Wi-Fi on but not connected, and no generation to name: keep the dim glyph rather than empty.
+        wifiOn -> MIDDLE_WIFI
+        else -> MIDDLE_OFF
+    }
 
     /**
      * The cellular generation label for a `TelephonyManager.NETWORK_TYPE_*` value.
@@ -277,15 +297,21 @@ object DuoMapping {
      * pure, unit-tested half. Unknown or Wi-Fi-calling types map to empty, which leaves the slot off
      * rather than showing a label that means nothing.
      */
-    fun networkGeneration(type: Int): String = when (type) {
-        // NETWORK_TYPE_NR
-        20 -> "5G"
-        // NETWORK_TYPE_LTE, NETWORK_TYPE_LTE_CA
-        13, 19 -> "4G"
-        // UMTS, EVDO_0/A, HSDPA, HSUPA, HSPA, EVDO_B, EHRPD, HSPAP, TD_SCDMA
-        3, 5, 6, 8, 9, 10, 12, 14, 15, 17 -> "3G"
-        // GPRS, EDGE, CDMA, 1xRTT, IDEN, GSM
-        1, 2, 4, 7, 11, 16 -> "2G"
-        else -> ""
+    fun networkGeneration(type: Int, nrConnected: Boolean = false): String {
+        // The phone's radio reports NR as connected. On 5G NSA the data network type is still LTE, so
+        // this is the only honest 5G signal - it is what the stock OxygenOS bar reads (see
+        // `OplusMobileSignalExImpl`: `ServiceState.getNrState()` 2 or 3 means 5G).
+        if (nrConnected) return "5G"
+        return when (type) {
+            // NETWORK_TYPE_NR
+            20 -> "5G"
+            // NETWORK_TYPE_LTE, NETWORK_TYPE_LTE_CA
+            13, 19 -> "4G"
+            // UMTS, EVDO_0/A, HSDPA, HSUPA, HSPA, EVDO_B, EHRPD, HSPAP, TD_SCDMA
+            3, 5, 6, 8, 9, 10, 12, 14, 15, 17 -> "3G"
+            // GPRS, EDGE, CDMA, 1xRTT, IDEN, GSM
+            1, 2, 4, 7, 11, 16 -> "2G"
+            else -> ""
+        }
     }
 }

@@ -35,6 +35,17 @@ data class DuoSettings(
     /** FR-17: horizontal nudge inside the slot, in dp, from the drag editor. */
     val offsetX: Int = 0,
     /**
+     * Whether a size/position change reaches the running status bar immediately. Off means the value
+     * is saved but only applied on the next start (the Restart System UI button), which is the safe
+     * path: resizing the Rive view while System UI runs is what used to take it down.
+     */
+    val liveApply: Boolean = true,
+    /**
+     * Whether the status-bar clock is redrawn in the phone's own system font. The module never hides
+     * the clock; this only swaps its typeface so it matches the element's digits.
+     */
+    val systemClockFont: Boolean = true,
+    /**
      * FR-25: how long the arrival takes, in ms. One Rive timeline played at five speeds, so this is a
      * choice from [DuoPrefs.REVEAL_CHOICES] rather than a free number.
      */
@@ -75,6 +86,8 @@ object DuoPrefs {
     const val COL_SHOW_PERCENT = "show_percent"
     const val COL_SIZE_PERCENT = "size_percent"
     const val COL_OFFSET_X = "offset_x"
+    const val COL_LIVE_APPLY = "live_apply"
+    const val COL_CLOCK_FONT = "clock_font"
     const val COL_REVISION = "revision"
     const val COL_TAP = "tap_action"
     const val COL_DOUBLE_TAP = "double_tap_action"
@@ -87,7 +100,8 @@ object DuoPrefs {
 
     /** The column set the module expects; kept in one place so both sides cannot drift. */
     val COLUMNS = arrayOf(
-        COL_ENABLED, COL_USE_RIVE, COL_SHOW_PERCENT, COL_SIZE_PERCENT, COL_OFFSET_X, COL_REVISION,
+        COL_ENABLED, COL_USE_RIVE, COL_SHOW_PERCENT, COL_SIZE_PERCENT, COL_OFFSET_X,
+        COL_LIVE_APPLY, COL_CLOCK_FONT, COL_REVISION,
         COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS, COL_REVEAL_MS,
         COL_ANIMATIONS, COL_ARRIVAL, COL_DEPARTURE, COL_CHARGING
     )
@@ -106,6 +120,8 @@ object DuoPrefs {
             showPercent = p.getBoolean(COL_SHOW_PERCENT, true),
             sizePercent = p.getInt(COL_SIZE_PERCENT, 100),
             offsetX = p.getInt(COL_OFFSET_X, 0),
+            liveApply = p.getBoolean(COL_LIVE_APPLY, true),
+            systemClockFont = p.getBoolean(COL_CLOCK_FONT, true),
             revealMs = nearestReveal(p.getInt(COL_REVEAL_MS, DEFAULT_REVEAL_MS)),
             animationsEnabled = p.getBoolean(COL_ANIMATIONS, true),
             arrivalEnabled = p.getBoolean(COL_ARRIVAL, true),
@@ -127,6 +143,8 @@ object DuoPrefs {
             .putBoolean(COL_SHOW_PERCENT, settings.showPercent)
             .putInt(COL_SIZE_PERCENT, settings.sizePercent.coerceIn(MIN_SIZE, MAX_SIZE))
             .putInt(COL_OFFSET_X, settings.offsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET))
+            .putBoolean(COL_LIVE_APPLY, settings.liveApply)
+            .putBoolean(COL_CLOCK_FONT, settings.systemClockFont)
             .putInt(COL_REVEAL_MS, nearestReveal(settings.revealMs))
             .putBoolean(COL_ANIMATIONS, settings.animationsEnabled)
             .putBoolean(COL_ARRIVAL, settings.arrivalEnabled)

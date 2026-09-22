@@ -92,6 +92,8 @@ class DuoSettingsProvider : ContentProvider() {
             if (settings.showPercent) 1 else 0,
             settings.sizePercent,
             settings.offsetX,
+            if (settings.liveApply) 1 else 0,
+            if (settings.systemClockFont) 1 else 0,
             revision,
             settings.tapAction,
             settings.doubleTapAction,

@@ -20,6 +20,8 @@ internal data class RomAdapter(
     val containerIds: List<String>,
     /** The battery view, used only to measure the slot the element replaces. */
     val batteryId: String,
+    /** The status-bar clock, used only to swap its typeface (the module never hides it). */
+    val clockId: String = "clock",
     /** Where the facts came from — "measured" is a device, "unverified" is a guess to be replaced. */
     val notes: String
 )

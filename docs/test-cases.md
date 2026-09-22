@@ -50,6 +50,10 @@ confirmed from LSPosed's log is not confirmed (see `evidence/phase3-log-sinks-an
 | C-8 | Cellular levels | weak/strong signal | spheres light 1→4 |
 | C-9 | DND | enable DND | configured middle-slot / badge behaviour |
 | C-10 | 4G vs 5G | toggle preferred network | value/text reflects the real network type |
+| C-11 | 5G NSA | on a 5G NSA network | the slot reads **5G**, not 4G (the data type is LTE; the radio's NR state is what counts) |
+| C-12 | Percentage above the icon | percentage on, Wi-Fi off (4G/5G label in the slot) | the digits sit in the ring's top gap, clear of the label |
+| C-13 | Percentage off closes the ring | percentage off | the ring closes — no gap left at 12 o'clock |
+| C-14 | Fallback never shows a centre number | force Canvas (stage 1) with Wi-Fi off | the digits are still in the top gap, not on the label |
 
 ## D. Animation (FR-25) — Phase 4
 
@@ -75,6 +79,9 @@ confirmed from LSPosed's log is not confirmed (see `evidence/phase3-log-sinks-an
 | E-5 | Diagnostics | shows hook health + last errors; log export works |
 | E-6 | Donate | PayPal button opens `paypal.me/kroomfahd` |
 | E-7 | Red Wine theme | primary + derived secondaries applied consistently, light & dark |
+| E-8 | Live apply off | turn **Apply changes live** off, drag size/position | System UI is **not** restarted; values apply after Restart System UI |
+| E-9 | Previews are the real drawing | open every section | every demo is the Rive scene, not the Canvas fallback |
+| E-10 | System-font clock | toggle **System-font clock** on/off | the clock's typeface changes and is restored exactly when off |
 
 ## F. Auto Expand integration (FR-05/18) — Phase 6
 
