@@ -66,7 +66,18 @@ data class DuoSettings(
      */
     val tapAction: String = "no_action",
     val doubleTapAction: String = "no_action",
-    val longPressAction: String = "no_action"
+    val longPressAction: String = "no_action",
+    /**
+     * How the element picks its black/white foreground: `"auto"` follows the status bar itself (captured
+     * from SystemUI's own icon tint, with system day/night as a fallback), `"black"` and `"white"` are
+     * manual overrides.
+     */
+    val iconColor: String = "auto",
+    /**
+     * Whether the status icons Duo does *not* replace (silent, vibrate, alarm, clock…) stay hidden.
+     * True is the classic look: only the ring. False leaves them visible beside the ring.
+     */
+    val hideOtherIcons: Boolean = true
 )
 
 object DuoPrefs {
@@ -98,13 +109,16 @@ object DuoPrefs {
     const val COL_ARRIVAL = "arrival_enabled"
     const val COL_DEPARTURE = "departure_enabled"
     const val COL_CHARGING = "charging_enabled"
+    const val COL_ICON_COLOR = "icon_color"
+    const val COL_HIDE_OTHER_ICONS = "hide_other_icons"
 
     /** The column set the module expects; kept in one place so both sides cannot drift. */
     val COLUMNS = arrayOf(
         COL_ENABLED, COL_USE_RIVE, COL_SHOW_PERCENT, COL_SIZE_PERCENT, COL_OFFSET_X,
         COL_LIVE_APPLY, COL_CLOCK_FONT, COL_REVISION,
         COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS, COL_REVEAL_MS,
-        COL_ANIMATIONS, COL_ARRIVAL, COL_DEPARTURE, COL_CHARGING
+        COL_ANIMATIONS, COL_ARRIVAL, COL_DEPARTURE, COL_CHARGING,
+        COL_ICON_COLOR, COL_HIDE_OTHER_ICONS
     )
 
     private const val PREFS = "duo_settings"
@@ -112,6 +126,10 @@ object DuoPrefs {
     private const val KEY_STATUS = "last_status"
     private const val KEY_HISTORY = "status_history"
     private const val KEY_DUMP = "last_dump"
+    private const val KEY_HIDE_STOCK_ICONS = "hide_stock_icons"
+    private const val KEY_FALLBACK = "last_fallback"
+    private const val KEY_CHECK_UPDATES = "check_updates"
+    private const val KEY_UPDATE_NOTIFIED = "update_notified"
     private const val HISTORY_LIMIT = 20
 
     fun read(context: Context): DuoSettings {
@@ -131,7 +149,9 @@ object DuoPrefs {
             chargingEnabled = p.getBoolean(COL_CHARGING, true),
             tapAction = p.getString(COL_TAP, "no_action") ?: "no_action",
             doubleTapAction = p.getString(COL_DOUBLE_TAP, "no_action") ?: "no_action",
-            longPressAction = p.getString(COL_LONG_PRESS, "no_action") ?: "no_action"
+            longPressAction = p.getString(COL_LONG_PRESS, "no_action") ?: "no_action",
+            iconColor = p.getString(COL_ICON_COLOR, "auto") ?: "auto",
+            hideOtherIcons = p.getBoolean(COL_HIDE_OTHER_ICONS, true)
         )
     }
 
@@ -155,6 +175,8 @@ object DuoPrefs {
             .putString(COL_TAP, settings.tapAction)
             .putString(COL_DOUBLE_TAP, settings.doubleTapAction)
             .putString(COL_LONG_PRESS, settings.longPressAction)
+            .putString(COL_ICON_COLOR, settings.iconColor)
+            .putBoolean(COL_HIDE_OTHER_ICONS, settings.hideOtherIcons)
             .putLong(KEY_REVISION, next)
             .apply()
         return next
@@ -162,6 +184,58 @@ object DuoPrefs {
 
     fun revision(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_REVISION, 0L)
+
+    /**
+     * Issue #4: whether the user asked Shizuku to hide the phone's own Wi-Fi/cellular/battery icons
+     * through the secure `icon_blacklist`. Stored separately from [DuoSettings] on purpose: the module
+     * never needs this value, so it must not become part of the app↔module provider contract.
+     */
+    fun hideStockIcons(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_HIDE_STOCK_ICONS, false)
+
+    fun writeHideStockIcons(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_HIDE_STOCK_ICONS, value)
+            .apply()
+    }
+
+    /**
+     * The last moment the module had to fall back (empty when everything is working). Set by the module
+     * when Rive cannot draw and the simple Canvas element is used instead; the app turns it into the
+     * "please send the log" alert. Cleared at each module load and when the user dismisses the alert.
+     */
+    fun fallback(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_FALLBACK, "") ?: ""
+
+    fun writeFallback(context: Context, reason: String) {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (reason.isEmpty()) p.edit().remove(KEY_FALLBACK).apply()
+        else p.edit().putString(KEY_FALLBACK, reason).apply()
+    }
+
+    /** Whether the background update check is enabled (on by default; the user can switch it off). */
+    fun checkUpdates(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CHECK_UPDATES, true)
+
+    fun writeCheckUpdates(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_CHECK_UPDATES, value)
+            .apply()
+    }
+
+    /** The release version already announced, so the same update is not notified over and over. */
+    fun updateNotified(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_UPDATE_NOTIFIED, "") ?: ""
+
+    fun writeUpdateNotified(context: Context, version: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_UPDATE_NOTIFIED, version)
+            .apply()
+    }
 
     /** What the module last reported about itself, for the diagnostics screen. */
     fun status(context: Context): String =

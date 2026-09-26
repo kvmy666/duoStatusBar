@@ -108,6 +108,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             L.guard("DuoHook heartbeat") {
                                 guard.noteLoaded()
                                 DuoSettingsClient.report(ctx, "loaded · stage=$stage")
+                                // A fresh load clears any previous fallback alert; a fallback during this
+                                // run is reported from DuoIconHost when it happens.
+                                DuoSettingsClient.reportFallback(ctx, "")
                             }
                             if (stage == DuoGuard.OFF) {
                                 L.i("gated off - nothing hooked. Enable with: ${guard.enableHint}, then restart SystemUI")
@@ -118,6 +121,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             hookWindowManagerAddView()
                             hookShadeHeader()
                             hookStatusIconContainer()
+                            hookBarAppearance()
                             hookSettingsChanges(ctx)
                         }
                     }
@@ -389,8 +393,42 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
-    private fun hookShadeHeader() {
-        // The controller that owns the header is the reliable hand-over: it is handed the header view
+    /**
+     * Captures the colour SystemUI tints its own icons, so the Duo element can match the bar (black on a
+     * light bar, white on a dark one) - the "chameleon" behaviour across apps.
+     *
+     * Both entry points are best-effort: `onDarkChanged(ArrayList, float, int)` is the AOSP one and
+     * `setIconColor(int, boolean)` the spellings OEM builds added around it. When neither exists the
+     * element falls back to the system day/night setting (see [BarTint]).
+     */
+    private fun hookBarAppearance() {
+        L.guard("DuoHook bar appearance") {
+            val cls = XposedHelpers.findClass(
+                "com.android.systemui.statusbar.StatusBarIconView", lp.classLoader
+            )
+            val callback = object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    try {
+                        // Both methods carry exactly one int: `onDarkChanged`'s tint and `setIconColor`'s
+                        // colour. The first int in the argument list is that value either way.
+                        for (arg in param.args) {
+                            if (arg is Int) {
+                                if (BarTint.update(arg)) monitor?.onBarAppearanceChanged()
+                                break
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        L.w("bar tint: ${t.javaClass.simpleName}: ${t.message}")
+                    }
+                }
+            }
+            XposedBridge.hookAllMethods(cls, "onDarkChanged", callback)
+            XposedBridge.hookAllMethods(cls, "setIconColor", callback)
+            L.i("bar appearance hook installed (StatusBarIconView) - FR-15b")
+        }
+    }
+
+    private fun hookShadeHeader() {        // The controller that owns the header is the reliable hand-over: it is handed the header view
         // directly, whatever inflated it.
         L.guard("DuoHook shade header controller") {
             val cls = XposedHelpers.findClass(

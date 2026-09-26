@@ -307,6 +307,59 @@ The app was written for the project, not for a person. This pass rewrites it for
 * `[ ]` On-device pass: install the release, walk every control, confirm the restart button and the Rive
   demos on the phone.
 
+## Phase 11 — Issue fixes (2026-09-26)
+
+Two open reports, both fixed.
+
+* `[x]` **Issue #5 — "Not working" (HyperOS / Android 16, and stock A17).** The diagnostic log showed the
+  module *was* loaded into the SystemUI process (`MainHook loaded into system
+  (process=com.android.systemui)`), yet the app reported "never injected". The process on those ROMs
+  reports `packageName = "system"`, and `MainHook` matched only `com.android.systemui`, so every hook was
+  silently skipped. The identity check now also accepts the process name (`SystemUiProcess.isTarget`,
+  unit-tested), which is the stable identity across OEM builds. `MainHook` also logs when a process is
+  deliberately out of scope, so the next report can tell the two apart.
+* `[x]` **Issue #4 — "Add Shizuku support".** Optional Shizuku path for hiding the stock status-bar icons
+  when the module's own view-hiding leaves them behind. The app writes the secure `icon_blacklist` setting
+  through a Shizuku `UserService` running as shell/root (`settings/StockIconHider.kt`, `ShellService.kt`,
+  `IShellService.aidl`); the merge/remove rules are pure and unit-tested (`IconBlacklist`). Off by default,
+  every call guarded, and turning the master switch off puts the icons back. The LSPosed path is unchanged
+  and does not depend on Shizuku.
+* `[ ]` On-device verification with Shizuku running (grant access, toggle, confirm the icons go and return).
+
+## Phase 12 — Battery drain, colour and icon control (2026-09-26)
+
+* `[x]` **Battery drain (critical, 130 mAh vs ~15 mAh).** Root cause: the Rive state machine's idle
+  animations loop forever, so the renderer advanced and drew at frame rate for the life of the SystemUI
+  process — including while the element was off screen. `DuoElement.setRenderActive` now stops the
+  renderer whenever the element is hidden (screen off / teardown), and `DuoRiveView` pauses it after a
+  3 s quiet period, restarting on the next snapshot or reveal. A static element now costs no frames.
+* `[x]` **Dynamic colour (FR-15b).** `BarTint` captures the tint SystemUI applies to its own icons
+  (`StatusBarIconView.onDarkChanged` / `setIconColor`, ROM-guarded) and the element matches it — black on
+  a light bar, white on a dark one — with the system day/night setting as the fallback. An **Icon colour**
+  picker offers Auto / Black / White. The ring's default colour follows the foreground too, so the whole
+  element flips, not just the text.
+* `[x]` **Hide other icons (FR-08b).** A **Hide other status icons** switch (default on = only the ring).
+  Off, only the icons Duo replaces — the battery, and the Wi-Fi/cellular icons in the strip, identified by
+  `StatusBarIconView.getSlot()` — are hidden, and silent/vibrate/alarm stay visible beside the ring.
+* `[x]` **Battery level on first paint.** The monitor started at its default `level = 100` and only picked
+  up the real level when the next `ACTION_BATTERY_CHANGED` arrived — which the receiver is not guaranteed
+  to get at registration, and which on the device can be minutes apart. Until then the element drew a
+  full ring reading 100 %. `DuoStateMonitor` now reads the sticky battery broadcast directly at `start()`,
+  so the first frame is the real percentage.
+* `[x]` **Fallback alert + reporting.** When Rive cannot draw (did not bind, disabled by the breaker, or
+  could not start) the module records the reason over the provider and the app shows a red alert with
+  **Send the log on Telegram** (writes the diagnostics file, hands it to Telegram, or opens the chat) and
+  **Report it on GitHub**. The reason is logged and cleared at each module load, so a user on an
+  unmeasured ROM can hand over the evidence in one press — which is how the next fix gets written.
+* `[x]` **Every icon follows the colour, not just the ring (FR-15b).** Only the ring fill (`tint`) and the
+  percentage were bound to a colour; the Wi-Fi arcs and dot, the four cellular spheres, the DND crescent,
+  the airplane, the network label and the track were all authored solid white, so in light mode the ring
+  went black while the rest stayed white. They are now all bound to the `fgColor` view model property
+  (the bolt stays on `tint`, matching the Canvas fallback). Verified headlessly by rendering with a red
+  `fgColor`: every foreground shape follows it.
+* `[ ]` On-device verification of all three (battery over a full charge cycle; colour across a light and a
+  dark app; the other-icons switch both ways).
+
 ## Human-in-the-loop steps (you)
 
 | Phase | What only you can do |

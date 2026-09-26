@@ -23,8 +23,8 @@ android {
         // exist on 14, and nothing in the module needs an API-35 call. targetSdk stays 36.
         minSdk = 34
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.1.0"
+        versionCode = 7
+        versionName = "1.2.0"
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -81,6 +81,8 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        // Issue #4: the Shizuku shell UserService is an AIDL interface (see settings/IShellService.aidl).
+        aidl = true
     }
 
     testOptions {
@@ -95,6 +97,14 @@ dependencies {
     compileOnly(libs.xposed.api)
 
     implementation(libs.rive.android)
+    // Issue #4: optional Shizuku support, used only to hide the stock status-bar icons via the secure
+    // `icon_blacklist` setting when the LSPosed view-hiding is not enough. The module itself never
+    // depends on Shizuku, so a device without it behaves exactly as before.
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
+    // Update checks: a background worker polls GitHub releases and notifies, so a user does not have to
+    // hunt for new versions. No server of our own, so it is a periodic poll.
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.material)
     implementation(libs.appcompat)
     implementation(platform(libs.compose.bom))

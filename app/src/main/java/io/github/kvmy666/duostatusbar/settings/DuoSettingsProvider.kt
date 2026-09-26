@@ -59,6 +59,15 @@ class DuoSettingsProvider : ContentProvider() {
                 L.i("module diagnostic dump stored (${dump.length} chars)")
                 Bundle().apply { putBoolean(EXTRA_OK, true) }
             }
+            METHOD_FALLBACK -> {
+                // The module had to fall back (e.g. Rive could not draw). Stored so the app can alert the
+                // user to send the log; an empty reason clears it.
+                val ctx = context
+                val reason = extras?.getString(EXTRA_FALLBACK).orEmpty()
+                if (ctx != null) DuoPrefs.writeFallback(ctx, reason)
+                L.i("module fallback: ${reason.ifEmpty { "none (cleared)" }}")
+                Bundle().apply { putBoolean(EXTRA_OK, true) }
+            }
             else -> Bundle().apply { putBoolean(EXTRA_OK, false) }
         }
     } catch (t: Throwable) {
@@ -86,6 +95,9 @@ class DuoSettingsProvider : ContentProvider() {
         /** Debug-only: the full diagnostic dump, stored for the shareable report file. */
         const val METHOD_DUMP = "dump"
         const val EXTRA_DUMP = "dump"
+        /** The module's fallback reason (Rive failed); drives the app's "send the log" alert. */
+        const val METHOD_FALLBACK = "fallback"
+        const val EXTRA_FALLBACK = "fallback"
         const val EXTRA_OK = "ok"
 
         /**
@@ -112,7 +124,9 @@ class DuoSettingsProvider : ContentProvider() {
             if (settings.animationsEnabled) 1 else 0,
             if (settings.arrivalEnabled) 1 else 0,
             if (settings.departureEnabled) 1 else 0,
-            if (settings.chargingEnabled) 1 else 0
+            if (settings.chargingEnabled) 1 else 0,
+            settings.iconColor,
+            if (settings.hideOtherIcons) 1 else 0
         )
     }
 }

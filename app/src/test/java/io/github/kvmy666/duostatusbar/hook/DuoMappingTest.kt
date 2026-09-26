@@ -116,6 +116,23 @@ class DuoMappingTest {
         assertEquals(DuoMapping.WHITE, DuoMapping.tint(20, charging = false, saver = false))
     }
 
+    @Test
+    fun `the ring takes the bar's foreground colour when no battery rule applies`() {
+        // FR-15b: on a light bar the whole element is black, including the ring's default colour; the
+        // charging / saver / low-battery rules still win over it.
+        val black = DuoMapping.visual(
+            level = 80, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, fgColor = DuoMapping.BLACK
+        )
+        assertEquals(DuoMapping.BLACK, black.fgColor)
+        assertEquals(DuoMapping.BLACK, black.tint)
+        val charging = DuoMapping.visual(
+            level = 80, charging = true, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, fgColor = DuoMapping.BLACK
+        )
+        assertEquals(DuoMapping.GREEN_CHARGING, charging.tint)
+    }
+
     // ------------------------------------------------------------------------------------ wifi
 
     @Test

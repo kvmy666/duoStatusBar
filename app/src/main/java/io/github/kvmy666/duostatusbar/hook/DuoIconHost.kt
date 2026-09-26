@@ -83,7 +83,15 @@ internal class DuoIconHost(private val context: Context) {
                         L.i("hiding a status icon as it arrives: ${view.javaClass.simpleName} in " +
                                 "${container.javaClass.simpleName}")
                     }
-                    hider.hide(view)
+                    // FR-08b: with "hide other icons" off, only the icons Duo replaces are hidden; the
+                    // silent/vibrate/alarm ones are left for the user.
+                    if (settings.hideOtherIcons || hider.isReplaced(view)) {
+                        hider.hide(view)
+                    } else {
+                        logOnce.once("kept:${view.javaClass.simpleName}") {
+                            L.i("keeping a status icon: ${view.javaClass.simpleName} - FR-08b")
+                        }
+                    }
                     return
                 }
                 parent = parent.parent as? View
@@ -251,7 +259,7 @@ internal class DuoIconHost(private val context: Context) {
         applyExtraLayout(slot)
         candidate.onReady {
             if (slot.element !== candidate) return@onReady
-            hider.hideAllExcept(target, candidate.ui)
+            hideStock(target, candidate.ui)
             candidate.reveal(settings.revealMs)
             L.i("Duo injected into $name ($logClass, ${side}px) - FR-03b")
         }
@@ -297,6 +305,21 @@ internal class DuoIconHost(private val context: Context) {
     /** FR-16: whether the percentage should be drawn — asked by the state monitor on every render. */
     val showPercent: Boolean get() = settings.showPercent
 
+    /** FR-15b: "auto", "black" or "white" — asked by the state monitor on every render. */
+    val iconColor: String get() = settings.iconColor
+
+    /**
+     * FR-08/08b: hides the stock views per the user's choice — everything, or only what Duo replaces.
+     * One place so the main bar, the keyguard bar and the shade header can never disagree.
+     */
+    private fun hideStock(container: ViewGroup, keep: View?) {
+        if (settings.hideOtherIcons) {
+            hider.hideAllExcept(container, keep)
+        } else {
+            hider.hideReplaced(container, keep)
+        }
+    }
+
     /** FR-25: how long an arrival takes, in ms — asked by the monitor when it fires one. */
     val revealMs: Int get() = settings.revealMs
 
@@ -319,6 +342,9 @@ internal class DuoIconHost(private val context: Context) {
         for (target in listOfNotNull(element) + extras.mapNotNull { it.element }) {
             try {
                 target.ui.visibility = if (on) View.VISIBLE else View.GONE
+                // Off screen means no drawing at all: a looping Rive idle animation would otherwise keep
+                // advancing and drawing into a hidden view for the whole process lifetime (battery).
+                target.setRenderActive(on)
             } catch (t: Throwable) {
                 L.w("visibility: ${t.javaClass.simpleName}: ${t.message}")
             }
@@ -343,6 +369,7 @@ internal class DuoIconHost(private val context: Context) {
     fun refreshSettings(): ModuleSettings {
         val fresh = DuoSettingsClient.read(context)
         val changed = fresh != settings
+        val hideModeChanged = changed && fresh.hideOtherIcons != settings.hideOtherIcons
         settings = fresh
         if (changed) {
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
@@ -358,8 +385,21 @@ internal class DuoIconHost(private val context: Context) {
                 L.i("live apply off - size/position take effect after Restart System UI")
             }
             clock.apply(root, settings.systemClockFont)
+            if (hideModeChanged) applyHidingMode()
         }
         return fresh
+    }
+
+    /**
+     * FR-08b: re-applies hiding after the user changed whether the other icons stay visible. The stock
+     * views are put back first, so an icon that should now show is not left hidden, then the new pass
+     * runs; the element stays exactly where it is.
+     */
+    private fun applyHidingMode() {
+        if (!(element?.isReady ?: false)) return
+        L.i("hiding mode changed (hideOtherIcons=${settings.hideOtherIcons}) - re-applying")
+        hider.restore()
+        reapplyHiding()
     }
 
     /** Size and offset come from the settings, so reshaping the element needs no re-injection (FR-03/17). */
@@ -466,7 +506,7 @@ internal class DuoIconHost(private val context: Context) {
     private fun onElementReady(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
         try {
-            hider.hideAllExcept(target, candidate.ui)
+            hideStock(target, candidate.ui)
             candidate.reveal(settings.revealMs)
             val width = candidate.ui.layoutParams?.width ?: 0
             L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
@@ -482,6 +522,8 @@ internal class DuoIconHost(private val context: Context) {
     private fun onElementFailed(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
         L.w("Rive element did not bind - falling back to Canvas")
+        // Tell the app so it can ask the user to send the log; this is the failure we most need evidence for.
+        DuoSettingsClient.reportFallback(context, "Rive did not bind on ${android.os.Build.MODEL}; using the simple drawing")
         val canvas = try {
             DuoCanvasView(context).also { it.start() }
         } catch (t: Throwable) {
@@ -526,15 +568,20 @@ internal class DuoIconHost(private val context: Context) {
     private fun riveElement(root: View): DuoElement? {
         if (!root.isHardwareAccelerated) {
             L.w("status bar window is not hardware accelerated - Rive needs a Surface, using Canvas")
+            DuoSettingsClient.reportFallback(context, "no hardware acceleration on ${android.os.Build.MODEL}; using the simple drawing")
             return null
         }
-        if (!guard.riveAllowed()) return null
+        if (!guard.riveAllowed()) {
+            DuoSettingsClient.reportFallback(context, "Rive disabled after earlier failures; using the simple drawing")
+            return null
+        }
         guard.noteRiveAttempt()
         val rive = DuoRiveView(context)
         if (!rive.start()) {
             // A clean failure, not a death: hand the attempt back so the breaker only counts crashes.
             guard.clearRiveAttempts()
             rive.teardown()
+            DuoSettingsClient.reportFallback(context, "Rive could not start on ${android.os.Build.MODEL}; using the simple drawing")
             return null
         }
         return rive
@@ -572,7 +619,7 @@ internal class DuoIconHost(private val context: Context) {
             return
         }
         try {
-            hider.hideAllExcept(target, keep)
+            hideStock(target, keep)
         } catch (t: Throwable) {
             L.w("reapplyHiding: ${t.message}")
         }
@@ -632,7 +679,7 @@ internal class DuoIconHost(private val context: Context) {
             val keep = slot.element?.ui ?: continue
             if (!(slot.element?.isReady ?: false)) continue
             try {
-                hider.hideAllExcept(target, keep)
+                hideStock(target, keep)
             } catch (t: Throwable) {
                 L.w("${slot.name} hiding: ${t.javaClass.simpleName}: ${t.message}")
             }

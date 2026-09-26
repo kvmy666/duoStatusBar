@@ -181,6 +181,10 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 addAction(ACTION_SERVICE_STATE_CHANGED)
             }
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            // The sticky battery broadcast is not guaranteed to be delivered to the receiver at
+            // registration, so read it directly: without this the element shows its default 100 % (and
+            // fills the ring to match) until the next battery change, which on some devices is minutes.
+            readInitialBattery()
             saver = SystemReaders.isPowerSaveOn(context)
             airplane = SystemReaders.isAirplaneOn(context)
             dnd = SystemReaders.isDndOn(context)
@@ -188,6 +192,16 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
             L.i("state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane dnd=$dnd")
         } catch (t: Throwable) {
             L.e("monitor start failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /** Reads the current battery/charging state from the sticky broadcast, guarded. */
+    private fun readInitialBattery() {
+        try {
+            val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (intent != null) onBatteryChanged(intent)
+        } catch (t: Throwable) {
+            L.w("initial battery read: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 
@@ -239,9 +253,17 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         true
     }
 
+    /**
+     * FR-15b: the bar's own icon colour changed, so redraw the element in the matching colour. Called
+     * from the `StatusBarIconView` hook; the redraw is deduplicated downstream, so the several calls a
+     * light/dark transition makes cost nothing.
+     */
+    fun onBarAppearanceChanged() {
+        render()
+    }
+
     /** Re-reads Wi-Fi, cellular and the network generation, then redraws. Never throws. */
-    fun refresh() {
-        try {
+    fun refresh() {        try {
             wifiOn = SystemReaders.isWifiEnabled(context, wifiOn)
             wifiActive = SystemReaders.isWifiActive(context, wifiActive)
             wifiLevel = SystemReaders.wifiLevel(context, wifiLevel)
@@ -288,16 +310,25 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         setLevel(level)
     }
 
+    /**
+     * FR-15b: black or white for the element, matching the bar. A manual choice in the app wins; "auto"
+     * uses the colour captured from SystemUI's own icons, falling back to the system day/night setting.
+     */
+    private fun fgColor(): Int = when (host.iconColor) {
+        "black" -> BarTint.BLACK
+        "white" -> BarTint.WHITE
+        else -> BarTint.fgColor(context)
+    }
     private fun render() {
         // Every element the host owns - the main bar's and, on the lock screen, the keyguard bar's.
         if (host.duo == null) return
         try {
-            host.render(
-                DuoMapping.visual(
+            val visual = DuoMapping.visual(
                     level = displayedLevel,
                     charging = charging,
                     saver = saver,
                     showPercent = host.showPercent,
+                    fgColor = fgColor(),
                     wifiLevel = wifiLevel,
                     cellLevel = cellLevel,
                     airplane = airplane,
@@ -308,7 +339,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     networkText = networkText,
                     animateCharge = host.chargingEnabled
                 )
-            )
+            host.render(visual)
         } catch (t: Throwable) {
             L.e("render: ${t.javaClass.simpleName}: ${t.message}")
         }

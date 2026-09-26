@@ -1,6 +1,8 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.FrameLayout
 import app.rive.runtime.kotlin.RiveAnimationView
@@ -48,6 +50,35 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
     private var lastVisual: DuoVisual? = null
     private val readyActions = ArrayList<() -> Unit>()
     private val failedActions = ArrayList<() -> Unit>()
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    /**
+     * Whether the renderer should be advancing at all. False while the element is off screen, so the
+     * looping state machine cannot keep drawing into a hidden view.
+     */
+    private var renderActive = true
+
+    /**
+     * Stops the renderer once a burst of changes has settled.
+     *
+     * The state machine's idle animations loop forever, so the renderer never goes idle on its own and
+     * advances/draws at frame rate for the life of the SystemUI process — the reported 130 mAh drain
+     * (vs the ~15 mAh baseline) that had nothing to do with the screen being on. Every snapshot and
+     * reveal restarts it; a short quiet period after the last one stops it again, so animation still
+     * plays but a static element costs nothing.
+     */
+    private val idleStop = Runnable {
+        try {
+            val renderer = rive?.artboardRenderer
+            if (renderer?.isPlaying == true) {
+                renderer.stop()
+                L.i("Rive renderer paused (idle)")
+            }
+        } catch (t: Throwable) {
+            L.w("renderer idle stop: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
 
     override val ui: View get() = this
 
@@ -126,6 +157,8 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
                     // the machine sat idle (`playingStateMachines=0`), so live changes were written but
                     // never drawn - the element only ever showed its bind-time frame. Start it explicitly.
                     rive?.play(STATE_MACHINE, Loop.LOOP, Direction.AUTO, true, true)
+                    renderActive = true
+                    scheduleIdleStop()
                     L.i("Duo view ready (machines=${rive?.stateMachines?.size}, " +
                             "playing=${rive?.playingStateMachines?.size}, inputs=${machine.inputNames})")
                     pendingVisual?.let { render(it) }
@@ -171,12 +204,43 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         // and the renderer's loop stops once the state machine settles into a hold state (measured:
         // `isPlaying=false` after the first frame, so every later change was written and never drawn).
         // `start()` is the renderer's own "run the loop" call and is idempotent (`if (isPlaying) return`),
-        // so asking for it on every snapshot is cheap and keeps the element live (FR-16/FR-06).
+        // so asking for it on every snapshot is cheap and keeps the element live (FR-16/FR-06). It is
+        // then paused again after a quiet period, so a looping idle animation cannot drain the battery.
+        if (renderActive) {
+            startRenderer()
+            scheduleIdleStop()
+        }
+    }
+
+    /** Starts or stops the renderer; see the field and [idleStop]. */
+    override fun setRenderActive(active: Boolean) {
+        renderActive = active
+        if (active) {
+            startRenderer()
+            scheduleIdleStop()
+        } else {
+            handler.removeCallbacks(idleStop)
+            try {
+                rive?.artboardRenderer?.stop()
+            } catch (t: Throwable) {
+                L.w("renderer stop: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    private fun startRenderer() {
         try {
             rive?.artboardRenderer?.start()
         } catch (t: Throwable) {
             L.w("renderer start: ${t.javaClass.simpleName}: ${t.message}")
         }
+    }
+
+    /** (Re)arms the idle pause. No-op while the element is off screen. */
+    private fun scheduleIdleStop() {
+        handler.removeCallbacks(idleStop)
+        if (!renderActive) return
+        handler.postDelayed(idleStop, IDLE_MS)
     }
 
     /** Re-fires the reveal (screen on, unlock, first attach). Never throws. */
@@ -192,6 +256,10 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
             // makes it fire once - the machine has already latched the state by then.
             target.requestReveal(ms)
             postDelayed({ target.requestReveal(0) }, DuoBinder.REVEAL_CLEAR_MS)
+            if (renderActive) {
+                startRenderer()
+                scheduleIdleStop()
+            }
         } catch (t: Throwable) {
             L.e("reveal failed: ${t.javaClass.simpleName}: ${t.message}")
         }
@@ -199,6 +267,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
 
     override fun teardown() {
         try {
+            handler.removeCallbacks(idleStop)
             rive?.stop()
             removeAllViews()
         } catch (_: Throwable) {
@@ -210,6 +279,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         lastVisual = null
         readyActions.clear()
         failedActions.clear()
+        renderActive = false
         started = false
     }
 
@@ -265,5 +335,8 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         // which is where this timing was first measured.
         private const val POLL_MS = 100L
         private const val MAX_POLLS = 25
+
+        /** Idle time after the last change before the renderer is paused (see [idleStop]). */
+        private const val IDLE_MS = 3_000L
     }
 }

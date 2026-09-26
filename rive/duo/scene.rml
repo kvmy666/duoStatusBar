@@ -61,7 +61,7 @@
             <Shape opacity="0.22" name="ringTrackL" id="0:10">
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="8" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Track" />
+                    <SolidColor colorValue="FFFFFFFF" name="Track"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
                     <TrimPath start="0" end="0.2379" offset="0.6631" name="Trim">
                         <DataBindContext propertyKey="115" sourcePathIds="0:60-0:88" />
                     </TrimPath>
@@ -72,7 +72,7 @@
             <Shape opacity="0.22" name="ringTrackR" id="0:11">
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="8" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Track" />
+                    <SolidColor colorValue="FFFFFFFF" name="Track"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
                     <TrimPath start="0" end="0.2379" offset="0.0990" name="Trim">
                         <DataBindContext propertyKey="115" sourcePathIds="0:60-0:89" />
                     </TrimPath>
@@ -123,7 +123,7 @@
             <Shape name="wifiLayer1" id="0:14">
                 <Ellipse x="-0.5" y="17" width="62.2" height="62.2" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="7.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    <SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
                     <TrimPath start="0" end="0.2394" offset="0.8803" name="Trim" id="0:110" />
                 </Stroke>
             </Shape>
@@ -131,7 +131,7 @@
             <Shape name="wifiLayer2" id="0:15">
                 <Ellipse x="-0.5" y="17" width="36.3" height="36.3" originX="0.5" originY="0.5" name="Path" />
                 <Stroke thickness="7" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                    <SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
                     <TrimPath start="0" end="0.2367" offset="0.8817" name="Trim" id="0:111" />
                 </Stroke>
             </Shape>
@@ -177,7 +177,7 @@
                     <StraightVertex x="2.05" y="-8.50" />
                     <StraightVertex x="0.86" y="-8.64" />
                 </PointsPath>
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
             </Shape>
             </Node>
 
@@ -195,7 +195,7 @@
                     <StraightVertex x="7.5" y="-0.5" radius="1.4" />
                     <StraightVertex x="1.5" y="-0.5" radius="1.4" />
                 </PointsPath>
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" /></SolidColor></Fill>
             </Shape>
 
             <!-- ============================== airplane ==============================
@@ -245,7 +245,7 @@
                     <StraightVertex x="-11.10" y="-31.03" />
                     <StraightVertex x="-10.58" y="-31.46" />
                 </PointsPath>
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
             </Shape>
 
             <!-- =============================== DND moon ===============================
@@ -301,7 +301,7 @@
                     <StraightVertex x="-8.47" y="-17.09" />
                     <StraightVertex x="-5.27" y="-18.46" />
                 </PointsPath>
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
             </Shape>
 
             <!-- ========================= network generation =========================
@@ -317,11 +317,11 @@
                 sizingValue="fixed" overflowValue="visible" opacity="0" name="network" id="0:170">
                 <TextStylePaint fontSize="30" fontAssetId="0:40" name="NetworkStyle" id="0:171">
                     <Fill name="Fill">
-                        <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        <SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
                     </Fill>
                     <!-- The same weight-by-stroke trick the digits use, so "5G" reads as boldly. -->
                     <Stroke thickness="2" cap="round" join="round" name="Weight">
-                        <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        <SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
                     </Stroke>
                 </TextStylePaint>
                 <TextValueRun styleId="0:171" text="5G" name="Run">
@@ -334,19 +334,19 @@
 
             <Shape name="cell1" id="0:17">
                 <Ellipse x="-27" y="42.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
             </Shape>
             <Shape name="cell2" id="0:18">
                 <Ellipse x="-9.5" y="49.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
             </Shape>
             <Shape name="cell3" id="0:19">
                 <Ellipse x="8.5" y="50.2" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
             </Shape>
             <Shape name="cell4" id="0:20">
                 <Ellipse x="26" y="44.3" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color" /></Fill>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
             </Shape>
         </Node>
 

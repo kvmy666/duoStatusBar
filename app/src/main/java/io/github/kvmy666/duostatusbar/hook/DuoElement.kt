@@ -45,6 +45,18 @@ internal interface DuoElement {
 
     fun render(v: DuoVisual)
 
+    /**
+     * Whether the drawing should be running at all.
+     *
+     * The Rive state machine's idle animations loop forever, so left alone the renderer advances and
+     * draws at frame rate for the life of the process — including while the element is off screen. That
+     * is the SystemUI battery drain (130 mAh vs the ~15 mAh baseline), and it has nothing to do with the
+     * screen being on. The host turns it off whenever the element is not shown; Canvas ignores it.
+     */
+    fun setRenderActive(active: Boolean) {
+        // No-op by default: a renderer that only draws when asked has nothing to stop.
+    }
+
     /** Re-fires the reveal animation; a no-op where there is no animation to run. */
     /** Fires an arrival of [ms] milliseconds. */
     fun reveal(ms: Int)

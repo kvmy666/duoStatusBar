@@ -17,9 +17,13 @@ class MainHook : IXposedHookLoadPackage {
         try {
             L.i("MainHook loaded into ${lpparam.packageName} (process=${lpparam.processName})")
 
-            when (lpparam.packageName) {
-                "com.android.systemui" -> DuoHook(lpparam).install()
-                else -> Unit // out of scope: do nothing at all
+            // Match the process name as well as the package: on HyperOS / Android 16 the SystemUI
+            // process reports `packageName = "system"`, so a package-only check silently skipped every
+            // hook (issue #5). See [SystemUiProcess].
+            if (SystemUiProcess.isTarget(lpparam.packageName, lpparam.processName)) {
+                DuoHook(lpparam).install()
+            } else {
+                L.i("out of scope: not SystemUI - doing nothing")
             }
         } catch (t: Throwable) {
             L.e("MainHook.handleLoadPackage", t)

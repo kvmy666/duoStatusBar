@@ -32,7 +32,11 @@ internal data class ModuleSettings(
     val animationsEnabled: Boolean,
     val arrivalEnabled: Boolean,
     val departureEnabled: Boolean,
-    val chargingEnabled: Boolean
+    val chargingEnabled: Boolean,
+    /** "auto" follows the bar's own icon colour; "black"/"white" are manual overrides. */
+    val iconColor: String,
+    /** False leaves the icons Duo does not replace (silent, vibrate, alarm…) visible. */
+    val hideOtherIcons: Boolean
 ) {
     companion object {
         val DEFAULT = ModuleSettings(
@@ -51,7 +55,9 @@ internal data class ModuleSettings(
             animationsEnabled = true,
             arrivalEnabled = true,
             departureEnabled = true,
-            chargingEnabled = true
+            chargingEnabled = true,
+            iconColor = "auto",
+            hideOtherIcons = true
         )
     }
 }
@@ -87,7 +93,9 @@ internal object DuoSettingsClient {
                     animationsEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ANIMATIONS)) == 1,
                     arrivalEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ARRIVAL)) == 1,
                     departureEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DEPARTURE)) == 1,
-                    chargingEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_CHARGING)) == 1
+                    chargingEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_CHARGING)) == 1,
+                    iconColor = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ICON_COLOR)) ?: "auto",
+                    hideOtherIcons = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_HIDE_OTHER_ICONS)) == 1
                 )
             }
         } ?: ModuleSettings.DEFAULT
@@ -121,6 +129,20 @@ internal object DuoSettingsClient {
             context.contentResolver.call(uri, "dump", null, extras)
         } catch (t: Throwable) {
             L.w("dump report failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /**
+     * Tells the app the module had to fall back — Rive could not draw, so the simple Canvas element is
+     * being used — so the app can ask the user to send the log. An empty [reason] clears the alert (sent
+     * at each module load). Never throws.
+     */
+    fun reportFallback(context: Context, reason: String) {
+        try {
+            val extras = Bundle().apply { putString("fallback", reason) }
+            context.contentResolver.call(uri, "fallback", null, extras)
+        } catch (t: Throwable) {
+            L.w("fallback report failed: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 }

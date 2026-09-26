@@ -34,7 +34,9 @@ class SettingsChannelTest {
             offsetX = -12,
             tapAction = "toggle_flashlight",
             doubleTapAction = "show_notifications",
-            longPressAction = "take_screenshot"
+            longPressAction = "take_screenshot",
+            iconColor = "black",
+            hideOtherIcons = false
         )
         DuoPrefs.write(context, written)
         assertEquals(written, DuoPrefs.read(context))
@@ -87,6 +89,9 @@ class SettingsChannelTest {
         assertEquals("no_action", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DOUBLE_TAP)])
         assertEquals("take_screenshot", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_LONG_PRESS)])
         assertEquals(1000, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_REVEAL_MS)])
+        // FR-15b / FR-08b: the two newest columns must travel too, or the module would never see them.
+        assertEquals("auto", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_ICON_COLOR)])
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_HIDE_OTHER_ICONS)])
     }
 
     @Test

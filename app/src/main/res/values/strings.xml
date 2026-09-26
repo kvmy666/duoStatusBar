@@ -40,6 +40,10 @@
     <string name="settings_renderer_detail">Draws the icon with the graphics chip. Turn it off if the icon looks wrong or your phone feels slow.</string>
     <string name="settings_clock_font">System-font clock</string>
     <string name="settings_clock_font_detail">Draws the status-bar clock in your phone\'s own font, so it matches the numbers inside the ring. The clock is never moved or hidden.</string>
+    <string name="settings_icon_color">Icon colour</string>
+    <string name="settings_icon_color_auto">Match status bar</string>
+    <string name="settings_icon_color_black">Black</string>
+    <string name="settings_icon_color_white">White</string>
 
     <!-- Tap actions -->
     <string name="section_actions">Tap actions</string>
@@ -48,6 +52,37 @@
     <string name="settings_tap">Single tap</string>
     <string name="settings_double_tap">Double tap</string>
     <string name="settings_long_press">Long press</string>
+
+    <!-- Status bar icons (issue #4) -->
+    <string name="section_icons">Status bar icons</string>
+    <string name="settings_hide_other_icons">Hide other status icons</string>
+    <string name="settings_hide_other_icons_detail">When on, only the ring shows. Turn it off to keep your silent, vibrate and alarm icons beside it.</string>
+    <string name="settings_hide_icons">Hide stock status bar icons</string>
+    <string name="settings_hide_icons_detail">Uses Shizuku to hide your phone\'s own Wi-Fi, cellular and battery icons at the system level. Turn this on only if the ring is showing but the old icons are still visible beside it.</string>
+    <string name="settings_icons_no_shizuku">Shizuku isn\'t running. Install and start Shizuku, then reopen this screen.</string>
+    <string name="settings_icons_need_permission">Shizuku is running. Allow access below to let Duo hide the stock icons.</string>
+    <string name="settings_icons_grant">Allow Shizuku access</string>
+    <string name="settings_icons_ready">Shizuku is ready.</string>
+    <string name="settings_icons_failed">Shizuku couldn\'t change the icons, so nothing was changed.</string>
+
+    <!-- Fallback alert -->
+    <string name="fallback_title">Duo fell back to a simple drawing</string>
+    <string name="fallback_message">The animated version couldn\'t start, so a basic drawing is being used instead. Please send the log so this can be fixed.</string>
+    <string name="fallback_telegram">Send the log on Telegram</string>
+    <string name="fallback_github">Report it on GitHub</string>
+    <string name="fallback_dismiss">Dismiss</string>
+
+    <!-- Updates -->
+    <string name="settings_check_updates">Check for updates</string>
+    <string name="settings_check_updates_detail">Show a notification when a new version is released on GitHub. Turn it off to check only when you press the button below.</string>
+    <string name="settings_check_now">Check for update</string>
+    <string name="settings_checking">Checking…</string>
+    <string name="settings_update_uptodate">You\'re up to date (v%1$s).</string>
+    <string name="settings_update_available">New version v%1$s is available.</string>
+    <string name="settings_update_open">Open the release</string>
+    <string name="settings_update_failed">Couldn\'t check for updates. Check your connection and try again.</string>
+    <string name="update_notification_title">Duo Status Bar update</string>
+    <string name="update_notification_text">Version %1$s is available — tap to open the release</string>
 
     <!-- About -->
     <string name="section_about">About</string>
