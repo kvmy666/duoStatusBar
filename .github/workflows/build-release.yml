@@ -83,8 +83,8 @@ jobs:
           echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
           "$HOME/.rive/bin/rive" --version
 
-      - name: Both Rive scenes must rebuild to the shipped .riv files
-        run: bash tools/build-rive-both.sh
+      - name: Both Rive scenes must verify and match the shipped .riv files
+        run: bash tools/check-rive-shipped.sh
 
       - name: The provider authority must match the constant the module asks for
         run: |
