@@ -94,13 +94,87 @@ object RingGeometry {
     /** The original square artboard. The ring still occupies this square; [ARTBOARD_HEIGHT] is taller. */
     const val ARTBOARD_SIZE = 120f
 
+    /** The ring's path radius and stroke (the `Ellipse 103x103` / `stroke 8` in `scene.rml`). */
+    const val RING_RADIUS = 51.5f
+    const val RING_STROKE = 8f
+
+    /** The Duo group's y inside the 120x136 artboard (`scene.rml` `duoGroup`). */
+    const val RING_CENTER_Y = 77.5f
+
     /**
      * How far the ring's ink reaches from the artboard centre.
      *
      * The path radius is 51.5 and the stroke is 8, drawn on the path, so the ink ends 4 units outside it.
      * The rest of the artboard, on each side, is empty margin around that ink.
      */
-    const val RING_INK_RADIUS = 55.5f
+    const val RING_INK_RADIUS = RING_RADIUS + RING_STROKE / 2f
+
+    /**
+     * Static ring layout (P2a): eight SIM dots, four per side, plus one battery line at the bottom.
+     *
+     * Measured from `reverse/kilo-images/new duo customisition icon.jpg` (1122x872):
+     * dot circle r 155.4 px / dot d 39.6 px / battery line r 173.7 px / line 31.6 px, at the same
+     * centre. Mapping the battery line onto the ring's 51.5-unit radius gives these design values.
+     * `rive/duo/scene.rml` is authored from this same table; a change here needs the matching RML
+     * edit (and vice versa), otherwise Canvas and Rive drift.
+     */
+    const val DOT_RING_RADIUS = 46.08f
+    const val DOT_DIAMETER = 11.74f
+    const val DOT_RADIUS = DOT_DIAMETER / 2f
+
+    /**
+     * Right-side dot centres, index 0 = weakest/bottom (cell1) to index 3 = strongest/top (cell4).
+     * Angles clockwise from 12 o'clock: 115.5, 91.15, 67.4, 44.2 degrees. The left side mirrors x.
+     */
+    val CELL_DOT_POSITIONS = arrayOf(
+        floatArrayOf(41.59f, 19.84f),
+        floatArrayOf(46.07f, 0.93f),
+        floatArrayOf(42.55f, -17.71f),
+        floatArrayOf(32.13f, -33.03f)
+    )
+
+    /** The same seats as [CELL_DOT_POSITIONS], as clockwise degrees from 12 o'clock. */
+    val CELL_DOT_ANGLES = floatArrayOf(115.5f, 91.15f, 67.4f, 44.2f)
+
+    /**
+     * The battery line: ring radius, 9.4-unit stroke, bottom span 136.7deg..222.9deg clockwise
+     * (trim 0.3798..0.6193, 86.2deg). The reference draws this full arc at 80/49/19 alike; the
+     * percentage carries the level and the `tint` colour binding carries charging/saver/critical.
+     */
+    const val BATTERY_LINE_RADIUS = RING_RADIUS
+    const val BATTERY_LINE_STROKE = 9.4f
+    const val BATTERY_LINE_START = 0.3798f
+    const val BATTERY_LINE_END = 0.6193f
+    const val BATTERY_LINE_SWEEP_DEG = (BATTERY_LINE_END - BATTERY_LINE_START) * 360f
+
+    /**
+     * The battery line's level-derived trim start (trim fraction, 0..1 of the circumference).
+     *
+     * The TrimPath start is now bound: the arc runs from a moving start to the fixed end
+     * [BATTERY_LINE_END] (0.6193). At 0 % the start sits at [BATTERY_LINE_END] so the sweep is zero
+     * (empty); at 100 % it reaches [BATTERY_LINE_START] (0.3798) and the full 86.2 deg is drawn.
+     * "start shrinks" as the level rises: 0 -> 0.6193, 100 -> 0.3798. Clamped to 0..100 and monotonic,
+     * so a level outside the range cannot draw past the span.
+     */
+    fun batteryLineStart(level: Int): Float =
+        BATTERY_LINE_END - (BATTERY_LINE_END - BATTERY_LINE_START) *
+            (level.coerceIn(0, 100) / 100f)
+
+    // Invert-center geometry (moved from ui/PreviewSimulator.kt measured seats; do not guess).
+    /** Percentage text center in the normal (top-gap) seat, relative to the ring centre. */
+    const val INVERT_NUMBER_SEAT_Y = -39f
+    /** The middle occupant's seat when inverted, relative to the ring centre.
+     *  Compensates for the group's local centre (17): -34 - 17*0.55 so the Wi-Fi/event
+     *  visual centre lands at -34 after the group scale. */
+    const val INVERTED_MIDDLE_Y = -43.35f
+    /** Scale applied to the middle occupant while inverted. */
+    const val INVERTED_MIDDLE_SCALE = 0.55f
+    /** Percentage text top (percentY) when centred in the ring. */
+    const val INVERTED_PERCENT_TOP_Y = -PERCENT_BOX_HALF
+
+    /** The single DND moon drawn when all eight dots are hidden; above the battery line's inner edge. */
+    const val CENTER_MOON_X = 0f
+    const val CENTER_MOON_Y = 33f
 
     /** Artboard height after [PERCENT_LIFT] was added above the ring. */
     const val ARTBOARD_HEIGHT = ARTBOARD_SIZE + PERCENT_LIFT

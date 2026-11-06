@@ -69,6 +69,14 @@ class DuoSettingsProvider : ContentProvider() {
                 L.i("module fallback: ${reason.ifEmpty { "none (cleared)" }}")
                 Bundle().apply { putBoolean(EXTRA_OK, true) }
             }
+            METHOD_STOCK_ICONS -> {
+                // The live icon list built from the module's own view tree; the settings screen renders it.
+                val ctx = context
+                val json = extras?.getString(EXTRA_STOCK_ICONS).orEmpty()
+                if (ctx != null && json.isNotEmpty()) DuoPrefs.writeStockIcons(ctx, json)
+                L.i("module stock icon inventory stored (${json.length} chars)")
+                Bundle().apply { putBoolean(EXTRA_OK, true) }
+            }
             else -> Bundle().apply { putBoolean(EXTRA_OK, false) }
         }
     } catch (t: Throwable) {
@@ -99,6 +107,9 @@ class DuoSettingsProvider : ContentProvider() {
         /** The module's fallback reason (Rive failed); drives the app's "send the log" alert. */
         const val METHOD_FALLBACK = "fallback"
         const val EXTRA_FALLBACK = "fallback"
+        /** The live stock-icon inventory; drives the per-icon list on the settings screen. */
+        const val METHOD_STOCK_ICONS = "stock_icons"
+        const val EXTRA_STOCK_ICONS = "stock_icons"
         const val EXTRA_OK = "ok"
 
         /**
@@ -164,7 +175,20 @@ class DuoSettingsProvider : ContentProvider() {
             if (settings.lockRing) 1 else 0,
             settings.indicatorsTapAction,
             settings.indicatorsDoubleTapAction,
-            settings.indicatorsLongPressAction
+            settings.indicatorsLongPressAction,
+            if (settings.showInQs) 1 else 0,
+            if (settings.showInShade) 1 else 0,
+            DuoPrefs.normalizeEngine(settings.engineMode),
+            DuoPrefs.normalizeMiddleSlot(settings.middleSlot),
+            if (settings.showWifiGlyph) 1 else 0,
+            if (settings.showCellDots) 1 else 0,
+            settings.eventMask and DuoPrefs.EVENT_ALL,
+            if (settings.downloadProgressEnabled) 1 else 0,
+            if (settings.burnInEnabled) 1 else 0,
+            DuoPrefs.joinHiddenStockIcons(
+                DuoPrefs.parseHiddenStockIcons(settings.hiddenStockIcons)
+            ),
+            DuoPrefs.normalizeDesignStyle(settings.designStyle)
         )
     }
 }

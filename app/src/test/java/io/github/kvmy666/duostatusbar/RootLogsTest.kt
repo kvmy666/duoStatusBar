@@ -74,4 +74,14 @@ class RootLogsTest {
     fun `section of a missing block is empty`() {
         assertEquals("", RootLogs.section("=== a ===\n1\n", "b"))
     }
+
+    @Test
+    fun `the LSPosed tail keeps only DuoSB lines`() {
+        val script = RootLogs.rootScript()
+        // The unfiltered tail of the newest LSPosed log must be gone, so an unrelated
+        // module's line cannot leak into the report.
+        assertFalse("unfiltered LSPosed tail must be removed", script.contains("tail -n 120"))
+        // DuoSB lines must still be retained through the filtered grep.
+        assertTrue("DuoSB lines must still be retained", script.contains("DuoSB"))
+    }
 }

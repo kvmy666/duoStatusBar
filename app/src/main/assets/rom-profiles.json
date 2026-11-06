@@ -1,28 +1,250 @@
 {
-  "version": 1,
-  "_comment": "Measured ROM profiles. Only entries with \"measured\": true may override the built-in defaults in RomDetection, so adding a device we have read off a phone is a data edit here, not a code change. Never add a profile whose ids were guessed - use \"measured\": false and leave it in code until a device confirms it.",
+  "version": 2,
+  "_comment": "Measured and static ROM maps. Only entries with \"measured\": true (or a shade map with \"shadeMeasured\": true) may override the built-in RomDetection defaults; unmeasured entries are documentation/test fixtures and must stay UNVERIFIED. Never mark a map measured without a device dump.",
   "profiles": [
     {
       "id": "oxygenos",
       "label": "OxygenOS / OnePlus",
       "systemUiPackage": "com.android.systemui",
-      "containerIds": ["system_icons", "system_icons_container", "status_bar_end_side_content"],
+      "containerIds": [
+        "system_icons",
+        "system_icons_container",
+        "status_bar_end_side_content"
+      ],
       "batteryId": "battery",
       "clockId": "clock",
-      "match": ["oneplus", "oxygen"],
+      "match": [
+        "oneplus",
+        "oxygen"
+      ],
       "measured": true,
-      "notes": "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px"
+      "notes": "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px",
+      "shadeContainerIds": [
+        "quick_qs_status_icons",
+        "shade_header_system_icons"
+      ],
+      "shadeBatteryId": "batteryRemainingIcon",
+      "shadeMeasured": true,
+      "coverHook": true,
+      "panelExpansionKind": "panel_type_5arg",
+      "panelHookMeasured": true,
+      "panelOwnerAvailable": true
     },
     {
       "id": "hyperos",
       "label": "HyperOS / MIUI",
       "systemUiPackage": "com.android.systemui",
-      "containerIds": ["system_icons", "system_icon_area", "status_bar_icons", "statusIcons", "system_icons_container"],
+      "containerIds": [
+        "system_icons",
+        "system_icon_area",
+        "status_bar_icons",
+        "statusIcons",
+        "system_icons_container"
+      ],
       "batteryId": "battery",
       "clockId": "clock",
-      "match": ["xiaomi", "redmi", "poco"],
+      "match": [
+        "xiaomi",
+        "redmi",
+        "poco"
+      ],
       "measured": true,
-      "notes": "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent"
+      "notes": "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent",
+      "coverHook": true,
+      "panelExpansionKind": "fzz_3arg",
+      "panelHookMeasured": false
+    },
+    {
+      "id": "aosp",
+      "label": "AOSP / GSI / LineageOS (public-source)",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": [
+        "system_icons",
+        "statusIcons",
+        "status_bar_end_side_content"
+      ],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": [
+        "aosp",
+        "lineage"
+      ],
+      "measured": false,
+      "notes": "public-source only until the API 36 emulator dump is captured; do not claim support",
+      "shadeContainerIds": [
+        "shade_header_system_icons",
+        "system_icons"
+      ],
+      "shadeBatteryId": "batteryRemainingIcon",
+      "shadeMeasured": false,
+      "coverHook": true,
+      "panelExpansionKind": "panel_type_5arg",
+      "panelHookMeasured": false
+    },
+    {
+      "id": "coloros",
+      "label": "ColorOS / OPPO (static only)",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": [
+        "system_icons",
+        "statusIcons",
+        "system_icons_container"
+      ],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": [
+        "oppo",
+        "oplus",
+        "coloros",
+        "realme"
+      ],
+      "measured": false,
+      "notes": "static aapt2 map only; ColorOS 16 runtime dump missing; old 3.0.4 has quick_qs_status_icons. Removed quick_status_bar_header_system_icons and status_bar_end_side_content after they were absent from the decoded resource tree.",
+      "shadeContainerIds": [
+        "quick_qs_status_icons",
+        "system_icons"
+      ],
+      "shadeBatteryId": "battery",
+      "shadeMeasured": false,
+      "coverHook": false,
+      "panelExpansionKind": "none",
+      "panelHookMeasured": false
+    },
+    {
+      "id": "oneui",
+      "label": "Samsung One UI (static only)",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": [
+        "system_icons",
+        "statusIcons",
+        "system_icons_container"
+      ],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": [
+        "samsung"
+      ],
+      "measured": false,
+      "notes": "static aapt2 map only; One UI runtime dump missing",
+      "shadeContainerIds": [
+        "shade_header_system_icons",
+        "system_icons"
+      ],
+      "shadeBatteryId": "batteryRemainingIcon",
+      "shadeMeasured": false,
+      "coverHook": true,
+      "panelExpansionKind": "listener",
+      "panelHookMeasured": false
+    },
+    {
+      "id": "originos",
+      "label": "vivo OriginOS / Funtouch (static only)",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": [
+        "system_icons",
+        "statusIcons",
+        "system_icons_container"
+      ],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": [
+        "vivo",
+        "iqoo",
+        "origin",
+        "funtouch"
+      ],
+      "measured": false,
+      "notes": "static aapt2 map only; OriginOS runtime dump missing; vivo systemuiplugin is a separate scope",
+      "shadeContainerIds": [
+        "shade_header_system_icons",
+        "system_icons"
+      ],
+      "shadeBatteryId": "batteryRemainingIcon",
+      "shadeMeasured": false,
+      "coverHook": true,
+      "panelExpansionKind": "zfz_3arg",
+      "panelHookMeasured": false
+    },
+    {
+      "id": "magicos",
+      "label": "Honor MagicOS (static only, old APK)",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": [
+        "system_icon_area",
+        "system_icons",
+        "statusIcons"
+      ],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": [
+        "honor",
+        "magic"
+      ],
+      "measured": false,
+      "notes": "static aapt2 map from MagicOS 11 old build; MagicOS 10 runtime dump missing; hw_system_icons was absent from the decoded tree",
+      "shadeContainerIds": [
+        "system_icon_area",
+        "statusIcons"
+      ],
+      "shadeBatteryId": "battery",
+      "shadeMeasured": false,
+      "coverHook": false,
+      "panelExpansionKind": "none",
+      "panelHookMeasured": false
+    },
+    {
+      "id": "myos",
+      "label": "Motorola MyOS / Hello UI (static only)",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": [
+        "system_icons",
+        "statusIcons",
+        "system_icons_container"
+      ],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": [
+        "motorola",
+        "moto",
+        "myos"
+      ],
+      "measured": false,
+      "notes": "static aapt2 map only; MyOS runtime dump missing",
+      "shadeContainerIds": [
+        "shade_header_system_icons",
+        "system_icons"
+      ],
+      "shadeBatteryId": "batteryRemainingIcon",
+      "shadeMeasured": false,
+      "coverHook": true,
+      "panelExpansionKind": "listener",
+      "panelHookMeasured": false
+    },
+    {
+      "id": "nothingos",
+      "label": "Nothing OS (static only)",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": [
+        "system_icons",
+        "statusIcons",
+        "system_icons_container"
+      ],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": [
+        "nothing"
+      ],
+      "measured": false,
+      "notes": "static aapt2 map only; Nothing OS runtime dump missing",
+      "shadeContainerIds": [
+        "shade_header_system_icons",
+        "system_icons"
+      ],
+      "shadeBatteryId": "batteryRemainingIcon",
+      "shadeMeasured": false,
+      "coverHook": true,
+      "panelExpansionKind": "fzz_3arg",
+      "panelHookMeasured": false
     }
   ]
 }

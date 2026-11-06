@@ -298,21 +298,37 @@ internal object RootLogs {
         timeoutSeconds: Long = ROOT_TIMEOUT_SECONDS
     ): String {
         // The read itself can block forever if the root prompt never answers, so the whole
-        // start-and-read runs on a worker that the caller abandons after the timeout.
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        // start-and-read runs on a worker that the caller abandons after the timeout. Keep the
+        // Process itself: Future.cancel cannot interrupt a native stream read, and without
+        // destroying the child every timed-out capture leaked a worker thread and an su process.
+        val processRef = AtomicReference<Process?>()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "duo-root").apply { isDaemon = true }
+        }
+        var future: java.util.concurrent.Future<String>? = null
         return try {
-            val future = executor.submit<String> {
+            future = executor.submit<String> {
                 val process = ProcessBuilder(su, "-c", script)
                     .redirectErrorStream(true)
                     .start()
-                val out = process.inputStream.bufferedReader().readText()
-                process.waitFor()
-                out.ifBlank { "$FAILURE_PREFIX: root shell ($su) returned no output - root denied?" }
+                processRef.set(process)
+                try {
+                    val out = process.inputStream.bufferedReader().readText()
+                    process.waitFor()
+                    out.ifBlank { "$FAILURE_PREFIX: root shell ($su) returned no output - root denied?" }
+                } finally {
+                    processRef.compareAndSet(process, null)
+                    runCatching { process.destroy() }
+                }
             }
             future.get(timeoutSeconds, TimeUnit.SECONDS)
         } catch (_: java.util.concurrent.TimeoutException) {
+            future?.cancel(true)
+            processRef.getAndSet(null)?.let { runCatching { it.destroyForcibly() } }
             "$FAILURE_PREFIX: root shell ($su) timed out after ${timeoutSeconds}s"
         } catch (t: Throwable) {
+            future?.cancel(true)
+            processRef.getAndSet(null)?.let { runCatching { it.destroyForcibly() } }
             "$FAILURE_PREFIX: ${t.javaClass.simpleName}: ${t.message} (tried $su)"
         } finally {
             executor.shutdownNow()
@@ -343,7 +359,7 @@ internal object RootLogs {
     }
 
     /** The root capture: filtered logcat, LSPosed's own log, and the root-framework markers. */
-    private fun rootScript(): String = """
+    internal fun rootScript(): String = """
         echo '=== logcat (DuoSB) ==='
         logcat -d -t 3000 -s DuoSB 2>&1
         echo '=== LSPosed newest modules log ==='
@@ -352,8 +368,6 @@ internal object RootLogs {
         if [ -n "${'$'}LOG" ]; then
           echo '-- matching DuoSB --'
           grep -a -i 'DuoSB\|duostatusbar' "${'$'}LOG" | tail -n 400
-          echo '-- tail --'
-          tail -n 120 "${'$'}LOG"
         fi
         echo '=== LSPosed config (enabled / scope) ==='
         tr -c '[:print:]' '\n' < /data/adb/lspd/config/modules_config.db 2>/dev/null | grep -a -i -B3 -A8 duostatusbar

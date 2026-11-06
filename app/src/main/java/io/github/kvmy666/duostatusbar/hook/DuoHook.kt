@@ -21,9 +21,11 @@ import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.hook.events.flashlightStateFromDispatch
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -43,6 +45,38 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The status-bar touch hook is installed once per process. */
     private val touchHooked = AtomicBoolean(false)
+
+    /**
+     * The boot hook set (shade header, vendor QS cluster, icon container, tint, orientation) is installed
+     * once per process. A live enable re-enters [enable] and must not double every callback.
+     */
+    private val hooksInstalled = AtomicBoolean(false)
+
+    /** The one pending post-shade-layout pass, so overlapping layout passes do not stack settles. */
+    private var shadeSettle: Runnable? = null
+
+    /** Panel expansion state from SystemUI; authoritative for main/extras visibility. */
+    private var qsExpanded = false
+    private var notificationExpanded = false
+    private var shadedOrQsExpanded = false
+
+    /** True only after the per-panel callback installed. Without it, keep attach fallback ownership. */
+    @Volatile
+    private var panelHookInstalled = false
+
+    /** Last logged panel owner, so owner changes are logged once instead of every panel event. */
+    private var lastPanelOwner: String? = null
+
+    /** The shade window that already owns the one layout listener. */
+    private var shadeLayoutWindow: View? = null
+
+    /**
+     * The status-bar layout listener is installed once per root. A live disable/re-enable must not
+     * stack a second listener on the same view: every extra callback runs the hide pass on every
+     * status-bar layout, which is the same 1 Hz battery drain the single listener already avoids.
+     */
+    private var layoutListenerRoot: View? = null
+    private var layoutListener: View.OnLayoutChangeListener? = null
 
     /**
      * A context to read the settings and register the settings receiver with. It is the [Application]
@@ -100,8 +134,19 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val stage = DuoGuard(ctx).stage()
             val settings = host?.refreshSettings(applySavedSize)
             when {
-                stage == DuoGuard.OFF -> host?.teardown()
-                host?.duo == null -> scheduleAttach(attempt = 0)
+                stage == DuoGuard.OFF -> {
+                    // Stop the broadcast receiver, content observer, screenshot watcher and heartbeat
+                    // before tearing the host down. Leaving the monitor registered kept every
+                    // RSSI/connectivity refresh (and the 20 s Settings.Global write) alive with no
+                    // element attached after a live disable.
+                    monitor?.stop()
+                    monitor = null
+                    host?.teardown()
+                }
+                // Switched on live: install the full boot hook set first, then attach. Attaching only
+                // the main bar left the shade/vendor/tint/orientation hooks missing until a restart.
+                // enable() installs them behind its one-shot guard and schedules the attach itself.
+                host?.duo == null -> enable(ctx, attempt = 0)
                 else -> monitor?.refresh()
             }
             reporter.report(ctx, stage, settings)
@@ -127,7 +172,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             hookApplication()
             // If the Application already exists (injected late), start now; otherwise Application.onCreate
             // calls [start] the moment it fires, and [bootstrap] retries in case neither is ready yet.
-            adoptExistingStatusBarWindow()
+            adoptExistingWindows()
             startWithCurrentApplication()
             bootstrap()
         }
@@ -179,22 +224,46 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     /**
-     * Adopts a status-bar window that was added before the module was injected.
+     * Adopts a window that was added before the module was injected.
      *
      * When injection is late, `WindowManagerImpl.addView` already fired and the addView hook will never see
      * the window, so it is read back from `WindowManagerGlobal.mViews` - the process's own list of added
-     * windows - by its layout-params type.
+     * windows - by its layout-params type. Both windows matter: the status bar draws the element, and the
+     * shade/keyguard window carries the lock-screen bar and the shade header (FR-03b).
      */
-    private fun adoptExistingStatusBarWindow() {
-        if (statusBarRoot != null) return
-        L.guard("DuoHook existing window") {
-            val found = AppContextResolver.findExistingStatusBarWindow() ?: return@guard
-            statusBarRoot = found
-            L.i("existing status bar window found: ${found.javaClass.name}")
-            scheduleAttach(attempt = 0)
-            // Now that a SystemUI-owned context exists, the bootstrap can succeed even when the
-            // ActivityThread lookups did not.
-            bootstrap()
+    private fun adoptExistingWindows() {
+        if (statusBarRoot == null) {
+            L.guard("DuoHook existing window") {
+                val found = AppContextResolver.findExistingWindow(AppContextResolver.TYPE_STATUS_BAR)
+                    ?: return@guard
+                statusBarRoot = found
+                L.i("existing status bar window found: ${found.javaClass.name}")
+                scheduleAttach(attempt = 0)
+                // Now that a SystemUI-owned context exists, the bootstrap can succeed even when the
+                // ActivityThread lookups did not.
+                bootstrap()
+            }
+        }
+        L.guard("DuoHook existing shade window") {
+            val found = AppContextResolver.findExistingWindow(AppContextResolver.TYPE_NOTIFICATION_SHADE)
+            if (found != null) adoptShadeWindow(found)
+        }
+    }
+
+    /**
+     * Captures the shade/keyguard window.
+     *
+     * Its layout listener is the trigger for [attachExtraBars]. When this window is captured after the
+     * main bar attached, that listener was installed before the window was known and would never run:
+     * attach the extra bars and add the listener now instead of waiting for a restart.
+     */
+    private fun adoptShadeWindow(view: View) {
+        if (shadeRoot != null) return
+        shadeRoot = view
+        L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
+        if (monitor != null) {
+            attachExtraBars(view)
+            addShadeLayoutListener(view)
         }
     }
 
@@ -259,13 +328,23 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             L.i("application ready: ${ctx.packageName} (stage $stage)")
             ensureHost(ctx)
-            hookShadeHeader()
-            hookStatusIconContainer()
-            hookBarAppearance()
-            // The settings receiver is already registered in start(), before this gate, so a restart
-            // request still arrives when the module reads as off. Orientation is installed here, once
-            // we know a rotation might need to attach the other set.
-            hookOrientation()
+            if (hooksInstalled.compareAndSet(false, true)) {
+                hookShadeHeader()
+                // OnePlus keeps the visible QS cluster outside the generic ShadeHeaderController surface.
+                // These vendor hooks hand that cluster over directly; hookShadeHeader above stays the
+                // fallback for every other ROM and for a build where the vendor classes change.
+                OnePlusShadeHooks(lp) { host }.install()
+                hookShadeExpansion()
+                hookStatusIconContainer()
+                hookBarAppearance()
+                hookFlashlight()
+                hookScreenshot()
+                hookKeyguardUnlock()
+                // The settings receiver is already registered in start(), before this gate, so a restart
+                // request still arrives when the module reads as off. Orientation is installed here, once
+                // we know a rotation might need to attach the other set.
+                hookOrientation()
+            }
             // The window may already have been captured by the early addView hook; attach now.
             if (stage == DuoGuard.OFF) {
                 L.i("this orientation is off - waiting to apply the other orientation")
@@ -354,7 +433,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 IntentFilter().apply {
                     addAction(DuoSettingsClient.ACTION_SETTINGS_CHANGED)
                     addAction(DuoPrefs.ACTION_RESTART_SYSTEMUI)
+                    addAction(DuoPrefs.ACTION_DIAGNOSTICS_REQUEST)
                 },
+                // All three actions restart System UI or read its tree, so they are exported only to
+                // senders holding our signature permission - the app holds it, nothing else can.
+                SettingsBridge.PERMISSION,
+                null,
                 Context.RECEIVER_EXPORTED
             )
             L.i("listening for app settings changes")
@@ -458,11 +542,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             L.i("status bar window found: ${view.javaClass.name}")
                             scheduleAttach(attempt = 0)
                         }
-                        AppContextResolver.TYPE_NOTIFICATION_SHADE -> {
-                            if (shadeRoot != null) return
-                            shadeRoot = view
-                            L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
-                        }
+                        AppContextResolver.TYPE_NOTIFICATION_SHADE -> adoptShadeWindow(view)
                     }
                 }
             }
@@ -507,7 +587,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     if (!attaching.compareAndSet(false, true)) return@guard
                     // The keyguard and the shade header may already be on screen (the element attaches
                     // at boot, they come later, but a re-attach after rotation can land either way).
-                    shadeRoot?.let { shade -> attachExtraBars(shade) }
+                    val shadeWindow = shadeRoot
+                    ShadeProbe.logOnce(
+                        "shadeProbe:scheduleAttach:shadeRoot:${shadeWindow != null}",
+                        "shade window=${ShadeProbe.describe(shadeWindow)}"
+                    )
+                    shadeWindow?.let { shade -> attachExtraBars(shade) }
+                    host?.setMainBarVisible(!shadedOrQsExpanded)
+                    if (qsExpanded || notificationExpanded) {
+                        host?.setPanelOwner(if (qsExpanded) "qs header" else "shade header")
+                    }
                     hookStatusBarTouch(root)
                     L.i("Duo attached on attempt $attempt")
                     reporter.report(ctx, DuoGuard(ctx).stage(), null)
@@ -561,7 +650,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     private fun attachLayoutListener(root: View) {
         L.guard("DuoHook layout listener") {
-            root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (layoutListenerRoot === root && layoutListener != null) return@guard
+            layoutListenerRoot?.let { old ->
+                layoutListener?.let { listener ->
+                    runCatching { old.removeOnLayoutChangeListener(listener) }
+                }
+            }
+            val listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 L.guard("DuoHook onLayout") {
                     // Hide pass only. Do NOT re-read system state here: the status bar re-lays out on
                     // every clock tick, and refreshing Wi-Fi/cell/etc plus re-rendering Rive on each one
@@ -572,30 +667,216 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     host?.reapplyHiding()
                 }
             }
+            layoutListenerRoot = root
+            layoutListener = listener
+            root.addOnLayoutChangeListener(listener)
             // The keyguard's bar is inflated into the shade window when the lock screen appears, and the
             // shade window is the one that changes then - so its layout pass is the trigger for the
             // second hiding pass (FR-03b).
-            val shade = shadeRoot
-            shade?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                L.guard("DuoHook onShadeLayout") {
-                    attachExtraBars(shade)
-                    // Opening the shade re-shows the main bar's icon views, so the hide pass has to run
-                    // again here - the status bar's own layout pass does not fire for a shade drag. The
-                    // ROM also re-shows them *after* the drag settles, so this runs again a moment later.
-                    host?.reapplyHiding()
-                    handler.postDelayed({
-                        L.guard("DuoHook shade settle") {
-                            host?.reapplyHiding()
-                            shadeHeader?.let { host?.attachShadeHeader(it) }
-                            // Snapshot the header's layout while the shade is open. The app-only dump
-                            // happens after the shade closed, by which point these bounds are gone
-                            // (Issue #1: the element jumps when Quick Settings expands).
-                            shadeHeader?.let {
-                                reporter.captureExtras(Diag.treeText("shade header (as last laid out)", it))
+            shadeRoot?.let { addShadeLayoutListener(it) }
+        }
+    }
+
+    /**
+     * SystemUI's own panel state. This is the missing piece: the container attach order is not the
+     * same as QS-vs-shade vs collapsed, so deriving visibility from which slot attached last left
+     * both copies visible during the transition (and hid the shade copy). The ROM already reports:
+     *
+     *  - NotificationShadeWindowControllerImpl.onShadeOrQsExpanded(Boolean): true at the start of
+     *    any QS/shade expansion, false when both are closed.
+     *  - ShadeExpansionStateManager.onPanelExpansionChanged(... PanelType): QS_PANEL and
+     *    NOTIFICATION_PANEL separately.
+     *
+     * Both hooks are after-only and never modify an argument or return value.
+     */
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else handler.post { block() }
+    }
+
+    private fun hookShadeExpansion() {
+        L.guard("DuoHook shade expansion") {
+            val coverageCallback = object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    val expanded = param.args.getOrNull(0) as? Boolean ?: return
+                    onMain {
+                        try {
+                            val changed = shadedOrQsExpanded != expanded
+                            shadedOrQsExpanded = expanded
+                            if (changed) {
+                                // Entering QS/shade: hold the main copy until the incoming copy is
+                                // opaque. Leaving: onPanelCollapsed() owns the order (slide, latch,
+                                // opaque reveal), so no 267–283 ms blackout can open.
+                                if (expanded) host?.setMainBarVisible(false) else host?.onPanelCollapsed()
+                                L.i("shade/QS covered -> $expanded")
+                            }
+                            // Only the per-panel hook knows whether the content is the QS
+                            // or the notification surface. Do not lock ownership to null
+                            // when that hook was unavailable.
+                            if (!expanded && panelHookInstalled) {
+                                host?.setPanelOwner(null)
+                            }
+                        } catch (t: Throwable) {
+                            L.w("shade/QS coverage: ${t.javaClass.simpleName}: ${t.message}")
+                        }
+                    }
+                }
+            }
+            try {
+                val cls = XposedHelpers.findClass(
+                    "com.android.systemui.shade.NotificationShadeWindowControllerImpl",
+                    lp.classLoader
+                )
+                try {
+                    XposedHelpers.findAndHookMethod(
+                        cls, "onShadeOrQsExpanded", java.lang.Boolean::class.java,
+                        coverageCallback
+                    )
+                    DuoLog.event(
+                        ui = rom.id, surface = "shade", stage = "hook",
+                        clazz = "NotificationShadeWindowControllerImpl",
+                        hook = "onShadeOrQsExpanded", result = "ok"
+                    )
+                    L.i("shade/QS coverage hook installed")
+                } catch (t: Throwable) {
+                    DuoLog.event(
+                        ui = rom.id, surface = "shade", stage = "hook",
+                        clazz = "NotificationShadeWindowControllerImpl",
+                        hook = "onShadeOrQsExpanded", result = "fail",
+                        reason = DuoLog.HOOK_INSTALL_FAILED,
+                        detail = "${t.javaClass.simpleName}: ${t.message}"
+                    )
+                    L.w("shade/QS coverage hook install failed: ${t.javaClass.simpleName}: ${t.message}")
+                }
+            } catch (t: Throwable) {
+                DuoLog.event(
+                    ui = rom.id, surface = "shade", stage = "hook",
+                    clazz = "NotificationShadeWindowControllerImpl",
+                    hook = "onShadeOrQsExpanded", result = "fail",
+                    reason = DuoLog.HOOK_ABSENT,
+                    detail = "${t.javaClass.simpleName}: ${t.message}"
+                )
+                L.w("shade/QS coverage hook absent: ${t.javaClass.simpleName}: ${t.message}")
+            }
+
+            try {
+                val cls = XposedHelpers.findClass(
+                    "com.android.systemui.shade.ShadeExpansionStateManager",
+                    lp.classLoader
+                )
+                val panelType = XposedHelpers.findClass(
+                    "com.android.systemui.shade.PanelType", lp.classLoader
+                )
+                XposedHelpers.findAndHookMethod(
+                    cls, "onPanelExpansionChanged",
+                    Float::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
+                    Boolean::class.javaPrimitiveType, String::class.java, panelType,
+                    object : XC_MethodHook() {
+                        override fun afterHookedMethod(param: MethodHookParam) {
+                            val expanded = param.args.getOrNull(1) as? Boolean ?: return
+                            val type = param.args.getOrNull(4)?.toString().orEmpty()
+                            onMain {
+                                try {
+                                    when (ShadeExpansionClassifier.ownerOf(type)) {
+                                        ShadeOwner.QS -> qsExpanded = expanded
+                                        ShadeOwner.NOTIFICATION -> notificationExpanded = expanded
+                                        ShadeOwner.NONE -> { }
+                                    }
+                                    // Aggregate (when present): a false event means both parts
+                                    // are actually collapsed; true is covered above.
+                                    if (type.contains("SHADE_PANEL") && !expanded) {
+                                        qsExpanded = false
+                                        notificationExpanded = false
+                                    }
+                                    val covered = qsExpanded || notificationExpanded
+                                    if (covered != shadedOrQsExpanded) {
+                                        shadedOrQsExpanded = covered
+                                        if (covered) host?.setMainBarVisible(false)
+                                        else host?.onPanelCollapsed()
+                                    }
+                                    val owner = when {
+                                        // In full shade QS_PANEL can stay expanded; the
+                                        // notification surface is the visible one then.
+                                        notificationExpanded -> "shade header"
+                                        qsExpanded -> "qs header"
+                                        else -> null
+                                    }
+                                    host?.setPanelOwner(owner)
+                                    val ownerKey = when (owner) {
+                                        "shade header" -> "notification"
+                                        "qs header" -> "qs"
+                                        else -> "collapsed"
+                                    }
+                                    if (ownerKey != lastPanelOwner) {
+                                        lastPanelOwner = ownerKey
+                                        DuoLog.event(
+                                            ui = rom.id, surface = "shade", stage = "owner",
+                                            hook = "onPanelExpansionChanged", result = "ok",
+                                            detail = ownerKey
+                                        )
+                                    }
+                                } catch (t: Throwable) {
+                                    L.w("panel expansion: ${t.javaClass.simpleName}: ${t.message}")
+                                }
                             }
                         }
-                    }, SHADE_SETTLE_MS)
+                    }
+                )
+                panelHookInstalled = true
+                DuoLog.event(
+                    ui = rom.id, surface = "shade", stage = "hook",
+                    clazz = "ShadeExpansionStateManager",
+                    hook = "onPanelExpansionChanged", result = "ok"
+                )
+                L.i("shade panel expansion hook installed")
+            } catch (t: Throwable) {
+                DuoLog.event(
+                    ui = rom.id, surface = "shade", stage = "hook",
+                    clazz = "ShadeExpansionStateManager",
+                    hook = "onPanelExpansionChanged", result = "fail",
+                    reason = DuoLog.PANEL_HOOK_ABSENT,
+                    detail = "${t.javaClass.simpleName}: ${t.message}"
+                )
+                L.w("shade panel expansion hook unavailable: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /**
+     * The shade window's layout pass: re-runs the hide pass and attaches the lock-screen/QS bars. The
+     * ROM re-shows its icons once more after the drag settles, so one debounced pass follows; it is
+     * stored so a burst of layout passes replaces it instead of stacking a second settle burst.
+     */
+    private fun addShadeLayoutListener(shade: View) {
+        if (shadeLayoutWindow === shade) return
+        shadeLayoutWindow = shade
+        shade.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            L.guard("DuoHook onShadeLayout") {
+                attachExtraBars(shade)
+                // Opening the shade re-shows the main bar's icon views, so the hide pass has to run
+                // again here - the status bar's own layout pass does not fire for a shade drag.
+                host?.reapplyHiding()
+                // Exactly one copy may be visible at any stage. The owner is updated by the last
+                // successful QS/shade attach; showing it here also hides the other copy on every
+                // layout, so entering/exiting QS cannot leave both on screen.
+                host?.showSurfaceOwner()
+                shadeSettle?.let { handler.removeCallbacks(it) }
+                val settle = Runnable {
+                    shadeSettle = null
+                    L.guard("DuoHook shade settle") {
+                        host?.reapplyHiding()
+                        shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                        host?.showSurfaceOwner()
+                        // Snapshot the header's layout while the shade is open. The app-only dump
+                        // happens after the shade closed, by which point these bounds are gone
+                        // (Issue #1: the element jumps when Quick Settings expands).
+                        shadeHeader?.let {
+                            reporter.captureExtras(Diag.treeText("shade header (as last laid out)", it))
+                        }
+                    }
                 }
+                shadeSettle = settle
+                handler.postDelayed(settle, SHADE_SETTLE_MS)
             }
         }
     }
@@ -608,11 +889,32 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * why the lock screen and the shade looked untouched until they were handled.
      */
     private fun attachExtraBars(shade: View) {
-        val host = host ?: return
+        val host = host
+        if (host == null) {
+            ShadeProbe.logOnce("shadeProbe:attachExtraBars:noHost", "attachExtraBars host=null (main bar not ready)")
+            return
+        }
+        ShadeProbe.logOnce(
+            "shadeProbe:attachExtraBars:window",
+            "attachExtraBars window=${ShadeProbe.describe(shade)} attached=${shade.isAttachedToWindow}"
+        )
         host.attachExtra("keyguard bar", shade, "system_icons")
         // The shade header is not in this window; it arrives through hookShadeHeader. It is built early,
         // often before the main bar has attached, so this is also where a failed attempt is retried.
-        shadeHeader?.let { host.attachShadeHeader(it) }
+        val header = shadeHeader
+        ShadeProbe.logOnce(
+            "shadeProbe:attachExtraBars:header:${header != null}",
+            "attachExtraBars header=${if (header == null) "absent" else ShadeProbe.describe(header)}"
+        )
+        if (header == null) {
+            // The vendor header controller may not have run yet (live enable-from-off); the visible QS
+            // cluster is still resolvable from the shade window, so never stop at "no header".
+            val result = host.attachShadeWindow(shade)
+            ShadeProbe.logOnce("shadeProbe:attachShadeWindow:$result", "attachShadeWindow result=$result")
+            return
+        }
+        val result = host.attachShadeHeader(header, shade)
+        ShadeProbe.logOnce("shadeProbe:attachShadeHeader:$result", "attachShadeHeader result=$result")
     }
 
     /**
@@ -692,40 +994,143 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
-    private fun hookShadeHeader() {        // The controller that owns the header is the reliable hand-over: it is handed the header view
-        // directly, whatever inflated it.
-        L.guard("DuoHook shade header controller") {
-            val cls = XposedHelpers.findClass(
-                "com.android.systemui.shade.ShadeHeaderController", lp.classLoader
-            )
-            XposedBridge.hookAllConstructors(cls, object : XC_MethodHook() {
+    private fun hookFlashlight() {
+        L.guard("DuoHook flashlight") {
+            val cls = XposedHelpers.findClass("com.android.systemui.statusbar.policy.FlashlightControllerImpl", lp.classLoader)
+            XposedHelpers.findAndHookMethod(cls, "dispatchListeners", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
-                    L.guard("DuoHook shade header ctor") {
-                        val view = param.args.firstOrNull() as? View ?: return@guard
-                        L.i("shade header view: ${view.javaClass.name}")
-                        shadeHeader = view
-                        view.post { shadeHeader?.let { host?.attachShadeHeader(it) } }
-                    }
+                    // dispatchListeners(int what, boolean value): type 1 is onFlashlightChanged;
+                    // 2 is availability, 6 is night-light, and 0 is an error. Treating every
+                    // callback as the torch state made availability updates light the icon while
+                    // the torch was off.
+                    val what = param.args.getOrNull(0) as? Int ?: return
+                    val state = flashlightStateFromDispatch(
+                        what,
+                        param.args.getOrNull(1) as? Boolean ?: false
+                    ) ?: return
+                    monitor?.onFlashlightChanged(state)
                 }
             })
+            L.i("flashlight event hook installed")
         }
-        L.guard("DuoHook shade header") {
+    }
+
+    private fun hookScreenshot() {
+        // AOSP/OnePlus route every screenshot request (hardware key, QS tile, assistant, long screenshot)
+        // through TakeScreenshotExecutorImpl.executeScreenshotsAsync. Hooking the async executor catches
+        // the request before the capture; it is the same surface on the measured OxygenOS SystemUI.
+        L.guard("DuoHook screenshot") {
+            val cls = XposedHelpers.findClass(
+                "com.android.systemui.screenshot.TakeScreenshotExecutorImpl",
+                lp.classLoader
+            )
+            XposedBridge.hookAllMethods(cls, "executeScreenshotsAsync", object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    monitor?.onScreenshot()
+                }
+            })
+            L.i("screenshot event hook installed")
+        }
+    }
+
+    private fun hookKeyguardUnlock() {
+        // ACTION_USER_PRESENT is not delivered to this receiver on OxygenOS, so hook the measured
+        // keyguard manager instead. notifyKeyguardAuthenticated(true) is the successful PIN/biometric
+        // path; onKeyguardFadedAway is the completion fallback.
+        L.guard("DuoHook keyguard unlock") {
+            val cls = XposedHelpers.findClass(
+                "com.android.systemui.statusbar.phone.StatusBarKeyguardViewManager",
+                lp.classLoader
+            )
             XposedHelpers.findAndHookMethod(
-                "android.view.ViewStub", lp.classLoader, "inflate",
+                cls,
+                "notifyKeyguardAuthenticated",
+                java.lang.Boolean.TYPE,
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
-                        L.guard("DuoHook stub inflate") {
-                            val view = param.result as? View ?: return@guard
-                            val ctx = app ?: return@guard
-                            val id = RomResources.id(ctx, rom, "shade_header_system_icons")
-                            if (id == 0 || view.findViewById<View>(id) == null) return@guard
-                            L.i("shade header inflated from a stub: ${view.javaClass.name}")
-                            shadeHeader = view
-                            view.post { shadeHeader?.let { host?.attachShadeHeader(it) } }
+                        if (param.args.firstOrNull() == true) {
+                            L.i("keyguard authenticated -> unlock event")
+                            monitor?.onUnlock()
                         }
                     }
                 }
             )
+            XposedHelpers.findAndHookMethod(cls, "onKeyguardFadedAway", object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    L.i("keyguard faded away -> unlock fallback")
+                    monitor?.onUnlock()
+                }
+            })
+            L.i("keyguard unlock hook installed")
+        }
+    }
+
+    private fun hookShadeHeader() {
+        // The controller that owns the header is the reliable hand-over: it is handed the header view
+        // directly, whatever inflated it.
+        L.guard("DuoHook shade header controller") {
+            val cls = try {
+                XposedHelpers.findClass(
+                    "com.android.systemui.shade.ShadeHeaderController", lp.classLoader
+                )
+            } catch (t: Throwable) {
+                ShadeProbe.log("ShadeHeaderController not found: ${t.javaClass.simpleName}: ${t.message}")
+                throw t
+            }
+            ShadeProbe.log("ShadeHeaderController found: ${cls.name}")
+            try {
+                XposedBridge.hookAllConstructors(cls, object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        L.guard("DuoHook shade header ctor") {
+                            val view = param.args.firstOrNull() as? View
+                            if (view == null) {
+                                ShadeProbe.log("ShadeHeaderController ctor fired without a View arg " +
+                                    "(args=${param.args?.size ?: 0})")
+                                return@guard
+                            }
+                            ShadeProbe.log("ShadeHeaderController ctor fired header=${ShadeProbe.describe(view)}")
+                            ShadeProbe.tree("header (ctor)", view)
+                            L.i("shade header view: ${view.javaClass.name}")
+                            shadeHeader = view
+                                view.post { shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) } }
+                        }
+                    }
+                })
+                ShadeProbe.log("ShadeHeaderController constructor hook installed")
+            } catch (t: Throwable) {
+                ShadeProbe.log("ShadeHeaderController constructor hook failed: ${t.javaClass.simpleName}: ${t.message}")
+                throw t
+            }
+        }
+        L.guard("DuoHook shade header") {
+            try {
+                XposedHelpers.findAndHookMethod(
+                    "android.view.ViewStub", lp.classLoader, "inflate",
+                    object : XC_MethodHook() {
+                        override fun afterHookedMethod(param: MethodHookParam) {
+                            L.guard("DuoHook stub inflate") {
+                                val view = param.result as? View ?: return@guard
+                                ShadeProbe.logOnce(
+                                    "shadeProbe:inflate:${ShadeProbe.key(view)}",
+                                    "ViewStub.inflate fired root=${ShadeProbe.describe(view)}"
+                                )
+                                val ctx = app ?: return@guard
+                                val id = RomResources.id(ctx, rom, "shade_header_system_icons")
+                                if (id == 0 || view.findViewById<View>(id) == null) return@guard
+                                ShadeProbe.log("shade header inflated from a stub: ${ShadeProbe.describe(view)}")
+                                ShadeProbe.tree("header (stub)", view)
+                                L.i("shade header inflated from a stub: ${view.javaClass.name}")
+                                shadeHeader = view
+                            view.post { shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) } }
+                            }
+                        }
+                    }
+                )
+                ShadeProbe.log("ViewStub.inflate hook installed")
+            } catch (t: Throwable) {
+                ShadeProbe.log("ViewStub.inflate hook failed: ${t.javaClass.simpleName}: ${t.message}")
+                throw t
+            }
         }
     }
 

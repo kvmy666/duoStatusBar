@@ -241,3 +241,86 @@ internal fun fileUri(context: Context, file: File): Uri? = try {
     L.w("diagnostics uri: ${t.javaClass.simpleName}: ${t.message}")
     null
 }
+
+/**
+ * T3b2a: builds a self-contained bug-report ZIP (manifest + diagnostics + module log + logcat) in the
+ * app's diagnostics directory, prunes old reports and text dumps, and returns the file (or null on
+ * failure). UI wiring is intentionally not part of this function.
+ */
+internal fun writeReportZip(
+    context: Context,
+    report: String,
+    logs: String,
+    status: String,
+    dump: String
+): File? = try {
+    val dir = context.getExternalFilesDir("diagnostics") ?: return null
+    val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+    val destination = File(dir, "duo-report-$stamp.zip")
+
+    val rom = runCatching {
+        RomDetection.forThisRom(
+            android.os.Build.MANUFACTURER.orEmpty(), android.os.Build.BRAND.orEmpty(),
+            android.os.Build.PRODUCT.orEmpty(), android.os.Build.DISPLAY.orEmpty(),
+            RomProfiles.load(context)
+        )
+    }.getOrNull()
+
+    val device = mapOf(
+        "manufacturer" to android.os.Build.MANUFACTURER.orEmpty(),
+        "brand" to android.os.Build.BRAND.orEmpty(),
+        "model" to android.os.Build.MODEL.orEmpty(),
+        "device" to android.os.Build.DEVICE.orEmpty(),
+        "product" to android.os.Build.PRODUCT.orEmpty(),
+        "sdk" to android.os.Build.VERSION.SDK_INT.toString(),
+        "release" to android.os.Build.VERSION.RELEASE.orEmpty()
+    )
+    val adapter = mapOf(
+        "id" to (rom?.id ?: "unknown"),
+        "measured" to (rom?.measured ?: false).toString(),
+        "shadeMeasured" to (rom?.shadeMeasured ?: false).toString(),
+        "coverHook" to (rom?.coverHook ?: false).toString(),
+        "panelExpansionKind" to (rom?.panelExpansionKind ?: "unknown"),
+        "panelHookMeasured" to (rom?.panelHookMeasured ?: false).toString(),
+        "panelOwnerAvailable" to (rom?.panelOwnerAvailable ?: false).toString()
+    )
+
+    val moduleLog = runCatching { L.recentText() }.getOrElse { status }
+
+    val inputs = DuoReportInputs(
+        generatedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date()),
+        appVersion = "${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})",
+        buildType = BuildConfig.BUILD_TYPE,
+        device = device,
+        adapter = adapter,
+        diagnostics = report,
+        moduleLog = moduleLog,
+        logcat = logs,
+        diagnosticsDump = dump.takeIf { it.isNotBlank() },
+        screenshotPng = null
+    )
+
+    DuoReport.writeZip(destination, inputs)
+    DuoReport.prune(dir, "duo-report-", 10)
+    DuoReport.prune(dir, "duo-diagnostics-", 10)
+    destination
+} catch (t: Throwable) {
+    L.w("report zip: ${t.javaClass.simpleName}: ${t.message}")
+    null
+}
+
+/**
+ * Shares a report ZIP through a chooser: MIME `application/zip`, captioned for the developer, with read
+ * permission granted to the chosen app.
+ */
+internal fun shareReportZip(context: Context, file: Uri) {
+    val share = Intent(Intent.ACTION_SEND).apply {
+        type = "application/zip"
+        putExtra(Intent.EXTRA_STREAM, file)
+        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar report — @kvmy1")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(
+        Intent.createChooser(share, context.getString(R.string.settings_log_share_title))
+    )
+}

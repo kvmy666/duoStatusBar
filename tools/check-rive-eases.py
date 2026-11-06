@@ -24,7 +24,7 @@ import re
 import sys
 
 EASING = {"cubic": "CubicEaseInterpolator", "cubicValue": "CubicValueInterpolator", "elastic": "ElasticInterpolator"}
-DEFAULT = "riva/duo/scene.rml"
+DEFAULT = "rive/duo/scene.rml"
 
 
 def main() -> None:

@@ -18,7 +18,7 @@
 
         <Node x="60" y="77.5" name="duoGroup" id="0:3">
 
-            <!-- ringGroup: the battery ring, the percentage and the bolt. Its opacity is bound so a
+            <!-- ringGroup: the battery line, the percentage and the bolt. Its opacity is bound so a
                  second view can draw only the icons that normally sit inside the ring. Nested
                  opacities multiply, and nothing in here is keyed by an animation, so the bind
                  cannot fight the charge or reveal timelines. -->
@@ -161,85 +161,57 @@
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:220" />
             </Shape>
 
-            <!-- ============================ battery ring ============================
-                 Ring r 51.5 (Ellipse 103x103), stroke 8, round caps.
-                 Drawn arc 238.7deg -> 121.3deg clockwise, split by the top gap that holds the
-                 percentage.  Top gap edges: 324.35deg (0.9010) and 35.65deg (0.0990).
-                 Left segment  = 0.6631 -> 0.9010   (fill 0% .. 50%)
-                 Right segment = 0.0990 -> 0.3369   (fill 50% .. 100%)                     -->
-
-            <!-- Each half is ONE trimmed window, anchored with `offset` and sized by `end` (the arc
-                 length). `offset` is what lets a window run past 1.0, so when the top gap closes the
-                 left half simply grows past 12 o'clock and covers the whole drawn arc by itself - the
-                 right half shrinks to nothing. That is the whole point: two windows that MEET at 12
-                 o'clock each end in a round cap, and those caps overlap (the left half's cap paints
-                 over the right half's start, and the track's two 0.22 caps stack to 0.46 and show as
-                 a bright blob). One window has no junction to overlap at. -->
-            <Shape opacity="0.22" name="ringTrackL" id="0:10">
+            <!-- ============================ battery line ============================
+                 The static ring has no circular track: the reference (`new duo customization`,
+                 measured 2026-11-03) draws the ring as eight dots plus one battery line across the
+                 bottom. The line reuses the ring radius (Ellipse 103x103 -> r 51.5) and the ring's
+                 existing `tint` colour bind, so charge green / saver yellow / critical red still come
+                 from the same `Colors.tint` rule. Radius 51.5 + stroke 9.4 matches the reference's
+                 stroke/dot ratio (31.6 px line / 39.6 px dot); the trim is the measured bottom span
+                 136.7deg .. 222.9deg clockwise from 12 o'clock (86.2deg, centred on bottom). The
+                 line is declared ONCE: the old left/right level fills are gone, so the battery is
+                 not drawn twice. The gray 22% track is back as `batteryTrack` (full arc, opacity
+                 0.22), drawn under the white level line. The reference's line is always this full
+                 arc at 80/49/19 - the percentage number carries the level; `tint` carries the state. -->
+            <Shape opacity="0.22" name="batteryTrack" id="0:13">
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="8" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Track"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
-                    <TrimPath start="0" end="0.2379" offset="0.6631" name="Trim">
-                        <DataBindContext propertyKey="115" sourcePathIds="0:60-0:88" />
-                    </TrimPath>
+                <Stroke thickness="9.4" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                    </SolidColor>
+                    <TrimPath start="0.3798" end="0.6193" name="Trim" />
                 </Stroke>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:64" />
             </Shape>
-
-            <Shape opacity="0.22" name="ringTrackR" id="0:11">
+            <Shape name="batteryLine" id="0:12">
                 <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="8" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Track"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
-                    <TrimPath start="0" end="0.2379" offset="0.0990" name="Trim">
-                        <DataBindContext propertyKey="115" sourcePathIds="0:60-0:89" />
-                    </TrimPath>
-                </Stroke>
-                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:64" />
-            </Shape>
-
-            <!-- battery fill, left half: 0 .. 50%. The app computes the trim end from the level
-                 (trim = 0.6631 + min(level,50)/50 * 0.2379) so no arithmetic is needed in Rive. -->
-            <Shape name="ringFillL" id="0:12">
-                <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="8" cap="round" join="round" name="Stroke">
+                <Stroke thickness="9.4" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color">
                         <DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" />
                     </SolidColor>
-                    <TrimPath start="0" end="0.2379" offset="0.6631" name="Trim">
-                        <DataBindContext propertyKey="115" sourcePathIds="0:60-0:62" />
-                    </TrimPath>
-                </Stroke>
-            </Shape>
-
-            <!-- battery fill, right half: 50 .. 100% (trim = 0.0990 + max(level-50,0)/50 * 0.2379) -->
-            <Shape name="ringFillR" id="0:13">
-                <Ellipse width="103" height="103" originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="8" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color">
-                        <DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" />
-                    </SolidColor>
-                    <!-- Anchored at the top gap's right edge; `end` is the arc length, so it is 0 when
-                         the gap is closed and the left half owns the whole ring (FR-25 / DESIGN §4). -->
-                    <TrimPath start="0" end="0.2379" offset="0.0990" name="Trim">
-                        <DataBindContext propertyKey="115" sourcePathIds="0:60-0:63" />
-                    </TrimPath>
+                    <TrimPath start="0.6193" end="0.6193" name="Trim">
+                <DataBindContext propertyKey="114" sourcePathIds="0:60-0:360" />
+            </TrimPath>
                 </Stroke>
             </Shape>
 
             <!-- The bolt lives with the ring: charging replaces the digits in the gap, so it stays
                  on the cutout when the inner icons move out. Drawn after the ring, and Wi-Fi has
                  already faded by the time the bolt is opaque (ChargeIn frame 8 vs 16). -->
-            <Shape x="0" y="-49.5" opacity="0" name="bolt" id="0:50">
-                <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="3.5" y="-10" radius="1.4" />
-                    <StraightVertex x="-7.5" y="0.5" radius="1.4" />
-                    <StraightVertex x="-1.5" y="0.5" radius="1.4" />
-                    <StraightVertex x="-3.5" y="10" radius="1.4" />
-                    <StraightVertex x="7.5" y="-0.5" radius="1.4" />
-                    <StraightVertex x="1.5" y="-0.5" radius="1.4" />
-                </PointsPath>
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" /></SolidColor></Fill>
-            </Shape>
+            <Node name="boltSeat" id="0:366">
+                <DataBindContext propertyKey="14" sourcePathIds="0:60-0:365" />
+                <Shape x="0" y="-49.5" opacity="0" name="bolt" id="0:50">
+                    <PointsPath isClosed="true" name="Path">
+                        <StraightVertex x="3.5" y="-10" radius="1.4" />
+                        <StraightVertex x="-7.5" y="0.5" radius="1.4" />
+                        <StraightVertex x="-1.5" y="0.5" radius="1.4" />
+                        <StraightVertex x="-3.5" y="10" radius="1.4" />
+                        <StraightVertex x="7.5" y="-0.5" radius="1.4" />
+                        <StraightVertex x="1.5" y="-0.5" radius="1.4" />
+                    </PointsPath>
+                    <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" /></SolidColor></Fill>
+                </Shape>
+            </Node>
 
             <DataBindContext propertyKey="18" sourcePathIds="0:60-0:182" />
             </Node>
@@ -248,6 +220,338 @@
                  The signal dots stay with the ring. Same opacity bind as ringGroup, so one file
                  draws either the original element or just this cluster. -->
             <Node name="indicatorsGroup" id="0:185">
+            <!-- eventGroup: live-event icon slot (slice 1). Authored hidden; default icon is a
+                 simple owned alarm-clock silhouette. Opacity is NOT bound here. -->
+            <Node name="eventSlot" id="0:364">
+                <DataBindContext propertyKey="14" sourcePathIds="0:60-0:361" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:362" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:362" />
+            <Node name="eventGroup" id="0:235" x="-0.5" y="17" opacity="0">
+                <Node name="eventAlarmIcon" id="0:236">
+                    <!-- Owned alarm clock, redrawn from the owner's reference: thick ring, two bells,
+                         two legs, and 12:15 hands. Details first; ring last (reverse sibling order). -->
+                    <Shape name="eventAlarmLegLeft" id="0:291">
+                        <PointsPath name="Path">
+                            <StraightVertex x="-7.0" y="16.0" />
+                            <StraightVertex x="-12.0" y="24.0" />
+                        </PointsPath>
+                        <Stroke thickness="4.0" cap="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventAlarmLegRight" id="0:292">
+                        <PointsPath name="Path">
+                            <StraightVertex x="7.0" y="16.0" />
+                            <StraightVertex x="12.0" y="24.0" />
+                        </PointsPath>
+                        <Stroke thickness="4.0" cap="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventAlarmBellLeft" id="0:289" x="-12" y="-20">
+                        <Ellipse width="14" height="14" originX="0.5" originY="0.5" name="Path" />
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        </Fill>
+                    </Shape>
+                    <Shape name="eventAlarmBellRight" id="0:290" x="12" y="-20">
+                        <Ellipse width="14" height="14" originX="0.5" originY="0.5" name="Path" />
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        </Fill>
+                    </Shape>
+                    <Shape name="eventAlarmMinuteHand" id="0:286">
+                        <PointsPath name="Path">
+                            <StraightVertex x="0.0" y="0.0" />
+                            <StraightVertex x="0.0" y="-10.0" />
+                        </PointsPath>
+                        <Stroke thickness="3.0" cap="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventAlarmHourHand" id="0:287">
+                        <PointsPath name="Path">
+                            <StraightVertex x="0.0" y="0.0" />
+                            <StraightVertex x="9.0" y="0.0" />
+                        </PointsPath>
+                        <Stroke thickness="3.0" cap="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventAlarmPin" id="0:288">
+                        <Ellipse width="4.0" height="4.0" originX="0.5" originY="0.5" name="Path" />
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        </Fill>
+                    </Shape>
+                    <Shape name="eventAlarmBody" id="0:285">
+                        <Ellipse width="36" height="36" originX="0.5" originY="0.5" name="Path" />
+                        <Stroke thickness="4.5" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                </Node>
+
+                <!-- Flashlight event art. One artwork slot per event type for now; the opacity is
+                     animated by EventFlashlight, so the alarm shape above and this one share the
+                     same eventGroup and never draw together. -->
+                <Node name="eventFlashlightIcon" id="0:246" opacity="0" scaleX="2.321" scaleY="2.321" y="-2.0">
+                    <!-- Owned vertical torch, informed by the Quick Settings affordance (not copied):
+                         head, lens, handle, and a cone of light from the mouth. The cone is narrower at
+                         the lens and widens upward; two bright edges carry the light. -->
+                    <Node name="eventFlashlightLight" id="0:280" opacity="0">
+                    <Shape name="eventFlashlightBeamFill" id="0:273">
+                        <PointsPath isClosed="true" name="Path">
+                            <StraightVertex x="-3.0" y="-11.0" />
+                            <StraightVertex x="3.0" y="-11.0" />
+                            <StraightVertex x="12.0" y="-17.0" />
+                            <StraightVertex x="-12.0" y="-17.0" />
+                        </PointsPath>
+                        <Fill name="Fill">
+                            <SolidColor colorValue="66FFFFFF" name="Color" />
+                        </Fill>
+                    </Shape>
+                                        <Shape name="eventFlashlightBeamMid" id="0:330">
+                        <PointsPath isClosed="true" name="Path">
+                            <StraightVertex x="-3" y="-11" />
+                            <StraightVertex x="3" y="-11" />
+                            <StraightVertex x="14" y="-17" />
+                            <StraightVertex x="-14" y="-17" />
+                        </PointsPath>
+                        <Fill name="Fill"><SolidColor colorValue="22FFFFFF" name="Color" /></Fill>
+                    </Shape>
+                    <Shape name="eventFlashlightBeamOuter" id="0:331">
+                        <PointsPath isClosed="true" name="Path">
+                            <StraightVertex x="-3" y="-11" />
+                            <StraightVertex x="3" y="-11" />
+                            <StraightVertex x="17" y="-18" />
+                            <StraightVertex x="-17" y="-18" />
+                        </PointsPath>
+                        <Fill name="Fill"><SolidColor colorValue="11FFFFFF" name="Color" /></Fill>
+                    </Shape>
+</Node>
+                    <!-- Head/handle separation line. -->
+                    <Shape name="eventFlashlightHeadLine" id="0:284">
+                        <PointsPath name="Path">
+                            <StraightVertex x="-5.7" y="-7.3" />
+                            <StraightVertex x="5.7" y="-7.3" />
+                        </PointsPath>
+                        <Stroke thickness="1.2" cap="round" name="Stroke">
+                            <SolidColor colorValue="FF121A2A" name="Color" />
+                        </Stroke>
+                    </Shape>
+                    <!-- The reference has no circular lens; the cap bar is the lens. -->
+                    <!-- The middle toggle: a dark pill with a bead that moves from OFF (bottom) to
+                         ON (top) as the light ramps from 0 to full over 18 frames. -->
+                    <Shape name="eventFlashlightToggleOff" id="0:281" y="2.2">
+                        <Ellipse width="1.8" height="1.8" originX="0.5" originY="0.5" name="Path" />
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FFFFB86B" name="Color" />
+                        </Fill>
+                    </Shape>
+                    <Shape name="eventFlashlightToggleOn" id="0:282" y="-0.8" opacity="0">
+                        <Ellipse width="1.8" height="1.8" originX="0.5" originY="0.5" name="Path" />
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FFFFFFFF" name="Color" />
+                        </Fill>
+                    </Shape>
+                    <Shape name="eventFlashlightToggleTrack" id="0:283" y="0.7">
+                        <Ellipse width="3.2" height="5.6" originX="0.5" originY="0.5" name="Path" />
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FF121A2A" name="Color" />
+                        </Fill>
+                    </Shape>
+                    <Shape name="eventFlashlightBody" id="0:247">
+                        <PointsPath isClosed="true" name="Path">
+                            <StraightVertex x="-4.6" y="-11.0" />
+                            <StraightVertex x="4.6" y="-11.0" />
+                            <StraightVertex x="4.6" y="-7.3" />
+                            <StraightVertex x="5.7" y="-7.3" />
+                            <StraightVertex x="3.2" y="-3.1" />
+                            <StraightVertex x="3.2" y="9.0" />
+                            <StraightVertex x="2.2" y="11.0" />
+                            <StraightVertex x="-2.2" y="11.0" />
+                            <StraightVertex x="-3.2" y="9.0" />
+                            <StraightVertex x="-3.2" y="-3.1" />
+                            <StraightVertex x="-5.7" y="-7.3" />
+                            <StraightVertex x="-4.6" y="-7.3" />
+                        </PointsPath>
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Fill>
+                    </Shape>
+                </Node>
+
+                <!-- Screenshot event art: an owned camera silhouette. Node opacity is animated by
+                     EventScreenshot, so it shares the eventGroup without overlapping the other arts. -->
+                <Node name="eventScreenshotIcon" id="0:252" opacity="0">
+                    <!-- Owned screenshot glyph: four corner brackets around a camera outline. All
+                         strokes bind to the Duo foreground colour. -->
+                    <Shape name="eventScreenshotBracketTL" id="0:295">
+                        <PointsPath name="Path">
+                            <StraightVertex x="-14" y="-21" />
+                            <StraightVertex x="-23" y="-21" />
+                            <StraightVertex x="-23" y="-12" />
+                        </PointsPath>
+                        <Stroke thickness="4" cap="round" join="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventScreenshotBracketTR" id="0:296">
+                        <PointsPath name="Path">
+                            <StraightVertex x="14" y="-21" />
+                            <StraightVertex x="23" y="-21" />
+                            <StraightVertex x="23" y="-12" />
+                        </PointsPath>
+                        <Stroke thickness="4" cap="round" join="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventScreenshotBracketBL" id="0:297">
+                        <PointsPath name="Path">
+                            <StraightVertex x="-23" y="12" />
+                            <StraightVertex x="-23" y="21" />
+                            <StraightVertex x="-14" y="21" />
+                        </PointsPath>
+                        <Stroke thickness="4" cap="round" join="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventScreenshotBracketBR" id="0:298">
+                        <PointsPath name="Path">
+                            <StraightVertex x="23" y="12" />
+                            <StraightVertex x="23" y="21" />
+                            <StraightVertex x="14" y="21" />
+                        </PointsPath>
+                        <Stroke thickness="4" cap="round" join="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventScreenshotBody" id="0:253">
+                        <PointsPath isClosed="true" name="Path">
+                            <StraightVertex x="-13" y="-3" />
+                            <StraightVertex x="-6" y="-3" />
+                            <StraightVertex x="-3" y="-7" />
+                            <StraightVertex x="3" y="-7" />
+                            <StraightVertex x="6" y="-3" />
+                            <StraightVertex x="13" y="-3" />
+                            <StraightVertex x="13" y="15" />
+                            <StraightVertex x="-13" y="15" />
+                        </PointsPath>
+                        <Stroke thickness="3.5" cap="round" join="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventScreenshotLens" id="0:254" y="6">
+                        <Ellipse width="13" height="13" originX="0.5" originY="0.5" name="Path" />
+                        <Stroke thickness="3.5" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventScreenshotDot" id="0:299" y="6">
+                        <Ellipse width="4" height="4" originX="0.5" originY="0.5" name="Path" />
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Fill>
+                    </Shape>
+                </Node>
+                <Node name="eventUnlockIcon" id="0:300" opacity="0">
+                    <!-- Owned padlock: solid rounded body, thick U shackle, no keyhole. Body first so
+                         it covers the shackle legs; in this Rive file earlier siblings draw above. -->
+                    <Shape name="eventUnlockBody" id="0:301" y="7">
+                        <Rectangle width="26" height="20" originX="0.5" originY="0.5"
+                            cornerRadiusTL="4" cornerRadiusTR="4" cornerRadiusBL="4" cornerRadiusBR="4" name="Path" />
+                        <Fill name="Fill">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Fill>
+                    </Shape>
+                    <Node name="eventUnlockShackle" id="0:303" x="0" y="0" rotation="0">
+                        <Shape name="eventUnlockShackleShape" id="0:306">
+                            <PointsPath name="Path">
+                                <StraightVertex x="-7" y="-1" />
+                                <StraightVertex x="-7" y="-8" />
+                                <StraightVertex x="-6" y="-12" />
+                                <StraightVertex x="-3" y="-15" />
+                                <StraightVertex x="3" y="-15" />
+                                <StraightVertex x="6" y="-12" />
+                                <StraightVertex x="7" y="-8" />
+                                <StraightVertex x="7" y="-1" />
+                            </PointsPath>
+                            <Stroke thickness="4.5" cap="round" join="round" name="Stroke">
+                                <SolidColor colorValue="FFFFFFFF" name="Color">
+                                    <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                                </SolidColor>
+                            </Stroke>
+                        </Shape>
+                    </Node>
+                </Node>
+
+                <Node name="eventCallIcon" id="0:320" opacity="0">
+                    <Shape name="eventCallHandset" id="0:321">
+                        <PointsPath name="Path">
+                            <StraightVertex x="-13" y="-9" />
+                            <StraightVertex x="-9" y="6" />
+                            <StraightVertex x="0" y="11" />
+                            <StraightVertex x="9" y="6" />
+                            <StraightVertex x="13" y="-9" />
+                        </PointsPath>
+                        <Stroke thickness="5" cap="round" join="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventCallWave1" id="0:322">
+                        <PointsPath name="Path">
+                            <StraightVertex x="13" y="-2" />
+                            <StraightVertex x="20" y="3" />
+                        </PointsPath>
+                        <Stroke thickness="3" cap="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                    <Shape name="eventCallWave2" id="0:323">
+                        <PointsPath name="Path">
+                            <StraightVertex x="17" y="-8" />
+                            <StraightVertex x="23" y="-3" />
+                        </PointsPath>
+                        <Stroke thickness="3" cap="round" name="Stroke">
+                            <SolidColor colorValue="FFFFFFFF" name="Color">
+                                <DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" />
+                            </SolidColor>
+                        </Stroke>
+                    </Shape>
+                </Node>
+            </Node>
+            </Node>
+
+            <Node name="centerSlot" id="0:363">
+                <DataBindContext propertyKey="14" sourcePathIds="0:60-0:361" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:362" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:362" />
+            <Node name="middleFadeGroup" id="0:237">
 
             <!-- ============================== Wi-Fi ==============================
                  centre (59.5, 78.5) -> (-0.5, 17) relative to the group node.
@@ -435,9 +739,13 @@
 
                  The text itself is bound (`networkText`); the MiddleSlot machine owns its opacity and
                  scale, so it arrives and leaves with the same choreography as the plane and crescent.
-                 Authored at opacity 0 so a file that never gets the label shows nothing. -->
-            <Text x="-0.5" y="1" width="56" height="34" alignValue="center" originX="0.5" originY="0.5"
-                sizingValue="fixed" overflowValue="visible" opacity="0" name="network" id="0:170">
+                 Authored at opacity 0 so a file that never gets the label shows nothing.
+
+                 The clock reuses this node when the middle slot is "clock". The 80-unit box with
+                 `fitFontSize` keeps "12:34 PM" on one line inside the ring, while "5G" stays at its
+                 authored 30-unit size because it is far narrower than the box. -->
+            <Text x="-0.5" y="1" width="80" height="34" alignValue="center" originX="0.5" originY="0.5"
+                sizingValue="fixed" overflowValue="fitFontSize" wrapValue="noWrap" fitFontSizeResizesBox="true" opacity="0" name="network" id="0:170">
                 <TextStylePaint fontSize="30" fontAssetId="0:40" name="NetworkStyle" id="0:171">
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor>
@@ -451,40 +759,55 @@
                     <DataBindContext propertyKey="268" sourcePathIds="0:60-0:173" />
                 </TextValueRun>
             </Text>
+            </Node>
 
             <DataBindContext propertyKey="18" sourcePathIds="0:60-0:183" />
             </Node>
 
             <!-- Signal dots belong to the ring, not the Wi-Fi cluster, so they stay on the cutout
                  when the icons move out. Drawn after the icons so they still sit on top of the
-                 Wi-Fi arc in the original layout. The opacity bind is the ring's. -->
+                 Wi-Fi arc in the original layout. The opacity bind is the ring's.
+
+                 Eight dots, four per side, measured from `new duo customization` (2026-11-03):
+                 dot-circle radius 46.08 design units (155.4 px in the reference) and dot diameter
+                 11.74 (39.6 px). Right-side centres, clockwise from 12 o'clock:
+                   44.2deg  ( 32.13, -33.03)
+                   67.4deg  ( 42.55, -17.71)
+                   91.15deg ( 46.07,   0.93)
+                  115.5deg  ( 41.59,  19.84)
+                 The left side is the same art under a scaleX=-1 node, so it is an exact mirror.
+                 `cell1` is the weakest/bottom dot and `cell4` the strongest/top; each side lights
+                 bottom-up. SIM1 right / SIM2 left is the current interpretation and is UNVERIFIED:
+                 both sides are fed from cell1..cell4Opacity until the owner confirms the mapping,
+                 so the left duplicates intentionally bind to the same four properties. -->
             <Node name="cellGroup" id="0:186">
+            <Node name="cellRight" id="0:340">
             <Shape name="cell1" id="0:17">
-                <Ellipse x="-27" y="42.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
+                <Ellipse x="41.59" y="19.84" width="11.74" height="11.74" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:71" />
             </Shape>
             <Shape name="cell2" id="0:18">
-                <Ellipse x="-9.5" y="49.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
+                <Ellipse x="46.07" y="0.93" width="11.74" height="11.74" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:72" />
             </Shape>
             <Shape name="cell3" id="0:19">
-                <Ellipse x="8.5" y="50.2" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
+                <Ellipse x="42.55" y="-17.71" width="11.74" height="11.74" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:73" />
             </Shape>
             <Shape name="cell4" id="0:20">
-                <Ellipse x="26" y="44.3" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
+                <Ellipse x="32.13" y="-33.03" width="11.74" height="11.74" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:74" />
             </Shape>
 
             <!-- Do Not Disturb on the signal dots. The same crescent as dndMoon. Scale is bound
-                 (the path is 36.92 units across; 0.2979 fits the 11-unit spheres) and grows with
+                 (the path is 36.92 units across; 0.318 fits the 11.74-unit dots) and grows with
                  the opacity, so a fill eases from nothing up to the white moon. The gray circles
                  stay the spheres themselves. Authored at 0 so they stay hidden until a bar is lit. -->
-            <Shape x="-27" y="42.7" opacity="0" name="cellMoon1" id="0:187">
+            <Shape x="41.59" y="19.84" opacity="0" name="cellMoon1" id="0:187">
                 <PointsPath isClosed="true" name="Path">
                     <StraightVertex x="-5.27" y="-18.46" />
                     <StraightVertex x="-4.52" y="-18.28" />
@@ -534,7 +857,7 @@
                 <DataBindContext propertyKey="16" sourcePathIds="0:60-0:197" />
                 <DataBindContext propertyKey="17" sourcePathIds="0:60-0:197" />
             </Shape>
-            <Shape x="-9.5" y="49.7" opacity="0" name="cellMoon2" id="0:188">
+            <Shape x="46.07" y="0.93" opacity="0" name="cellMoon2" id="0:188">
                 <PointsPath isClosed="true" name="Path">
                     <StraightVertex x="-5.27" y="-18.46" />
                     <StraightVertex x="-4.52" y="-18.28" />
@@ -584,7 +907,7 @@
                 <DataBindContext propertyKey="16" sourcePathIds="0:60-0:198" />
                 <DataBindContext propertyKey="17" sourcePathIds="0:60-0:198" />
             </Shape>
-            <Shape x="8.5" y="50.2" opacity="0" name="cellMoon3" id="0:189">
+            <Shape x="42.55" y="-17.71" opacity="0" name="cellMoon3" id="0:189">
                 <PointsPath isClosed="true" name="Path">
                     <StraightVertex x="-5.27" y="-18.46" />
                     <StraightVertex x="-4.52" y="-18.28" />
@@ -634,7 +957,7 @@
                 <DataBindContext propertyKey="16" sourcePathIds="0:60-0:199" />
                 <DataBindContext propertyKey="17" sourcePathIds="0:60-0:199" />
             </Shape>
-            <Shape x="26" y="44.3" opacity="0" name="cellMoon4" id="0:190">
+            <Shape x="32.13" y="-33.03" opacity="0" name="cellMoon4" id="0:190">
                 <PointsPath isClosed="true" name="Path">
                     <StraightVertex x="-5.27" y="-18.46" />
                     <StraightVertex x="-4.52" y="-18.28" />
@@ -684,8 +1007,238 @@
                 <DataBindContext propertyKey="16" sourcePathIds="0:60-0:200" />
                 <DataBindContext propertyKey="17" sourcePathIds="0:60-0:200" />
             </Shape>
-            <!-- One crescent in the middle of the four dots, shown only when that row is hidden. -->
-            <Shape x="-0.5" y="46.725" opacity="0" name="centerMoon" id="0:195">
+            </Node>
+
+            <!-- The left side is the right side under scaleX=-1: same art, same pixels mirrored,
+                 so the two halves cannot drift apart. Its dots deliberately read the same
+                 cell1..cell4Opacity binds (SIM2 is not measured yet); see the mapping note above. -->
+            <Node name="cellLeft" id="0:341" scaleX="-1">
+            <Shape name="cell5" id="0:342">
+                <Ellipse x="41.59" y="19.84" width="11.74" height="11.74" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:71" />
+            </Shape>
+            <Shape name="cell6" id="0:343">
+                <Ellipse x="46.07" y="0.93" width="11.74" height="11.74" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:72" />
+            </Shape>
+            <Shape name="cell7" id="0:344">
+                <Ellipse x="42.55" y="-17.71" width="11.74" height="11.74" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:73" />
+            </Shape>
+            <Shape name="cell8" id="0:345">
+                <Ellipse x="32.13" y="-33.03" width="11.74" height="11.74" originX="0.5" originY="0.5" name="Path" />
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:74" />
+            </Shape>
+
+            <Shape x="41.59" y="19.84" opacity="0" name="cellMoon5" id="0:346">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:191" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:197" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:197" />
+            </Shape>
+            <Shape x="46.07" y="0.93" opacity="0" name="cellMoon6" id="0:347">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:192" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:198" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:198" />
+            </Shape>
+            <Shape x="42.55" y="-17.71" opacity="0" name="cellMoon7" id="0:348">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:193" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:199" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:199" />
+            </Shape>
+            <Shape x="32.13" y="-33.03" opacity="0" name="cellMoon8" id="0:349">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:194" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:200" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:200" />
+            </Shape>
+            </Node>
+
+            <!-- One crescent in the middle of the ring, shown only when both dot rows are hidden.
+                 At y=33 it clears the battery line's inner edge (r 46.8) and the Wi-Fi dot. -->
+            <Shape x="0" y="33" opacity="0" name="centerMoon" id="0:195">
                 <PointsPath isClosed="true" name="Path">
                     <StraightVertex x="-5.27" y="-18.46" />
                     <StraightVertex x="-4.52" y="-18.28" />
@@ -736,6 +1289,7 @@
                 <DataBindContext propertyKey="17" sourcePathIds="0:60-0:201" />
             </Shape>
             <DataBindContext propertyKey="18" sourcePathIds="0:60-0:182" />
+            </Node>
             </Node>
         </Node>
 
@@ -1111,7 +1665,23 @@
                 </AnimationState>
 
                 <AnimationState x="200" y="0" animationId="0:142" id="0:147">
+                    <StateTransition stateToId="0:261" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+
+                <!-- The bolt has reached the ring's gap. One short scale pulse acknowledges the level
+                     instead of looping forever; then ChargeBolt holds it. -->
+                <AnimationState x="250" y="0" animationId="0:260" id="0:261">
                     <StateTransition stateToId="0:148" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                    <StateTransition stateToId="0:148" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:108" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
                 </AnimationState>
 
                 <AnimationState x="300" y="0" animationId="0:141" id="0:148">
@@ -1179,6 +1749,326 @@
                     <BlendAnimation1D animationId="0:157" value="2" />
                     <BlendAnimation1D animationId="0:158" value="3" />
                 </BlendState1DViewModel>
+            </StateMachineLayer>
+
+            <StateMachineLayer name="Event" id="0:240">
+                <AnyState x="200" y="-120" />
+                <ExitState x="400" y="-120" />
+                <EntryState>
+                    <StateTransition stateToId="0:241" />
+                </EntryState>
+
+                <AnimationState x="0" y="140" animationId="0:244" id="0:241">
+                    <StateTransition stateToId="0:242" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:250" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="7" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:256" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="2" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                                    <StateTransition stateToId="0:305" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="6" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:325" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="8" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+</AnimationState>
+
+                <AnimationState x="200" y="0" animationId="0:245" id="0:242">
+                    <StateTransition stateToId="0:250" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="7" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:243" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+
+                <AnimationState x="300" y="0" animationId="0:244" id="0:243">
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <!-- Flashlight is a stateful event: it stays pressed while the torch is on and
+                     fades out only when the source says off. A newer alarm preempts it directly. -->
+                <AnimationState x="400" y="0" animationId="0:248" id="0:250">
+                    <StateTransition stateToId="0:242" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:251" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="7" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:251" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="500" y="0" animationId="0:249" id="0:251">
+                    <StateTransition stateToId="0:242" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:250" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="7" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:241" enableExitTime="true" exitTimeIsPercetange="true" exitTime="100" />
+                </AnimationState>
+
+                <!-- Screenshot: a one-second transient. The events ends when the source timer clears
+                     eventVisible; the state fades the art at its own end. -->
+                <AnimationState x="600" y="0" animationId="0:255" id="0:256">
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="2" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="700" y="0" animationId="0:304" id="0:305">
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="6" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="800" y="0" animationId="0:324" id="0:325">
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:60-0:238" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="8" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:241" duration="0">
+                        <TransitionViewModelCondition opValue="notEqual">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:60-0:239" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
             </StateMachineLayer>
 
         </StateMachine>
@@ -1378,6 +2268,36 @@
 
              The Wi-Fi's own opacity is untouched: the fade lives on the group node, so it multiplies
              with the arcs' bound signal level and the dot's slot opacity instead of fighting either. -->
+
+        <!-- One pulse at the destination. This is the charging "arrived at level" beat: the bolt
+             scales up 8% and settles over 14 frames, then ChargeBolt holds it. No loop. -->
+        <LinearAnimation duration="14" name="ChargeSettle" id="0:260">
+            <KeyedObject objectId="0:50">
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="1.08" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="10">
+                        <CubicEaseInterpolator x1="0.4" y1="0" x2="0.2" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="14" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="1.08" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="10">
+                        <CubicEaseInterpolator x1="0.4" y1="0" x2="0.2" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="14" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
 
         <LinearAnimation duration="1" name="ChargeDigits" id="0:140" loopValue="loop">
             <KeyedObject objectId="0:30">
@@ -2516,6 +3436,461 @@
                 </KeyedProperty>
             </KeyedObject>
         </LinearAnimation>
+
+        <!-- Event idle: the slot rests hidden and the middle occupant stays visible. Reused for
+             EventHold, so no separate animation is needed. -->
+        <LinearAnimation duration="1" name="EventIdle" id="0:244" loopValue="loop">
+            <KeyedObject objectId="0:235">
+                <KeyedProperty propertyKey="13">
+                    <KeyFrameDouble value="-0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="14">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:237">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Event alarm: the icon pops in, bounces, then fades out; the middle occupant ducks out
+             for the duration and returns. 72 frames = 1200 ms. -->
+        <LinearAnimation duration="72" name="EventAlarm" id="0:245">
+            <KeyedObject objectId="0:235">
+                <KeyedProperty propertyKey="13">
+                    <KeyFrameDouble value="-0.5" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.0" interpolationType="cubic" frame="6">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="-1.5" interpolationType="cubic" frame="18">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.8" interpolationType="cubic" frame="30">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="-0.5" interpolationType="hold" frame="42" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="14">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="3" interpolationType="cubic" frame="6">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="25" interpolationType="cubic" frame="18">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="8" interpolationType="cubic" frame="30">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="20" interpolationType="cubic" frame="42">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="17" interpolationType="hold" frame="54" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="-0.1" interpolationType="cubic" frame="6">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.08" interpolationType="cubic" frame="18">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="-0.04" interpolationType="cubic" frame="30">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="42" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.15" interpolationType="cubic" frame="6">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.96" interpolationType="cubic" frame="14">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.04" interpolationType="cubic" frame="24">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="36" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.15" interpolationType="cubic" frame="6">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0.96" interpolationType="cubic" frame="14">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.04" interpolationType="cubic" frame="24">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="36" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="6" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="60">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="72" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:236">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:246">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:237">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="6" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="60">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="72" />
+                </KeyedProperty>
+            </KeyedObject>
+                    <KeyedObject objectId="0:252">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+</LinearAnimation>
+
+        <!-- Flashlight press: the icon scale and opacity pop in, then hold for as long as the torch
+             is on. 12 frames = 200 ms. The state has no exit time; the source decides when it ends. -->
+        <LinearAnimation duration="30" name="EventFlashlight" id="0:248">
+            <KeyedObject objectId="0:235">
+                <KeyedProperty propertyKey="13">
+                    <KeyFrameDouble value="-0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="14">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.3" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="12" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.3" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="12" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="4" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:236">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:246">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="4" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:237">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+                    <KeyedObject objectId="0:252">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:280">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="30">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:281">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="30">
+                        <CubicEaseInterpolator x1="0.4" y1="0" x2="1" y2="1" />
+                    </KeyFrameDouble>
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:282">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="30">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                </KeyedProperty>
+            </KeyedObject>
+</LinearAnimation>
+
+        <!-- Flashlight off: fade the slot and the pressed icon, and bring the current middle occupant
+             back. 12 frames = 200 ms. -->
+        <LinearAnimation duration="18" name="EventFade" id="0:249">
+            <KeyedObject objectId="0:235">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="18" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="30" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="30" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:246">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.64" y1="0" x2="0.78" y2="0" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="18" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="30" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:237">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="18" />
+                </KeyedProperty>
+            </KeyedObject>
+                    <KeyedObject objectId="0:252">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+</LinearAnimation>
+
+        <!-- Screenshot transient: 60 frames = 1000 ms. The camera pops in, holds, then fades so the
+             source timer and the visual end together. Other event arts are forced off. -->
+        <LinearAnimation duration="78" name="EventUnlock" id="0:304">
+            <KeyedObject objectId="0:300">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="66" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="78" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:303">
+                <KeyedProperty propertyKey="13">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="30" />
+                    <KeyFrameDouble value="9" interpolationType="cubic" frame="54" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="14">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="30" />
+                    <KeyFrameDouble value="-2" interpolationType="cubic" frame="54" />
+                </KeyedProperty>
+            </KeyedObject>
+                    <KeyedObject objectId="0:235">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="4" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="66" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="78" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:237">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="4" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="56" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="78" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:236">
+                <KeyedProperty propertyKey="18"><KeyFrameDouble value="0" interpolationType="hold" frame="0" /></KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:246">
+                <KeyedProperty propertyKey="18"><KeyFrameDouble value="0" interpolationType="hold" frame="0" /></KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:252">
+                <KeyedProperty propertyKey="18"><KeyFrameDouble value="0" interpolationType="hold" frame="0" /></KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:320">
+                <KeyedProperty propertyKey="18"><KeyFrameDouble value="0" interpolationType="hold" frame="0" /></KeyedProperty>
+            </KeyedObject>
+</LinearAnimation>
+
+        <LinearAnimation duration="150" name="EventCall" id="0:324">
+            <KeyedObject objectId="0:320">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="140" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="150" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:320">
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="8" />
+                    <KeyFrameDouble value="6" interpolationType="cubic" frame="14">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="-6" interpolationType="cubic" frame="22">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="4" interpolationType="cubic" frame="30">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="-4" interpolationType="cubic" frame="38">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="46" />
+                </KeyedProperty>
+            </KeyedObject>
+                    <KeyedObject objectId="0:235">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="4" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="142" />
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="150" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:237">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="4" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="146" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="150" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:236">
+                <KeyedProperty propertyKey="18"><KeyFrameDouble value="0" interpolationType="hold" frame="0" /></KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:246">
+                <KeyedProperty propertyKey="18"><KeyFrameDouble value="0" interpolationType="hold" frame="0" /></KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:252">
+                <KeyedProperty propertyKey="18"><KeyFrameDouble value="0" interpolationType="hold" frame="0" /></KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:300">
+                <KeyedProperty propertyKey="18"><KeyFrameDouble value="0" interpolationType="hold" frame="0" /></KeyedProperty>
+            </KeyedObject>
+</LinearAnimation>
+
+        <LinearAnimation duration="60" name="EventScreenshot" id="0:255">
+            <KeyedObject objectId="0:235">
+                <KeyedProperty propertyKey="13">
+                    <KeyFrameDouble value="-0.5" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="14">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="15">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="16">
+                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.06" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="10" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="17">
+                    <KeyFrameDouble value="0.92" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1.06" interpolationType="cubic" frame="4">
+                        <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="10" />
+                </KeyedProperty>
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="4" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="52" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="60" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:236">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:246">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:252">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="cubic" frame="0">
+                        <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
+                    </KeyFrameDouble>
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="4" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="52" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="60" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:237">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="52" />
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="60" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
     </Artboard>
 
     <!-- Font for the digits. Montserrat (OFL) ships with the Rive CLI samples; the final build will
@@ -2615,6 +3990,12 @@
         <ViewModelPropertyNumber name="downloadGradientStartY" id="0:232" />
         <ViewModelPropertyNumber name="downloadGradientEndX" id="0:233" />
         <ViewModelPropertyNumber name="downloadGradientEndY" id="0:234" />
+        <ViewModelPropertyNumber name="eventType" id="0:238" />
+        <ViewModelPropertyBoolean name="eventVisible" id="0:239" />
+        <ViewModelPropertyNumber name="batteryLineStart" id="0:360" />
+        <ViewModelPropertyNumber name="middleY" id="0:361" />
+        <ViewModelPropertyNumber name="middleScale" id="0:362" />
+        <ViewModelPropertyNumber name="boltY" id="0:365" />
 
         <ViewModelInstance exports="true" name="Default" id="0:61">
             <ViewModelInstanceNumber viewModelPropertyId="0:62" propertyValue="0.9010" />
@@ -2679,6 +4060,12 @@
             <ViewModelInstanceNumber viewModelPropertyId="0:232" propertyValue="0" />
             <ViewModelInstanceNumber viewModelPropertyId="0:233" propertyValue="51.5" />
             <ViewModelInstanceNumber viewModelPropertyId="0:234" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:238" propertyValue="0" />
+            <ViewModelInstanceBoolean viewModelPropertyId="0:239" propertyValue="false" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:360" propertyValue="0.6193" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:361" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:362" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:365" propertyValue="0" />
         </ViewModelInstance>
     </ViewModel>
 

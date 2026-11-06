@@ -44,8 +44,8 @@ android {
         // AOSP path and reports through the diagnostic dump if anything is off. targetSdk stays 36.
         minSdk = 33
         targetSdk = 36
-        versionCode = 24
-        versionName = "1.4.3-beta.1"
+        versionCode = 99
+        versionName = "1.8.0-alpha.10"
         // Telegram log delivery. Prefer the relay URL (Worker holds the bot token, so no secret is in the
         // APK); otherwise fall back to the direct bot token; otherwise the button opens the share sheet.
         // The relay URL is public (the Worker enforces its own rate limit), so it is baked into every
@@ -57,6 +57,7 @@ android {
             "\"${secret("TELEGRAM_RELAY_URL").ifBlank { "https://duo-log-relay.kvmy-duo-logs.workers.dev" }}\""
         )
         buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"${secret("TELEGRAM_BOT_TOKEN")}\"")
+        buildConfigField("String", "TELEGRAM_RELAY_KEY", "\"${secret("TELEGRAM_RELAY_KEY")}\"")
         buildConfigField("String", "TELEGRAM_CHAT_ID", "\"${secret("TELEGRAM_CHAT_ID")}\"")
         ndk {
             abiFilters += "arm64-v8a"
@@ -141,7 +142,9 @@ dependencies {
     implementation(libs.material)
     implementation(libs.appcompat)
     implementation(platform(libs.compose.bom))
+    implementation(libs.backdrop)
     implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.extended)
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)

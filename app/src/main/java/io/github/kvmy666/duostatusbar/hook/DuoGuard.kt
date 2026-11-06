@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.hook
 import android.content.Context
 import android.provider.Settings
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 
 /**
  * The safety valve for a failure that `try`/`catch` cannot reach.
@@ -64,10 +65,10 @@ internal class DuoGuard(private val context: Context) {
         val app = DuoSettingsClient.read(context)
         val resolved = when {
             !app.enabled -> OFF
-            app.useRive -> RIVE
-            else -> ICONS_ONLY
+            app.engineMode == DuoPrefs.ENGINE_CANVAS || !app.useRive -> ICONS_ONLY
+            else -> RIVE
         }
-        L.i("stage $resolved (app settings rev ${app.revision}, enabled=${app.enabled}, rive=${app.useRive})")
+        L.i("stage $resolved (app settings rev ${app.revision}, enabled=${app.enabled}, engine=${app.engineMode})")
         return resolved
     }
 

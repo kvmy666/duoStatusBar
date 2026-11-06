@@ -3,6 +3,7 @@
   The Rive scene is read at runtime by the module inside System UI, not through the R class at a call
   site the shrinker can see. Without this, `shrinkResources` removes/renames `res/raw/duo.riv` and the
   element silently falls back to Canvas. The loader also resolves it through the module's resource
-  table (which survives renaming), so this is belt-and-braces.
+  table (which survives renaming), so this is belt-and-braces. Both drawings are kept: the classic
+  design reads `duo_old.riv`, and the resource id must exist at runtime.
 -->
-<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/duo" />
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/duo,@raw/duo_old" />

@@ -26,6 +26,8 @@ internal object TelegramLog {
     /** What happened when a send was attempted. */
     enum class Result { SENT, RATE_LIMITED, FAILED }
 
+    data class SendResult(val result: Result, val ticket: String? = null)
+
     private const val API = "https://api.telegram.org"
 
     /**
@@ -45,25 +47,33 @@ internal object TelegramLog {
     internal fun withinCooldown(lastSentAt: Long, now: Long): Boolean =
         (now - lastSentAt) in 0 until COOLDOWN_MS
 
-    /** Uploads [file] to the developer's chat, honouring the hidden client-side cooldown. */
-    fun send(context: Context, file: File, caption: String): Result {
+    /** Uploads [file] and returns the sequential ticket assigned by the relay (if any). */
+    fun sendWithTicket(context: Context, file: File, caption: String): SendResult {
         val relay = BuildConfig.TELEGRAM_RELAY_URL
         val token = BuildConfig.TELEGRAM_BOT_TOKEN
-        if (relay.isBlank() && token.isBlank()) return Result.FAILED
+        val relayKey = BuildConfig.TELEGRAM_RELAY_KEY
+        if (relay.isBlank() && token.isBlank()) return SendResult(Result.FAILED)
 
         val now = System.currentTimeMillis()
         if (withinCooldown(DuoPrefs.logSentAt(context), now)) {
             L.i("telegram: rate limited")
-            return Result.RATE_LIMITED
+            return SendResult(Result.RATE_LIMITED)
         }
 
-        val delivered = if (relay.isNotBlank()) {
+        val body = if (relay.isNotBlank() && relayKey.isNotBlank()) {
             // Preferred: the Worker holds the token, the app holds nothing secret. The Worker also
-            // enforces its own per-IP cooldown, which a modified app cannot bypass.
-            postMultipart(relay, file, caption, extraFields = emptyMap())
-        } else {
+            // enforces its own per-IP cooldown, which a modified app cannot bypass. The relay is
+            // secured: it rejects requests without a matching X-Duo-Key, so the key must be present.
+            postMultipart(
+                relay,
+                file,
+                caption,
+                extraFields = emptyMap(),
+                headers = mapOf("X-Duo-Key" to relayKey)
+            )
+        } else if (token.isNotBlank()) {
             val chatId = BuildConfig.TELEGRAM_CHAT_ID.ifBlank {
-                discoverChatId(token) ?: return Result.FAILED
+                discoverChatId(token) ?: return SendResult(Result.FAILED)
             }
             postMultipart(
                 "$API/bot$token/sendDocument",
@@ -71,14 +81,25 @@ internal object TelegramLog {
                 caption,
                 extraFields = mapOf("chat_id" to chatId)
             )
-        }
-        return if (delivered) {
-            DuoPrefs.writeLogSentAt(context, now)
-            Result.SENT
         } else {
-            Result.FAILED
+            // Relay URL is configured but no key is baked in: do not send an unauthenticated
+            // request. This is a configuration error, not a network failure.
+            L.w("telegram: relay key missing; not sending unauthenticated request")
+            null
         }
+        if (body == null) return SendResult(Result.FAILED)
+        DuoPrefs.writeLogSentAt(context, now)
+        val ticket = try {
+            JSONObject(body).optString("ticket").takeIf { it.isNotBlank() }
+        } catch (t: Throwable) {
+            null
+        }
+        return SendResult(Result.SENT, ticket)
     }
+
+    /** Uploads [file] to the developer's chat, honouring the hidden client-side cooldown. */
+    fun send(context: Context, file: File, caption: String): Result =
+        sendWithTicket(context, file, caption).result
 
     /** The chat id of the most recent message sent to the bot, or null. See the class note. */
     private fun discoverChatId(token: String): String? = try {
@@ -104,8 +125,9 @@ internal object TelegramLog {
         url: String,
         file: File,
         caption: String,
-        extraFields: Map<String, String>
-    ): Boolean = try {
+        extraFields: Map<String, String>,
+        headers: Map<String, String> = emptyMap()
+    ): String? = try {
         val boundary = "----duo" + UUID.randomUUID().toString().replace("-", "")
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -113,6 +135,7 @@ internal object TelegramLog {
             connectTimeout = 15_000
             readTimeout = 30_000
             setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            for ((name, value) in headers) setRequestProperty(name, value)
         }
         conn.outputStream.use { out ->
             for ((name, value) in extraFields) field(out, boundary, name, value)
@@ -121,17 +144,18 @@ internal object TelegramLog {
             out.write("--$boundary--\r\n".toByteArray())
         }
         val code = conn.responseCode
+        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+            ?.bufferedReader()?.use { it.readText() }
         if (code !in 200..299) {
-            val body = conn.errorStream?.bufferedReader()?.use { it.readText() }?.take(200)
-            L.w("log upload HTTP $code: $body")
+            L.w("log upload HTTP $code: ${body?.take(200)}")
         } else {
             L.i("log delivered (${file.length()} bytes)")
         }
         conn.disconnect()
-        code in 200..299
+        if (code in 200..299) body else null
     } catch (t: Throwable) {
         L.w("telegram send: ${t.javaClass.simpleName}: ${t.message}")
-        false
+        null
     }
 
     private fun field(out: OutputStream, boundary: String, name: String, value: String) {
@@ -142,11 +166,16 @@ internal object TelegramLog {
     }
 
     private fun filePart(out: OutputStream, boundary: String, name: String, file: File) {
+        val contentType = if (file.name.endsWith(".zip", ignoreCase = true)) {
+            "application/zip"
+        } else {
+            "text/plain"
+        }
         out.write("--$boundary\r\n".toByteArray())
         out.write(
             "Content-Disposition: form-data; name=\"$name\"; filename=\"${file.name}\"\r\n".toByteArray()
         )
-        out.write("Content-Type: text/plain\r\n\r\n".toByteArray())
+        out.write("Content-Type: $contentType\r\n\r\n".toByteArray())
         file.inputStream().use { it.copyTo(out) }
         out.write("\r\n".toByteArray())
     }

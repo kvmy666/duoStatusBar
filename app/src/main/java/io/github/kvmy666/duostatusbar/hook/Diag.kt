@@ -75,13 +75,15 @@ internal object Diag {
         /** A previously captured tree (e.g. the shade header while it was open). */
         extraSnapshot: String = ""
     ): String = try {
+        val profiles = RomProfiles.load(context)
         val rom = RomDetection.forThisRom(
             Build.MANUFACTURER.orEmpty(),
             Build.BRAND.orEmpty(),
             Build.PRODUCT.orEmpty(),
             Build.DISPLAY.orEmpty(),
-            RomProfiles.load(context)
+            profiles
         )
+        val fromAsset = profiles.any { it == rom }
         buildString {
             appendLine("Duo Status Bar diagnostic dump")
             appendLine("version: ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}, debug=${BuildConfig.DEBUG})")
@@ -99,6 +101,10 @@ internal object Diag {
             appendLine("  containerIds=${rom.containerIds}")
             appendLine("  batteryId=${rom.batteryId} clockId=${rom.clockId}")
             appendLine("  notes=${rom.notes}")
+            appendLine("  shadeMeasured=${rom.shadeMeasured} coverHook=${rom.coverHook} " +
+                    "panelExpansionKind=${rom.panelExpansionKind} panelHookMeasured=${rom.panelHookMeasured} " +
+                    "panelOwnerAvailable=${rom.panelOwnerAvailable}")
+            appendLine("  source=${if (fromAsset) "asset-profile" else "code-default"}")
 
             appendLine("systemui:")
             appendLine("  uid=${Process.myUid()} pid=${Process.myPid()}")
@@ -175,7 +181,7 @@ internal object Diag {
             }
 
             appendLine("readers:")
-            appendReaders(context, this)
+            appendReaders(context, this, settings)
 
             appendLine("module:")
             appendLine("  stage=$stage attempts=${DuoGuard(context).attempts()}")
@@ -196,6 +202,7 @@ internal object Diag {
                 appendLine("  settings: enabled=${it.enabled} useRive=${it.useRive} showPercent=${it.showPercent}")
                 appendLine("    size=${it.sizePercent}% offset=${it.offsetX}dp live=${it.liveApply} rev=${it.revision}")
                 appendLine("    split=${it.splitIndicators} lock=${it.lockRing} iconsOffset=${it.indicatorsOffsetX}dp edge=${it.edgePadding}%")
+                appendLine("    surfaces: qs=${it.showInQs} shade=${it.showInShade}")
                 appendLine("    animations=${it.animationsEnabled} arrival=${it.arrivalEnabled} " +
                         "departure=${it.departureEnabled} charging=${it.chargingEnabled}")
                 appendLine("    clockFont=${it.systemClockFont} revealMs=${it.revealMs} " +
@@ -254,17 +261,33 @@ internal object Diag {
         }
     }
 
-    private fun appendReaders(context: Context, sb: StringBuilder) {
+    private fun appendReaders(context: Context, sb: StringBuilder, settings: ModuleSettings?) {
         try {
             val airplane = SystemReaders.isAirplaneOn(context)
-            sb.appendLine("  wifiEnabled=${SystemReaders.isWifiEnabled(context, false)} " +
-                    "wifiActive=${SystemReaders.isWifiActive(context, false)} " +
-                    "wifiValidated=${SystemReaders.isWifiValidated(context)} " +
-                    "wifiLevel=${SystemReaders.wifiLevel(context, -1)}")
-            sb.appendLine("  cellLevel=${SystemReaders.cellLevel(context, airplane, -1)} " +
+            val wifi = WifiReader.sample(context, 0, false, false, false)
+            sb.appendLine("  wifiEnabled=${wifi.on} wifiActive=${wifi.active} " +
+                    "wifiValidated=${wifi.validated} wifiLevel=${wifi.dots}")
+            val cells = CellReader.read(context, airplane)
+            val choice = settings?.simChoice ?: "auto"
+            val picked = SignalMapping.selectCell(
+                choice,
+                cells.samples,
+                cells.defaultDots,
+                cells.defaultSub,
+                cells.defaultSrc
+            )
+            sb.appendLine("  cellLevel=${picked.dots} " +
                     "generation=${SystemReaders.networkGeneration(context, airplane, "?")} " +
                     "mobileData=${SystemReaders.isMobileDataEnabled(context)} " +
-                    "cellLevels=${SystemReaders.cellLevels(context, airplane)}")
+                    "cellLevels=${cells.samples.map { it.dots }}")
+            // Raw evidence: the old labels above stay for the frozen dump contract; these name the
+            // values those labels cannot (the raw index, the count, the chosen slot/sub and source).
+            sb.appendLine("  cellRaw=${cells.defaultRaw} cellCount=${cells.count} " +
+                    "cellMaxIndex=${cells.defaultMaxIndex} cellSlots=${cells.slots} " +
+                    "cellSubs=${cells.subs} cellPickedSub=${picked.subscriptionId} " +
+                    "cellPickedSlot=${picked.slot} cellSource=${picked.src}")
+            sb.appendLine("  wifiRssi=${wifi.rssi} wifiCalc5=${wifi.calc5} " +
+                    "wifiStockBars=${wifi.stockBars} wifiDots=${wifi.dots} wifiSource=${wifi.source}")
             sb.appendLine("  airplane=$airplane saver=${SystemReaders.isPowerSaveOn(context)} " +
                     "dnd=${SystemReaders.isDndOn(context)}")
         } catch (t: Throwable) {

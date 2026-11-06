@@ -11,6 +11,7 @@ import android.graphics.Typeface
 import android.os.SystemClock
 import android.view.View
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
 
 /**
  * The element drawn with plain Android Canvas — no Rive, no native code, nothing that can fault.
@@ -23,7 +24,7 @@ import io.github.kvmy666.duostatusbar.L
  *     instead of a hole (FR-21).
  *
  * It draws what is known exactly — ring with the top gap, the track, the battery colour and the
- * percentage (or the bolt while charging). The four signal dots and the crescents that fill them
+ * percentage (or the bolt while charging). The eight signal dots and the crescents that fill them
  * use the same seats as the Rive ellipses, so this fallback agrees with the live element there.
  * The Wi-Fi glyph is drawn here too, from the same seats and opacities the Rive path binds — it used
  * to be Rive-only, which left the middle slot empty (no Wi-Fi icon) whenever this fallback ran
@@ -39,6 +40,12 @@ internal class DuoCanvasView(
 ) : View(context), DuoElement {
 
     private var incoming: DuoVisual? = null
+
+    /**
+     * Whether this view is on screen. A hidden Canvas copy still receives snapshots (so it is current
+     * when revealed), but it must not invalidate or run the dot-fill tick while nobody can see it.
+     */
+    private var renderActive = true
 
     private var visual: DuoVisual = part.apply(
         DuoMapping.visual(
@@ -58,10 +65,22 @@ internal class DuoCanvasView(
     private val boltPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val moonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val wifiPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val eventPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val eventStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val arcBounds = RectF()
 
     /** Grows a gray signal dot into the white Do Not Disturb crescent. See [DotMoonMotion]. */
     private val motion = DotMoonMotion()
+    /** When the bolt first appeared, so the Canvas clone can pulse when ChargeIn settles (1.6 s). */
+    private var chargeStartedAt = 0L
+    private var wasCharging = false
+    private var flashlightStartedAt = 0L
+    private var wasFlashlightVisible = false
     private var ticking = false
     private val tick = Runnable {
         ticking = false
@@ -92,18 +111,38 @@ internal class DuoCanvasView(
         try {
             if (v == incoming) return
             incoming = v
-            step()
+            if (renderActive) step()
         } catch (t: Throwable) {
             L.w("canvas render: ${t.message}")
+        }
+    }
+
+    override fun setRenderActive(active: Boolean) {
+        if (renderActive == active) return
+        renderActive = active
+        if (active) {
+            step()
+        } else {
+            removeCallbacks(tick)
+            ticking = false
         }
     }
 
     /** Draws the current fill frame and keeps invalidating until a dot has finished becoming a moon. */
     private fun step() {
         val next = incoming ?: return
-        visual = part.apply(motion.push(next, SystemClock.uptimeMillis()))
+        val now = SystemClock.uptimeMillis()
+        if (next.charging && !wasCharging) chargeStartedAt = now
+        wasCharging = next.charging
+        val flashVisible = next.eventVisible && next.eventType == LiveEventType.FLASHLIGHT.riveId
+        if (flashVisible && !wasFlashlightVisible) flashlightStartedAt = now
+        wasFlashlightVisible = flashVisible
+        visual = part.apply(motion.push(next, now))
         invalidate()
-        if (motion.running && !ticking) {
+        val pulseRunning = visual.charging &&
+            (now - chargeStartedAt) in ChargeMotion.SETTLE_START_MS..ChargeMotion.SETTLE_END_MS
+        val flashRampRunning = flashVisible && (now - flashlightStartedAt) < FLASHLIGHT_RAMP_MS
+        if ((motion.running || pulseRunning || flashRampRunning) && !ticking) {
             ticking = true
             postOnAnimation(tick)
         }
@@ -115,6 +154,7 @@ internal class DuoCanvasView(
     override fun teardown() {
         removeCallbacks(tick)
         ticking = false
+        renderActive = false
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -127,53 +167,61 @@ internal class DuoCanvasView(
     }
 
     private fun drawElement(canvas: Canvas) {
-        val size = minOf(width, height).toFloat()
-        if (size <= 0f || height <= 0) return
-        val k = size / DESIGN_SIZE
-        val stroke = STROKE * k
-        val radius = (size - stroke) / 2f
+        if (width <= 0 || height <= 0) return
+        // Rive lays the 120x136 artboard into this view with Fit.CONTAIN, so the fallback must use
+        // the same scale: one design unit = width/120 px. The old /103 scale drew the element ~16%
+        // larger and left no room for the battery line below the ring centre (P2a parity).
+        val scale = width / RingGeometry.ARTBOARD_SIZE
+        val side = width.toFloat()
         val cx = width / 2f
-        // The view is taller than the ring so the percentage can sit above a center punch-hole.
-        // The ring stays in the lower square; the extra height is the space above it.
-        val cy = height - size / 2f
-        ring.strokeWidth = stroke
+        val cy = height * RingGeometry.RING_CENTER_Y / RingGeometry.ARTBOARD_HEIGHT
         val drawRing = visual.ringOpacity > 0.5f
         val drawIndicators = visual.indicatorsOpacity > 0.5f
+        // A live event owns the middle slot for its lifetime. The ring and the signal dots stay;
+        // only the normal middle occupant gives way, matching the Rive middleFadeGroup. An event type
+        // without Canvas artwork leaves the middle intact instead of showing an empty slot.
+        val hasEventArt = visual.eventType == LiveEventType.ALARM.riveId ||
+            visual.eventType == LiveEventType.FLASHLIGHT.riveId ||
+            visual.eventType == LiveEventType.SCREENSHOT.riveId
+        val drawEvent = drawIndicators && visual.eventVisible && hasEventArt
+        val drawMiddle = drawIndicators && !drawEvent
 
-        // Track: the two halves, dimmed, from the same bound arc lengths Rive's ringTrackL/R read. It
-        // used to be one full circle, so with the percentage off the fallback drew a closed track under
-        // the digits while the live element closed the ring (reported: "the battery bar goes all the way
-        // around, it's under the number"). The track now follows leftArc/rightArc exactly, so the two
-        // renderers cannot disagree at the top gap.
+        // The static ring's battery: a gray track for the full bottom span, then the white level line
+        // on top from the level-derived start to the fixed end. Download wash keeps its old ring path
+        // and paint order until P3 re-authors it.
         if (drawRing) {
-            arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
-            ring.color = withAlpha(visual.fgColor, TRACK_ALPHA)
-            val leftTrack = visual.leftArc * 360f
-            if (leftTrack > MIN_SWEEP) {
-                canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.LEFT_START, leftTrack, false, ring)
-            }
-            val rightTrack = visual.rightArc * 360f
-            if (rightTrack > MIN_SWEEP) {
-                canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.RIGHT_START, rightTrack, false, ring)
-            }
-        }
-
-        // Progress: left arc 0-50 %, right arc 50-100 %, exactly as the .riv splits it. The trim ends
-        // are arc *lengths* now, so they are the sweeps directly; the right one is 0 when the gap is
-        // closed and the left half covers the whole ring on its own.
-        if (drawRing) {
-            arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
+            val lineRadius = RingGeometry.BATTERY_LINE_RADIUS * scale
+            arcBounds.set(cx - lineRadius, cy - lineRadius, cx + lineRadius, cy + lineRadius)
+            // Gray track first: full span BATTERY_LINE_START..BATTERY_LINE_END at trackOpacity.
+            ring.strokeWidth = RingGeometry.BATTERY_LINE_STROKE * scale
+            ring.color = withAlpha(visual.fgColor, visual.trackOpacity)
+            ring.shader = null
+            ring.alpha = 255
+            canvas.drawArc(
+                arcBounds,
+                TRIM_ORIGIN + 360f * RingGeometry.BATTERY_LINE_START,
+                RingGeometry.BATTERY_LINE_SWEEP_DEG,
+                false,
+                ring
+            )
+            // White level line on top, from the level-derived start to the fixed end.
+            ring.strokeWidth = RingGeometry.BATTERY_LINE_STROKE * scale
             ring.color = visual.tint
-            val leftSweep = visual.trimLeftEnd * 360f
-            if (leftSweep > MIN_SWEEP) {
-                canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.LEFT_START, leftSweep, false, ring)
-            }
-            val rightSweep = visual.trimRightEnd * 360f
-            if (rightSweep > MIN_SWEEP) {
-                canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.RIGHT_START, rightSweep, false, ring)
-            }
-            // Download wash, on top of the white stroke, from the same caps. Opacity 0 draws nothing.
+            ring.shader = null
+            ring.alpha = 255
+            // The battery line's start follows the level (see RingGeometry.batteryLineStart): it runs
+            // from a moving start to the fixed end BATTERY_LINE_END (0.6193), growing from left to right.
+            // At 0 % the sweep is zero (empty); at 100 % it is the full 86.2 deg.
+            canvas.drawArc(
+                arcBounds,
+                TRIM_ORIGIN + 360f * visual.batteryLineStart,
+                (RingGeometry.BATTERY_LINE_END - visual.batteryLineStart) * 360f,
+                false,
+                ring
+            )
+            // Download wash, on top of the battery line, from the same caps. Opacity 0 draws nothing.
             if (visual.downloadOpacity > 0.01f) {
+                ring.strokeWidth = RingGeometry.RING_STROKE * scale
                 val gradient = visual.downloadGradient
                 ring.shader =
                     gradient?.let {
@@ -224,97 +272,180 @@ internal class DuoCanvasView(
         }
 
         // FR-06: the DND crescent takes the middle slot (0, 17 design units below the ring centre).
-        if (drawIndicators && visual.middleMode == DuoMapping.MIDDLE_DND) {
-            drawMoon(canvas, cx, cy + DND_SLOT_Y * k, k, 1f)
+        if (drawMiddle && visual.middleMode == DuoMapping.MIDDLE_DND) {
+            drawMoon(
+                canvas,
+                cx,
+                cy + (visual.middleY + DND_SLOT_Y * visual.middleScale) * scale,
+                scale * visual.middleScale,
+                1f
+            )
         }
 
         // FR-06: the Wi-Fi glyph takes the middle slot while the radio is connected. Drawn from the
         // same seats and opacities the Rive path binds, so the fallback shows the same thing.
-        if (drawIndicators && visual.middleMode == DuoMapping.MIDDLE_WIFI) {
-            drawWifi(canvas, cx, cy, k)
+        if (drawMiddle && visual.middleMode == DuoMapping.MIDDLE_WIFI) {
+            drawWifi(canvas, cx, cy, scale)
         }
 
-        // Gray circles in the signal-dot seats, then the white crescents that fill them. A strong
-        // bar's circle opacity falls as its moon grows, which is the fill. They belong to the ring,
-        // so a split layout keeps them with it.
+        // Eight signal dots, four per side: indices 0..3 are cell1..cell4 (weakest bottom ->
+        // strongest top) on the right, then the same four mirrored on the left, from the shared
+        // RingGeometry table the Rive scene is authored from. The left deliberately reads the same
+        // opacities as the right (SIM1 right / SIM2 left is UNVERIFIED until the owner confirms it).
+        // Gray circles come first, then the white crescents that fill them; a strong bar's circle
+        // opacity falls as its moon grows. They belong to the ring, so a split layout keeps them.
         if (drawRing) {
             val cells = floatArrayOf(
                 visual.cell1Opacity, visual.cell2Opacity, visual.cell3Opacity, visual.cell4Opacity
             )
-            for (i in cells.indices) {
-                if (cells[i] <= 0f) continue
-                moonPaint.color = withAlpha(visual.fgColor, cells[i])
-                canvas.drawCircle(
-                    cx + CELL_DOTS[i][0] * k,
-                    cy + CELL_DOTS[i][1] * k,
-                    DOT_RADIUS * k,
-                    moonPaint
-                )
+            for (side in intArrayOf(1, -1)) {
+                for (i in cells.indices) {
+                    if (cells[i] <= 0f) continue
+                    moonPaint.color = withAlpha(visual.fgColor, cells[i])
+                    canvas.drawCircle(
+                        cx + side * RingGeometry.CELL_DOT_POSITIONS[i][0] * scale,
+                        cy + RingGeometry.CELL_DOT_POSITIONS[i][1] * scale,
+                        RingGeometry.DOT_RADIUS * scale,
+                        moonPaint
+                    )
+                }
             }
             val moons = floatArrayOf(
                 visual.moon1Opacity, visual.moon2Opacity, visual.moon3Opacity, visual.moon4Opacity
             )
-            for (i in moons.indices) {
-                if (moons[i] <= 0f) continue
-                drawMoon(
-                    canvas,
-                    cx + CELL_DOTS[i][0] * k,
-                    cy + CELL_DOTS[i][1] * k,
-                    k * DotMoonMotion.DOT_SCALE * moons[i],
-                    moons[i]
-                )
+            for (side in intArrayOf(1, -1)) {
+                for (i in moons.indices) {
+                    if (moons[i] <= 0f) continue
+                    drawMoon(
+                        canvas,
+                        cx + side * RingGeometry.CELL_DOT_POSITIONS[i][0] * scale,
+                        cy + RingGeometry.CELL_DOT_POSITIONS[i][1] * scale,
+                        scale * DotMoonMotion.DOT_SCALE * moons[i],
+                        moons[i]
+                    )
+                }
             }
             if (visual.centerMoonOpacity > 0f) {
                 drawMoon(
                     canvas,
-                    cx + DotMoonMotion.CENTER_X * k,
-                    cy + DotMoonMotion.CENTER_Y * k,
-                    k * DotMoonMotion.DOT_SCALE * visual.centerMoonOpacity,
+                    cx + DotMoonMotion.CENTER_X * scale,
+                    cy + DotMoonMotion.CENTER_Y * scale,
+                    scale * DotMoonMotion.DOT_SCALE * visual.centerMoonOpacity,
                     visual.centerMoonOpacity
                 )
             }
         }
 
+        // The Canvas event clone. One shape per event type for now; the icon is drawn in the same
+        // seat as the Rive eventGroup, and the event type selects the artwork, not the motion.
+        if (drawEvent) {
+            drawEventIcon(canvas, cx, cy, scale)
+        }
+
         // FR-06: with Wi-Fi off the slot shows the cellular generation. Same face and weight as the
         // Rive label; the ring's percentage is drawn below and does not overlap it.
-        if (drawIndicators && visual.middleMode == DuoMapping.MIDDLE_NETWORK && visual.networkText.isNotEmpty()) {
+        if (drawMiddle && visual.middleMode == DuoMapping.MIDDLE_NETWORK && visual.networkText.isNotEmpty()) {
             label.color = visual.fgColor
-            label.textSize = NETWORK_FONT_SIZE * k
+            // Same 80-unit box as the Rive `network` Text: "5G" keeps its 30-unit size, while a
+            // longer clock such as "12:34 PM" shrinks just enough to stay on one line inside the ring.
+            val baseSize = NETWORK_FONT_SIZE * scale * visual.middleScale
+            label.textSize = baseSize
+            val width = label.measureText(visual.networkText)
+            val maxWidth = NETWORK_MAX_WIDTH * scale * visual.middleScale
+            if (width > maxWidth && width > 0f) {
+                label.textSize = (baseSize * maxWidth / width).coerceAtLeast(1f)
+            }
             canvas.drawText(
                 visual.networkText,
                 cx,
-                cy + NETWORK_SLOT_Y * k - (label.descent() + label.ascent()) / 2f,
+                cy + (visual.middleY + NETWORK_SLOT_Y * visual.middleScale) * scale -
+                    (label.descent() + label.ascent()) / 2f,
                 label
             )
         }
 
         if (!drawRing) return
         if (visual.boltOpacity > 0f) {
-            drawBolt(canvas, cx, cy, size)
+            drawBolt(canvas, cx, cy, side)
             return
         }
         val text = visual.percentText.trim()
         if (text.isEmpty() || visual.percentOpacity <= 0f) return
         label.color = visual.fgColor
-        label.textSize = visual.percentFontSize * k
+        label.textSize = visual.percentFontSize * scale
         // The Rive node is placed by its top; the canvas centres the glyphs, so add half the box.
         // Drawing it at the ring centre put it straight on top of the 4G/5G label.
         val percentCenter = visual.percentY + RingGeometry.PERCENT_BOX_HALF
         canvas.drawText(
             text,
             cx,
-            cy + percentCenter * k - (label.descent() + label.ascent()) / 2f,
+            cy + percentCenter * scale - (label.descent() + label.ascent()) / 2f,
             label
         )
     }
 
     /** Lightning bolt, unit coordinates scaled to the ring, shown while charging. */
+
+
+    private fun drawScreenshot(canvas: Canvas, color: Int) {
+        eventStrokePaint.color = color
+        eventStrokePaint.strokeWidth = 4f
+        // Four corner brackets.
+        canvas.drawLine(-14f, -21f, -23f, -21f, eventStrokePaint)
+        canvas.drawLine(-23f, -21f, -23f, -12f, eventStrokePaint)
+        canvas.drawLine(14f, -21f, 23f, -21f, eventStrokePaint)
+        canvas.drawLine(23f, -21f, 23f, -12f, eventStrokePaint)
+        canvas.drawLine(-23f, 12f, -23f, 21f, eventStrokePaint)
+        canvas.drawLine(-23f, 21f, -14f, 21f, eventStrokePaint)
+        canvas.drawLine(23f, 12f, 23f, 21f, eventStrokePaint)
+        canvas.drawLine(23f, 21f, 14f, 21f, eventStrokePaint)
+        eventStrokePaint.strokeWidth = 3.5f
+        // Camera body with the small top hump.
+        val body = Path().apply {
+            moveTo(-13f, -3f); lineTo(-6f, -3f); lineTo(-3f, -7f); lineTo(3f, -7f)
+            lineTo(6f, -3f); lineTo(13f, -3f); lineTo(13f, 15f); lineTo(-13f, 15f)
+            close()
+        }
+        canvas.drawPath(body, eventStrokePaint)
+        canvas.drawCircle(0f, 6f, 6.5f, eventStrokePaint)
+        eventPaint.color = color
+        canvas.drawCircle(0f, 6f, 2f, eventPaint)
+    }
+
+    private fun drawAlarm(canvas: Canvas, color: Int) {
+        eventStrokePaint.color = color
+        eventStrokePaint.strokeWidth = 4f
+        canvas.drawLine(-7f, 16f, -12f, 24f, eventStrokePaint)
+        canvas.drawLine(7f, 16f, 12f, 24f, eventStrokePaint)
+        eventPaint.color = color
+        canvas.drawCircle(-12f, -20f, 7f, eventPaint)
+        canvas.drawCircle(12f, -20f, 7f, eventPaint)
+        eventStrokePaint.strokeWidth = 4.5f
+        canvas.drawCircle(0f, 0f, 18f, eventStrokePaint)
+        eventStrokePaint.strokeWidth = 3f
+        canvas.drawLine(0f, 0f, 0f, -10f, eventStrokePaint)
+        canvas.drawLine(0f, 0f, 9f, 0f, eventStrokePaint)
+        eventPaint.color = color
+        canvas.drawCircle(0f, 0f, 2f, eventPaint)
+    }
+
     private fun drawBolt(canvas: Canvas, cx: Float, cy: Float, size: Float) {
         val path = boltPath
-        val scale = size * BOLT_SCALE
+        val elapsed = SystemClock.uptimeMillis() - chargeStartedAt
+        val pulse = if (visual.charging &&
+            elapsed in ChargeMotion.SETTLE_START_MS..ChargeMotion.SETTLE_END_MS
+        ) {
+            val t = (elapsed - ChargeMotion.SETTLE_START_MS) /
+                (ChargeMotion.SETTLE_END_MS - ChargeMotion.SETTLE_START_MS).toFloat()
+            1f + ChargeMotion.SETTLE_SCALE * kotlin.math.sin(t * Math.PI).toFloat()
+        } else {
+            1f
+        }
+        val scale = size * BOLT_SCALE * pulse
+        val seatY = (-49.5f + visual.boltY) * (size / RingGeometry.ARTBOARD_SIZE)
         boltPaint.color = visual.tint
         canvas.save()
-        canvas.translate(cx - scale / 2f, cy - scale / 2f)
+        canvas.translate(cx - scale / 2f, cy + seatY - scale / 2f)
         canvas.scale(scale, scale)
         canvas.drawPath(path, boltPaint)
         canvas.restore()
@@ -327,18 +458,93 @@ internal class DuoCanvasView(
      * the signal exactly as Rive's `wifiMidOpacity` / `wifiOuterOpacity` do.
      */
     private fun drawWifi(canvas: Canvas, cx: Float, cy: Float, k: Float) {
+        val m = visual.middleScale
         val wx = cx + WIFI_CENTER_X * k
-        val wy = cy + WIFI_SLOT_Y * k
+        val wy = cy + (visual.middleY + WIFI_SLOT_Y * m) * k
         if (visual.wifiLevel > 0) {
             wifiPaint.style = Paint.Style.FILL
             wifiPaint.color = withAlpha(visual.fgColor, 1f)
-            canvas.drawCircle(wx, wy - WIFI_DOT_LIFT * k, WIFI_DOT_RADIUS * k, wifiPaint)
+            canvas.drawCircle(wx, wy - WIFI_DOT_LIFT * k * m, WIFI_DOT_RADIUS * k * m, wifiPaint)
         }
         wifiPaint.style = Paint.Style.STROKE
-        wifiPaint.strokeWidth = WIFI_STROKE * k
+        wifiPaint.strokeWidth = WIFI_STROKE * k * m
         wifiPaint.strokeCap = Paint.Cap.ROUND
-        drawWifiArc(canvas, wx, wy, WIFI_MID_RADIUS, k, visual.wifiMidOpacity)
-        drawWifiArc(canvas, wx, wy, WIFI_OUTER_RADIUS, k, visual.wifiOuterOpacity)
+        drawWifiArc(canvas, wx, wy, WIFI_MID_RADIUS * m, k, visual.wifiMidOpacity)
+        drawWifiArc(canvas, wx, wy, WIFI_OUTER_RADIUS * m, k, visual.wifiOuterOpacity)
+    }
+
+    /**
+     * Draws the live-event artwork in the event slot. The Rive scene owns the motion (alarm bounce,
+     * flashlight press); this fallback owns only the same final geometry, so an event never leaves
+     * the middle slot blank when the native renderer is unavailable.
+     */
+    private fun drawEventIcon(canvas: Canvas, cx: Float, cy: Float, k: Float) {
+        val color = withAlpha(visual.fgColor, 1f)
+        canvas.save()
+        canvas.translate(
+            cx + EVENT_SLOT_X * k,
+            cy + (visual.middleY + EVENT_SLOT_Y * visual.middleScale) * k
+        )
+        val eventScale = if (visual.eventType == LiveEventType.ALARM.riveId) {
+            EVENT_ICON_SCALE
+        } else {
+            1f
+        }
+        canvas.scale(
+            k * visual.middleScale * eventScale,
+            k * visual.middleScale * eventScale
+        )
+        val isFlashlight = visual.eventType == LiveEventType.FLASHLIGHT.riveId
+        if (isFlashlight) {
+            canvas.save()
+            canvas.scale(2.321f, 2.321f)
+            val progress = ((SystemClock.uptimeMillis() - flashlightStartedAt).toFloat() /
+                FLASHLIGHT_RAMP_MS).coerceIn(0f, 1f)
+            eventPaint.color = android.graphics.Color.argb(
+                (0x66 * progress).toInt(), 255, 255, 255
+            )
+            canvas.drawPath(flashlightBeamPath, eventPaint)
+        }
+        if (visual.eventType == LiveEventType.ALARM.riveId) {
+            drawAlarm(canvas, color)
+            canvas.restore()
+            return
+        }
+        if (visual.eventType == LiveEventType.SCREENSHOT.riveId) {
+            drawScreenshot(canvas, color)
+            canvas.restore()
+            return
+        }
+        val path = when (visual.eventType) {
+            LiveEventType.FLASHLIGHT.riveId -> flashlightPath
+            else -> {
+                canvas.restore()
+                return
+            }
+        }
+        eventPaint.color = color
+        canvas.drawPath(path, eventPaint)
+        if (isFlashlight) {
+            val progress = ((SystemClock.uptimeMillis() - flashlightStartedAt).toFloat() /
+                FLASHLIGHT_RAMP_MS).coerceIn(0f, 1f)
+            eventPaint.color = 0xFF121A2A.toInt()
+            eventStrokePaint.color = 0xFF121A2A.toInt()
+            eventStrokePaint.strokeWidth = 1.2f
+            canvas.drawLine(-5.7f, -7.3f, 5.7f, -7.3f, eventStrokePaint)
+            eventStrokePaint.strokeWidth = 3f
+            val track = RectF(-1.6f, -2.1f, 1.6f, 3.5f)
+            canvas.drawRoundRect(track, 1.6f, 1.6f, eventPaint)
+            eventPaint.color = android.graphics.Color.argb(
+                ((1f - progress) * 255).toInt(), 255, 184, 107
+            )
+            canvas.drawCircle(0f, 2.2f - 3.0f * progress, 0.9f, eventPaint)
+            eventPaint.color = android.graphics.Color.argb(
+                (progress * 255).toInt(), 255, 255, 255
+            )
+            canvas.drawCircle(0f, 2.2f - 3.0f * progress, 0.9f, eventPaint)
+            canvas.restore()
+        }
+        canvas.restore()
     }
 
     private fun drawWifiArc(canvas: Canvas, x: Float, y: Float, radius: Float, k: Float, opacity: Float) {
@@ -365,12 +571,10 @@ internal class DuoCanvasView(
 
     private companion object {
         const val TAG = "DuoSB"
-        const val DESIGN_SIZE = 103f  // ring diameter in design units: r 51.5
-        const val STROKE = 8f
         const val TRIM_ORIGIN = 270f  // Rive fraction 0 == 12 o'clock == canvas 270 degrees
-        const val TRACK_ALPHA = 0.22f
         const val MIN_SWEEP = 0.5f
         const val BOLT_SCALE = 0.55f
+        const val FLASHLIGHT_RAMP_MS = 500L
         val boltPath = Path().apply {
             moveTo(0.58f, 0.02f); lineTo(0.24f, 0.56f); lineTo(0.45f, 0.56f)
             lineTo(0.36f, 0.98f); lineTo(0.76f, 0.40f); lineTo(0.53f, 0.40f)
@@ -395,21 +599,52 @@ internal class DuoCanvasView(
         const val WIFI_DOT_RADIUS = 5.5f
         const val WIFI_DOT_LIFT = 3.2f
 
-        /**
-         * The four signal dots, design units from the ring centre. Same seats as the Rive ellipses.
-         * Each circle is 11 units across ([DOT_RADIUS]).
-         */
-        val CELL_DOTS = arrayOf(
-            floatArrayOf(-27f, 42.7f),
-            floatArrayOf(-9.5f, 49.7f),
-            floatArrayOf(8.5f, 50.2f),
-            floatArrayOf(26f, 44.3f)
-        )
-        const val DOT_RADIUS = 5.5f
+        /** The live-event slot, relative to the ring centre, matching Rive's eventGroup. */
+        const val EVENT_SLOT_X = -0.5f
+        /** Matches Rive's eventGroup local Y, inside the scaled middle/event slot. */
+        const val EVENT_SLOT_Y = 17f
 
-        /** The cellular label's centre, matching the Rive text node (group-relative y 1). */
+        /** Alarm artwork is authored at 2x; screenshot/flashlight paths are already final-size. */
+        const val EVENT_ICON_SCALE = 2.0f
+
+        /** Alarm silhouette from `scene.rml` (`eventAlarmIcon`). */
+        val alarmPath = Path().apply {
+            moveTo(-8f, -2f); lineTo(-6f, -8f); lineTo(-2f, -10f); lineTo(2f, -10f)
+            lineTo(6f, -8f); lineTo(8f, -2f); lineTo(9f, 4f); lineTo(8f, 8f)
+            lineTo(4f, 10f); lineTo(-4f, 10f); lineTo(-8f, 8f); lineTo(-9f, 4f)
+            close()
+        }
+
+        /** Owned vertical torch matching the QS affordance: cap bar, shoulders, handle, switch. */
+        val flashlightPath = Path().apply {
+            moveTo(-4.6f, -11f); lineTo(4.6f, -11f); lineTo(4.6f, -7.3f); lineTo(5.7f, -7.3f)
+            lineTo(3.2f, -3.1f); lineTo(3.2f, 9f)
+            cubicTo(3.2f, 10.1f, 2.5f, 11f, 1.4f, 11f)
+            cubicTo(0.5f, 11f, 0f, 11f, -1.4f, 11f)
+            cubicTo(-2.5f, 11f, -3.2f, 10.1f, -3.2f, 9f)
+            lineTo(-3.2f, -3.1f); lineTo(-5.7f, -7.3f); lineTo(-4.6f, -7.3f)
+            close()
+        }
+        /** Cone of light from the cap: narrow at the mouth, wider at the top. */
+        val flashlightBeamPath = Path().apply {
+            moveTo(-3f, -11f); lineTo(3f, -11f); lineTo(12f, -17f); lineTo(-12f, -17f)
+            close()
+        }
+        val flashlightBeamLeft = Path().apply { moveTo(-3f, -11f); lineTo(-10f, -25f) }
+        val flashlightBeamRight = Path().apply { moveTo(3f, -11f); lineTo(10f, -25f) }
+
+        /** Outline camera body; the lens is a separate stroked circle in `drawEventIcon`. */
+        val screenshotBodyPath = Path().apply {
+            moveTo(-19f, -9f); lineTo(-7f, -9f); lineTo(-4f, -13f); lineTo(4f, -13f)
+            lineTo(7f, -9f); lineTo(19f, -9f); lineTo(19f, 11f); lineTo(-19f, 11f)
+            close()
+        }
+
+        /** The cellular/clock label's centre, matching the Rive text node (group-relative y 1). */
         const val NETWORK_SLOT_Y = 1f
         const val NETWORK_FONT_SIZE = 30f
+        /** The Rive `network` Text's width; a longer clock shrinks to this, "5G" does not. */
+        const val NETWORK_MAX_WIDTH = 80f
 
         /**
          * The DND crescent, generated from the device's own `drawable/stat_sys_dnd` by

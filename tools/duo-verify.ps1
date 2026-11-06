@@ -18,8 +18,8 @@
     Every verdict below comes from a log line or a file — nothing is inferred from "it looked fine".
 #>
 param(
-    [string]$Adb = 'C:\Users\krom3\Desktop\platform-tools-latest-windows\platform-tools\adb.exe',
-    [string]$Device = '192.168.100.245:6666',
+    [string]$Adb = 'adb.exe',
+    [string]$Device = '[redacted]',
     [ValidateSet('off', 'icons', 'rive')][string]$Stage = 'icons',
     [switch]$SkipInstall
 )

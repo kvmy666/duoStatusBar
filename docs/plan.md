@@ -9,7 +9,7 @@ Requirement checkmarks live in [`REQUIREMENTS.md`](REQUIREMENTS.md).
 **Goal:** replace every assumption with evidence from the device, and get a building module.
 
 * `[x]` Git repo, module skeleton, Gradle 8.13 + AGP 8.13.2 + JBR 21 (same toolchain as Auto Expand)
-* `[x]` Tooling: adb (TCP `192.168.100.245:6666`), jadx 1.5.6, **Rive CLI 1.1.0** (local RML docs)
+* `[x]` Tooling: adb (TCP `[redacted]`), jadx 1.5.6, **Rive CLI 1.1.0** (local RML docs)
 * `[x]` Device SystemUI pulled (`reverse/SystemUI-device.apk`, MD5 `A6CD5483…`, 108 MB)
 * `[x]` Evidence collector: `ProbeHook`, `ViewProbe`, `ProbeReport` (P-00 … P-05)
 * `[x]` Docs: `DESIGN-duo.md`, `REQUIREMENTS.md`, `dependencies.md`, `architecture.drawio`, `install.md`

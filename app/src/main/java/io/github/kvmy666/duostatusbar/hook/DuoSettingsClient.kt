@@ -50,6 +50,10 @@ internal data class ModuleSettings(
     val iconColor: String,
     /** False leaves the icons Duo does not replace (silent, vibrate, alarm…) visible. */
     val hideOtherIcons: Boolean,
+    /** Whether Duo is drawn in the Quick Settings surface. */
+    val showInQs: Boolean,
+    /** Whether Duo is drawn in the full notification-shade header. */
+    val showInShade: Boolean,
     /** Whether Airplane mode may take the middle slot. Wi-Fi and 5G/4G stay eligible either way. */
     val showAirplane: Boolean,
     /**
@@ -79,7 +83,28 @@ internal data class ModuleSettings(
      * Percent of the icon's width kept in the strip. 100 is the full slot; 0 lets the other
      * status icons sit against the screen edge.
      */
-    val edgePadding: Int
+    val edgePadding: Int,
+    /**
+     * Which rendering engine the user asked for: "auto", "rive" or "canvas". Parsed with
+     * [DuoPrefs.normalizeEngine] so an unknown value cannot blank the bar.
+     */
+    val engineMode: String = DuoPrefs.ENGINE_AUTO,
+    val middleSlot: String = DuoPrefs.MIDDLE_SLOT_AUTO,
+    val showWifiGlyph: Boolean = true,
+    val showCellDots: Boolean = true,
+    val eventMask: Int = DuoPrefs.EVENT_ALL,
+    /** Whether a download may replace the ring's charging/battery display at all. */
+    val downloadProgressEnabled: Boolean = true,
+    /** Whether the main ring alternates its seat by one pixel each wall-clock hour. */
+    val burnInEnabled: Boolean = false,
+    /**
+     * Stock status-bar icons the user chose to hide, as the canonical CSV published by the app
+     * (for example `"alarm,battery,clock"`). Empty means none; [hideOtherIcons] is the separate
+     * legacy "hide all" flag.
+     */
+    val hiddenStockIcons: String = "",
+    /** Which ring drawing to load: [DuoPrefs.DESIGN_OLD] or [DuoPrefs.DESIGN_NEW]. */
+    val designStyle: String = DuoPrefs.DESIGN_OLD
 ) {
     /** Whether Do Not Disturb may take the middle of the ring. */
     val showDnd: Boolean get() = DuoPrefs.dndInMiddle(dndMode)
@@ -108,6 +133,8 @@ internal data class ModuleSettings(
             showChargingBolt = true,
             iconColor = "auto",
             hideOtherIcons = false,
+            showInQs = true,
+            showInShade = true,
             showAirplane = true,
             dndMode = DuoPrefs.DND_MIDDLE,
             simChoice = "auto",
@@ -116,7 +143,16 @@ internal data class ModuleSettings(
             indicatorsOffsetX = 0,
             lockRing = false,
             wifiDots = false,
-            edgePadding = DuoPrefs.DEFAULT_EDGE_PADDING
+            edgePadding = DuoPrefs.DEFAULT_EDGE_PADDING,
+            engineMode = DuoPrefs.ENGINE_AUTO,
+            middleSlot = DuoPrefs.MIDDLE_SLOT_AUTO,
+            showWifiGlyph = true,
+            showCellDots = true,
+            eventMask = DuoPrefs.EVENT_ALL,
+            downloadProgressEnabled = true,
+            burnInEnabled = false,
+            hiddenStockIcons = "",
+            designStyle = DuoPrefs.DESIGN_OLD
         )
     }
 }
@@ -209,17 +245,26 @@ internal object DuoSettingsClient {
                 @Suppress("UNCHECKED_CAST")
                 val values = intent.getSerializableExtra(SettingsBridge.EXTRA_VALUES) as? ArrayList<Any?>
                     ?: return
-                val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(values) }
+                if (values.isEmpty()) {
+                    L.i("settings bridge receive: values=${values.size} columns=${DuoPrefs.COLUMNS.size} using=0")
+                    return
+                }
+                val count = bridgeColumnCount(values.size, DuoPrefs.COLUMNS.size)
+                val names = DuoPrefs.COLUMNS.copyOf(count)
+                val cursor = MatrixCursor(names).apply { addRow(values.take(count).toTypedArray()) }
                 cursor.moveToFirst()
                 bridge = fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
                 bridgeLandscape = fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
                 providerUnreachable = false
-                L.i("settings bridge: rev ${bridge?.revision} received")
+                L.i("settings bridge receive: values=${values.size} columns=${DuoPrefs.COLUMNS.size} using=$count")
             } catch (t: Throwable) {
                 L.w("settings bridge receive: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
+
+    /** Skew-safe column count for a bridge push that may come from a different build. */
+    internal fun bridgeColumnCount(valueCount: Int, columnCount: Int): Int = minOf(valueCount, columnCount)
 
     /** Registers the bridge receiver once. Safe to call from the read path; never throws. */
     private fun ensureBridge(context: Context) {
@@ -389,6 +434,9 @@ internal object DuoSettingsClient {
         showChargingBolt = cursor.optionalBool(DuoPrefs.COL_SHOW_CHARGING_BOLT, true),
         iconColor = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ICON_COLOR)) ?: "auto",
         hideOtherIcons = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_HIDE_OTHER_ICONS)) == 1,
+        // Optional so a settings app that predates these columns keeps drawing both surfaces.
+        showInQs = cursor.optionalBool(DuoPrefs.COL_SHOW_IN_QS, true),
+        showInShade = cursor.optionalBool(DuoPrefs.COL_SHOW_IN_SHADE, true),
         showAirplane = cursor.optionalBool(
             DuoPrefs.COL_SHOW_AIRPLANE,
             cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_NETWORK_ONLY)) != 1
@@ -415,7 +463,30 @@ internal object DuoSettingsClient {
         // Missing means the full slot, so an older settings app does not suddenly pull the other icons
         // against the screen edge.
         edgePadding = cursor.optionalInt(DuoPrefs.COL_EDGE_PADDING, DuoPrefs.DEFAULT_EDGE_PADDING)
-            .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING)
+            .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING),
+        // Missing falls back to the legacy use_rive switch: Rive when it was on, Canvas otherwise.
+        engineMode = DuoPrefs.normalizeEngine(
+            cursor.optionalString(
+                DuoPrefs.COL_ENGINE_MODE,
+                if (cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_USE_RIVE)) == 1) DuoPrefs.ENGINE_AUTO
+                else DuoPrefs.ENGINE_CANVAS
+            )
+        ),
+        middleSlot = DuoPrefs.normalizeMiddleSlot(cursor.optionalString(DuoPrefs.COL_MIDDLE_SLOT, DuoPrefs.MIDDLE_SLOT_AUTO)),
+        // Optional so an older settings app keeps both glyphs.
+        showWifiGlyph = cursor.optionalBool(DuoPrefs.COL_SHOW_WIFI_GLYPH, true),
+        showCellDots = cursor.optionalBool(DuoPrefs.COL_SHOW_CELL_DOTS, true),
+        eventMask = cursor.optionalInt(DuoPrefs.COL_EVENT_MASK, DuoPrefs.EVENT_ALL) and DuoPrefs.EVENT_ALL,
+        // Optional: a settings app that predates the column keeps the download display on.
+        downloadProgressEnabled = cursor.optionalBool(DuoPrefs.COL_DOWNLOAD_PROGRESS, true),
+        // Optional: missing means the original fixed seat.
+        burnInEnabled = cursor.optionalBool(DuoPrefs.COL_BURN_IN, false),
+        // Optional: an older settings app has no per-icon list, which means hide nothing.
+        hiddenStockIcons = cursor.optionalString(DuoPrefs.COL_HIDDEN_STOCK_ICONS, ""),
+        // Optional: missing or unknown keeps the classic drawing, which is what existing installs draw.
+        designStyle = DuoPrefs.normalizeDesignStyle(
+            cursor.optionalString(DuoPrefs.COL_DESIGN_STYLE, DuoPrefs.DESIGN_OLD)
+        )
         )
     }
 
@@ -473,6 +544,8 @@ internal object DuoSettingsClient {
             showChargingBolt = bool(DuoPrefs.COL_SHOW_CHARGING_BOLT, portrait.showChargingBolt),
             iconColor = str(DuoPrefs.COL_ICON_COLOR, portrait.iconColor),
             hideOtherIcons = bool(DuoPrefs.COL_HIDE_OTHER_ICONS, portrait.hideOtherIcons),
+            showInQs = bool(DuoPrefs.COL_SHOW_IN_QS, portrait.showInQs),
+            showInShade = bool(DuoPrefs.COL_SHOW_IN_SHADE, portrait.showInShade),
             showAirplane = bool(DuoPrefs.COL_SHOW_AIRPLANE, portrait.showAirplane),
             dndMode = landscapeDndMode(portrait),
             simChoice = str(DuoPrefs.COL_SIM_CHOICE, portrait.simChoice),
@@ -486,7 +559,21 @@ internal object DuoSettingsClient {
             lockRing = bool(DuoPrefs.COL_LOCK_RING, portrait.lockRing),
             wifiDots = bool(DuoPrefs.COL_WIFI_DOTS, portrait.wifiDots),
             edgePadding = int(DuoPrefs.COL_EDGE_PADDING, portrait.edgePadding)
-                .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING)
+                .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING),
+            engineMode = DuoPrefs.normalizeEngine(str(DuoPrefs.COL_ENGINE_MODE, portrait.engineMode)),
+            middleSlot = DuoPrefs.normalizeMiddleSlot(str(DuoPrefs.COL_MIDDLE_SLOT, portrait.middleSlot)),
+            showWifiGlyph = bool(DuoPrefs.COL_SHOW_WIFI_GLYPH, portrait.showWifiGlyph),
+            showCellDots = bool(DuoPrefs.COL_SHOW_CELL_DOTS, portrait.showCellDots),
+            eventMask = int(DuoPrefs.COL_EVENT_MASK, portrait.eventMask) and DuoPrefs.EVENT_ALL,
+            downloadProgressEnabled = bool(
+                DuoPrefs.COL_DOWNLOAD_PROGRESS,
+                portrait.downloadProgressEnabled
+            ),
+            burnInEnabled = bool(DuoPrefs.COL_BURN_IN, portrait.burnInEnabled),
+            hiddenStockIcons = str(DuoPrefs.COL_HIDDEN_STOCK_ICONS, portrait.hiddenStockIcons),
+            designStyle = DuoPrefs.normalizeDesignStyle(
+                str(DuoPrefs.COL_DESIGN_STYLE, portrait.designStyle)
+            )
         )
     }
 
@@ -520,6 +607,22 @@ internal object DuoSettingsClient {
     fun reportFallback(context: Context, reason: String) {
         if (!reportViaProvider(context, "fallback", "fallback", reason)) {
             broadcastToApp(context, SettingsBridge.ACTION_FALLBACK_PUSH, SettingsBridge.EXTRA_FALLBACK, reason)
+        }
+    }
+
+    /**
+     * Publishes the live stock-icon inventory to the app (A4). The provider is tried first, exactly like
+     * [report]; only when it fails (the One UI 8 case) does the broadcast bridge carry the list. Never
+     * throws, because this runs inside System UI on attach and on every hiding pass.
+     */
+    fun reportStockIcons(context: Context, json: String) {
+        if (!reportViaProvider(context, "stock_icons", "stock_icons", json)) {
+            broadcastToApp(
+                context,
+                SettingsBridge.ACTION_STOCK_ICONS_PUSH,
+                SettingsBridge.EXTRA_STOCK_ICONS,
+                json
+            )
         }
     }
 

@@ -24,8 +24,65 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: No private evidence or private device data may be tracked
+        run: python3 tools/check-private-data.py
+
+      - name: Tag version must match the app version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            *-*) VERSION="${TAG#*-}" ;;
+            *)
+              echo "::error::tag '$TAG' is not in VersionCode-VersionName form"
+              exit 1
+              ;;
+          esac
+          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          if [ -z "$VERSION_NAME" ]; then
+            echo "::error::could not read versionName from app/build.gradle.kts"
+            exit 1
+          fi
+          if [ "$VERSION" != "$VERSION_NAME" ]; then
+            echo "::error::tag version '$VERSION' does not match versionName '$VERSION_NAME'"
+            exit 1
+          fi
+          echo "tag version matches versionName: $VERSION_NAME"
+
+      - name: Release notes heading must match the tag version
+        run: |
+          VERSION="${GITHUB_REF_NAME#*-}"
+          HEADING="$(head -n 1 RELEASE_NOTES.md)"
+          case "$HEADING" in
+            "# Duo Status Bar ${VERSION}"|"# Duo Status Bar ${VERSION} "*) ;;
+            *)
+              echo "::error::RELEASE_NOTES.md heading does not match tag version '$VERSION': $HEADING"
+              exit 1
+              ;;
+          esac
+          echo "release notes heading matches tag version: $VERSION"
+
       - name: Unit tests
         run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest --console=plain
+
+      # Safe gates mirroring ci.yml (static, non-network).
+
+      - name: Module logs must go through L
+        run: python3 tools/route-module-logs.py --check
+
+      - name: Rive keyframes must carry the ease they ask for
+        run: |
+          python3 tools/check-rive-eases.py rive/duo/scene.rml
+          python3 tools/check-rive-eases.py rive/duo/scene_old.rml
+
+      - name: Both Rive scenes must rebuild to the shipped .riv files
+        run: bash tools/build-rive-both.sh
+
+      - name: The provider authority must match the constant the module asks for
+        run: |
+          AUTHORITY='io.github.kvmy666.duostatusbar.settings'
+          grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
+          grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
+          echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
 
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
@@ -43,10 +100,11 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION_NAME="${TAG#*-}"
-          # A tag whose version carries "beta" is a pre-release: it must not be marked Latest, and it must
-          # not be promoted to the LSPosed store as the current stable build.
-          case "$VERSION_NAME" in
-            *beta*) PRERELEASE=true ;;
+          # alpha, beta and rc tags are pre-releases: they must not be marked Latest, and they must not
+          # be promoted to the LSPosed store as the current stable build.
+          VERSION_LOWER="$(printf '%s' "$VERSION_NAME" | tr '[:upper:]' '[:lower:]')"
+          case "$VERSION_LOWER" in
+            *alpha*|*beta*|*rc*) PRERELEASE=true ;;
             *) PRERELEASE=false ;;
           esac
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -64,14 +122,14 @@ jobs:
           name: v${{ steps.version.outputs.name }}
           files: DuoStatusBar-${{ steps.version.outputs.name }}.apk
           body_path: RELEASE_NOTES.md
-          # Betas are pre-releases: never Latest, never promoted as stable below.
-          prerelease: ${{ steps.version.outputs.prerelease }}
+          # alpha, beta and rc are pre-releases: never Latest, never promoted as stable below.
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
           make_latest: ${{ steps.version.outputs.prerelease == 'false' }}
 
       - name: Publish to Xposed-Modules-Repo
         env:
           GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
-        # Stable releases only: a beta must never become the store's "Latest".
+        # Stable releases only: a pre-release must never become the store's "Latest".
         if: env.GH_TOKEN != '' && steps.version.outputs.prerelease == 'false'
         run: |
           TAG="${{ steps.version.outputs.tag }}"

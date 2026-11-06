@@ -9,6 +9,7 @@ import android.content.res.Configuration
 import android.database.MatrixCursor
 import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.hook.DuoSettingsClient
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -53,7 +54,8 @@ class SettingsChannelTest {
             hideOtherIcons = false
         )
         DuoPrefs.write(context, written)
-        assertEquals(written, DuoPrefs.read(context))
+        // Writing useRive=false with the default AUTO engine normalises to an effective CANVAS engine.
+        assertEquals(written.copy(engineMode = DuoPrefs.ENGINE_CANVAS), DuoPrefs.read(context))
     }
 
     @Test
@@ -80,7 +82,7 @@ class SettingsChannelTest {
         )
         val read = DuoPrefs.read(context)
         assertEquals(DuoPrefs.MAX_SIZE, read.sizePercent)
-        assertEquals(DuoPrefs.MAX_UNLOCKED_RING_OFFSET, read.offsetX)
+        assertEquals(0, read.offsetX)
         assertEquals(DuoPrefs.MAX_PERCENT_HEIGHT, read.percentHeight)
         assertEquals(DuoPrefs.MAX_INDICATORS_OFFSET, read.indicatorsOffsetX)
     }
@@ -92,6 +94,30 @@ class SettingsChannelTest {
             DuoSettings(splitIndicators = true, lockRing = true, offsetX = 9_999)
         )
 
+        assertEquals(9_999, DuoPrefs.read(context).offsetX)
+    }
+
+    @Test
+    fun `normal ring offset clamps to the right-anchored range`() {
+        DuoPrefs.write(
+            context,
+            DuoSettings(splitIndicators = true, lockRing = false, offsetX = 9_999)
+        )
+        assertEquals(0, DuoPrefs.read(context).offsetX)
+
+        DuoPrefs.write(
+            context,
+            DuoSettings(splitIndicators = true, lockRing = false, offsetX = -9_999)
+        )
+        assertEquals(-DuoPrefs.MAX_UNLOCKED_RING_OFFSET, DuoPrefs.read(context).offsetX)
+    }
+
+    @Test
+    fun `lockRing alone switches centered mode regardless of splitIndicators`() {
+        DuoPrefs.write(
+            context,
+            DuoSettings(splitIndicators = false, lockRing = true, offsetX = 9_999)
+        )
         assertEquals(9_999, DuoPrefs.read(context).offsetX)
     }
 
@@ -119,7 +145,8 @@ class SettingsChannelTest {
                 indicatorsLongPressAction = "toggle_power_saving",
                 percentHeight = 40,
                 splitIndicators = true,
-                indicatorsOffsetX = -18
+                indicatorsOffsetX = -18,
+                downloadProgressEnabled = false
             ),
             revision = 42L
         )
@@ -161,9 +188,224 @@ class SettingsChannelTest {
         assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_WIFI_DOTS)])
         assertEquals(DuoPrefs.DEFAULT_EDGE_PADDING, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_EDGE_PADDING)])
         assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_LOCK_RING)])
+        // The download switch travels in both sets; burn-in and the per-icon list follow it.
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DOWNLOAD_PROGRESS)])
+        assertEquals(
+            0,
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DOWNLOAD_PROGRESS)]
+        )
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_BURN_IN)])
+        assertEquals(
+            0,
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_BURN_IN)]
+        )
+        // Per-icon hiding is empty until the user picks icons; it travels in both sets too.
+        assertEquals("", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_HIDDEN_STOCK_ICONS)])
+        assertEquals(
+            "",
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS)]
+        )
+        // The classic drawing is the default, in both orientations.
+        assertEquals(DuoPrefs.DESIGN_OLD, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DESIGN_STYLE)])
+        assertEquals(
+            DuoPrefs.DESIGN_OLD,
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE)]
+        )
         // One set published alone is copied into the landscape columns, so rotation does not go blank.
         assertEquals(130, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIZE_PERCENT)])
         assertEquals(7, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_OFFSET_X)])
+    }
+
+    @Test
+    fun `design style is appended last without moving hidden stock icons`() {
+        // Append-only: existing installs read the old positions, so the new column may never move.
+        assertEquals(87, DuoPrefs.COLUMNS.size)
+        assertEquals(44, DuoPrefs.PORTRAIT_COLUMNS.size)
+        assertEquals(43, DuoPrefs.LANDSCAPE_COLUMNS.size)
+        assertEquals(DuoPrefs.COL_DESIGN_STYLE, DuoPrefs.PORTRAIT_COLUMNS.last())
+        assertEquals(
+            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 1]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.LANDSCAPE_COLUMNS.last()
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 1]
+        )
+        assertEquals(87, DuoSettingsProvider.rowFor(DuoSettings(), 1L).size)
+
+        val oldOrder = arrayOf(
+            DuoPrefs.COL_ENABLED, DuoPrefs.COL_USE_RIVE, DuoPrefs.COL_SHOW_PERCENT,
+            DuoPrefs.COL_SIZE_PERCENT, DuoPrefs.COL_OFFSET_X, DuoPrefs.COL_LIVE_APPLY,
+            DuoPrefs.COL_CLOCK_FONT, DuoPrefs.COL_REVISION, DuoPrefs.COL_TAP,
+            DuoPrefs.COL_DOUBLE_TAP, DuoPrefs.COL_LONG_PRESS, DuoPrefs.COL_REVEAL_MS,
+            DuoPrefs.COL_ANIMATIONS, DuoPrefs.COL_ARRIVAL, DuoPrefs.COL_DEPARTURE,
+            DuoPrefs.COL_CHARGING, DuoPrefs.COL_ICON_COLOR, DuoPrefs.COL_HIDE_OTHER_ICONS,
+            DuoPrefs.COL_NETWORK_ONLY, DuoPrefs.COL_SIM_CHOICE, DuoPrefs.COL_PERCENT_HEIGHT,
+            DuoPrefs.COL_SPLIT_INDICATORS, DuoPrefs.COL_INDICATORS_OFFSET_X, DuoPrefs.COL_WIFI_DOTS,
+            DuoPrefs.COL_SHOW_AIRPLANE, DuoPrefs.COL_SHOW_DND, DuoPrefs.COL_EDGE_PADDING,
+            DuoPrefs.COL_DND_MODE, DuoPrefs.COL_SHOW_CHARGING_BOLT, DuoPrefs.COL_LOCK_RING,
+            DuoPrefs.COL_INDICATORS_TAP, DuoPrefs.COL_INDICATORS_DOUBLE_TAP,
+            DuoPrefs.COL_INDICATORS_LONG_PRESS, DuoPrefs.COL_SHOW_IN_QS,
+            DuoPrefs.COL_SHOW_IN_SHADE, DuoPrefs.COL_ENGINE_MODE, DuoPrefs.COL_MIDDLE_SLOT,
+            DuoPrefs.COL_SHOW_WIFI_GLYPH, DuoPrefs.COL_SHOW_CELL_DOTS, DuoPrefs.COL_EVENT_MASK,
+            DuoPrefs.COL_DOWNLOAD_PROGRESS
+        )
+        assertArrayEquals(
+            "appending new columns must not move any column an existing install already reads",
+            oldOrder,
+            DuoPrefs.PORTRAIT_COLUMNS.copyOf(oldOrder.size)
+        )
+    }
+
+    @Test
+    fun `download progress still round trips after burn-in is appended`() {
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        DuoPrefs.write(
+            context,
+            DuoSettings(downloadProgressEnabled = false),
+            DuoOrientation.PORTRAIT
+        )
+        DuoPrefs.write(
+            context,
+            DuoSettings(downloadProgressEnabled = true),
+            DuoOrientation.LANDSCAPE
+        )
+        val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
+        val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
+        assertFalse(portrait.downloadProgressEnabled)
+        assertTrue(landscape.downloadProgressEnabled)
+
+        val row = DuoSettingsProvider.rowFor(portrait, revision = 1L, landscape)
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DOWNLOAD_PROGRESS)])
+        assertEquals(
+            1,
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DOWNLOAD_PROGRESS)]
+        )
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row.toList()) }
+        cursor.moveToFirst()
+        assertFalse(
+            DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+                .downloadProgressEnabled
+        )
+        assertTrue(
+            DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
+                .downloadProgressEnabled
+        )
+    }
+
+    @Test
+    fun `burn-in round trips through prefs, the provider row, and the module client`() {
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        DuoPrefs.write(context, DuoSettings(burnInEnabled = true), DuoOrientation.PORTRAIT)
+        DuoPrefs.write(context, DuoSettings(burnInEnabled = false), DuoOrientation.LANDSCAPE)
+
+        val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
+        val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
+        assertTrue(portrait.burnInEnabled)
+        assertFalse(landscape.burnInEnabled)
+
+        val row = DuoSettingsProvider.rowFor(portrait, revision = 1L, landscape)
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_BURN_IN)])
+        assertEquals(
+            0,
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_BURN_IN)]
+        )
+
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row.toList()) }
+        cursor.moveToFirst()
+        assertTrue(
+            DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT).burnInEnabled
+        )
+        assertFalse(
+            DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE).burnInEnabled
+        )
+    }
+
+    @Test
+    fun `hidden stock icons round trip through prefs, the provider row, and the module client`() {
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        DuoPrefs.write(
+            context,
+            DuoSettings(
+                hideOtherIcons = true,
+                hiddenStockIcons = "wifi, battery,alarm,battery"
+            ),
+            DuoOrientation.PORTRAIT
+        )
+        DuoPrefs.write(
+            context,
+            DuoSettings(hideOtherIcons = false, hiddenStockIcons = "clock"),
+            DuoOrientation.LANDSCAPE
+        )
+
+        val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
+        val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
+        assertEquals("alarm,battery,wifi", portrait.hiddenStockIcons)
+        assertEquals("clock", landscape.hiddenStockIcons)
+
+        val row = DuoSettingsProvider.rowFor(portrait, revision = 1L, landscape)
+        assertEquals(
+            "alarm,battery,wifi",
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_HIDDEN_STOCK_ICONS)]
+        )
+        assertEquals(
+            "clock",
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS)]
+        )
+        // The legacy "hide all" switch is still its own value, not implied by an icon list.
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_HIDE_OTHER_ICONS)])
+        assertEquals(
+            0,
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDE_OTHER_ICONS)]
+        )
+
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row.toList()) }
+        cursor.moveToFirst()
+        val clientPortrait =
+            DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        val clientLandscape =
+            DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
+        assertEquals("alarm,battery,wifi", clientPortrait.hiddenStockIcons)
+        assertEquals("clock", clientLandscape.hiddenStockIcons)
+        assertTrue(clientPortrait.hideOtherIcons)
+        assertFalse(clientLandscape.hideOtherIcons)
+    }
+
+    @Test
+    fun `a row without design style keeps the classic drawing`() {
+        val columns = DuoPrefs.PORTRAIT_COLUMNS
+            .filter { it != DuoPrefs.COL_DESIGN_STYLE }
+            .toTypedArray()
+        val full = DuoSettingsProvider.rowFor(DuoSettings(designStyle = DuoPrefs.DESIGN_NEW), 1L)
+        val values = full.copyOfRange(0, DuoPrefs.PORTRAIT_COLUMNS.size).toMutableList()
+        values.removeAt(DuoPrefs.PORTRAIT_COLUMNS.indexOf(DuoPrefs.COL_DESIGN_STYLE))
+        val cursor = MatrixCursor(columns).apply { addRow(values) }
+        cursor.moveToFirst()
+
+        assertEquals(
+            DuoPrefs.DESIGN_OLD,
+            DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT).designStyle
+        )
+    }
+
+    @Test
+    fun `a row without burn-in keeps the original fixed seat`() {
+        val columns = DuoPrefs.PORTRAIT_COLUMNS
+            .filter { it != DuoPrefs.COL_BURN_IN }
+            .toTypedArray()
+        val full = DuoSettingsProvider.rowFor(DuoSettings(burnInEnabled = true), 1L)
+        val values = full.copyOfRange(0, DuoPrefs.PORTRAIT_COLUMNS.size).toMutableList()
+        values.removeAt(DuoPrefs.PORTRAIT_COLUMNS.indexOf(DuoPrefs.COL_BURN_IN))
+        val cursor = MatrixCursor(columns).apply { addRow(values) }
+        cursor.moveToFirst()
+
+        assertFalse(
+            DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT).burnInEnabled
+        )
     }
 
     @Test
@@ -282,6 +524,37 @@ class SettingsChannelTest {
     }
 
     @Test
+    fun `the QS and shade surface toggles travel through the channel`() {
+        DuoPrefs.write(context, DuoSettings(showInQs = false, showInShade = true))
+        val read = DuoPrefs.read(context)
+        assertEquals(false, read.showInQs)
+        assertEquals(true, read.showInShade)
+        val row = DuoSettingsProvider.rowFor(read, revision = 1L)
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_IN_QS)])
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_IN_SHADE)])
+        assertEquals(
+            0,
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SHOW_IN_QS)]
+        )
+    }
+
+    @Test
+    fun `a row without the surface toggles keeps both surfaces on`() {
+        val columns = DuoPrefs.PORTRAIT_COLUMNS
+            .filter { it != DuoPrefs.COL_SHOW_IN_QS && it != DuoPrefs.COL_SHOW_IN_SHADE }
+            .toTypedArray()
+        val full = DuoSettingsProvider.rowFor(DuoSettings(), 1L)
+        val values = full.copyOfRange(0, DuoPrefs.PORTRAIT_COLUMNS.size).toMutableList()
+        values.removeAt(DuoPrefs.PORTRAIT_COLUMNS.indexOf(DuoPrefs.COL_SHOW_IN_SHADE))
+        values.removeAt(DuoPrefs.PORTRAIT_COLUMNS.indexOf(DuoPrefs.COL_SHOW_IN_QS))
+        val cursor = MatrixCursor(columns).apply { addRow(values) }
+        cursor.moveToFirst()
+        val read = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        assertEquals(true, read.showInQs)
+        assertEquals(true, read.showInShade)
+    }
+
+    @Test
     fun `an arrival duration is snapped to one the Rive file can actually play`() {
         // The file holds one timeline at five speeds. Anything between two of them has to become one of
         // them, or the state machine would simply never fire and the element would never arrive.
@@ -338,7 +611,7 @@ class SettingsChannelTest {
         context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
         DuoPrefs.write(
             context,
-            DuoSettings(enabled = true, sizePercent = 80, offsetX = 10, iconColor = "black"),
+            DuoSettings(enabled = true, sizePercent = 80, offsetX = -10, iconColor = "black"),
             DuoOrientation.PORTRAIT
         )
         DuoPrefs.write(
@@ -349,7 +622,7 @@ class SettingsChannelTest {
         val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
         val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
         assertEquals(80, portrait.sizePercent)
-        assertEquals(10, portrait.offsetX)
+        assertEquals(-10, portrait.offsetX)
         assertEquals(true, portrait.enabled)
         assertEquals("black", portrait.iconColor)
         assertEquals(false, portrait.wifiDots)
@@ -363,10 +636,10 @@ class SettingsChannelTest {
     @Test
     fun `landscape starts as a copy of portrait until it is edited`() {
         context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
-        DuoPrefs.write(context, DuoSettings(sizePercent = 140, offsetX = 12, showPercent = false), DuoOrientation.PORTRAIT)
+        DuoPrefs.write(context, DuoSettings(sizePercent = 140, offsetX = -12, showPercent = false), DuoOrientation.PORTRAIT)
         val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
         assertEquals(140, landscape.sizePercent)
-        assertEquals(12, landscape.offsetX)
+        assertEquals(-12, landscape.offsetX)
         assertEquals(false, landscape.showPercent)
     }
 
@@ -425,4 +698,110 @@ class SettingsChannelTest {
         assertEquals(6, inLandscape.offsetX)
         assertEquals(3L, inLandscape.revision)
     }
+
+    @Test
+    fun `engineMode round trips for auto rive and canvas`() {
+        for (mode in listOf(DuoPrefs.ENGINE_AUTO, DuoPrefs.ENGINE_RIVE, DuoPrefs.ENGINE_CANVAS)) {
+            val written = DuoSettings(enabled = true, engineMode = mode, useRive = mode != DuoPrefs.ENGINE_CANVAS)
+            DuoPrefs.write(context, written)
+            assertEquals(written, DuoPrefs.read(context))
+        }
+    }
+
+    @Test
+    fun `legacy useRive false maps to canvas`() {
+        val written = DuoSettings(enabled = true, useRive = false)
+        DuoPrefs.write(context, written)
+        val read = DuoPrefs.read(context)
+        assertEquals(DuoPrefs.ENGINE_CANVAS, read.engineMode)
+        assertFalse(read.useRive)
+    }
+
+    @Test
+    fun `provider row includes engine_mode`() {
+        val row = DuoSettingsProvider.rowFor(DuoSettings(engineMode = DuoPrefs.ENGINE_RIVE), revision = 7L)
+        assertEquals(
+            DuoPrefs.ENGINE_RIVE,
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_ENGINE_MODE)]
+        )
+    }
+
+    @Test
+    fun `normalizeEngine accepts auto rive canvas and defaults unknown to auto`() {
+        assertEquals(DuoPrefs.ENGINE_AUTO, DuoPrefs.normalizeEngine(DuoPrefs.ENGINE_AUTO))
+        assertEquals(DuoPrefs.ENGINE_RIVE, DuoPrefs.normalizeEngine(DuoPrefs.ENGINE_RIVE))
+        assertEquals(DuoPrefs.ENGINE_CANVAS, DuoPrefs.normalizeEngine(DuoPrefs.ENGINE_CANVAS))
+        assertEquals(DuoPrefs.ENGINE_AUTO, DuoPrefs.normalizeEngine("nope"))
+        assertEquals(DuoPrefs.ENGINE_AUTO, DuoPrefs.normalizeEngine(null))
+    }
+
+    @Test
+    fun `middle slot percent round trips and travels through the channel`() {
+        DuoPrefs.write(context, DuoSettings(middleSlot = DuoPrefs.MIDDLE_SLOT_PERCENT))
+        assertEquals(DuoPrefs.MIDDLE_SLOT_PERCENT, DuoPrefs.read(context).middleSlot)
+        val row = DuoSettingsProvider.rowFor(DuoPrefs.read(context), revision = 1L)
+        assertEquals(
+            "percent",
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_MIDDLE_SLOT)]
+        )
+    }
+
+
+
+    @Test
+    fun `middle slot clock round trips and travels through the channel`() {
+        DuoPrefs.write(context, DuoSettings(middleSlot = DuoPrefs.MIDDLE_SLOT_CLOCK))
+        assertEquals(DuoPrefs.MIDDLE_SLOT_CLOCK, DuoPrefs.read(context).middleSlot)
+        val row = DuoSettingsProvider.rowFor(DuoPrefs.read(context), revision = 1L)
+        assertEquals(
+            "clock",
+            row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_MIDDLE_SLOT)]
+        )
+    }
+
+
+
+    @Test
+    fun `event mask round trips alarm disabled and screenshot enabled`() {
+        val mask = DuoPrefs.EVENT_ALL and DuoPrefs.EVENT_ALARM.inv()
+        DuoPrefs.write(context, DuoSettings(eventMask = mask))
+        assertEquals(mask, DuoPrefs.read(context).eventMask)
+        val row = DuoSettingsProvider.rowFor(DuoPrefs.read(context), revision = 1L)
+        assertEquals(mask, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_EVENT_MASK)])
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row.toList()) }
+        cursor.moveToFirst()
+        val fromRow = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        assertEquals(mask, fromRow.eventMask)
+        assertFalse(DuoPrefs.eventEnabled(fromRow.eventMask, DuoPrefs.EVENT_ALARM))
+        assertTrue(DuoPrefs.eventEnabled(fromRow.eventMask, DuoPrefs.EVENT_SCREENSHOT))
+    }
+
+    @Test
+    fun `a row without the event mask defaults to all events`() {
+        val columns = DuoPrefs.PORTRAIT_COLUMNS.filter { it != DuoPrefs.COL_EVENT_MASK }.toTypedArray()
+        val full = DuoSettingsProvider.rowFor(DuoSettings(), 1L)
+        val values = full.copyOfRange(0, DuoPrefs.PORTRAIT_COLUMNS.size).toMutableList()
+        values.removeAt(DuoPrefs.PORTRAIT_COLUMNS.indexOf(DuoPrefs.COL_EVENT_MASK))
+        val cursor = MatrixCursor(columns).apply { addRow(values) }
+        cursor.moveToFirst()
+        val read = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        assertEquals(DuoPrefs.EVENT_ALL, read.eventMask)
+    }
+
+    @Test
+    fun `wifi glyph and cell dots round trip through prefs and provider row`() {
+        DuoPrefs.write(context, DuoSettings(showWifiGlyph = false, showCellDots = true))
+        val read = DuoPrefs.read(context)
+        assertEquals(false, read.showWifiGlyph)
+        assertEquals(true, read.showCellDots)
+        val row = DuoSettingsProvider.rowFor(read, revision = 1L)
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_WIFI_GLYPH)])
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_CELL_DOTS)])
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row.toList()) }
+        cursor.moveToFirst()
+        val fromRow = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        assertEquals(false, fromRow.showWifiGlyph)
+        assertEquals(true, fromRow.showCellDots)
+    }
+
 }

@@ -18,7 +18,11 @@ import app.rive.runtime.kotlin.renderers.Renderer
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RiveInit
-import java.util.zip.ZipFile
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+
+/** The raw drawing for [designStyle]; an unknown value keeps the classic drawing. Pure and testable. */
+internal fun rawResourceFor(designStyle: String?): Int =
+    if (DuoPrefs.normalizeDesignStyle(designStyle) == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo
 
 /**
  * The Duo element (the real one), drawn by Rive inside the SystemUI process.
@@ -37,8 +41,11 @@ import java.util.zip.ZipFile
  */
 internal class DuoRiveView(
     context: Context,
-    part: DuoPart = DuoPart.ALL
+    part: DuoPart = DuoPart.ALL,
+    designStyle: String = DuoPrefs.DESIGN_OLD
 ) : FrameLayout(context), DuoElement {
+
+    internal val designStyle: String = DuoPrefs.normalizeDesignStyle(designStyle)
 
     private var rive: RiveAnimationView? = null
     private var viewModelInstance: ViewModelInstance? = null
@@ -51,6 +58,7 @@ internal class DuoRiveView(
     private var started = false
     private var polls = 0
     private var pendingVisual: DuoVisual? = null
+    private var assetLogged = false
 
     /** The newest snapshot. The fill animation draws intermediates of this, not a second source. */
     private var targetVisual: DuoVisual? = null
@@ -151,6 +159,7 @@ internal class DuoRiveView(
                 // up and handed to Auto Expand. Letting Rive consume touches would swallow it instead.
                 .setTouchPassThrough(true)
             val view = GuardedRiveView(builder)
+            ensureInjectedViewId(view, this)
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             rive = view
 
@@ -177,6 +186,8 @@ internal class DuoRiveView(
      */
     private fun pollForInstance() {
         postDelayed({
+            // teardown() clears both fields; a disposed view must not keep polling (or bind late).
+            if (!started || rive == null) return@postDelayed
             if (viewModelInstance != null) return@postDelayed
             try {
                 val machine = rive?.stateMachines?.firstOrNull()
@@ -347,36 +358,23 @@ internal class DuoRiveView(
     // ---------------------------------------------------------------------- asset loading
 
     /**
-     * Reads `res/raw/duo.riv` from the module APK. Two independent routes because the module is a
-     * guest here: its own classloader first, then the APK path reported by PackageManager.
+     * Reads the selected drawing from the module APK through the module's own resource table.
+     *
+     * R8/resource shrinking renames `res/raw/duo.riv` to a short name (`res/zy.riv` on 1.0.1), so
+     * reading by path silently fails and the element quietly falls back to Canvas. `openRawResource`
+     * resolves the id, not the name, so the rename cannot break it.
      */
     private fun loadRiveBytes(): ByteArray? {
-        // Route 1, the only one that survives a release build: the module's own resource table.
-        // R8/resource shrinking renames `res/raw/duo.riv` to a short name (`res/zy.riv` on 1.0.1),
-        // so reading by path - the routes below - silently fails and the element quietly falls back
-        // to Canvas. `openRawResource` resolves the id, not the name, so the rename cannot break it.
-        try {
-            val moduleContext = context.createPackageContext(MODULE_PACKAGE, 0)
-            moduleContext.resources.openRawResource(R.raw.duo).use { return it.readBytes() }
-        } catch (t: Throwable) {
-            L.w("module resource route failed: ${t.javaClass.simpleName}: ${t.message}")
+        val resource = rawResourceFor(designStyle)
+        if (!assetLogged) {
+            assetLogged = true
+            L.i("Rive asset: $designStyle (res 0x${resource.toString(16)})")
         }
-        // Route 2: the module classloader (works in debug builds, where nothing is renamed).
-        try {
-            DuoRiveView::class.java.classLoader
-                ?.getResourceAsStream(RAW_ENTRY)
-                ?.use { return it.readBytes() }
-        } catch (t: Throwable) {
-            L.w("classloader route failed: ${t.message}")
-        }
-        // Route 3: the APK zip by path (unrenamed builds only).
         return try {
-            val apk = context.packageManager.getApplicationInfo(MODULE_PACKAGE, 0).sourceDir
-            ZipFile(apk).use { zip ->
-                zip.getEntry(RAW_ENTRY)?.let { zip.getInputStream(it).readBytes() }
-            }
+            val moduleContext = context.createPackageContext(MODULE_PACKAGE, 0)
+            moduleContext.resources.openRawResource(resource).use { it.readBytes() }
         } catch (t: Throwable) {
-            L.e("APK route failed: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("Rive asset $designStyle unreadable: ${t.javaClass.simpleName}: ${t.message}")
             null
         }
     }
@@ -384,7 +382,6 @@ internal class DuoRiveView(
     companion object {
         private const val TAG = "DuoSB"
         private const val MODULE_PACKAGE = "io.github.kvmy666.duostatusbar"
-        private const val RAW_ENTRY = "res/raw/duo.riv"
         private const val ARTBOARD = "Duo"
         private const val STATE_MACHINE = "Duo"
 

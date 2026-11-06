@@ -11,37 +11,40 @@
     <!-- Battery icon -->
     <string name="section_element">Battery icon</string>
     <string name="settings_master">Use Duo Status Bar</string>
-    <string name="settings_master_detail">Turns the ring on or off.</string>
+    <string name="settings_master_detail">Turn the ring on or off.</string>
     <string name="settings_percent">Show battery percentage</string>
     <string name="settings_percent_detail">Show the battery number in the ring.</string>
     <string name="settings_show_charging_bolt">Show charging bolt</string>
-    <string name="settings_show_charging_bolt_detail">Draw the bolt while charging. Turning the charging animation off only skips the travel.</string>
+    <string name="settings_show_charging_bolt_detail">Draws bolt while charging. Turn off charging animation to skip bolt.</string>
     <string name="settings_percent_height">Percentage height</string>
-    <string name="settings_percent_height_detail">Raise the number above a camera cutout.</string>
+    <string name="settings_percent_height_detail">Raise the number above a camera hole.</string>
     <string name="settings_size">Size</string>
-    <string name="settings_size_restart">Restart System UI to apply the new size.</string>
-    <string name="settings_restart">Restart System UI</string>
+    <string name="settings_size_restart">Restart to apply the new size.</string>
+    <string name="settings_restart">Restart</string>
     <string name="settings_live_apply">Apply changes live</string>
-    <string name="settings_live_apply_detail">Apply size and position instantly.</string>
+    <string name="settings_live_apply_detail">Apply size and position right away.</string>
     <string name="settings_position">Position</string>
-    <string name="settings_position_hint">Drag left or right</string>
+    <string name="settings_position_hint">Drag left or right.</string>
     <string name="settings_split">Icons outside the ring</string>
     <string name="settings_split_detail">Move Wi-Fi and signal icons outside the ring.</string>
     <string name="settings_lock_ring">Lock ring to the screen</string>
-    <string name="settings_lock_ring_detail">Holds the ring on the center of the screen</string>
+    <string name="settings_burn_in">Burn-in protection</string>
+    <string name="settings_burn_in_detail">Shifts ring hourly while screen on. Leave off if your phone does this.</string>
+    <string name="settings_lock_ring_detail">Keep the ring in the middle of the screen.</string>
     <string name="settings_ring_position">Ring position</string>
-    <string name="settings_ring_position_hint">Drag the ring</string>
+    <string name="settings_ring_position_hint">Drag the ring.</string>
     <string name="settings_ring_position_locked_hint">Zero is the middle of the screen. Drag left or right from there.</string>
     <string name="settings_indicators_position">Icon position</string>
-    <string name="settings_indicators_position_hint">Drag the icons</string>
+    <string name="settings_indicators_position_hint">Drag the icons.</string>
     <string name="settings_edge_padding">Edge spacing</string>
     <string name="settings_edge_padding_detail">Room for your other status icons.</string>
     <string name="settings_position_reset">Reset</string>
+    <string name="settings_position_value">Position %1$d</string>
 
     <!-- Animations -->
     <string name="section_animations">Animations</string>
     <string name="settings_animations">Animations</string>
-    <string name="settings_animations_detail">Master switch for all motion.</string>
+    <string name="settings_animations_detail">Turn all motion on or off.</string>
     <string name="settings_anim_speed">Speed</string>
     <string name="settings_anim_arrival">Appear</string>
     <string name="settings_anim_arrival_detail">Bounce when the screen turns on.</string>
@@ -54,18 +57,24 @@
     <!-- Appearance -->
     <string name="section_look">Appearance</string>
     <string name="settings_renderer">Smooth graphics</string>
-    <string name="settings_renderer_detail">Off if the icon looks wrong or lags.</string>
+    <string name="settings_renderer_detail">Turn off if the icon looks wrong or lags.</string>
     <string name="settings_clock_font">System-font clock</string>
-    <string name="settings_clock_font_detail">Match the clock to the ring\'s font.</string>
+    <string name="settings_clock_font_detail">Match the clock font to the ring.</string>
     <string name="settings_icon_color">Icon colour</string>
     <string name="settings_icon_color_auto">Match status bar</string>
     <string name="settings_icon_color_black">Black</string>
     <string name="settings_icon_color_white">White</string>
     <string name="settings_middle_slot">Middle of the ring</string>
-    <string name="settings_middle_slot_detail">Wi-Fi and 5G/4G sit here.</string>
+    <string name="settings_middle_slot_detail">Choose what sits in the middle of the ring. Auto keeps the default order.</string>
+    <string name="middle_slot_auto">Auto</string>
+    <string name="middle_slot_wifi">Wi-Fi</string>
+    <string name="middle_slot_cell">Cellular</string>
+    <string name="middle_slot_percent">Battery %</string>
+    <string name="middle_slot_clock">Clock</string>
+    <string name="middle_slot_charging">Charging %</string>
     <string name="settings_show_airplane">Airplane mode</string>
     <string name="settings_show_dnd">Do Not Disturb</string>
-    <string name="settings_dnd_detail">Where the moon shows while DND is on.</string>
+    <string name="settings_dnd_detail">Where the moon shows when Do Not Disturb is on.</string>
     <string name="settings_dnd_off">Off</string>
     <string name="settings_dnd_middle">Middle of the ring</string>
     <string name="settings_dnd_dots">Signal dots</string>
@@ -75,7 +84,7 @@
     <string name="settings_sim_1">SIM 1</string>
     <string name="settings_sim_2">SIM 2</string>
     <string name="settings_wifi_dots">Signal dots follow Wi-Fi</string>
-    <string name="settings_wifi_dots_detail">Dots show Wi-Fi in Airplane mode.</string>
+    <string name="settings_wifi_dots_detail">Dots show Wi-Fi in airplane mode.</string>
 
     <!-- Customize -->
     <string name="section_customize">Customize your Duo</string>
@@ -83,19 +92,30 @@
 
     <!-- Tap actions -->
     <string name="section_actions">Tap actions</string>
-    <string name="settings_gestures_note">Taps are handled by Auto Expand.</string>
+    <string name="settings_gestures_note">Taps are handled by the Auto Expand app.</string>
     <string name="settings_gestures_missing">Tap actions need the Auto Expand app.</string>
     <string name="settings_ring_actions">Ring</string>
     <string name="settings_indicator_actions">Icons</string>
-    <string name="settings_download_tap_note">While download progress is on the ring, single-tap the ring to switch between download progress and the battery. This temporarily replaces the ring’s configured single-tap action.</string>
+    <string name="settings_download_tap_note">Tap the ring to switch download/battery. Replaces single-tap briefly.</string>
     <string name="settings_tap">Single tap</string>
     <string name="settings_double_tap">Double tap</string>
     <string name="settings_long_press">Long press</string>
 
     <!-- Status bar icons (issue #4) -->
+    <string name="section_surfaces">Surfaces</string>
+    <string name="settings_show_in_qs">Show Duo in Quick Settings</string>
+    <string name="settings_show_in_qs_detail">Off keeps the Quick Settings header as is.</string>
+    <string name="settings_show_in_shade">Show Duo in the notification panel</string>
+    <string name="settings_show_in_shade_detail">Off keeps the notification panel header as is.</string>
     <string name="section_icons">Status bar icons</string>
     <string name="settings_hide_other_icons">Hide other status icons</string>
     <string name="settings_hide_other_icons_detail">Show only the ring.</string>
+    <string name="settings_stock_icons_detail">Turn off any status bar icon Duo should hide.</string>
+    <string name="settings_stock_icons_empty">No icons yet. Enable module, open status bar, reopen screen.</string>
+    <string name="settings_show_wifi_glyph">Wi-Fi glyph</string>
+    <string name="settings_show_wifi_glyph_detail">Draw the Wi-Fi symbol inside the ring.</string>
+    <string name="settings_show_cell_dots">Cellular dots</string>
+    <string name="settings_show_cell_dots_detail">Draw the cellular dots inside the ring.</string>
     <string name="settings_hide_icons">Hide stock status bar icons</string>
     <string name="settings_hide_icons_detail">Hide the phone\'s own icons (Shizuku).</string>
     <string name="settings_icons_no_shizuku">Shizuku isn\'t running.</string>
@@ -107,20 +127,20 @@
     <!-- Diagnostics capture (root / Shizuku) -->
     <string name="settings_root_detail">Optional. Adds the system log to reports.</string>
     <string name="settings_root_allow">Allow root access</string>
-    <string name="settings_root_granted">Root granted. Reports include the system log.</string>
+    <string name="settings_root_granted">Root allowed. Reports include the system log.</string>
     <string name="settings_root_shizuku">Shizuku will be used for the log.</string>
-    <string name="settings_root_denied">Root not granted.</string>
+    <string name="settings_root_denied">Root not allowed.</string>
     <string name="settings_root_checking">Checking root…</string>
-    <string name="settings_root_result_ok">Root access granted.</string>
-    <string name="settings_root_result_failed">Root not granted — follow the steps below.</string>
-    <string name="settings_root_guide_steps">Root manager (e.g. KernelSU Next) → Superuser → find Duo Status Bar → turn Superuser ON.</string>
-    <string name="settings_root_guide_note">Only if Duo never works or you hit a bug — then send the report.</string>
+    <string name="settings_root_result_ok">Root access allowed.</string>
+    <string name="settings_root_result_failed">Root not allowed — follow the steps below.</string>
+    <string name="settings_root_guide_steps">In root manager, enable Superuser for Duo Status Bar.</string>
+    <string name="settings_root_guide_note">Only if Duo never works or you find a bug — then send the report.</string>
     <string name="settings_root_guide_image">KernelSU Next Superuser toggle for Duo Status Bar</string>
     <string name="settings_send_need_description">Describe the problem first.</string>
     <string name="settings_send_need_access">Allow root or Shizuku, or wait for the module.</string>
 
     <!-- Fallback alert -->
-    <string name="fallback_title">Duo fell back to a simple drawing</string>
+    <string name="fallback_title">Duo is using a simple drawing</string>
     <string name="fallback_message">The animated version couldn\'t start. Please send the log.</string>
     <string name="fallback_telegram">Send the log on Telegram</string>
     <string name="fallback_github">Report it on GitHub</string>
@@ -128,7 +148,7 @@
 
     <!-- Updates -->
     <string name="settings_check_updates">Check for updates</string>
-    <string name="settings_check_updates_detail">Notify when a new version is out.</string>
+    <string name="settings_check_updates_detail">Tell you when a new version is out.</string>
     <string name="settings_check_now">Check for update</string>
     <string name="settings_checking">Checking…</string>
     <string name="settings_update_uptodate">You\'re up to date (v%1$s).</string>
@@ -136,7 +156,7 @@
     <string name="settings_update_open">Open the release</string>
     <string name="settings_update_failed">Couldn\'t check for updates.</string>
     <string name="settings_update_download">Download and install</string>
-    <string name="settings_update_no_apk">No APK attached; open the release page.</string>
+    <string name="settings_update_no_apk">No download file; open the release page.</string>
     <string name="update_notification_title">Duo Status Bar update</string>
     <string name="update_notification_text">Version %1$s is available — tap to open the release</string>
     <string name="update_action_download">Download</string>
@@ -151,19 +171,19 @@
     <string name="section_about">About</string>
     <string name="settings_status">Status</string>
     <string name="settings_no_status">Waiting for the module…</string>
-    <string name="settings_module_never">Duo hasn\'t loaded yet. Enable it in LSPosed, then reboot.</string>
-    <string name="settings_module_loaded">Module loaded into System UI at %1$s</string>
-    <string name="settings_module_loaded_recent">Module is loaded into System UI</string>
+    <string name="settings_module_never">Duo hasn\'t loaded yet. Turn it on in LSPosed, then restart your phone.</string>
+    <string name="settings_module_loaded">Duo is running since %1$s.</string>
+    <string name="settings_module_loaded_recent">Duo is running.</string>
     <string name="settings_reboot">Reboot</string>
     <string name="settings_report_bug">Send a bug report</string>
     <string name="module_health_restart_title">Restart needed</string>
-    <string name="module_health_restart_text">App updated — restart System UI.</string>
+    <string name="module_health_restart_text">App updated — restart your phone.</string>
     <string name="module_health_noreport_title">Duo is loaded but not responding</string>
-    <string name="module_health_noreport_text">Loaded but not reporting. Restart System UI.</string>
+    <string name="module_health_noreport_text">Loaded but not responding. Restart your phone.</string>
     <string name="module_health_never_title">Duo is not running</string>
-    <string name="module_health_never_text">LSPosed has not injected Duo into System UI. Open LSPosed, enable Duo Status Bar and tick System UI in its scope, then restart System UI. If it still does not appear, contact support.</string>
+    <string name="module_health_never_text">Enable in LSPosed, choose status bar, restart. Missing? Contact support.</string>
     <string name="module_health_open_lsposed">Open LSPosed</string>
-    <string name="module_health_scope_hint">Enable Duo and tick System UI in its scope.</string>
+    <string name="module_health_scope_hint">Turn on Duo and choose the status bar.</string>
     <string name="module_health_contact">Contact on Telegram</string>
     <string name="module_health_contact_hint">Still not working? Contact here.</string>
     <string name="module_health_export">Export my log</string>
@@ -181,11 +201,133 @@
     <string name="settings_donate">Support the developer</string>
     <string name="settings_log_share_title">Send Duo log</string>
     <string name="settings_version">Duo Status Bar %1$s</string>
-    <!-- A leftover adb stage override pins the module to the simple drawing. -->
-    <string name="settings_override_title">An adb override is active</string>
-    <string name="settings_override_message">An adb override forces the simple drawing (stage %1$d).</string>
+    <!-- A test override pins the module to the simple drawing. -->
+    <string name="settings_override_title">A test override is on</string>
+    <string name="settings_override_message">A test override is on (level %1$d). It forces the simple drawing.</string>
     <string name="settings_override_clear">Clear override</string>
     <string name="settings_override_clearing">Clearing…</string>
     <string name="settings_override_failed">Could not clear it automatically. Run: %1$s</string>
     <string name="settings_override_command">Command: %1$s</string>
+    <!-- Live events -->
+    <string name="section_live_events">Live events</string>
+    <string name="settings_live_events_detail">Show an animated icon when the event happens. Each event has its own switch.</string>
+    <string name="settings_event_alarm">Alarm</string>
+    <string name="settings_event_alarm_detail">Show an animated icon while an alarm rings.</string>
+    <string name="section_simulation">Simulation</string>
+    <string name="settings_simulation_detail">Try the live-event animation inside Duo. Pick an event icon, then play it.</string>
+    <string name="settings_simulation_alarm">Alarm icon</string>
+    <string name="settings_simulation_flashlight">Flashlight icon</string>
+    <string name="settings_simulation_screenshot">Screenshot icon</string>
+    <string name="settings_simulation_play">Play simulation</string>
+    <string name="settings_simulation_note">Preview art. Not included in release.</string>
+    <string name="settings_cell_simulation">Cellular dots</string>
+    <string name="settings_cell_simulation_detail">Preview every level now. Full signal shows four dots.</string>
+    <string name="settings_cell_simulation_level">Level %1$d</string>
+    <string name="settings_event_flashlight">Flashlight</string>
+    <string name="settings_event_flashlight_detail">Show an animated icon while the flashlight is on.</string>
+    <string name="settings_event_screenshot">Screenshot</string>
+    <string name="settings_event_screenshot_detail">Show an animated icon when a screenshot is taken.</string>
+    <string name="settings_event_microphone">Microphone</string>
+    <string name="settings_event_microphone_detail">Show an animated icon while the microphone is in use.</string>
+    <string name="settings_event_location">Location</string>
+    <string name="settings_event_location_detail">Show an animated icon while location is in use.</string>
+    <string name="settings_event_volume">Volume</string>
+    <string name="settings_event_volume_detail">Show an animated icon when the volume changes.</string>
+    <string name="settings_event_unlock">Unlock</string>
+    <string name="settings_event_unlock_detail">Show an animated icon when the screen is unlocked.</string>
+    <!-- Download progress (PHDP) -->
+    <string name="section_download_progress">Download progress</string>
+    <string name="settings_download_progress">Show download progress</string>
+    <string name="settings_download_progress_detail">Works with PHDP. Install it first.</string>
+    <string name="settings_download_progress_missing">PHDP is not installed. The switch works after PHDP is installed.</string>
+    <string name="settings_download_latest">Latest PHDP release</string>
+    <string name="settings_download_install_phdp">Install PHDP</string>
+    <string name="settings_download_open_phdp">Open PHDP</string>
+    <string name="settings_download_simulate">Simulate in PHDP</string>
+    <string name="settings_download_simulate_note">Opens PHDP, where you run its test. Duo does not start the test.</string>
+    <!-- Backup -->
+    <string name="section_backup">Backup</string>
+    <string name="settings_backup_detail">Save or restore your settings.</string>
+    <string name="settings_backup_export">Export settings</string>
+    <string name="settings_backup_import">Import settings</string>
+    <string name="settings_backup_exported">Settings saved.</string>
+    <string name="settings_backup_failed">Couldn\'t save settings.</string>
+    <string name="settings_backup_invalid">Invalid backup file.</string>
+    <string name="settings_backup_imported">Settings restored.</string>
+    <string name="settings_backup_confirm_title">Replace settings?</string>
+    <string name="settings_backup_confirm_body">This replaces your current settings with the imported ones.</string>
+    <string name="settings_backup_replace">Replace</string>
+    <string name="settings_backup_cancel">Cancel</string>
+
+    <!-- CUS-011 shell -->
+    <string name="nav_home">Home</string>
+    <string name="nav_engine">Custom</string>
+    <string name="nav_report">Report</string>
+    <string name="nav_settings">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="home_tagline">One ring for battery, Wi-Fi and signal.</string>
+    <string name="home_live_preview">Live preview controls</string>
+    <string name="home_live_preview_detail">Drive the real element with simulated battery, signal and mode changes.</string>
+    <string name="home_live_preview_note">Simulations only. This lab never changes your settings.</string>
+    <string name="home_live_sim_invert">Invert center</string>
+    <string name="home_status_running">Running</string>
+    <string name="home_status_setup">Setup needed</string>
+    <string name="home_status_restart">Restart needed</string>
+    <string name="home_status_no_report">No response</string>
+    <string name="home_camera">Camera</string>
+    <string name="home_camera_detail">Ring wraps front camera. QS, notifications, lock screen keep normal.</string>
+    <string name="home_ring_design">Ring design</string>
+    <string name="home_ring_design_detail">Classic keeps four dots. 2 SIM shows both lines with eight dots.</string>
+    <string name="home_ring_design_classic">Classic (4 dots)</string>
+    <string name="home_ring_design_dual">2 SIM (8 dots)</string>
+    <string name="home_ring_design_restart">Restart to apply the new ring design.</string>
+    <string name="customization_title">Custom</string>
+    <string name="engine_title">Rendering engine</string>
+    <string name="engine_current">Using %1$s</string>
+    <string name="engine_auto_note">Automatic suits most phones. Use Compatible if ring freezes or vanishes.</string>
+    <string name="engine_fallback">Last fallback: %1$s</string>
+    <string name="engine_mode">Engine mode</string>
+    <string name="engine_mode_detail">Choose how the ring is drawn.</string>
+    <string name="engine_auto">Automatic</string>
+    <string name="engine_rive">Smooth</string>
+    <string name="engine_canvas">Compatible</string>
+
+
+    <!-- Report screen -->
+    <string name="report_title">Report a problem</string>
+    <string name="report_intro">Pick a label, describe the issue, send. Log attaches automatically.</string>
+    <string name="report_label">Label</string>
+    <string name="report_describe">Describe the problem</string>
+    <string name="report_telegram_username">Telegram username (optional)</string>
+    <string name="report_telegram_hint">Add it only if you want the developer to see it in the private log.</string>
+    <string name="report_collecting">Collecting device data and logs…</string>
+    <string name="report_sent">Sent. Keep the ticket number to follow up.</string>
+    <string name="report_failed">Report saved but the upload failed. Use the copy button and contact support.</string>
+    <string name="report_send">Send report</string>
+    <string name="report_sending">Sending…</string>
+    <string name="report_telegram_user">Telegram: %1$s</string>
+    <string name="report_ticket_created">Ticket created</string>
+    <string name="report_ticket_keep">Keep this number. It is included in the uploaded log caption.</string>
+    <string name="report_ticket_label">Ticket</string>
+    <string name="report_copy_ticket">Copy ticket number</string>
+    <string name="report_ticket_copied">Ticket number copied</string>
+    <string name="report_share_public">Share public update (no username)</string>
+    <string name="report_contact_developer">Contact developer</string>
+    <string name="report_follow_telegram">Follow the complaint on Telegram</string>
+    <string name="report_create_another">Create another report</string>
+    <string name="report_share_chooser">Share public update</string>
+    <!-- Preview -->
+    <string name="preview_replay">Play again</string>
+    <string name="preview_battery">Battery %1$d%%</string>
+    <string name="preview_charging">Charging</string>
+    <string name="preview_saver">Battery saver</string>
+    <string name="preview_airplane">Airplane mode</string>
+    <string name="preview_dnd">Do Not Disturb</string>
+    <string name="preview_dnd_dots">DND on signal dots</string>
+    <string name="preview_wifi">Wi-Fi %1$d of 3</string>
+    <string name="preview_cell">Cellular %1$d of 4</string>
+    <string name="preview_wifi_off">Wi-Fi off</string>
+    <string name="preview_wifi_dots">Dots follow Wi-Fi</string>
+    <string name="preview_network">Network %1$s</string>
+
 </resources>

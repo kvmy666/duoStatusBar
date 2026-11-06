@@ -26,6 +26,9 @@ internal object SystemReaders {
     fun cellLevels(context: Context, airplane: Boolean): List<Int> =
         CellReader.cellLevels(context, airplane)
 
+    fun cellSignals(context: Context, airplane: Boolean): List<SimSignal> =
+        CellReader.cellSignals(context, airplane)
+
     fun isWifiEnabled(context: Context, current: Boolean): Boolean =
         WifiReader.isWifiEnabled(context, current)
 

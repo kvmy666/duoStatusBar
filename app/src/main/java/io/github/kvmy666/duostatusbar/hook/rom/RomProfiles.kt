@@ -81,7 +81,15 @@ internal object RomProfiles {
                         clockId = o.optString("clockId", "clock"),
                         notes = o.optString("notes"),
                         match = o.optJSONArray("match").toStringList(),
-                        measured = o.optBoolean("measured", false)
+                        measured = o.optBoolean("measured", false),
+                        shadeContainerIds = o.optJSONArray("shadeContainerIds").toStringList(),
+                        shadeBatteryId = o.optString("shadeBatteryId").trim(),
+                        shadeStatusIconIds = o.optJSONArray("shadeStatusIconIds").toStringList(),
+                        shadeMeasured = o.optBoolean("shadeMeasured", false),
+                        coverHook = if (o.has("coverHook")) o.optBoolean("coverHook", true) else true,
+                        panelExpansionKind = parsePanelExpansionKind(o),
+                        panelHookMeasured = o.optBoolean("panelHookMeasured", false),
+                        panelOwnerAvailable = o.optBoolean("panelOwnerAvailable", false)
                     )
                 )
             }
@@ -89,6 +97,16 @@ internal object RomProfiles {
     } catch (t: Throwable) {
         L.w("rom profiles malformed: ${t.javaClass.simpleName}: ${t.message}")
         emptyList()
+    }
+
+    private val ALLOWED_PANEL_KINDS = setOf(
+        "panel_type_5arg", "fzz_3arg", "zfz_3arg", "listener", "none", "unknown"
+    )
+
+    private fun parsePanelExpansionKind(o: JSONObject): String {
+        if (!o.has("panelExpansionKind")) return "panel_type_5arg"
+        val v = o.optString("panelExpansionKind").trim()
+        return if (v in ALLOWED_PANEL_KINDS) v else "unknown"
     }
 
     private fun JSONArray?.toStringList(): List<String> {

@@ -65,4 +65,40 @@ class RingGeometryTest {
         assertEquals(RingGeometry.percentTopY(0), RingGeometry.percentTopY(-50), 0.001f)
         assertEquals(RingGeometry.percentTopY(100), RingGeometry.percentTopY(9_999), 0.001f)
     }
+
+    @Test
+    fun `battery line start at the key levels`() {
+        assertEquals(RingGeometry.BATTERY_LINE_END, RingGeometry.batteryLineStart(0), 0.0001f)
+        assertEquals(
+            RingGeometry.BATTERY_LINE_END -
+                (RingGeometry.BATTERY_LINE_END - RingGeometry.BATTERY_LINE_START) * 19 / 100f,
+            RingGeometry.batteryLineStart(19), 0.0001f
+        )
+        assertEquals(
+            RingGeometry.BATTERY_LINE_END -
+                (RingGeometry.BATTERY_LINE_END - RingGeometry.BATTERY_LINE_START) * 49 / 100f,
+            RingGeometry.batteryLineStart(49), 0.0001f
+        )
+        assertEquals(
+            RingGeometry.BATTERY_LINE_END -
+                (RingGeometry.BATTERY_LINE_END - RingGeometry.BATTERY_LINE_START) * 80 / 100f,
+            RingGeometry.batteryLineStart(80), 0.0001f
+        )
+        assertEquals(RingGeometry.BATTERY_LINE_START, RingGeometry.batteryLineStart(100), 0.0001f)
+    }
+
+    @Test
+    fun `battery line start is monotonic decreasing and clamped`() {
+        val levels = intArrayOf(0, 19, 49, 80, 100)
+        var prev = Float.POSITIVE_INFINITY
+        for (l in levels) {
+            val s = RingGeometry.batteryLineStart(l)
+            assertTrue(s <= prev)
+            prev = s
+        }
+        assertEquals(RingGeometry.BATTERY_LINE_END, RingGeometry.batteryLineStart(-10), 0.0001f)
+        assertEquals(RingGeometry.BATTERY_LINE_END, RingGeometry.batteryLineStart(-100), 0.0001f)
+        assertEquals(RingGeometry.BATTERY_LINE_START, RingGeometry.batteryLineStart(101), 0.0001f)
+        assertEquals(RingGeometry.BATTERY_LINE_START, RingGeometry.batteryLineStart(1000), 0.0001f)
+    }
 }

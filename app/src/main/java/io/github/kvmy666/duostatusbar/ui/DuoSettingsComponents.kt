@@ -1,14 +1,14 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,6 +27,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,13 +38,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.ImageView
@@ -231,10 +238,10 @@ internal fun ModuleHealthCard(
 /**
  * FR-17: set the element's horizontal position on a status-bar-shaped preview.
  *
- * It is drawn to look like the real bar — a dark pill with the clock on the left and the element where
- * the battery sits — and the element is the **same Canvas element** the status bar falls back to, driven
- * by the same [DuoMapping]. Dragging anywhere on the bar moves it, and the value is shown so it can be
- * set exactly. A tap or long press on either half nudges the element one dp in that direction.
+ * It is drawn to look like the real bar — a dark pill with the clock on the left and the element on
+ * the rail — and the element is the **same Canvas element** the status bar falls back to, driven by
+ * the same [DuoMapping]. Only the element (icon) can be dragged; the rail itself does not consume
+ * touches, so vertical scrolling keeps working. The value is shown so it can be set exactly.
  */
 @Composable
 internal fun PositionEditor(
@@ -245,6 +252,7 @@ internal fun PositionEditor(
     label: String? = null,
     hint: String? = null,
     visual: DuoVisual? = null,
+    rawRes: Int = R.raw.duo,
     onOffset: (Int) -> Unit
 ) {
     val density = LocalDensity.current
@@ -254,45 +262,38 @@ internal fun PositionEditor(
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label ?: stringResource(R.string.settings_position), style = MaterialTheme.typography.bodyMedium)
+        // Force LTR so Alignment.CenterEnd is always the physical right edge, matching native.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(40.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF101014))
+                .semantics {
+                    if (enabled) {
+                        val hi = if (centered) limit else 0f
+                        progressBarRangeInfo = ProgressBarRangeInfo(drag, -limit..hi, 0)
+                        setProgress { target ->
+                            val next = target.coerceIn(-limit, hi).toInt()
+                            drag = next.toFloat()
+                            onOffset(next)
+                            true
+                        }
+                    }
+                }
         ) {
             val previewTravel = (maxWidth.value - 32f).coerceAtLeast(0f) / 2f
+            // The pill is only the background. The content is deliberately not clipped: the element
+            // must stay visible and draggable all the way to either end of the rail.
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF101014))
+            )
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
-                    .pointerInput(enabled, limit) {
-                        if (!enabled) return@pointerInput
-                        detectTapGestures(
-                            onTap = { position ->
-                                val direction = if (position.x < size.width / 2f) -1 else 1
-                                val next = stepPositionOffset(drag.toInt(), direction, limit.toInt())
-                                drag = next.toFloat()
-                                onOffset(next)
-                            },
-                            onLongPress = { position ->
-                                val direction = if (position.x < size.width / 2f) -1 else 1
-                                val next = stepPositionOffset(drag.toInt(), direction, limit.toInt())
-                                drag = next.toFloat()
-                                onOffset(next)
-                            }
-                        )
-                    }
-                    .pointerInput(enabled, centered, limit, previewTravel) {
-                    if (!enabled) return@pointerInput
-                    detectDragGestures { _, amount ->
-                        val dragScale = if (centered) limit / previewTravel.coerceAtLeast(1f) else 1f
-                        val next = (drag + amount.x / density.density * dragScale)
-                            .coerceIn(-limit, limit)
-                        drag = next
-                        onOffset(next.toInt())
-                    }
-                },
+                    .height(40.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 Text(
@@ -301,16 +302,27 @@ internal fun PositionEditor(
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(start = 14.dp)
                 )
-                val previewOffset = if (centered) {
-                    positionPreviewOffset(drag, limit, previewTravel)
-                } else {
-                    drag
-                }
+                val previewOffset = positionPreviewOffset(drag, limit, previewTravel, centered)
+                // Normal mode is right-anchored: 0 renders at the right edge, negatives move left.
+                // Centered (locked) mode keeps the element on the status-bar centre.
+                val alignment = if (centered) Alignment.Center else Alignment.CenterEnd
+                val xShift = if (centered) previewOffset else previewOffset - previewTravel
                 DuoRiveStill(
                     modifier = Modifier
-                        .align(if (centered) Alignment.Center else Alignment.CenterEnd)
-                        .then(if (centered) Modifier else Modifier.padding(end = 16.dp))
-                        .size(32.dp),
+                        .align(alignment)
+                        .absoluteOffset(x = xShift.dp)
+                        .size(32.dp)
+                        .pointerInput(enabled, centered, limit, previewTravel) {
+                            if (!enabled) return@pointerInput
+                            detectHorizontalDragGestures { _, amount ->
+                                val dragScale = limit / previewTravel.coerceAtLeast(1f)
+                                val hi = if (centered) limit else 0f
+                                val next = (drag + amount / density.density * dragScale)
+                                    .coerceIn(-limit, hi)
+                                drag = next
+                                onOffset(next.toInt())
+                            }
+                        },
                     visual = visual ?: DuoMapping.visual(
                         level = 40,
                         charging = false,
@@ -320,9 +332,10 @@ internal fun PositionEditor(
                         cellLevel = 4,
                         airplane = false
                     ),
-                    translationXDp = previewOffset
+                    rawRes = rawRes
                 )
             }
+        }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -330,7 +343,7 @@ internal fun PositionEditor(
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f)
             )
-            Text("${drag.toInt()} dp", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.settings_position_value, drag.toInt()), style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.width(8.dp))
             TextButton(
                 onClick = {
@@ -343,10 +356,18 @@ internal fun PositionEditor(
     }
 }
 
-/** Maps a real screen offset onto the smaller status-bar preview without changing its zero point. */
-internal fun positionPreviewOffset(offsetDp: Float, limitDp: Float, previewTravelDp: Float): Float {
+/** Maps a real screen offset onto the smaller status-bar preview.
+ *
+ * centered: 0 -> 0 (middle), ±limit -> ±travel (locked ring).
+ * normal:   0 -> +travel (right edge), -limit -> -travel (left), positive values clamp at +travel.
+ */
+internal fun positionPreviewOffset(offsetDp: Float, limitDp: Float, previewTravelDp: Float, centered: Boolean = false): Float {
     if (limitDp <= 0f || previewTravelDp <= 0f) return 0f
-    return offsetDp.coerceIn(-limitDp, limitDp) / limitDp * previewTravelDp
+    if (centered) {
+        return offsetDp.coerceIn(-limitDp, limitDp) / limitDp * previewTravelDp
+    }
+    val clamped = offsetDp.coerceIn(-limitDp, 0f)
+    return (1f + 2f * clamped / limitDp) * previewTravelDp
 }
 
 /** The locked ring travels from screen center to either edge; strip-anchored parts can cross it all. */
@@ -380,7 +401,7 @@ internal fun SettingSwitch(
             Text(label, style = MaterialTheme.typography.bodyLarge)
             detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
-        Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
+        GlassSwitch(checked = checked, enabled = enabled, onCheckedChange = onChange)
     }
 }
 
@@ -475,7 +496,7 @@ internal fun LabelledSlider(
                 modifier = Modifier.padding(start = if (preview == null) 0.dp else 12.dp)
             )
         }
-        Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps, enabled = enabled)
+        GlassSlider(value = value, onValueChange = onChange, range = range, steps = steps, enabled = enabled)
     }
 }
 
@@ -639,7 +660,7 @@ internal fun RootAccessSetting() {
             Text(
                 text = stringResource(R.string.settings_root_guide_note),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.secondary
             )
             OutlinedButton(
                 onClick = {

@@ -22,6 +22,20 @@ data class DuoVisual(
      * is the original seat; more negative sits higher, up to a full [RingGeometry.PERCENT_LIFT].
      */
     val percentY: Float,
+    /** Battery line trim start (trim fraction) for the 2 SIM bottom arc; level-derived, clamped. */
+    val batteryLineStart: Float = RingGeometry.BATTERY_LINE_END,
+    /**
+     * Y offset applied to the middle occupant (Wi-Fi / network / DND / event) relative to the ring
+     * centre. 0 in normal mode; the upper seat when inverted.
+     */
+    val middleY: Float = 0f,
+    /** Scale applied to the middle occupant. 1.0 in normal mode; 0.55 when inverted. */
+    val middleScale: Float = 1f,
+    /**
+     * Y offset applied to the charging bolt relative to its normal seat. 0 in normal mode; 49.5 when
+     * inverted so the bolt rides up into the ring's centre seat.
+     */
+    val boltY: Float = 0f,
     /**
      * 1 draws the battery ring, the percentage and the bolt. 0 hides them. [DuoPart] sets this;
      * the original element leaves both groups visible.
@@ -93,7 +107,11 @@ data class DuoVisual(
      * Whether the charging *journey* plays. False shows the bolt instantly, which is the user's
      * "charging animation" switch (FR-25).
      */
-    val animateCharge: Boolean = true
+    val animateCharge: Boolean = true,
+    /** Rive event type id (0 = none). */
+    val eventType: Int = 0,
+    /** Whether a live event is currently visible. */
+    val eventVisible: Boolean = false
 ) {
     /**
      * Interpolates between two snapshots, for the FR-09 setting demos that morph one setting between
@@ -116,6 +134,10 @@ data class DuoVisual(
             percentOpacity = at(percentOpacity, other.percentOpacity),
             percentFontSize = at(percentFontSize, other.percentFontSize),
             percentY = at(percentY, other.percentY),
+            batteryLineStart = at(batteryLineStart, other.batteryLineStart),
+            middleY = at(middleY, other.middleY),
+            middleScale = at(middleScale, other.middleScale),
+            boltY = at(boltY, other.boltY),
             ringOpacity = at(ringOpacity, other.ringOpacity),
             indicatorsOpacity = at(indicatorsOpacity, other.indicatorsOpacity),
             boltOpacity = at(boltOpacity, other.boltOpacity),
@@ -147,7 +169,9 @@ data class DuoVisual(
             cellLevel = if (past) other.cellLevel else cellLevel,
             charging = if (past) other.charging else charging,
             visible = if (past) other.visible else visible,
-            animateCharge = if (past) other.animateCharge else animateCharge
+            animateCharge = if (past) other.animateCharge else animateCharge,
+            eventType = if (past) other.eventType else eventType,
+            eventVisible = if (past) other.eventVisible else eventVisible
         )
     }
 }

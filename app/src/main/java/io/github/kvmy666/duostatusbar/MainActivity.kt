@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import io.github.kvmy666.duostatusbar.ui.DuoSettingsScreen
+import io.github.kvmy666.duostatusbar.ui.DuoShell
 import io.github.kvmy666.duostatusbar.ui.DuoTheme
 
 /**
@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             DuoTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    DuoSettingsScreen()
+                    DuoShell()
                 }
             }
         }

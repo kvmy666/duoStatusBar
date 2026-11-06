@@ -50,7 +50,7 @@ object DuoBinder {
     val REVEAL_CHOICES = intArrayOf(500, 750, 1000, 1250, 1500)
 
     /** Number of properties a complete snapshot writes — used to report partial failures. */
-    const val PROPERTY_COUNT = 53
+    const val PROPERTY_COUNT = 59
 
     private const val REVEAL_MS = "revealMs"
     private const val PERCENT_TEXT = "percentText"
@@ -58,6 +58,8 @@ object DuoBinder {
     private const val VISIBLE = "visible"
     private const val CHARGING = "charging"
     private const val ANIMATE_CHARGE = "animateCharge"
+    private const val EVENT_TYPE = "eventType"
+    private const val EVENT_VISIBLE = "eventVisible"
 
     /**
      * Binds a view model for writing. [lock] must be the Rive file's own lock (`RiveAnimationView.file.lock`)
@@ -85,6 +87,13 @@ object DuoBinder {
             "percentFontSize" to v.percentFontSize,
             // Top of the percentage text box.  -60 is the original seat; more negative raises it.
             "percentY" to v.percentY,
+            // Battery line (2 SIM) level-derived trim start.
+            "batteryLineStart" to v.batteryLineStart,
+            // Invert-center: middle occupant seat and scale.
+            "middleY" to v.middleY,
+            "middleScale" to v.middleScale,
+            // Invert-center: charging bolt seat.
+            "boltY" to v.boltY,
             // Which group this view draws. Both are 1 for the original element; a split layout
             // runs two views of the same file and each one hides the other's group.
             "ringOpacity" to v.ringOpacity,
@@ -127,7 +136,8 @@ object DuoBinder {
             "downloadGradientStartX" to gradientPoints[0],
             "downloadGradientStartY" to gradientPoints[1],
             "downloadGradientEndX" to gradientPoints[2],
-            "downloadGradientEndY" to gradientPoints[3]
+            "downloadGradientEndY" to gradientPoints[3],
+            EVENT_TYPE to v.eventType.toFloat()
         )
         for ((name, value) in numbers) {
             if (!write(name) { vm.getNumberProperty(name).value = value }) failures++
@@ -156,7 +166,8 @@ object DuoBinder {
         if (!write(CHARGING) { vm.getBooleanProperty(CHARGING).value = v.charging }) failures++
         // False makes the bolt appear/disappear instantly (the user's charging-animation switch).
         if (!write(ANIMATE_CHARGE) { vm.getBooleanProperty(ANIMATE_CHARGE).value = v.animateCharge }) failures++
-
+        // Event icon type and visibility.
+        if (!write(EVENT_VISIBLE) { vm.getBooleanProperty(EVENT_VISIBLE).value = v.eventVisible }) failures++
         return failures
     }
 

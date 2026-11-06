@@ -1,6 +1,5 @@
 package io.github.kvmy666.duostatusbar.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -8,70 +7,72 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Red Wine, complete and in both modes (FR-11).
+ * Obsidian and red wine.
  *
- * The values mirror `res/values/colors.xml` one-for-one: the XML side styles the Activity and any
- * platform-drawn surface, the Compose side styles everything inside it. Keeping them equal is the point —
- * a theme that exists twice and disagrees is how an app starts looking broken in one mode only.
+ * The app is dark by design: the wallpaper is part of the liquid-glass material, and a light surface
+ * would change what the glass refracts. The light scheme stays complete so a caller can still opt in,
+ * but it follows the same wine brand rather than a second palette.
  */
-private val RedWineLight = lightColorScheme(
-    primary = Color(0xFF7B1E3A),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFFFD9DF),
-    onPrimaryContainer = Color(0xFF3F001C),
-    secondary = Color(0xFF74565C),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFFFD9DF),
-    onSecondaryContainer = Color(0xFF2B151A),
-    tertiary = Color(0xFF7C5635),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFFFDCC2),
-    onTertiaryContainer = Color(0xFF2D1600),
-    error = Color(0xFFBA1A1A),
-    onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002),
-    background = Color(0xFFFFF8F7),
-    onBackground = Color(0xFF22191B),
-    surface = Color(0xFFFFF8F7),
-    onSurface = Color(0xFF22191B),
-    surfaceVariant = Color(0xFFF3DDE0),
-    onSurfaceVariant = Color(0xFF524345),
-    outline = Color(0xFF857376),
-    outlineVariant = Color(0xFFD7C1C4)
+private val ObsidianWine = darkColorScheme(
+    primary = DuoColors.Wine,
+    onPrimary = Color.White,
+    primaryContainer = DuoColors.WineDeep,
+    onPrimaryContainer = DuoColors.WineMist,
+    secondary = DuoColors.WineMist,
+    onSecondary = Color(0xFF2A0D18),
+    secondaryContainer = Color(0xFF2A1219),
+    onSecondaryContainer = DuoColors.WineMist,
+    tertiary = DuoColors.TextSecondary,
+    onTertiary = DuoColors.Background,
+    tertiaryContainer = DuoColors.SurfaceRaised,
+    onTertiaryContainer = DuoColors.TextPrimary,
+    error = DuoColors.Danger,
+    onError = Color(0xFF2A0A0A),
+    errorContainer = Color(0xFF3A1214),
+    onErrorContainer = Color(0xFFFFDAD6),
+    background = DuoColors.Background,
+    onBackground = DuoColors.TextPrimary,
+    surface = DuoColors.Background,
+    onSurface = DuoColors.TextPrimary,
+    surfaceVariant = DuoColors.Surface,
+    onSurfaceVariant = DuoColors.TextSecondary,
+    outline = DuoColors.OutlineStrong,
+    outlineVariant = DuoColors.Outline,
+    scrim = Color.Black
 )
 
-private val RedWineDark = darkColorScheme(
-    primary = Color(0xFFFFB1C1),
-    onPrimary = Color(0xFF4C0F27),
-    primaryContainer = Color(0xFF641E37),
-    onPrimaryContainer = Color(0xFFFFD9DF),
-    secondary = Color(0xFFE3BDC3),
-    onSecondary = Color(0xFF42292F),
-    secondaryContainer = Color(0xFF5A4046),
-    onSecondaryContainer = Color(0xFFFFD9DF),
-    tertiary = Color(0xFFEFBD91),
-    onTertiary = Color(0xFF47290B),
-    tertiaryContainer = Color(0xFF613C1C),
-    onTertiaryContainer = Color(0xFFFFDCC2),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF191113),
-    onBackground = Color(0xFFF0DEDF),
-    surface = Color(0xFF191113),
-    onSurface = Color(0xFFF0DEDF),
-    surfaceVariant = Color(0xFF524345),
-    onSurfaceVariant = Color(0xFFD7C1C4),
-    outline = Color(0xFFA08C8F),
-    outlineVariant = Color(0xFF524345)
+private val PorcelainWine = lightColorScheme(
+    primary = DuoColors.Wine,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFF6DDE5),
+    onPrimaryContainer = DuoColors.WineDeep,
+    secondary = Color(0xFF7A4A5A),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFF2DEE4),
+    onSecondaryContainer = Color(0xFF2B151A),
+    tertiary = Color(0xFF6B5A5E),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFEFE4E6),
+    onTertiaryContainer = Color(0xFF22191B),
+    error = Color(0xFFB3261E),
+    onError = Color.White,
+    errorContainer = Color(0xFFF9DEDC),
+    onErrorContainer = Color(0xFF410E0B),
+    background = Color(0xFFFAF7F7),
+    onBackground = Color(0xFF1C1819),
+    surface = Color(0xFFFAF7F7),
+    onSurface = Color(0xFF1C1819),
+    surfaceVariant = Color(0xFFF0E7E9),
+    onSurfaceVariant = Color(0xFF4E4446),
+    outline = Color(0xFF807376),
+    outlineVariant = Color(0xFFD3C5C8)
 )
 
 @Composable
-fun DuoTheme(content: @Composable () -> Unit) {
+fun DuoTheme(dark: Boolean = true, content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) RedWineDark else RedWineLight,
+        colorScheme = if (dark) ObsidianWine else PorcelainWine,
+        typography = DuoTypography,
         content = content
     )
 }

@@ -65,12 +65,12 @@ internal class DotMoonMotion {
     companion object {
         const val DURATION_MS = 280L
 
-        /** The crescent's path is 36.92 units across; the dots are 11, so this fits one inside the other. */
-        const val DOT_SCALE = 11f / 36.92f
+        /** The crescent's path is 36.92 units across; [RingGeometry.DOT_DIAMETER] fits one inside. */
+        const val DOT_SCALE = RingGeometry.DOT_DIAMETER / 36.92f
 
-        /** Centre of the four signal dots, design units from the ring centre. */
-        const val CENTER_X = -0.5f
-        const val CENTER_Y = 46.725f
+        /** Centre of the one DND moon shown when both dot rows are hidden, from the ring centre. */
+        const val CENTER_X = RingGeometry.CENTER_MOON_X
+        const val CENTER_Y = RingGeometry.CENTER_MOON_Y
 
         fun sameDots(a: DuoVisual, b: DuoVisual): Boolean =
             a.cell1Opacity == b.cell1Opacity &&

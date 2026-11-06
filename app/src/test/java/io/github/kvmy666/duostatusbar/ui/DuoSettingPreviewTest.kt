@@ -43,9 +43,59 @@ class DuoSettingPreviewTest {
 
     @Test
     fun `locked position preview puts zero in the middle and reaches both edges`() {
-        assertEquals(0f, positionPreviewOffset(0f, 360f, 120f), 0.0001f)
-        assertEquals(-120f, positionPreviewOffset(-360f, 360f, 120f), 0.0001f)
-        assertEquals(120f, positionPreviewOffset(360f, 360f, 120f), 0.0001f)
+        assertEquals(0f, positionPreviewOffset(0f, 360f, 120f, centered = true), 0.0001f)
+        assertEquals(-120f, positionPreviewOffset(-360f, 360f, 120f, centered = true), 0.0001f)
+        assertEquals(120f, positionPreviewOffset(360f, 360f, 120f, centered = true), 0.0001f)
+    }
+
+    @Test
+    fun `normal position preview is right anchored at zero`() {
+        // 0 is the right edge, not the centre.
+        assertEquals(120f, positionPreviewOffset(0f, 360f, 120f, centered = false), 0.0001f)
+        assertEquals(-120f, positionPreviewOffset(-360f, 360f, 120f, centered = false), 0.0001f)
+        assertEquals(120f, positionPreviewOffset(360f, 360f, 120f, centered = false), 0.0001f)
+        assertTrue(positionPreviewOffset(0f, 360f, 120f, centered = false) != 0f)
+    }
+
+    @Test
+    fun `strip position preview is right anchored in normal mode`() {
+        // Unlocked (normal) parts are right-anchored: 0 is the right edge, negatives move left.
+        assertEquals(150f, positionPreviewOffset(0f, 673f, 150f, centered = false), 0.0001f)
+        assertEquals(150f, positionPreviewOffset(673f, 673f, 150f, centered = false), 0.0001f)
+        assertEquals(-150f, positionPreviewOffset(-673f, 673f, 150f, centered = false), 0.0001f)
+    }
+
+    @Test
+    fun `position preview clamps at either limit`() {
+        // centered mode clamps at both edges
+        assertEquals(120f, positionPreviewOffset(360f, 360f, 120f, centered = true), 0.0001f)
+        assertEquals(-120f, positionPreviewOffset(-360f, 360f, 120f, centered = true), 0.0001f)
+        assertEquals(120f, positionPreviewOffset(999f, 360f, 120f, centered = true), 0.0001f)
+        assertEquals(-120f, positionPreviewOffset(-999f, 360f, 120f, centered = true), 0.0001f)
+        // normal mode: positives clamp at the right edge
+        assertEquals(120f, positionPreviewOffset(360f, 360f, 120f, centered = false), 0.0001f)
+        assertEquals(-120f, positionPreviewOffset(-360f, 360f, 120f, centered = false), 0.0001f)
+        assertEquals(120f, positionPreviewOffset(999f, 360f, 120f, centered = false), 0.0001f)
+        assertEquals(-120f, positionPreviewOffset(-999f, 360f, 120f, centered = false), 0.0001f)
+    }
+
+    @Test
+    fun `position preview has a safe zero for empty and negative ranges`() {
+        assertEquals(0f, positionPreviewOffset(0f, 360f, 120f, centered = true), 0.0001f)
+        assertEquals(0f, positionPreviewOffset(50f, 0f, 120f, centered = true), 0.0001f)
+        assertEquals(0f, positionPreviewOffset(50f, -10f, 120f, centered = true), 0.0001f)
+        assertEquals(0f, positionPreviewOffset(50f, 360f, 0f, centered = true), 0.0001f)
+        assertEquals(0f, positionPreviewOffset(50f, 360f, -1f, centered = true), 0.0001f)
+    }
+
+    @Test
+    fun `position preview keeps the knob under the finger`() {
+        val limit = 360f
+        val travel = 120f
+        val dragScale = limit / travel
+        for (drag in listOf(-360f, -180f, -1f, 0f, 1f, 180f, 360f)) {
+            assertEquals(drag, positionPreviewOffset(drag, limit, travel, centered = true) * dragScale, 0.0001f)
+        }
     }
 
     @Test

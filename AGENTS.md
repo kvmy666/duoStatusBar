@@ -1,5 +1,7 @@
 # AGENTS.md — how we work on Duo Status Bar
 
+> **Session anchor (read first):** [`agent/AGENTS-V2.md`](agent/AGENTS-V2.md) · the old agent docs are archived under `agent/archive/` · the tool catalog lives in `weapons/`.
+
 This file records the mistakes this project has already made, so they are not repeated, and the working
 rules that keep them from coming back. Read it before changing the module, the app or the Rive scene.
 

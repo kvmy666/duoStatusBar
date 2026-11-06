@@ -6,6 +6,23 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import io.github.kvmy666.duostatusbar.L
 
+/** One Wi-Fi read: the measured RSSI, both bar scales, the three-arc result and its source. */
+internal data class WifiSample(
+    /** `WifiInfo.INVALID_RSSI` (-127) when no RSSI could be read. */
+    val rssi: Int,
+    /** `WifiManager.calculateSignalLevel(rssi, 5)`, the platform's own five-step value. */
+    val calc5: Int,
+    /** The count actually fed to [DuoMapping.wifiBars] (five-step shifted to four stock bars). */
+    val stockBars: Int,
+    /** Duo's Wi-Fi glyph level 0..3. */
+    val dots: Int,
+    val on: Boolean,
+    val active: Boolean,
+    val validated: Boolean,
+    /** `active`, `connectionInfo`, `stale` or `off`. */
+    val source: String
+)
+
 /**
  * The Wi-Fi platform reads behind the Duo element.
  *
@@ -13,6 +30,8 @@ import io.github.kvmy666.duostatusbar.L
  * slightly stale number is far better than a status bar that throws (FR-21).
  */
 internal object WifiReader {
+
+    private const val INVALID_RSSI = -127
 
     /**
      * Wi-Fi 0..3, or the previous value when Wi-Fi cannot be queried.
@@ -22,37 +41,116 @@ internal object WifiReader {
      * link read as 2 of 3 (user-reported). The RSSI is taken from the *active* network's `WifiInfo` where
      * possible, so it matches the icon the ROM itself draws, and `connectionInfo` is only the fallback.
      */
-    fun wifiLevel(context: Context, current: Int): Int = try {
+    fun wifiLevel(context: Context, current: Int): Int =
+        sample(context, current, currentOn = true, currentActive = true, currentValidated = true).dots
+
+    /**
+     * The same read, with the evidence the visual mapping cannot carry: the RSSI, the platform's
+     * five-step value, the post-shift stock bar count and where the RSSI came from.
+     *
+     * [currentLevel]/[currentOn]/[currentActive]/[currentValidated] are the caller's last values, kept
+     * when the platform cannot be queried (FR-21), and the sample is marked `src=stale` so a report
+     * does not mistake it for a fresh read.
+     */
+    fun sample(
+        context: Context,
+        currentLevel: Int,
+        currentOn: Boolean,
+        currentActive: Boolean,
+        currentValidated: Boolean
+    ): WifiSample = try {
         val wifi = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        when {
-            wifi == null -> current
-            !wifi.isWifiEnabled -> 0
-            else -> {
-                val rssi = activeWifiRssi(context) ?: wifi.connectionInfo?.rssi ?: current
-                if (rssi == -127) {
-                    0
+        if (wifi == null) {
+            stale(currentLevel, currentOn, currentActive, currentValidated)
+        } else {
+            val on = wifi.isWifiEnabled
+            // One active-network snapshot for active/validated/RSSI. The three separate helpers
+            // each did their own activeNetwork/getNetworkCapabilities binder call per refresh.
+            val caps = try {
+                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+            } catch (_: Throwable) {
+                null
+            }
+            val active = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ?: currentActive
+            val validated = if (active) {
+                caps != null &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            } else {
+                false
+            }
+            if (!on) {
+                WifiSample(INVALID_RSSI, 0, 0, 0, on = false, active = false, validated = false, source = "off")
+            } else {
+                val activeRssi = try {
+                    (caps?.transportInfo as? android.net.wifi.WifiInfo)?.rssi
+                } catch (_: Throwable) {
+                    null
+                }
+                // The fallback read is only needed when the active network did not expose a WifiInfo.
+                val connectionRssi = if (activeRssi == null) {
+                    try {
+                        wifi.connectionInfo?.rssi
+                    } catch (_: Throwable) {
+                        null
+                    }
                 } else {
-                    // The stock icon draws four bars; Duo draws three. `calculateSignalLevel` uses the
-                    // AOSP thresholds, which on OxygenOS report one bar fewer than the icon shows
-                    // (measured: stock 3 bars read as 2). Shift to the stock count, then compress.
-                    val stockBars = (WifiManager.calculateSignalLevel(rssi, 5) + 1).coerceIn(0, 4)
-                    DuoMapping.wifiBars(stockBars)
+                    null
+                }
+                val rssi = activeRssi ?: connectionRssi
+                val source = if (activeRssi != null) "active" else "connectionInfo"
+                when {
+                    rssi == null -> stale(currentLevel, on, active, validated)
+                    rssi == INVALID_RSSI ->
+                        WifiSample(INVALID_RSSI, 0, 0, 0, on, active, validated, source)
+                    else -> {
+                        // The stock icon draws four bars; Duo draws three. `calculateSignalLevel` uses
+                        // the AOSP thresholds, which on OxygenOS report one bar fewer than the icon
+                        // shows (measured: stock 3 bars read as 2). Shift to the stock count, then
+                        // compress.
+                        val calc5 = WifiManager.calculateSignalLevel(rssi, 5)
+                        val stockBars = SignalMapping.stockWifiBars(calc5)
+                        WifiSample(
+                            rssi = rssi,
+                            calc5 = calc5,
+                            stockBars = stockBars,
+                            dots = DuoMapping.wifiBars(stockBars),
+                            on = on,
+                            active = active,
+                            validated = validated,
+                            source = source
+                        )
+                    }
                 }
             }
         }
     } catch (t: Throwable) {
         L.w("wifiLevel: ${t.message}")
-        current
+        stale(currentLevel, currentOn, currentActive, currentValidated)
     }
 
-    /** The active Wi-Fi network's RSSI when Wi-Fi is the default network, else null. */
-    private fun activeWifiRssi(context: Context): Int? = try {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val caps = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
-        (caps?.transportInfo as? android.net.wifi.WifiInfo)?.rssi
-    } catch (_: Throwable) {
-        null
-    }
+    private fun stale(
+        currentLevel: Int,
+        on: Boolean,
+        active: Boolean,
+        validated: Boolean
+    ): WifiSample = WifiSample(
+        rssi = INVALID_RSSI,
+        calc5 = 0,
+        stockBars = 0,
+        dots = currentLevel.coerceIn(0, 3),
+        on = on,
+        active = active,
+        validated = validated,
+        source = "stale"
+    )
+
+    /** One bounded Wi-Fi diagnostic line per refresh. */
+    fun sampleLine(sample: WifiSample): String =
+        "wifi sample rssi=${sample.rssi} calc5=${sample.calc5} stockBars=${sample.stockBars}" +
+            " dots=${sample.dots} on=${sample.on} active=${sample.active}" +
+            " validated=${sample.validated} src=${sample.source}"
 
     /** Whether the Wi-Fi radio is on at all — distinct from "connected", which is a signal level. */
     fun isWifiEnabled(context: Context, current: Boolean): Boolean = try {

@@ -82,17 +82,16 @@ class DownloadWashTest {
     }
 
     @Test
-    fun `download count replaces battery percentage unless a charging bolt is visible`() {
+    fun `download count takes the battery seat even while the battery charges`() {
         val download = DownloadProgress.State(
             active = true,
             progress = 37,
             showLabel = true
         )
 
-        assertEquals(37, download.displayedPercent(chargingVisual = false))
-        assertNull(download.displayedPercent(chargingVisual = true))
-        assertNull(download.copy(active = false).displayedPercent(chargingVisual = false))
-        assertNull(download.copy(showLabel = false).displayedPercent(chargingVisual = false))
+        assertEquals(37, download.displayedPercent())
+        assertNull(download.copy(active = false).displayedPercent())
+        assertNull(download.copy(showLabel = false).displayedPercent())
     }
 
     private fun wash(

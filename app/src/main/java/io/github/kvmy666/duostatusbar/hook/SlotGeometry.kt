@@ -5,6 +5,19 @@ import android.view.View
 import android.view.ViewGroup
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+
+/**
+ * The optical scale for [designStyle]. The classic drawing is 112 px where the new one is 104 px, so
+ * it is drawn at [DuoPrefs.OLD_OPTICAL_SCALE] to keep the same on-screen ring size. An unknown value
+ * keeps the classic scale, matching [DuoPrefs.normalizeDesignStyle].
+ */
+internal fun opticalScaleFor(designStyle: String?): Float =
+    if (DuoPrefs.normalizeDesignStyle(designStyle) == DuoPrefs.DESIGN_OLD) {
+        DuoPrefs.OLD_OPTICAL_SCALE
+    } else {
+        1f
+    }
 
 /**
  * The element's size and position inside the icon strip (FR-03/17).
@@ -29,6 +42,19 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
     var slotBasePx = 0
         private set
 
+    /** The main bar's final side in px; extras may never draw larger than this. */
+    var mainSidePx = 0
+        private set
+
+    /** The drawing currently on screen; it owns the optical scale applied to every size. */
+    var designStyle = DuoPrefs.DESIGN_OLD
+        private set
+
+    /** Pins the design style for this run. Called at attach and while no element is attached. */
+    fun applyDesignStyle(style: String?) {
+        designStyle = DuoPrefs.normalizeDesignStyle(style)
+    }
+
     /** Pins the size and slot base for this run. Called once, at attach. */
     fun capture(sizePercent: Int, basePx: Int) {
         appliedSize = sizePercent
@@ -48,6 +74,23 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
     fun reset() {
         appliedSize = 0
         slotBasePx = 0
+        mainSidePx = 0
+        designStyle = DuoPrefs.DESIGN_OLD
+    }
+
+    /** Records the main bar's actual box after applyLayout; extras are clamped to it. */
+    fun noteMainSide(side: Int) {
+        if (side > 0) mainSidePx = side
+    }
+
+    /**
+     * Side for a QS/shade/keyguard copy. The bar-height cap alone is not enough: the QS/shade
+     * container can be the full window height, so an extra could draw at 175 px while the main bar
+     * is capped at 141 px. Reuse the main bar's final side exactly.
+     */
+    fun extraSidePx(container: ViewGroup, windowRoot: View?, base: Int = 0): Int {
+        val side = sidePx(container, windowRoot, base)
+        return if (mainSidePx > 0) side.coerceAtMost(mainSidePx) else side
     }
 
     /**
@@ -62,15 +105,21 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
             slotBasePx > 0 -> slotBasePx
             else -> measuredWidth(container)
         }
-        val scaled = (measured * appliedSize / 100).coerceAtLeast(1)
-        val height = (windowRoot?.height ?: 0).takeIf { it > 0 } ?: return scaled
+        val scaled = ((measured * appliedSize / 100f) * opticalScaleFor(designStyle))
+            .toInt().coerceAtLeast(1)
+        // At boot the vendor header can still be 0 high; the measured QS header is 63 and the shade
+        // header 101, so the container's own height is the next honest cap.
+        val height = (windowRoot?.height ?: 0).takeIf { it > 0 }
+            ?: container.height.takeIf { it > 0 }
+            ?: return scaled
         return scaled.coerceAtMost(height).coerceAtLeast(1)
     }
 
     /** The element's width in px, used for the Canvas fallback's layout params. */
     fun widthPx(container: ViewGroup): Int {
         val base = if (slotBasePx > 0) slotBasePx else measuredWidth(container)
-        return (base * appliedSize / 100).coerceAtLeast(1)
+        return ((base * appliedSize / 100f) * opticalScaleFor(designStyle))
+            .toInt().coerceAtLeast(1)
     }
 
     /** The battery slot's column — 83 px measured on the target device — or the best available estimate. */
@@ -150,3 +199,22 @@ internal fun lockedTranslationY(
     val ringFromTop = height - side / 2f
     return barTop + barHeight / 2f - ringFromTop - parentTop - parentPaddingTop
 }
+
+/**
+ * Horizontal translation (in the host's physical pixel coordinates) that puts a [viewWidth] px view
+ * with [endPadding] px reserved on its right at the physical right edge of a [containerWidth] px parent,
+ * then nudges it by [offsetPx] (negative moves left, 0 is the right edge).
+ *
+ * Android [ViewGroup] coordinates are physical: `x` grows to the right in both LTR and RTL, and
+ * `layoutDirection` only changes default child placement, not the origin. The host therefore exposes
+ * no mirrored coordinate system, so the same formula is used for both directions and `rtl` does not
+ * flip it. The mirrored form (`viewWidth + endPadding - offsetPx`) would only be correct for a host
+ * whose coordinates were mirrored, which this one is not.
+ */
+internal fun normalSeatTranslationX(
+    containerWidth: Int,
+    viewWidth: Int,
+    endPadding: Int,
+    offsetPx: Int,
+    rtl: Boolean
+): Int = containerWidth - viewWidth - endPadding + offsetPx

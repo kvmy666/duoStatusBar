@@ -26,10 +26,16 @@ object L {
     const val TAG = "DuoSB"
 
     /** How many of the most recent lines the module keeps to hand to the app. Bounded, so no leak. */
-    private const val MAX_RECENT = 600
+    private const val MAX_RECENT_LINES = 600
+
+    /** Byte bound for the recent log (2 MB of UTF-8), whichever hits first with the line bound. */
+    private const val MAX_RECENT_BYTES = 2 * 1024 * 1024
 
     private val ringLock = Any()
-    private val ring = ArrayDeque<String>(MAX_RECENT)
+    private val ring = ArrayDeque<String>(MAX_RECENT_LINES)
+
+    /** Tracked UTF-8 byte size of the joined recent log (lines plus their separators). */
+    private var recentBytes = 0
 
     /**
      * One entry point for every level. The XposedBridge sink carries no level, so nothing is lost by
@@ -65,9 +71,32 @@ object L {
     private fun record(msg: String) {
         try {
             val line = System.currentTimeMillis().toString() + " " + msg
+            val lineBytes = line.toByteArray(Charsets.UTF_8).size
             synchronized(ringLock) {
+                val wasEmpty = ring.isEmpty()
                 ring.addLast(line)
-                while (ring.size > MAX_RECENT) ring.removeFirst()
+                recentBytes += lineBytes + if (wasEmpty) 0 else 1
+                while (ring.isNotEmpty() && (ring.size > MAX_RECENT_LINES || recentBytes > MAX_RECENT_BYTES)) {
+                    val removed = ring.removeFirst()
+                    val removedBytes = removed.toByteArray(Charsets.UTF_8).size
+                    if (ring.isEmpty()) {
+                        recentBytes -= removedBytes
+                    } else {
+                        recentBytes -= removedBytes + 1
+                    }
+                    if (recentBytes < 0) recentBytes = 0
+                }
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** Test-only: clears the recent ring so retention tests start from a known empty state. */
+    internal fun clearRecentForTest() {
+        try {
+            synchronized(ringLock) {
+                ring.clear()
+                recentBytes = 0
             }
         } catch (_: Throwable) {
         }

@@ -1,5 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+
 /**
  * The single entry point the drawing and the monitor have always used, kept as a thin facade so every
  * existing caller and test keeps compiling unchanged.
@@ -131,10 +133,29 @@ object DuoMapping {
         /**
          * Download progress to draw in the battery-percentage seat, or null to leave that seat to
          * the battery. A number opens the gap when the battery percentage is off, and replaces the
-         * battery number when it is on. A visible charging bolt keeps the seat, so the number is
-         * ignored then.
+         * battery number when it is on. Only used while [downloadActive]; an active download beats
+         * charging, so a visible charging bolt does not take the seat back.
          */
-        downloadPercent: Int? = null
+        downloadPercent: Int? = null,
+        /**
+         * Whether a download currently owns the ring. When true it overrides the charging visual:
+         * no bolt, no charge animation, no charging tint, and the download number/wash take their
+         * places instead. False is the ordinary battery ring, so a completed download returns to
+         * whatever the battery was doing.
+         */
+        downloadActive: Boolean = false,
+        /** User's choice of what occupies the middle slot; "auto" keeps the existing behaviour. */
+        middleSlot: String = DuoPrefs.MIDDLE_SLOT_AUTO,
+        /** The clock text shown when [middleSlot] is "clock"; empty means the slot is off. */
+        clockText: String = "",
+        /** Whether the Wi-Fi glyph inside the ring is drawn at all. */
+        showWifiGlyph: Boolean = true,
+        /** Whether the four cellular dots inside the ring are drawn at all. */
+        showCellDots: Boolean = true,
+        /** Rive event type id (0 = none). */
+        eventType: Int = 0,
+        /** Whether a live event is currently visible. */
+        eventVisible: Boolean = false
     ): DuoVisual {
         // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, then
         // Wi-Fi; with Wi-Fi off the slot shows the cellular generation instead. The hand-over itself
@@ -149,17 +170,43 @@ object DuoMapping {
             airplane, dnd, wifiOn, networkText.isNotEmpty(), wifiConnected,
             showAirplane, showDnd && !dndDots
         )
-        val (outer, middle, dot) = SignalMapping.wifiOpacities(wifiLevel)
+        val chosenMode = when (DuoPrefs.normalizeMiddleSlot(middleSlot)) {
+            DuoPrefs.MIDDLE_SLOT_WIFI -> if (wifiOn) MIDDLE_WIFI else MIDDLE_OFF
+            DuoPrefs.MIDDLE_SLOT_CELL -> if (networkText.isNotEmpty()) MIDDLE_NETWORK else MIDDLE_OFF
+            DuoPrefs.MIDDLE_SLOT_PERCENT -> mode
+            DuoPrefs.MIDDLE_SLOT_CLOCK -> if (clockText.isNotEmpty()) MIDDLE_NETWORK else MIDDLE_OFF
+            DuoPrefs.MIDDLE_SLOT_CHARGING -> if (charging) MIDDLE_NETWORK else MIDDLE_OFF
+            else -> mode
+        }
+        val chosenText = when (DuoPrefs.normalizeMiddleSlot(middleSlot)) {
+            DuoPrefs.MIDDLE_SLOT_PERCENT -> if (chosenMode == SignalMapping.MIDDLE_NETWORK) networkText else ""
+            DuoPrefs.MIDDLE_SLOT_CLOCK -> clockText
+            DuoPrefs.MIDDLE_SLOT_CHARGING -> if (charging) level.toString() else ""
+            DuoPrefs.MIDDLE_SLOT_CELL, DuoPrefs.MIDDLE_SLOT_AUTO -> if (chosenMode == SignalMapping.MIDDLE_NETWORK) networkText else ""
+            else -> ""
+        }
+        val invertCentre = DuoPrefs.normalizeMiddleSlot(middleSlot) == DuoPrefs.MIDDLE_SLOT_PERCENT
+        val (outerRaw, middleRaw, dotRaw) = SignalMapping.wifiOpacities(wifiLevel)
+    val (outer, middle, dot) = if (showWifiGlyph) {
+        Triple(outerRaw, middleRaw, dotRaw)
+    } else {
+        Triple(0f, 0f, 0f)
+    }
         val cells = SignalMapping.sphereOpacities(cellLevel, wifiLevel, airplane, wifiOn, wifiDots)
-        val (circles, crescents, centerMoon) = signalDots(cells, dnd && dndDots)
-        // The bolt is the only thing the "show charging bolt" switch removes: the ring still tints green
-        // for a charging battery, but the top gap goes back to the percentage when the bolt is hidden.
-        val chargingVisual = charging && showCharging
-        val downloadDigits = if (chargingVisual) null else downloadPercent
-        val percentSeat = showPercent || downloadDigits != null
+        val (circlesRaw, crescentsRaw, centerMoonRaw) = signalDots(cells, dnd && dndDots)
+    val circles = if (showCellDots) circlesRaw else listOf(0f, 0f, 0f, 0f)
+    val crescents = if (showCellDots) crescentsRaw else listOf(0f, 0f, 0f, 0f)
+    val centerMoon = if (showCellDots) centerMoonRaw else 0f
+        // The download owns the ring while it is shown: the charging bolt, its tint and its animation
+        // step aside, and the download wash/digits take their places. With no active download this is
+        // the ordinary battery ring, so a completed download returns to the charging/battery state.
+        val activeDownload = if (downloadActive) download else DownloadWash.IDLE
+        val chargingVisual = charging && showCharging && !downloadActive
+        val downloadDigits = if (downloadActive) downloadPercent else null
+        val percentSeat = (showPercent || invertCentre) || downloadDigits != null
         val percent = when {
             downloadDigits != null -> downloadDigits.toString()
-            showPercent && !chargingVisual -> level.toString()
+            (showPercent || invertCentre) && !chargingVisual -> level.toString()
             else -> ""
         }
         val closed = RingGeometry.gapClosed(chargingVisual, percentSeat)
@@ -172,9 +219,14 @@ object DuoMapping {
             percentText = percent.ifEmpty { " " },
             percentOpacity = if (percent.isEmpty()) 0f else 1f,
             percentFontSize = RingGeometry.percentFontSize(percent.ifEmpty { "50" }),
-            percentY = RingGeometry.percentTopY(percentHeight),
+            percentY = if (invertCentre) RingGeometry.INVERTED_PERCENT_TOP_Y
+                       else RingGeometry.percentTopY(percentHeight),
+            batteryLineStart = RingGeometry.batteryLineStart(level),
+            middleY = if (invertCentre) RingGeometry.INVERTED_MIDDLE_Y else 0f,
+            middleScale = if (invertCentre) RingGeometry.INVERTED_MIDDLE_SCALE else 1f,
+            boltY = if (invertCentre) 49.5f else 0f,
             // Only the slot's actual occupant carries text: a hidden one never shows a stale label.
-            networkText = if (mode == SignalMapping.MIDDLE_NETWORK) networkText else "",
+            networkText = chosenText,
             boltOpacity = if (chargingVisual) 1f else 0f,
             wifiOuterOpacity = outer,
             wifiMidOpacity = middle,
@@ -187,21 +239,23 @@ object DuoMapping {
             moon3Opacity = crescents[2],
             moon4Opacity = crescents[3],
             centerMoonOpacity = centerMoon,
-            tint = Colors.tint(level, charging, saver, fgColor),
+            tint = Colors.tint(level, charging && !downloadActive, saver, fgColor),
             fgColor = fgColor,
-            middleMode = mode,
+            middleMode = chosenMode,
             wifiLevel = wifiLevel,
             cellLevel = cellLevel,
             charging = chargingVisual,
-            downloadLeftEnd = download.leftEnd,
-            downloadLeftOffset = download.leftOffset,
-            downloadRightEnd = download.rightEnd,
-            downloadRightOffset = download.rightOffset,
-            downloadOpacity = download.opacity,
-            downloadColor = download.color,
-            downloadGradient = download.gradient,
+            downloadLeftEnd = activeDownload.leftEnd,
+            downloadLeftOffset = activeDownload.leftOffset,
+            downloadRightEnd = activeDownload.rightEnd,
+            downloadRightOffset = activeDownload.rightOffset,
+            downloadOpacity = activeDownload.opacity,
+            downloadColor = activeDownload.color,
+            downloadGradient = activeDownload.gradient,
             visible = visible,
-            animateCharge = animateCharge && showCharging
+            animateCharge = animateCharge && showCharging && !downloadActive,
+            eventType = eventType,
+            eventVisible = eventVisible
         )
     }
 

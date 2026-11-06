@@ -1,0 +1,5 @@
+# Windows batch launchers must stay CRLF in the working tree.
+*.cmd text eol=crlf
+
+# Shell launchers stay LF.
+*.sh text eol=lf

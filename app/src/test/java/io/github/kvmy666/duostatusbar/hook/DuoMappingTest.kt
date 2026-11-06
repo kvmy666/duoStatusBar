@@ -1,5 +1,8 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -111,9 +114,10 @@ class DuoMappingTest {
     }
 
     @Test
-    fun `below twenty percent is red`() {
+    fun `twenty percent or below is red`() {
+        assertEquals(DuoMapping.RED_CRITICAL, DuoMapping.tint(20, charging = false, saver = false))
         assertEquals(DuoMapping.RED_CRITICAL, DuoMapping.tint(19, charging = false, saver = false))
-        assertEquals(DuoMapping.WHITE, DuoMapping.tint(20, charging = false, saver = false))
+        assertEquals(DuoMapping.WHITE, DuoMapping.tint(21, charging = false, saver = false))
     }
 
     @Test
@@ -158,13 +162,185 @@ class DuoMappingTest {
         assertEquals(3, DuoMapping.wifiBars(4))
     }
 
+    @Test
+    fun `stock wifi bar shift is pinned`() {
+        // Measured OxygenOS: rssi -50/-52/-53 -> calculateSignalLevel(..., 5) = 4; the stock icon
+        // draws four bars and Duo draws three. The shift and compression are separate, testable steps.
+        assertEquals(4, SignalMapping.stockWifiBars(4))
+        assertEquals(3, DuoMapping.wifiBars(SignalMapping.stockWifiBars(4)))
+        assertEquals(0, SignalMapping.stockWifiBars(0))
+        assertEquals(4, SignalMapping.stockWifiBars(4))
+        // The shift never invents a fifth stock bar.
+        assertEquals(4, SignalMapping.stockWifiBars(9))
+    }
+
     // -------------------------------------------------------------------------------- cellular
 
     @Test
     fun `cellular shows one sphere per bar`() {
         assertEquals(listOf(1f, 0.3f, 0.3f, 0.3f), DuoMapping.cellOpacities(1))
+        assertEquals(listOf(1f, 1f, 0.3f, 0.3f), DuoMapping.cellOpacities(2))
+        assertEquals(listOf(1f, 1f, 1f, 0.3f), DuoMapping.cellOpacities(3))
         assertEquals(listOf(1f, 1f, 1f, 1f), DuoMapping.cellOpacities(4))
         assertEquals(listOf(0.3f, 0.3f, 0.3f, 0.3f), DuoMapping.cellOpacities(0))
+    }
+
+    @Test
+    fun `dual SIM selection uses the slot, not the active-list order`() {
+        // Only slot 2 is active: the active list has one entry, but sim2 must still find it.
+        val slot2Only = listOf(SimSignal(slot = 1, subscriptionId = 22, level = 4))
+        assertEquals(4, SignalMapping.selectedCellLevel("sim2", slot2Only, defaultLevel = 2))
+        assertEquals(2, SignalMapping.selectedCellLevel("sim1", slot2Only, defaultLevel = 2))
+        assertEquals(2, SignalMapping.selectedCellLevel("auto", slot2Only, defaultLevel = 2))
+
+        val both = listOf(
+            SimSignal(slot = 1, subscriptionId = 22, level = 4),
+            SimSignal(slot = 0, subscriptionId = 11, level = 3)
+        )
+        assertEquals(3, SignalMapping.selectedCellLevel("sim1", both, defaultLevel = 4))
+        assertEquals(4, SignalMapping.selectedCellLevel("sim2", both, defaultLevel = 3))
+        assertEquals(1, SignalMapping.selectedCellLevel("auto", both, defaultLevel = 1))
+    }
+
+    @Test
+    fun `the dual SIM selection names its slot, subscription and source`() {
+        val both = listOf(
+            cellSample(slot = 0, subId = 2, raw = 4, dots = 4),
+            cellSample(slot = 1, subId = 1, raw = 1, dots = 1)
+        )
+        // Each choice reports the matching slot/sub; no cross-talk.
+        assertEquals(
+            CellSelection(dots = 4, slot = 0, subscriptionId = 2, src = "per-sub", fallback = false),
+            SignalMapping.selectCell("sim1", both, defaultDots = 3, defaultSub = 2)
+        )
+        assertEquals(
+            CellSelection(dots = 1, slot = 1, subscriptionId = 1, src = "per-sub", fallback = false),
+            SignalMapping.selectCell("sim2", both, defaultDots = 3, defaultSub = 2)
+        )
+        // Auto reports the default line and its subscription.
+        assertEquals(
+            CellSelection(dots = 3, slot = -1, subscriptionId = 2, src = "default", fallback = false),
+            SignalMapping.selectCell("auto", both, defaultDots = 3, defaultSub = 2)
+        )
+    }
+
+    @Test
+    fun `a missing slot falls back to the default line, not the other SIM`() {
+        val slot0Only = listOf(cellSample(slot = 0, subId = 2, raw = 4, dots = 4))
+        assertEquals(
+            CellSelection(dots = 2, slot = -1, subscriptionId = -1, src = "fallback", fallback = true),
+            SignalMapping.selectCell("sim2", slot0Only, defaultDots = 2, defaultSub = 2)
+        )
+        // A failed per-subscription read keeps its identity but must not claim a per-sub source.
+        val unavailable = listOf(
+            cellSample(slot = 0, subId = 2, raw = -1, dots = 2, src = "unavailable")
+        )
+        assertEquals(
+            CellSelection(dots = 2, slot = 0, subscriptionId = 2, src = "fallback", fallback = true),
+            SignalMapping.selectCell("sim1", unavailable, defaultDots = 2, defaultSub = 2)
+        )
+    }
+
+    private fun cellSample(
+        slot: Int,
+        subId: Int,
+        raw: Int,
+        dots: Int,
+        src: String = "per-sub"
+    ) = CellSample(
+        slot = slot,
+        subscriptionId = subId,
+        raw = raw,
+        count = 5,
+        maxIndex = 4,
+        rat = "Lte",
+        dbm = -97,
+        metric = "rsrp",
+        dots = dots,
+        src = src,
+        airplane = false
+    )
+
+    @Test
+    fun `stock five-level source maps bars 0-4 to 1,1,2,3,4 with service`() {
+        // Owner's 5-bar table: raw 0..4 (service present) -> bars 1..5 -> dots 1,1,2,3,4.
+        // raw 0 with service is the first bar, not "no service".
+        assertEquals(1, SignalMapping.cellDots(0, 5))
+        assertEquals(1, SignalMapping.cellDots(1, 5))
+        assertEquals(2, SignalMapping.cellDots(2, 5))
+        assertEquals(3, SignalMapping.cellDots(3, 5))
+        assertEquals(4, SignalMapping.cellDots(4, 5))
+        // No service -> 0 even at full raw.
+        assertEquals(0, SignalMapping.cellDots(0, 5, false))
+        assertEquals(0, SignalMapping.cellDots(4, 5, false))
+    }
+
+    @Test
+    fun `stock four-level source maps full to four dots`() {
+        // `getNumSignalStrengthLevels()` is a count (4) while the raw value is an index (0..3). The
+        // old formula treated 4 as the top and turned a full four-level bar into three dots.
+        // 4-level fallback: raw 0 with service is the first bar (dot 1), not "no service".
+        assertEquals(1, SignalMapping.cellDots(0, 4))
+        assertEquals(1, SignalMapping.cellDots(1, 4))
+        assertEquals(3, SignalMapping.cellDots(2, 4))
+        assertEquals(4, SignalMapping.cellDots(3, 4))
+        // A raw that has already reached the count is a bar count on 0..count, not an index.
+        assertEquals(4, SignalMapping.cellDots(4, 4))
+    }
+
+    @Test
+    fun `no service and out of range raws are clamped`() {
+        // No service -> 0 regardless of raw.
+        assertEquals(0, SignalMapping.cellDots(0, 5, false))
+        assertEquals(0, SignalMapping.cellDots(4, 5, false))
+        // raw < 0 -> 0 (no service / airplane fallback).
+        assertEquals(0, SignalMapping.cellDots(-1, 5))
+        assertEquals(0, SignalMapping.cellDots(-1, 5, true))
+        // raw > count clamps to the top (4 dots).
+        assertEquals(4, SignalMapping.cellDots(99, 5))
+        assertEquals(4, SignalMapping.cellDots(5, 5))
+    }
+
+    @Test
+    fun `indexed mapping rounds to nearest and always keeps a full bar full`() {
+        assertEquals(0, SignalMapping.cellDotsIndexed(0, 4))
+        assertEquals(1, SignalMapping.cellDotsIndexed(1, 4))
+        assertEquals(2, SignalMapping.cellDotsIndexed(2, 4))
+        assertEquals(3, SignalMapping.cellDotsIndexed(3, 4))
+        assertEquals(4, SignalMapping.cellDotsIndexed(4, 4))
+
+        // The four-level index table: 0,1,3,4. The binding rule is full -> 4.
+        assertEquals(3, SignalMapping.cellDotsIndexed(2, 3))
+        assertEquals(4, SignalMapping.cellDotsIndexed(3, 3))
+
+        // Count is not maxIndex: the same raw maps differently depending on which one is named.
+        assertEquals(4, SignalMapping.cellDotsIndexed(4, 4))
+        assertEquals(3, SignalMapping.cellDotsIndexed(4, 5))
+    }
+
+    @Test
+    fun `a full bar is never one or three dots on any tested scale`() {
+        for (maxIndex in 1..8) {
+            val dots = SignalMapping.cellDotsIndexed(maxIndex, maxIndex)
+            assertEquals("maxIndex=$maxIndex", 4, dots)
+        }
+        // A broken/zero scale must not divide by zero or lose a non-zero signal entirely.
+        assertEquals(4, SignalMapping.cellDotsIndexed(1, 0))
+        // Clamp malformed/extra levels instead of drawing a fifth sphere.
+        assertEquals(0, SignalMapping.cellDotsIndexed(-1, 4))
+        assertEquals(0, SignalMapping.cellDots(-1, 5))
+        assertEquals(4, SignalMapping.cellDotsIndexed(99, 4))
+        assertEquals(4, SignalMapping.cellDots(99, 5))
+        assertEquals(4, SignalMapping.cellDots(5, 6))
+    }
+
+    @Test
+    fun `the maximum index is derived from the count and the observed raw`() {
+        assertEquals(4, SignalMapping.cellMaxIndex(3, 5))
+        assertEquals(5, SignalMapping.cellMaxIndex(5, 5))
+        assertEquals(3, SignalMapping.cellMaxIndex(2, 4))
+        assertEquals(1, SignalMapping.cellMaxIndex(0, 1))
+        assertEquals(1, SignalMapping.cellMaxIndex(-1, 1))
     }
 
     // ------------------------------------------------------------------------------ the snapshot
@@ -212,7 +388,7 @@ class DuoMappingTest {
     }
 
     @Test
-    fun `hiding the charging bolt also permits download digits and keeps their styling`() {
+    fun `an active download keeps its digits and styling while the battery charges`() {
         val gradient = DownloadGradient(
             listOf(0xFFFF0000.toInt(), 0xFF0000FF.toInt()),
             angle = 45
@@ -230,12 +406,14 @@ class DuoMappingTest {
         val v = DuoMapping.visual(
             level = 72, charging = true, saver = false, showPercent = true,
             wifiLevel = 3, cellLevel = 4, airplane = false,
-            showCharging = false, download = wash, downloadPercent = 64
+            download = wash, downloadPercent = 64, downloadActive = true
         )
 
         assertEquals("64", v.percentText)
         assertEquals(0f, v.boltOpacity, 0.0001f)
-        assertEquals(DuoMapping.GREEN_CHARGING, v.tint)
+        assertFalse(v.charging)
+        // Download overrides the charging visual, including its green tint.
+        assertEquals(DuoMapping.WHITE, v.tint)
         assertEquals(wash.leftEnd, v.downloadLeftEnd, 0.0001f)
         assertEquals(wash.rightEnd, v.downloadRightEnd, 0.0001f)
         assertEquals(wash.opacity, v.downloadOpacity, 0.0001f)
@@ -248,7 +426,7 @@ class DuoMappingTest {
         val v = DuoMapping.visual(
             level = 72, charging = false, saver = false, showPercent = false,
             wifiLevel = 3, cellLevel = 4, airplane = false,
-            downloadPercent = 28
+            downloadPercent = 28, downloadActive = true
         )
         assertEquals("28", v.percentText)
         assertEquals(1f, v.percentOpacity, 0.0001f)
@@ -261,21 +439,112 @@ class DuoMappingTest {
         val v = DuoMapping.visual(
             level = 72, charging = false, saver = false, showPercent = true,
             wifiLevel = 3, cellLevel = 4, airplane = false,
-            downloadPercent = 64
+            downloadPercent = 64, downloadActive = true
         )
         assertEquals("64", v.percentText)
         assertEquals(1f, v.percentOpacity, 0.0001f)
     }
 
     @Test
-    fun `charging keeps the bolt while a download percentage is available`() {
+    fun `download wins over charging while it is active`() {
         val v = DuoMapping.visual(
             level = 72, charging = true, saver = false, showPercent = true,
             wifiLevel = 3, cellLevel = 4, airplane = false,
-            downloadPercent = 64
+            downloadPercent = 64, downloadActive = true
+        )
+        assertEquals("64", v.percentText)
+        assertEquals(1f, v.percentOpacity, 0.0001f)
+        assertEquals(0f, v.boltOpacity, 0.0001f)
+        assertFalse(v.charging)
+        assertEquals(DuoMapping.WHITE, v.tint)
+    }
+
+    @Test
+    fun `a disabled download leaves charging in charge`() {
+        // The setting gate hands the mapping an inactive download: charging must behave exactly as
+        // it did before the feature, even if a stale wash/percentage is still supplied.
+        val wash = DownloadWash.of(
+            progress = 64, clockwise = true, charging = true, showPercent = true, active = true
+        )
+        val v = DuoMapping.visual(
+            level = 72, charging = true, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false,
+            download = wash, downloadPercent = 64, downloadActive = false
         )
         assertEquals("", v.percentText.trim())
+        assertEquals(0f, v.percentOpacity, 0.0001f)
         assertEquals(1f, v.boltOpacity, 0.0001f)
+        assertTrue(v.charging)
+        assertEquals(DuoMapping.GREEN_CHARGING, v.tint)
+        assertEquals(0f, v.downloadOpacity, 0.0001f)
+        assertEquals(0f, v.downloadLeftEnd, 0.0001f)
+        assertEquals(0f, v.downloadRightEnd, 0.0001f)
+    }
+
+    @Test
+    fun `a download bar without its number still hides the charging bolt`() {
+        val wash = DownloadWash.of(
+            progress = 64, clockwise = true, charging = false, showPercent = true, active = true
+        )
+        val v = DuoMapping.visual(
+            level = 72, charging = true, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false,
+            download = wash, downloadPercent = null, downloadActive = true
+        )
+        assertEquals("72", v.percentText)
+        assertEquals(0f, v.boltOpacity, 0.0001f)
+        assertFalse(v.charging)
+        assertTrue(v.downloadOpacity > 0f)
+    }
+
+    @Test
+    fun `a completed download returns the ring to charging`() {
+        val active = DuoMapping.visual(
+            level = 72, charging = true, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false,
+            downloadPercent = 64, downloadActive = true
+        )
+        assertEquals("64", active.percentText)
+        assertEquals(0f, active.boltOpacity, 0.0001f)
+
+        // The download ends: the same battery/charging state is all that is left.
+        val done = DuoMapping.visual(
+            level = 72, charging = true, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false,
+            downloadPercent = null, downloadActive = false
+        )
+        assertEquals("", done.percentText.trim())
+        assertEquals(1f, done.boltOpacity, 0.0001f)
+        assertTrue(done.charging)
+        assertEquals(DuoMapping.GREEN_CHARGING, done.tint)
+        assertEquals(0f, done.downloadOpacity, 0.0001f)
+    }
+
+    @Test
+    fun `a completed download returns to the normal battery ring when not charging`() {
+        val done = DuoMapping.visual(
+            level = 72, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false,
+            downloadPercent = null, downloadActive = false
+        )
+        assertEquals("72", done.percentText)
+        assertEquals(0f, done.boltOpacity, 0.0001f)
+        assertFalse(done.charging)
+        assertEquals(DuoMapping.WHITE, done.tint)
+        assertEquals(0f, done.downloadOpacity, 0.0001f)
+    }
+
+    @Test
+    fun `a full charging battery keeps the normal non-charging ring`() {
+        // At 100 % the module reports charging=false, so the ring behaves as a normal full battery.
+        val v = DuoMapping.visual(
+            level = 100, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false
+        )
+        assertEquals("100", v.percentText)
+        assertEquals(0f, v.boltOpacity, 0.0001f)
+        assertFalse(v.charging)
+        assertEquals(DuoMapping.WHITE, v.tint)
     }
 
     @Test
@@ -323,6 +592,23 @@ class DuoMappingTest {
         assertEquals(-83, edgeInsetPx(83, 0))
         assertEquals(0, edgeInsetPx(0, 0))
         assertEquals(0, edgeInsetPx(80, 250))
+    }
+
+    @Test
+    fun `the classic drawing is optically scaled to the new ring size`() {
+        assertEquals(0.9286f, DuoPrefs.OLD_OPTICAL_SCALE, 0f)
+        assertEquals(0.9286f, opticalScaleFor(DuoPrefs.DESIGN_OLD), 0f)
+        assertEquals(1f, opticalScaleFor(DuoPrefs.DESIGN_NEW), 0f)
+        // An unknown stored value is drawn as the classic ring, so it keeps the classic scale.
+        assertEquals(0.9286f, opticalScaleFor("unknown"), 0f)
+    }
+
+    @Test
+    fun `the raw drawing follows the design style`() {
+        assertEquals(R.raw.duo_old, rawResourceFor(DuoPrefs.DESIGN_OLD))
+        assertEquals(R.raw.duo_old, rawResourceFor(null))
+        assertEquals(R.raw.duo_old, rawResourceFor("unknown"))
+        assertEquals(R.raw.duo, rawResourceFor(DuoPrefs.DESIGN_NEW))
     }
 
     @Test
@@ -756,4 +1042,286 @@ class DuoMappingTest {
         assertTrue(v.trackOpacity > 0f)
         assertEquals(DuoMapping.WHITE, v.fgColor)
     }
+
+    // --------------------------------------------------------------------------- middle slot choice
+
+    @Test
+    fun `middle slot auto keeps the original behaviour`() {
+        val withAuto = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_AUTO
+        )
+        val omitted = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G"
+        )
+        assertEquals(withAuto.middleMode, omitted.middleMode)
+        assertEquals(withAuto.networkText, omitted.networkText)
+    }
+
+    @Test
+    fun `middle slot percent centers the percentage and inverts the middle occupant`() {
+        val v = DuoMapping.visual(
+            level = 42, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_PERCENT
+        )
+        // Exactly one percentage, in the centred seat; no duplicate number in the network seat.
+        assertEquals("42", v.percentText)
+        assertEquals(1f, v.percentOpacity, 0.0001f)
+        assertEquals("", v.networkText)
+        assertEquals(RingGeometry.INVERTED_MIDDLE_Y, v.middleY, 0.0001f)
+        assertEquals(RingGeometry.INVERTED_MIDDLE_SCALE, v.middleScale, 0.0001f)
+        assertEquals(RingGeometry.INVERTED_PERCENT_TOP_Y, v.percentY, 0.0001f)
+        assertEquals(DuoMapping.MIDDLE_WIFI, v.middleMode)
+    }
+
+    @Test
+    fun `percent middle slot keeps the bolt in the inverted seat while charging`() {
+        val v = DuoMapping.visual(
+            level = 42, charging = true, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_PERCENT
+        )
+        assertEquals(49.5f, v.boltY, 0.0001f)
+        assertEquals(1f, v.boltOpacity, 0.0001f)
+    }
+
+    @Test
+    fun `auto middle slot keeps the bolt in the normal seat while charging`() {
+        val v = DuoMapping.visual(
+            level = 42, charging = true, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_AUTO
+        )
+        assertEquals(0f, v.boltY, 0.0001f)
+        assertEquals(1f, v.boltOpacity, 0.0001f)
+    }
+
+    @Test
+    fun `middle slot percent does not duplicate the level into the network seat`() {
+        val v = DuoMapping.visual(
+            level = 7, charging = false, saver = false, showPercent = true,
+            wifiLevel = 0, cellLevel = 4, airplane = false, wifiOn = false,
+            networkText = "5G", middleSlot = DuoPrefs.MIDDLE_SLOT_PERCENT
+        )
+        assertEquals("7", v.percentText)
+        // The cellular generation keeps its seat above; the battery number is not copied into it.
+        assertEquals("5G", v.networkText)
+        assertFalse(v.networkText == "7")
+    }
+
+    @Test
+    fun `non-percent middle slots keep normal middle geometry`() {
+        val slots = listOf(
+            DuoPrefs.MIDDLE_SLOT_AUTO,
+            DuoPrefs.MIDDLE_SLOT_WIFI,
+            DuoPrefs.MIDDLE_SLOT_CELL,
+            DuoPrefs.MIDDLE_SLOT_CLOCK,
+            DuoPrefs.MIDDLE_SLOT_CHARGING
+        )
+        for (slot in slots) {
+            val v = DuoMapping.visual(
+                level = 42, charging = (slot == DuoPrefs.MIDDLE_SLOT_CHARGING),
+                saver = false, showPercent = true,
+                wifiLevel = 3, cellLevel = 4, airplane = false,
+                networkText = "5G", clockText = "12:34", middleSlot = slot
+            )
+            assertEquals("slot=$slot", 0f, v.middleY, 0.0001f)
+            assertEquals("slot=$slot", 1f, v.middleScale, 0.0001f)
+            org.junit.Assert.assertNotEquals(
+                "slot=$slot", RingGeometry.INVERTED_PERCENT_TOP_Y, v.percentY, 0.0001f
+            )
+        }
+    }
+
+    @Test
+    fun `middle slot wifi follows the radio`() {
+        val on = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, wifiOn = true,
+            middleSlot = DuoPrefs.MIDDLE_SLOT_WIFI
+        )
+        assertEquals(DuoMapping.MIDDLE_WIFI, on.middleMode)
+        val off = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, wifiOn = false,
+            middleSlot = DuoPrefs.MIDDLE_SLOT_WIFI
+        )
+        assertEquals(DuoMapping.MIDDLE_OFF, off.middleMode)
+    }
+
+    @Test
+    fun `middle slot cell shows the generation when available`() {
+        val shown = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_CELL
+        )
+        assertEquals(DuoMapping.MIDDLE_NETWORK, shown.middleMode)
+        assertEquals("5G", shown.networkText)
+        val empty = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_CELL
+        )
+        assertEquals(DuoMapping.MIDDLE_OFF, empty.middleMode)
+        assertEquals("", empty.networkText)
+    }
+
+    @Test
+    fun `an unknown middle slot behaves as auto`() {
+        val unknown = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = "nope"
+        )
+        val auto = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_AUTO
+        )
+        assertEquals(auto.middleMode, unknown.middleMode)
+        assertEquals(auto.networkText, unknown.networkText)
+    }
+
+
+    @Test
+    fun `middle slot clock shows the clock text when available`() {
+        val shown = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_CLOCK, clockText = "12:34"
+        )
+        assertEquals(DuoMapping.MIDDLE_NETWORK, shown.middleMode)
+        assertEquals("12:34", shown.networkText)
+        val empty = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_CLOCK, clockText = ""
+        )
+        assertEquals(DuoMapping.MIDDLE_OFF, empty.middleMode)
+        assertEquals("", empty.networkText)
+    }
+
+    @Test
+    fun `middle slot charging shows the level while charging`() {
+        val on = DuoMapping.visual(
+            level = 42, charging = true, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_CHARGING
+        )
+        assertEquals(DuoMapping.MIDDLE_NETWORK, on.middleMode)
+        assertEquals("42", on.networkText)
+        val off = DuoMapping.visual(
+            level = 42, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_CHARGING
+        )
+        assertEquals(DuoMapping.MIDDLE_OFF, off.middleMode)
+        assertEquals("", off.networkText)
+    }
+
+    @Test
+    fun `middle slot auto stays unchanged when clock text is supplied`() {
+        val withText = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_AUTO, clockText = "12:34"
+        )
+        val auto = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, networkText = "5G",
+            middleSlot = DuoPrefs.MIDDLE_SLOT_AUTO
+        )
+        assertEquals(auto.middleMode, withText.middleMode)
+        assertEquals(auto.networkText, withText.networkText)
+    }
+
+
+
+    @Test
+    fun `hiding the wifi glyph zeroes both wifi opacities`() {
+        val shown = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false
+        )
+        val hidden = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, showWifiGlyph = false
+        )
+        assertEquals(0f, hidden.wifiOuterOpacity, 0.0001f)
+        assertEquals(0f, hidden.wifiMidOpacity, 0.0001f)
+        assertEquals(shown.cell1Opacity, hidden.cell1Opacity, 0.0001f)
+        assertEquals(shown.cell2Opacity, hidden.cell2Opacity, 0.0001f)
+        assertEquals(shown.cell3Opacity, hidden.cell3Opacity, 0.0001f)
+        assertEquals(shown.cell4Opacity, hidden.cell4Opacity, 0.0001f)
+        assertEquals(shown.moon1Opacity, hidden.moon1Opacity, 0.0001f)
+        assertEquals(shown.moon2Opacity, hidden.moon2Opacity, 0.0001f)
+        assertEquals(shown.moon3Opacity, hidden.moon3Opacity, 0.0001f)
+        assertEquals(shown.moon4Opacity, hidden.moon4Opacity, 0.0001f)
+        assertEquals(shown.centerMoonOpacity, hidden.centerMoonOpacity, 0.0001f)
+    }
+
+    @Test
+    fun `hiding the cellular dots zeroes all four spheres and moons`() {
+        val shown = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, dnd = true,
+            showDnd = false, dndDots = true
+        )
+        val hidden = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, dnd = true,
+            showDnd = false, dndDots = true, showCellDots = false
+        )
+        assertEquals(0f, hidden.cell1Opacity, 0.0001f)
+        assertEquals(0f, hidden.cell2Opacity, 0.0001f)
+        assertEquals(0f, hidden.cell3Opacity, 0.0001f)
+        assertEquals(0f, hidden.cell4Opacity, 0.0001f)
+        assertEquals(0f, hidden.moon1Opacity, 0.0001f)
+        assertEquals(0f, hidden.moon2Opacity, 0.0001f)
+        assertEquals(0f, hidden.moon3Opacity, 0.0001f)
+        assertEquals(0f, hidden.moon4Opacity, 0.0001f)
+        assertEquals(0f, hidden.centerMoonOpacity, 0.0001f)
+        assertEquals(shown.wifiOuterOpacity, hidden.wifiOuterOpacity, 0.0001f)
+        assertEquals(shown.wifiMidOpacity, hidden.wifiMidOpacity, 0.0001f)
+    }
+
+    @Test
+    fun `default flags preserve the current output`() {
+        val a = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false
+        )
+        val b = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false,
+            showWifiGlyph = true, showCellDots = true
+        )
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun `event fields pass through without changing the middle occupant`() {
+        val shown = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false,
+            eventType = LiveEventType.FLASHLIGHT.riveId, eventVisible = true
+        )
+        assertEquals(LiveEventType.FLASHLIGHT.riveId, shown.eventType)
+        assertTrue(shown.eventVisible)
+        // The event is a presentation overlay; the underlying middle state is still the current one
+        // so the Canvas/Rive return is immediate when the event ends.
+        assertEquals(DuoMapping.MIDDLE_WIFI, shown.middleMode)
+
+        val hidden = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false
+        )
+        assertEquals(0, hidden.eventType)
+        assertFalse(hidden.eventVisible)
+    }
+
 }

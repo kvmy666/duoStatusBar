@@ -85,6 +85,7 @@
                 <action android:name="io.github.kvmy666.duostatusbar.action.STATUS_PUSH" />
                 <action android:name="io.github.kvmy666.duostatusbar.action.DUMP_PUSH" />
                 <action android:name="io.github.kvmy666.duostatusbar.action.FALLBACK_PUSH" />
+                <action android:name="io.github.kvmy666.duostatusbar.action.STOCK_ICONS_PUSH" />
             </intent-filter>
         </receiver>
 

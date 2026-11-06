@@ -3,6 +3,8 @@ package io.github.kvmy666.duostatusbar.hook.rom
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -97,5 +99,139 @@ class RomProfilesTest {
             "Google", "google", "husky", "Google/husky:16", listOf(measuredSamsung())
         )
         assertEquals("aosp", google.id)
+    }
+
+    @Test
+    fun `parses the optional shade fields`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "oxygenos",
+                  "containerIds": ["system_icons"],
+                  "shadeContainerIds": ["quick_qs_status_icons", "shade_header_system_icons"],
+                  "shadeBatteryId": "batteryRemainingIcon",
+                  "shadeStatusIconIds": ["statusIcons"],
+                  "shadeMeasured": true
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertEquals(
+            listOf("quick_qs_status_icons", "shade_header_system_icons"),
+            p.shadeContainerIds
+        )
+        assertEquals("batteryRemainingIcon", p.shadeBatteryId)
+        assertEquals(listOf("statusIcons"), p.shadeStatusIconIds)
+        assertTrue(p.shadeMeasured)
+    }
+
+    @Test
+    fun `missing or blank shade fields default to empty`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "aosp",
+                  "containerIds": ["system_icons"],
+                  "shadeContainerIds": [],
+                  "shadeBatteryId": "  "
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertEquals(emptyList<String>(), p.shadeContainerIds)
+        assertEquals("", p.shadeBatteryId)
+        assertEquals(emptyList<String>(), p.shadeStatusIconIds)
+        assertFalse(p.shadeMeasured)
+    }
+
+
+    @Test
+    fun `parses optional capability keys`() {
+        val json = """
+            {
+              "profiles": [
+                 {
+                   "id": "oxygenos",
+                   "containerIds": ["system_icons"],
+                   "coverHook": false,
+                   "panelExpansionKind": "listener",
+                   "panelHookMeasured": true,
+                   "panelOwnerAvailable": true
+                 }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertFalse(p.coverHook)
+        assertEquals("listener", p.panelExpansionKind)
+        assertTrue(p.panelHookMeasured)
+        assertTrue(p.panelOwnerAvailable)
+    }
+
+    @Test
+    fun `unknown panelExpansionKind becomes unknown`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "oxygenos",
+                  "containerIds": ["system_icons"],
+                  "panelExpansionKind": "something_else"
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertEquals("unknown", p.panelExpansionKind)
+    }
+
+    @Test
+    fun `missing capability keys preserve defaults`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "aosp",
+                  "containerIds": ["system_icons"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertTrue(p.coverHook)
+        assertEquals("panel_type_5arg", p.panelExpansionKind)
+        assertFalse(p.panelHookMeasured)
+        assertFalse(p.panelOwnerAvailable)
+    }
+
+    @Test
+    fun `shipped asset keeps oxygenos shade map`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profiles = RomProfiles.load(context)
+        val rom = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", profiles)
+        assertEquals("oxygenos", rom.id)
+        assertEquals(listOf("quick_qs_status_icons", "shade_header_system_icons"), rom.shadeContainerIds)
+        assertEquals("batteryRemainingIcon", rom.shadeBatteryId)
+        assertTrue(rom.shadeMeasured)
+        assertTrue(rom.panelOwnerAvailable)
+    }
+
+    @Test
+    fun `shipped asset keeps the six unmeasured maps out of runtime selection`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profiles = RomProfiles.load(context)
+        assertEquals(9, profiles.size)
+        assertEquals(setOf("oxygenos", "hyperos"), profiles.filter { it.measured }.map { it.id }.toSet())
+        assertEquals(
+            setOf("aosp", "coloros", "oneui", "originos", "magicos", "myos", "nothingos"),
+            profiles.filter { !it.measured }.map { it.id }.toSet()
+        )
+        val samsung = RomDetection.forThisRom("samsung", "samsung", "SM-S928", "One UI 8", profiles)
+        assertEquals("samsung", samsung.id)
+        assertFalse(samsung.measured)
     }
 }

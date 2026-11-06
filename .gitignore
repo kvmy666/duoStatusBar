@@ -28,6 +28,8 @@ keystore.properties
 # ---- reverse-engineering artefacts ----
 # SystemUI/system files pulled from the device: local analysis only, never published.
 reverse/
+# Local OEM UI corpus (vendor APKs/dumps/decompiled output): never published.
+corpus/
 *.dex
 *.smali
 SystemUI*.apk
@@ -61,3 +63,20 @@ mise.toml
 
 # build error logs
 *.err
+
+# ---- local evidence / user material (keep on disk, never publish) ----
+# Generated screenshots, videos, log slices and diagnostic captures.
+docs/evidence/
+# User-submitted reports and device pulls: private device data.
+from users/
+# Local report bot (config.yaml carries the bot token; debug.log has runtime data).
+report-bot/
+# Local Arabic/opencode scratch material.
+opencode-arabic/
+
+# ---- root screenshots and archives ----
+/Screenshot*.png
+/*.zip
+
+# ---- vendored agent tooling binary (22 MB; keep locally, not in git) ----
+.github/skills/impeccable/scripts/bin/

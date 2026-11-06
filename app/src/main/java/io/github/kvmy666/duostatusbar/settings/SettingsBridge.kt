@@ -25,12 +25,16 @@ internal object SettingsBridge {
     const val ACTION_STATUS_PUSH = "io.github.kvmy666.duostatusbar.action.STATUS_PUSH"
     const val ACTION_DUMP_PUSH = "io.github.kvmy666.duostatusbar.action.DUMP_PUSH"
     const val ACTION_FALLBACK_PUSH = "io.github.kvmy666.duostatusbar.action.FALLBACK_PUSH"
+    const val ACTION_STOCK_ICONS_PUSH = "io.github.kvmy666.duostatusbar.action.STOCK_ICONS_PUSH"
 
     /** The provider row, serialized as `ArrayList<Any>` (ints, longs, strings). */
     const val EXTRA_VALUES = "values"
     const val EXTRA_STATUS = "status"
     const val EXTRA_DUMP = "dump"
     const val EXTRA_FALLBACK = "fallback"
+
+    /** The live stock-icon list as the compact JSON from [StockIconInventory]. */
+    const val EXTRA_STOCK_ICONS = "stock_icons"
 
     const val PERMISSION = "io.github.kvmy666.duostatusbar.permission.SETTINGS"
     const val SYSTEMUI = "com.android.systemui"
@@ -85,6 +89,10 @@ class StatusBridgeReceiver : BroadcastReceiver() {
                 SettingsBridge.ACTION_FALLBACK_PUSH ->
                     intent.getStringExtra(SettingsBridge.EXTRA_FALLBACK)
                         ?.let { DuoPrefs.writeFallback(app, it) }
+                SettingsBridge.ACTION_STOCK_ICONS_PUSH ->
+                    intent.getStringExtra(SettingsBridge.EXTRA_STOCK_ICONS)
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { DuoPrefs.writeStockIcons(app, it) }
             }
         } catch (t: Throwable) {
             L.w("status bridge: ${t.javaClass.simpleName}: ${t.message}")

@@ -20,5 +20,11 @@ id = "5fe692a0d2994354b57bcef67b98d310"
 
 # Secrets are NOT here. Set them once (they are stored encrypted by Cloudflare):
 #   npx wrangler secret put TELEGRAM_BOT_TOKEN
-#   npx wrangler secret put TELEGRAM_CHAT_ID
-#   npx wrangler secret put RELAY_KEY        # optional shared key
+#   npx wrangler secret put TELEGRAM_CHAT_ID       # owner's private chat (log ZIP only)
+#   npx wrangler secret put TELEGRAM_GROUP_ID      # private/public ticket group
+#   npx wrangler secret put TELEGRAM_GROUP_THREAD_ID # Open tickets topic
+#   npx wrangler secret put TELEGRAM_CLOSED_THREAD_ID
+#   npx wrangler secret put TELEGRAM_NOT_PLANNED_THREAD_ID
+#   npx wrangler secret put OWNER_ID               # Telegram user allowed to change status
+#   npx wrangler secret put SETUP_KEY              # one-time webhook setup key
+#   npx wrangler secret put RELAY_KEY              # optional shared key

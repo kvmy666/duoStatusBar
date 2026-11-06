@@ -78,12 +78,11 @@ internal object DownloadProgress {
         val showLabel: Boolean = false,
     ) {
         /**
-         * Progress that replaces the battery percentage, if this selected download owns the seat.
-         * A visible charging bolt owns that seat instead; physical charging alone does not when the
-         * user has hidden the bolt.
+         * Progress that replaces the battery percentage while this download owns the ring. An
+         * active download beats charging: the user sees the download number and can tap the ring
+         * to switch back to the charging/battery view.
          */
-        fun displayedPercent(chargingVisual: Boolean): Int? =
-            progress.takeIf { active && showLabel && !chargingVisual }
+        fun displayedPercent(): Int? = progress.takeIf { active && showLabel }
 
         /** The wash for the ring's current gap. Inactive is [DownloadWash.IDLE]. */
         fun toWash(charging: Boolean, showPercent: Boolean): DownloadWash = DownloadWash.of(

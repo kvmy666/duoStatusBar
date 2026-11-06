@@ -1,4 +1,7 @@
 name: duo
+exclude:
+  # Kept so the classic drawing can be rebuilt and hash-checked; not part of the new document.
+  - scene_old.rml
 logs:
   file: build/rive.log
   problems: build/problems.log

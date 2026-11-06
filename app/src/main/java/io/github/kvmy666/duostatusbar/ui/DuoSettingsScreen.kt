@@ -21,8 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,11 +43,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.kvmy666.duostatusbar.rememberResumed
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoOrientation
+import io.github.kvmy666.duostatusbar.settings.BackupCodec
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
@@ -80,9 +84,16 @@ import kotlinx.coroutines.withContext
  * One exception is the size: resizing the Rive view while System UI is running is what used to take it
  * down, so a size change is only applied on the next start. That is why the size row carries a Restart
  * button and says so.
+ *
+ * [showCustomization] is false for the Settings route opened from the Home gear: that route is the
+ * health/backup/about page, while the Customization tab owns the full set of look-and-feel sections.
+ * Keeping the two routes distinct avoids showing the same controls twice.
  */
 @Composable
-fun DuoSettingsScreen(modifier: Modifier = Modifier) {
+fun DuoSettingsScreen(
+    modifier: Modifier = Modifier,
+    showCustomization: Boolean = true
+) {
     val context = LocalContext.current
     val orientation = DuoOrientation.of(LocalConfiguration.current.orientation)
     var settings by remember(orientation) { mutableStateOf(DuoPrefs.read(context, orientation)) }
@@ -93,7 +104,6 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var collecting by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf("") }
-    var logSent by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf("") }
     var moduleLoadAt by remember { mutableStateOf(DuoPrefs.moduleLoadTime(context)) }
@@ -114,6 +124,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var backupMessage by remember { mutableStateOf("") }
+    var pendingImportJson by remember { mutableStateOf<String?>(null) }
+    var importError by remember { mutableStateOf("") }
     val notifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -136,6 +149,58 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    val exportBackup = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val json = DuoPrefs.backupJson(context)
+                        context.contentResolver.openOutputStream(uri)?.use {
+                            it.write(json.toByteArray(Charsets.UTF_8))
+                        } ?: error("no stream")
+                    }.isSuccess
+                }
+                val msg = context.getString(
+                    if (ok) R.string.settings_backup_exported else R.string.settings_backup_failed
+                )
+                backupMessage = msg
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    val importBackup = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val text = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    }.getOrNull()
+                }
+                if (text == null) {
+                    importError = BackupCodec.BAD_JSON
+                    val msg = context.getString(R.string.settings_backup_failed)
+                    backupMessage = msg
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                val decoded = BackupCodec.decode(text)
+                if (!decoded.isSuccess) {
+                    importError = decoded.error ?: BackupCodec.BAD_JSON
+                    val msg = context.getString(R.string.settings_backup_invalid)
+                    backupMessage = msg
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                importError = ""
+                pendingImportJson = text
+            }
+        }
+    }
     /** Settings search: a row is shown when the query appears in its label or its detail. */
     fun matches(vararg text: String): Boolean =
         query.isBlank() || text.any { it.contains(query.trim(), ignoreCase = true) }
@@ -143,7 +208,11 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     val search = SearchGate { matches(*it) }
 
     // The module answers an instant after the broadcast; re-reading is simpler than a callback.
-    LaunchedEffect(Unit) {
+    // Pause the 1.5 s re-read while the tab is backgrounded: the values only change when the module
+    // pushes them, so a hidden tab must not keep waking the binder/PackageManager.
+    val resumed = rememberResumed()
+    LaunchedEffect(resumed) {
+        if (!resumed) return@LaunchedEffect
         while (true) {
             delay(1500)
             status = DuoPrefs.status(context)
@@ -203,7 +272,6 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     fun collectAndSend() {
         if (collecting) return
         collecting = true
-        logSent = false
         scope.launch {
             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
             collecting = false
@@ -211,33 +279,100 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             // Only trust the stored module status/dump while the module is actually running; after it is
             // unscoped the persisted values are the *previous* run and would read as a healthy report.
             val alive = moduleHealth.state != ModuleState.NEVER_LOADED
+            val dumpValue = if (alive) refreshedDump() else ""
             val report = buildFullReport(
                 context, problem, settings,
                 if (alive) status else "",
                 if (alive) history else emptyList(),
-                if (alive) refreshedDump() else "",
+                dumpValue,
                 if (alive) moduleLoadAt else 0L,
                 logs
             )
-            val file = writeDiagnostics(context, report)
-            if (file == null) {
-                shareText(context, report)
+            // Prefer the self-contained report ZIP; fall back to the legacy text path when it cannot be
+            // built (no diagnostics dir, IO failure, ...).
+            val zip = withContext(Dispatchers.IO) {
+                writeReportZip(context, report, logs, if (alive) status else "", dumpValue)
+            }
+            if (zip == null) {
+                val file = writeDiagnostics(context, report)
+                if (file == null) {
+                    shareText(context, report)
+                } else {
+                    val caption = message.take(200).ifBlank { "Duo Status Bar log" }
+                    val result = withContext(Dispatchers.IO) { TelegramLog.send(context, file, caption) }
+                    when (result) {
+                        TelegramLog.Result.SENT -> {
+                            Toast.makeText(context, R.string.settings_log_sent, Toast.LENGTH_LONG).show()
+                        }
+                        TelegramLog.Result.RATE_LIMITED -> Toast.makeText(
+                            context, R.string.settings_log_wait, Toast.LENGTH_LONG
+                        ).show()
+                        TelegramLog.Result.FAILED ->
+                            fileUri(context, file)?.let { shareLog(context, it) } ?: shareText(context, report)
+                    }
+                }
             } else {
                 val caption = message.take(200).ifBlank { "Duo Status Bar log" }
-                val result = withContext(Dispatchers.IO) { TelegramLog.send(context, file, caption) }
+                val result = withContext(Dispatchers.IO) { TelegramLog.send(context, zip, caption) }
                 when (result) {
                     TelegramLog.Result.SENT -> {
-                        logSent = true
                         Toast.makeText(context, R.string.settings_log_sent, Toast.LENGTH_LONG).show()
                     }
                     TelegramLog.Result.RATE_LIMITED -> Toast.makeText(
                         context, R.string.settings_log_wait, Toast.LENGTH_LONG
                     ).show()
                     TelegramLog.Result.FAILED ->
-                        fileUri(context, file)?.let { shareLog(context, it) } ?: shareText(context, report)
+                        fileUri(context, zip)?.let { shareReportZip(context, it) } ?: shareText(context, report)
                 }
             }
         }
+    }
+
+    if (pendingImportJson != null) {
+        val pending = pendingImportJson!!
+        val count = BackupCodec.decode(pending).values?.size ?: 0
+        AlertDialog(
+            onDismissRequest = { pendingImportJson = null },
+            title = { Text(stringResource(R.string.settings_backup_confirm_title)) },
+            text = { Text(stringResource(R.string.settings_backup_confirm_body) + " " + count) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val json = pendingImportJson
+                    if (json != null) {
+                        val result = DuoPrefs.restoreJson(context, json)
+                        if (result.success) {
+                            settings = DuoPrefs.read(context, orientation)
+                            context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
+                            SettingsBridge.push(context)
+                            val msg = context.getString(R.string.settings_backup_imported)
+                            backupMessage = msg
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        } else {
+                            importError = result.error ?: BackupCodec.BAD_JSON
+                            val msg = context.getString(
+                                if (importError == BackupCodec.BAD_JSON ||
+                                    importError == BackupCodec.BAD_VALUE ||
+                                    importError == BackupCodec.EMPTY ||
+                                    importError == BackupCodec.UNSUPPORTED_SCHEMA ||
+                                    importError == BackupCodec.UNSUPPORTED_VERSION
+                                ) R.string.settings_backup_invalid
+                                else R.string.settings_backup_failed
+                            )
+                            backupMessage = msg
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                        pendingImportJson = null
+                    }
+                }) {
+                    Text(stringResource(R.string.settings_backup_replace))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingImportJson = null }) {
+                    Text(stringResource(R.string.settings_backup_cancel))
+                }
+            }
+        )
     }
 
     Column(
@@ -247,7 +382,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             // status bar and navigation bar instead of being clipped by them.
             .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
-            .padding(18.dp),
+            .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -277,23 +412,25 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Text(
-            text = stringResource(
-                if (orientation == DuoOrientation.LANDSCAPE) R.string.settings_orientation_landscape
-                else R.string.settings_orientation_portrait
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Medium
-        )
+        if (showCustomization) {
+            Text(
+                text = stringResource(
+                    if (orientation == DuoOrientation.LANDSCAPE) R.string.settings_orientation_landscape
+                    else R.string.settings_orientation_portrait
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                fontWeight = FontWeight.Medium
+            )
 
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            label = { Text(stringResource(R.string.settings_search)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text(stringResource(R.string.settings_search)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         // Red health card: not loaded, running old code after an update, or loaded but unable to report
         // (the One UI 8 "Unknown authority" case). Recovery buttons plus a one-tap report.
@@ -308,7 +445,6 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 onExport = {
                     if (!collecting) {
                         collecting = true
-                        logSent = false
                         scope.launch {
                             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
@@ -404,37 +540,61 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        CustomizeSection(
-            settings = settings,
-            onUpdate = onUpdate,
+        if (showCustomization) {
+            CustomizeSection(
+                settings = settings,
+                onUpdate = onUpdate,
+                matches = search,
+                onRestart = { restartSystemUi(context) }
+            )
+
+            AnimationsSection(
+                settings = settings,
+                onUpdate = onUpdate,
+                matches = search
+            )
+
+            AppearanceSection(
+                settings = settings,
+                onUpdate = onUpdate,
+                matches = search
+            )
+
+            SurfacesSection(
+                settings = settings,
+                onUpdate = onUpdate,
+                matches = search
+            )
+
+            IconsSection(
+                settings = settings,
+                onUpdate = onUpdate,
+                matches = search
+            )
+
+            val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
+            ActionsSection(
+                settings = settings,
+                onUpdate = onUpdate,
+                matches = search,
+                autoExpand = autoExpand
+            )
+
+            LiveEventsSection(
+                matches = search,
+                settings = settings,
+                onUpdate = onUpdate
+            )
+        }
+
+        BackupSection(
             matches = search,
-            onRestart = { restartSystemUi(context) }
-        )
-
-        AnimationsSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search
-        )
-
-        AppearanceSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search
-        )
-
-        IconsSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search
-        )
-
-        val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
-        ActionsSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search,
-            autoExpand = autoExpand
+            message = backupMessage,
+            onExport = {
+                val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+                exportBackup.launch("duo-settings-$stamp.json")
+            },
+            onImport = { importBackup.launch(arrayOf("application/json")) }
         )
 
         AboutSection(
@@ -444,21 +604,15 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             moduleLoadAt = moduleLoadAt,
             moduleAlive = moduleHealth.state != ModuleState.NEVER_LOADED,
             accessGranted = accessGranted,
-            problem = problem,
-            onProblemChange = { problem = it; logSent = false },
-            collecting = collecting,
-            onCollect = { collectAndSend() },
-            logSent = logSent,
             exporting = exporting,
             onExport = {
                 exporting = true
-                logSent = false
                 scope.launch {
                     val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                     exporting = false
                     val alive = moduleHealth.state != ModuleState.NEVER_LOADED
                     pendingExport = buildFullReport(
-                        context, problem, settings,
+                        context, "", settings,
                         if (alive) status else "",
                         if (alive) history else emptyList(),
                         if (alive) refreshedDump() else "",
@@ -526,7 +680,7 @@ private val BRAND_WINE = Color(0xFF7B1E3A)
  * newer load stamp, the app falls back to root, then to Shizuku — which is what makes the button work on a
  * ROM without `su` as long as Shizuku is running.
  */
-private fun restartSystemUi(context: Context) {
+internal fun restartSystemUi(context: Context) {
     val before = DuoPrefs.moduleLoadTime(context)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_RESTART_SYSTEMUI))
     Thread {

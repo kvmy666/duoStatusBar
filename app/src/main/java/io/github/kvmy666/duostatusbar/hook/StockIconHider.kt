@@ -10,6 +10,12 @@ import io.github.kvmy666.duostatusbar.L
  * Hiding is not destruction: a hidden view stays in the tree, it simply draws nothing and occupies
  * nothing (GONE **and** 0×0, never an overlay). Its original state is remembered first, so switching
  * the module off restores the stock bar without a restart.
+ *
+ * Two modes share this class:
+ *  - [hideAllExcept] is the legacy "hide all other icons" switch and still hides every child.
+ *  - [hideReplaced] is the per-icon path: the icons Duo replaces (battery/Wi-Fi/cellular) plus the
+ *    exact keys the user selected. A battery is always hidden with [hideKeepLayout], because the
+ *    overlay is positioned from its frame; a key that matches no view is a no-op, never a hide-all.
  */
 internal class StockIconHider {
 
@@ -41,30 +47,29 @@ internal class StockIconHider {
     }
 
     /**
-     * FR-08b: hides only the views Duo replaces — the battery, and the Wi-Fi/cellular icons — and leaves
-     * everything else (silent, vibrate, alarm, …) visible.
+     * FR-08b/A4: hides only the views Duo replaces — the battery, and the Wi-Fi/cellular icons — plus
+     * the icons named by [selected] (the stable keys from [StockIconKey]).
      *
      * Walked recursively because the icons live inside the `statusIcons` container, not as direct
-     * children of the strip; a container is never hidden itself, only the replaced icons inside it. A
-     * view whose slot cannot be read is left alone unless it is plainly the battery, so an unmeasured
-     * ROM keeps the user's other icons rather than losing them.
+     * children of the strip; a container is never hidden itself, only the replaced/selected icons
+     * inside it. A view whose slot, id and class cannot be read is left alone, so an unmeasured ROM
+     * keeps the user's other icons rather than losing them. A key in [selected] that matches no view
+     * is ignored: only the named views are hidden.
+     *
+     * A battery is always hidden with [hideKeepLayout] (INVISIBLE, layout kept) even when the caller
+     * passed no [keepLayout], because its frame is the overlay anchor (A0 audit). Never GONE.
      */
     fun hideReplaced(
         container: ViewGroup,
         keep: View?,
         keepLayout: View? = null,
-        alsoKeep: Collection<View> = emptyList()
+        alsoKeep: Collection<View> = emptyList(),
+        selected: Set<String> = emptySet()
     ) {
-        for (i in 0 until container.childCount) {
-            val child = container.getChildAt(i)
-            if (child === keep || alsoKeep.any { it === child }) continue
-            when {
-                isReplaced(child) -> if (child === keepLayout) hideKeepLayout(child) else hide(child)
-                child is ViewGroup -> hideReplaced(child, keep, keepLayout)
-            }
-        }
+        walk(container, keep, keepLayout, alsoKeep, selected, HashMap())
         logOnce.once("hide-replaced") {
-            L.i("only the replaced battery/Wi-Fi/cellular views hidden; other icons kept - FR-08b")
+            L.i("only the replaced battery/Wi-Fi/cellular and selected status views hidden; " +
+                "other icons kept - FR-08b")
         }
     }
 
@@ -80,39 +85,7 @@ internal class StockIconHider {
     }
 
     /** True when [view] is one of the icons Duo replaces; see [hideReplaced]. */
-    fun isReplaced(view: View): Boolean {
-        val slot = slotOf(view)?.lowercase()
-        if (slot != null) {
-            return slot == "battery" || slot.startsWith("wifi") || slot.startsWith("mobile")
-        }
-        // No readable slot: fall back to the view's own id and class so OEM builds that spell the mobile
-        // or Wi-Fi icon without a slot still hide it (ColorOS `OplusModernStatusBarMobileView`, etc.).
-        val idName = try {
-            if (view.id == View.NO_ID) null else view.resources.getResourceEntryName(view.id)?.lowercase()
-        } catch (_: Throwable) {
-            null
-        }
-        if (idName != null && (idName == "battery" || idName.contains("wifi") || idName.contains("mobile"))) {
-            return true
-        }
-        val cls = view.javaClass.simpleName.lowercase()
-        // `combinedstatusview` is One UI's stock battery/Wi-Fi/mobile cluster. It is named by class only
-        // (PR #14): a readable slot always decides first, so this is reached only when the slot is
-        // unreadable, matching the same view the main-bar overlay anchors on.
-        return cls.contains("battery") || cls.contains("wifi") || cls.contains("mobile") ||
-            cls == "combinedstatusview"
-    }
-
-    /** `StatusBarIconView.getSlot()`, or the OEM `getSlotTag()`; null when neither exists. */
-    private fun slotOf(view: View): String? = try {
-        view.javaClass.getMethod("getSlot").invoke(view) as? String
-    } catch (_: Throwable) {
-        try {
-            view.javaClass.getMethod("getSlotTag").invoke(view) as? String
-        } catch (_: Throwable) {
-            null
-        }
-    }
+    fun isReplaced(view: View): Boolean = StockIconKey.kindOf(view).replaced
 
     /** Hides one view (and its descendants) and remembers what it looked like. */
     fun hide(view: View) {
@@ -151,6 +124,42 @@ internal class StockIconHider {
             }
         }
         hiddenOriginals.clear()
+    }
+
+    /**
+     * One depth-first pass. Occurrence counting is shared with [StockIconKey.inventory], so the key
+     * `id:mobile_combo#2` means the same SIM in the settings list and in this hide pass.
+     */
+    private fun walk(
+        parent: View,
+        keep: View?,
+        keepLayout: View?,
+        alsoKeep: Collection<View>,
+        selected: Set<String>,
+        counts: MutableMap<String, Int>
+    ) {
+        if (parent !is ViewGroup) return
+        for (i in 0 until parent.childCount) {
+            val child = parent.getChildAt(i)
+            if (child === keep || alsoKeep.any { it === child }) continue
+            if (StockIconKey.isIgnored(child)) continue
+            val kind = StockIconKey.kindOf(child)
+            if (kind == StockIconKind.IGNORED) {
+                // A container (or an unreadable wrapper): walk into it, never hide it.
+                walk(child, keep, keepLayout, alsoKeep, selected, counts)
+                continue
+            }
+            val base = StockIconKey.baseKey(child)
+            val occurrence = (counts[base] ?: 0) + 1
+            counts[base] = occurrence
+            val key = StockIconKey.key(base, occurrence)
+            if (!kind.replaced && key !in selected) continue
+            if (kind == StockIconKind.BATTERY || child === keepLayout) {
+                hideKeepLayout(child)
+            } else {
+                hide(child)
+            }
+        }
     }
 
     private fun rememberOriginal(view: View) {

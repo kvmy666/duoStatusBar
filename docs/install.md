@@ -6,7 +6,7 @@ KernelSU + LSPosed 2.2.0. Everything here is repeatable on any rooted ROM with L
 ## 1. adb over TCP
 
 ```powershell
-C:\Users\krom3\Desktop\platform-tools-latest-windows\platform-tools\adb.exe connect 192.168.100.245:6666
+adb.exe connect [redacted]
 ```
 
 ## 2. Build & install the module

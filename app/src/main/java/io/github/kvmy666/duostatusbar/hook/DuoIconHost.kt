@@ -1,17 +1,28 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
+import android.util.AttributeSet
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
+import android.view.animation.LinearInterpolator
+import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
+import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 
 /**
  * Puts the Duo element into the status bar and takes the stock icons out of it.
@@ -31,6 +42,74 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomResources
  * still works as long as the AOSP names are present; `system_icons` is tried first, then the
  * OxygenOS spellings.
  */
+/** A shade cluster is safe to attach to only once it has a real width and is shown and attached. */
+internal fun shadeClusterReady(width: Int, visibility: Int, attached: Boolean, shown: Boolean): Boolean =
+    width > 0 && visibility == View.VISIBLE && attached && shown
+
+/**
+ * The slot one shade route owns. A cluster taller than it is wide is the QS surface, whatever source
+ * handed it over; the OnePlus simple header is also the QS surface even when it is laid out wide.
+ * Everything else (the split shade header and the generic fallback) owns the shade header. The names
+ * are independent, so a QS owner can no longer block the shade and vice versa.
+ */
+internal fun shadeSlotName(source: String?, originalCluster: ViewGroup): String =
+    shadeSlotName(source, originalCluster.width, originalCluster.height)
+
+/** Width/height form, so the naming rule can be tested without a view. */
+internal fun shadeSlotName(source: String?, width: Int, height: Int): String = when {
+    width < height -> "qs header"
+    source == "OplusQSSimpleHeader" -> "qs header"
+    else -> "shade header"
+}
+
+/** Pure ownership test: a slot owns a host only when its container, its element's parent and its
+ *  attached flag all agree with [target]. Testable without a DuoIconHost instance. */
+internal fun slotOwnsHost(container: View?, elementParent: View?, elementAttached: Boolean, target: View): Boolean =
+    container === target && elementParent === target && elementAttached
+
+internal fun slotInSameWindow(elementRoot: View?, windowRoot: View?): Boolean =
+    elementRoot != null && windowRoot != null && elementRoot === windowRoot
+
+/**
+ * True only when a cached element is still attached to the same window the new slot was resolved in.
+ *
+ * [elementRoot] and [windowRoot] are `View.rootView` identities, never parent identities: a shade
+ * layout pass may legitimately resolve a different container inside the same window, while a cached
+ * view left in the old rotation window must never be adopted by the new one.
+ */
+internal fun slotSharesWindow(elementAttached: Boolean, elementRoot: View?, windowRoot: View?): Boolean =
+    elementAttached && slotInSameWindow(elementRoot, windowRoot)
+
+/**
+ * Whether the main ring leaves the icon strip for the centre of the status bar.
+ *
+ * Camera/Compact set [ModuleSettings.lockRing] on its own; [ModuleSettings.splitIndicators] only decides
+ * where the inner icons are drawn, never whether the ring is pinned.
+ */
+internal fun ModuleSettings.ringLocked(): Boolean = lockRing
+
+/** Gives an injected view a stable, non-NO_ID id exactly once, before it is added to a parent. */
+internal fun ensureInjectedViewId(view: View, parent: ViewGroup?) {
+    if (view.id == View.NO_ID) view.id = View.generateViewId()
+    if (!BuildConfig.DEBUG || parent == null) return
+    // The measured crash was ConstraintSet.clone() refusing a child with NO_ID. The assignment above
+    // prevents it; this detector reports the remaining unsafe case (a duplicate id in the same parent)
+    // without changing the injected hierarchy.
+    if (view.id == View.NO_ID) {
+        L.w("injected view has NO_ID in ${parent.javaClass.simpleName}")
+        return
+    }
+    for (i in 0 until parent.childCount) {
+        val sibling = parent.getChildAt(i)
+        if (sibling !== view && sibling.id == view.id) {
+            L.w(
+                "injected view id 0x${view.id.toString(16)} duplicates sibling " +
+                    "${sibling.javaClass.simpleName} in ${parent.javaClass.simpleName}"
+            )
+        }
+    }
+}
+
 internal class DuoIconHost(private val context: Context) {
 
     /** Where the element view is actually added. Usually the strip; the lock frame when the ring is pinned. */
@@ -71,6 +150,23 @@ internal class DuoIconHost(private val context: Context) {
 
     private var root: View? = null
     private var element: DuoElement? = null
+
+    /**
+     * Bounded retry for the QS cluster. The shade header is built before the shade is expanded and the
+     * cluster measures 0x0 until then (measured), so the element cannot be attached - and the stock
+     * views must not be hidden - until a laid-out cluster exists. Every tick re-resolves the cluster
+     * from the shade window, because the header holds a second, permanently 0x0 instance. One bounded
+     * delayed retry, removed on success, detach, exhaustion or teardown; never a loop.
+     */
+    private var shadeRetryView: View? = null
+    private var shadeRetryRunnable: Runnable? = null
+    private var shadeRetryAttempts = 0
+    private var shadeRetryStartedAt = 0L
+    private var shadeRetrySeenAttached = false
+
+    /** The pending "Rive survived" check, so teardown can invalidate it instead of a dead view doing so. */
+    private var survivalView: View? = null
+    private var survivalRunnable: Runnable? = null
 
     /**
      * The inner icons, drawn by a second view of the same element when [ModuleSettings.splitIndicators]
@@ -132,12 +228,26 @@ internal class DuoIconHost(private val context: Context) {
         /** The inner-icon view for this bar, present only while the split layout is on. */
         var indicators: DuoElement? = null
 
+        /** Target of the last alpha fade for this slot; null once it has settled. */
+        var alphaRequest: Float? = null
+
         /**
          * The slot width to draw at. It is the width pinned for the main bar at attach — one size for
          * every bar — falling back to this bar's own measurement only when the main bar captured none.
          */
         var basePx = 0
         val stock = StockIconHider()
+
+        /**
+         * True when this slot is the QS cluster (`quick_qs_status_icons`). Its stock icons are two
+         * named views, not "every child of the strip", and the element is anchored to the battery's
+         * end instead of being centred in the cluster.
+         */
+        var qsCluster = false
+
+        /** The QS cluster's stock views, hidden on ready and restored with [stock]. */
+        var stockStatusIcons: View? = null
+        var stockBattery: View? = null
     }
 
     /**
@@ -156,19 +266,37 @@ internal class DuoIconHost(private val context: Context) {
             var parent: View? = view.parent as? View
             while (parent != null) {
                 val extra = extras.firstOrNull { it.container === parent }
-                if (parent === host || extra != null) {
+                if (parent === host || parent === hideStrip || extra != null) {
                     val container = parent
+                    val owner = extra?.stock ?: hider
+                    // Never hide the last stock icon over an element that is not drawing in this very
+                    // container: the ROM can add an icon before Rive binds or while the slot is being
+                    // rebuilt, and hiding then leaves a blank status bar.
+                    val drawing = if (extra != null) extra.element else element
+                    val ready = drawing?.isReady == true &&
+                        drawing.ui.parent === container && drawing.ui.isAttachedToWindow
+                    if (!ready) {
+                        logOnce.once("not-ready:${view.javaClass.simpleName}:${container.javaClass.simpleName}") {
+                            L.i("keeping a status icon until Duo draws: ${view.javaClass.simpleName} in " +
+                                    "${container.javaClass.simpleName}")
+                        }
+                        return
+                    }
                     logOnce.once("added:${view.javaClass.simpleName}") {
                         L.i("hiding a status icon as it arrives: ${view.javaClass.simpleName} in " +
                                 "${container.javaClass.simpleName}")
                     }
-                    // FR-08b: with "hide other icons" off, only the icons Duo replaces are hidden; the
-                    // silent/vibrate/alarm ones are left for the user.
-                    if (settings.hideOtherIcons || hider.isReplaced(view)) {
-                        (extra?.stock ?: hider).hide(view)
-                    } else {
-                        logOnce.once("kept:${view.javaClass.simpleName}") {
-                            L.i("keeping a status icon: ${view.javaClass.simpleName} - FR-08b")
+                    // FR-08b/A4: hide by stable key. "Hide all" keeps the legacy all-or-nothing
+                    // behaviour; per-icon mode hides the replaced icons plus exactly the user's keys.
+                    try {
+                        hideArrivedIcon(view, container, owner)
+                    } catch (t: Throwable) {
+                        L.w("icon hide: ${t.javaClass.simpleName}: ${t.message}")
+                        // A partial hide must not leave a hole: put this container's stock views back.
+                        try {
+                            owner.restore()
+                        } catch (r: Throwable) {
+                            L.w("icon restore after hide failure: ${r.javaClass.simpleName}: ${r.message}")
                         }
                     }
                     return
@@ -184,7 +312,84 @@ internal class DuoIconHost(private val context: Context) {
         }
     }
 
+    /**
+     * Hides one icon that arrived after the last hiding pass. The same stable key the inventory
+     * publishes decides it, so `id:mobile_combo#2` means the second SIM here as well. Ignored views
+     * (Duo, containers, inner signal parts, status dots) are always left alone, and the battery is
+     * kept laid out as the overlay anchor instead of being GONE.
+     */
+    private fun hideArrivedIcon(view: View, container: View, owner: StockIconHider) {
+        if (StockIconKey.isIgnored(view)) return
+        val kind = StockIconKey.kindOf(view)
+        val entry = StockIconKey.find(container, view)
+        val hide = when {
+            // Legacy "hide all" still hides every stock icon, but never a container added to the bar.
+            settings.hideOtherIcons -> kind != StockIconKind.IGNORED || view !is ViewGroup
+            kind.replaced -> true
+            entry != null -> entry.key in hiddenStockKeys
+            else -> false
+        }
+        if (!hide) {
+            logOnce.once("kept:${view.javaClass.simpleName}") {
+                L.i("keeping a status icon: ${view.javaClass.simpleName} - FR-08b")
+            }
+            return
+        }
+        if (kind == StockIconKind.BATTERY || entry?.kind == StockIconKind.BATTERY) {
+            owner.hideKeepLayout(view)
+        } else {
+            owner.hide(view)
+        }
+    }
+
     private val extras = ArrayList<ExtraBar>()
+
+    /**
+     * The shade/QS cluster the current shade slot draws in. The OnePlus simple-header and split-header
+     * hooks can both fire for the same view (and the generic header fallback may follow), so an attach
+     * is keyed by the cluster's identity instead of the number of callbacks.
+     */
+    /**
+     * Fallback owner used only before SystemUI's panel state arrives. Once [panelOwner] is known it
+     * is authoritative; this field remains for boot/attach ordering and the older ROM path.
+     */
+    private var shadeOpen = false
+
+    /** Last owner logged, so the next device log shows the actual QS<->shade transitions. */
+    private var lastSurfaceOwner: String? = null
+
+    /**
+     * Authoritative surface state from SystemUI's panel expansion callbacks. Route attaches are only
+     * layout timing; the panel state is what actually says QS vs notification shade vs collapsed.
+     */
+    private var panelStateKnown = false
+    private var panelOwner: String? = null
+
+    /**
+     * The running collapse slide of the main copy: its resting translation and the animator that is
+     * carrying it back there. Only [View.getTranslationX] is touched — alpha, y, size and parent are
+     * never changed by the hand-off.
+     */
+    private var handoffView: View? = null
+    private var handoffBaseX = 0f
+    private var handoffAnimator: ObjectAnimator? = null
+
+    /** Last requested main-bar visibility, re-applied to a newly created split indicator. */
+    private var mainBarVisible = true
+
+    /**
+     * HUD -> QS/shade: a hide was requested, but the incoming copy has not been confirmed drawable.
+     * The main copy stays visible until the one-frame guard sees it (or fails silent).
+     */
+    private var mainCoverPending = false
+    private var mainCoverGuardView: View? = null
+
+    /** QS/shade -> HUD: the outgoing extra is held while the main copy has not drawn yet. */
+    private var mainRevealGuardView: View? = null
+
+    /** QS/shade -> HUD: the outgoing copy is latched out once the main copy owns the seat. */
+    private val drawOrder = PanelHandoff.OutgoingLatch()
+
     private val guard = DuoGuard(context)
     private val rom = RomDetection.forThisRom(
         Build.MANUFACTURER.orEmpty(),
@@ -198,6 +403,20 @@ internal class DuoIconHost(private val context: Context) {
     /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
     private val finder = ContainerFinder(context, rom, logOnce)
     private var settings = ModuleSettings.DEFAULT
+    /** The drawing the main element was created with; extras stay on it until a restart. */
+    private var appliedDesignStyle = settings.designStyle
+
+    /**
+     * The exact status icons the user selected in the per-icon list (A4), as stable
+     * [StockIconKey] keys. Kept in step with the settings so an arrival, a layout pass and the
+     * settings screen all agree on which view a key names. Empty means "only the replaced icons".
+     */
+    private var hiddenStockKeys: Set<String> =
+        DuoPrefs.parseHiddenStockIcons(ModuleSettings.DEFAULT.hiddenStockIcons).toSet()
+
+    /** Last inventory JSON sent to the app, so a layout pass cannot re-broadcast the same list (A4). */
+    private var lastStockIconJson: String? = null
+    private var lastStockPublishAt = 0L
 
     /** Size and position maths; owns the size/slot base captured once at attach (FR-03/17). */
     private val geometry = SlotGeometry(context, rom)
@@ -215,7 +434,27 @@ internal class DuoIconHost(private val context: Context) {
     private var onDownloadRingTap: (() -> Unit)? = null
     private var touchPart: DuoPart? = null
 
+    /** Per-view key for the 20 % charge shake, so a second trigger cancels the first cleanly. */
+    private val shakeTag = View.generateViewId()
+
     val duo: DuoElement? get() = element
+
+    fun eventEnabled(type: LiveEventType): Boolean {
+        val bit = when (type) {
+            LiveEventType.ALARM -> DuoPrefs.EVENT_ALARM
+            LiveEventType.FLASHLIGHT -> DuoPrefs.EVENT_FLASHLIGHT
+            LiveEventType.SCREENSHOT -> DuoPrefs.EVENT_SCREENSHOT
+            LiveEventType.MIC -> DuoPrefs.EVENT_MIC
+            LiveEventType.LOCATION -> DuoPrefs.EVENT_LOCATION
+            LiveEventType.VOLUME -> DuoPrefs.EVENT_VOLUME
+            LiveEventType.UNLOCK -> DuoPrefs.EVENT_UNLOCK
+            LiveEventType.CALL -> DuoPrefs.EVENT_CALL
+        }
+        return DuoPrefs.eventEnabled(settings.eventMask, bit)
+    }
+
+    /** Which occupant the middle of the ring shows: "auto", "wifi", "cell" or "percent". */
+    val middleSlot: String get() = settings.middleSlot
 
     /** The ring and, when split, the icon cluster, on every bar. */
     private fun allElements(): List<DuoElement> =
@@ -224,8 +463,8 @@ internal class DuoIconHost(private val context: Context) {
     /** Views this module added, so a hiding pass never treats them as stock icons. */
     private fun ourViews(): List<View> = allElements().map { it.ui } + listOfNotNull(ringSpacer)
 
-    /** The ring is pinned to the status bar only while the icons are drawn beside it. */
-    private fun ringLocked(): Boolean = settings.splitIndicators && settings.lockRing
+    /** The ring is pinned to the status-bar centre whenever Camera/Compact asks for it, split or not. */
+    private fun ringLocked(): Boolean = settings.ringLocked()
 
     /**
      * Where the icon cluster is added. Locked mode keeps it in the strip, so it still slides with the
@@ -265,7 +504,36 @@ internal class DuoIconHost(private val context: Context) {
      * the element is not drawing in. If anything fails, that bar keeps its stock icons.
      */
     fun attachExtra(name: String, root: View, stripId: String): Boolean {
-        if (extras.any { it.name == name }) return true
+        val existing = extras.firstOrNull { it.name == name }
+        if (existing != null) {
+            // A live element is never dropped or rebuilt: a shade layout pass can resolve a different
+            // container while the view is still attached to its previous (live) parent in this same
+            // window. Adopt that parent instead of recreating the element (which would re-import Rive).
+            // A view left in the old rotation window is not live here and must be dropped.
+            val ui = existing.element?.ui
+            val liveParent = ui?.parent as? ViewGroup
+            val window = root.rootView
+            if (ui != null && liveParent != null &&
+                slotSharesWindow(ui.isAttachedToWindow, ui.rootView, window)
+            ) {
+                existing.container = liveParent
+                val id = RomResources.id(context, rom, stripId)
+                val resolved = if (id != 0) root.findViewById<View>(id) as? ViewGroup else null
+                if (resolved != null) {
+                    existing.bar = finder.findBar(resolved) ?: resolved
+                }
+                applyExtraLayout(existing)
+                syncExtraIndicators(existing)
+                logOnce.once("reuse:$name:${System.identityHashCode(liveParent)}") {
+                    L.i("$name reuse attached slot parent=${liveParent.javaClass.simpleName}")
+                }
+                return true
+            }
+            // Detached, or still attached to the old rotation window: only in those cases may the slot
+            // be dropped and rebuilt, once, in this window.
+            L.i("$name dropping stale slot from another window")
+            dropSlot(existing)
+        }
         if (element == null) return false
         return try {
             val stage = guard.stage()
@@ -284,6 +552,12 @@ internal class DuoIconHost(private val context: Context) {
             }
             val target = found as? ViewGroup ?: return false
             if (target === host) return true // same strip as the main bar: nothing extra to do
+            if (!containerUsable(target)) {
+                logOnce.once("not-ready:$name") {
+                    L.i("$name: $stripId is not laid out or not attached yet (id=$id) - waiting")
+                }
+                return false
+            }
             // Centre on the *bar*, not the window it lives in: the shade window is the whole screen, so
             // centring on it put the element 1300 px down the lock screen (measured).
             val bar = finder.findBar(target) ?: target
@@ -295,58 +569,1061 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /**
+     * Whether [cluster] is the real shade header, not the QS surface. The measured CPH2747 has two
+     * wide `quick_qs_status_icons` clusters (QS 297x56 and shade 297x101); the shade one is under
+     * `header_container`. On a ROM without that id, keep the old source/dimension rule.
+     */
+    private fun isShadeSurface(cluster: ViewGroup, source: String?): Boolean {
+        // The split shade controller hands over the wide QS cluster (297x56), not the shade
+        // header. On a ROM without `header_container`, dimensions alone would misname it as
+        // "shade header" and hide the QS copy.
+        if (source == "OplusSplitShade") return false
+        val id = RomResources.id(context, rom, "header_container")
+        if (id != 0) return finder.hasAncestorId(cluster, id)
+        return source != "OplusQSSimpleHeader" && shadeSlotName(source, cluster) == "shade header"
+    }
+
+    /**
      * FR-03b, the shade header. It is not in the shade window's tree at all - `ShadeHeaderController`
      * builds it - so it is handed over directly by the hook instead of being searched for.
      *
-     * Its icon area is the `shade_header_system_icons` frame (measured from `combined_qs_header.xml`),
-     * found by walking up from the `statusIcons` container the controller itself binds to.
+     * The QS cluster is found in [window], not in [header]: the measured CPH2747 tree (2026-10-27) has
+     * a second `quick_qs_status_icons` inside `split_shade_status_bar` that stays 0x0/GONE, while the
+     * drawn one is under `qs_frame`/`header_container`. [header] remains what the non-QS fallback
+     * (`shade_header_system_icons`, the parent of `statusIcons`) is resolved from.
      */
-    fun attachShadeHeader(header: View): Boolean {
+    fun attachShadeHeader(header: View, window: View? = null): Boolean {
         // The whole path is guarded: it runs from a SystemUI lifecycle callback (the header controller's
         // constructor, a ViewStub inflate, a shade layout pass), so anything it throws would surface in
         // SystemUI itself, not here. A failure returns false and leaves the stock header untouched -
         // never a half-attached extra bar (FR-21).
         return try {
+            val already = extras.firstOrNull { it.name == "shade header" }
+            if (already != null && slotElementAttached(already, already.container)) return true
+            // Never remove/reparent a live Duo from a layout/hook callback. Ownership is checked
+            // against the *resolved* container below; a live QS slot must not block the real shade
+            // header (the boot-time split header can be the QS surface).
+            val cluster = window?.let { finder.findVisibleQuickQsCluster(it) }
+            if (cluster is ViewGroup) {
+                ShadeProbe.logOnce(
+                    "shadeProbe:reResolve:${ShadeProbe.key(cluster)}",
+                    "shadeProbe reResolve: visible cluster ${ShadeProbe.describe(cluster)}"
+                )
+                // A tall/narrow cluster is the QS surface, owned by its vendor route; the generic
+                // shade path must not consume the shade slot with it before the shade opens.
+                if (cluster.width < cluster.height) {
+                    logOnce.once("shadeNarrow:${System.identityHashCode(cluster)}") {
+                        L.i("shade route skipping narrow QS cluster " +
+                            "(${cluster.width}x${cluster.height}) - waiting for the wide shade cluster")
+                    }
+                    markSurface("qs header")
+                    scheduleShadeRetry(header, window)
+                    return false
+                }
+                val attached = attachGenericShadeCluster(cluster, header)
+                if (!attached) scheduleShadeRetry(header, window)
+                return attached
+            }
             val area = finder.findShadeIconsArea(header)
             if (area == null) {
                 logOnce.once("missing:shade header") {
                     L.w("shade header: no icon area found in ${header.javaClass.simpleName}")
                 }
+                scheduleShadeRetry(header, window)
                 return false
             }
-            val previous = extras.firstOrNull { it.name == "shade header" }
-            if (previous?.container === area) return true
+            val quick = finder.isQuickQsCluster(area)
+            var previous = extras.firstOrNull { it.name == "shade header" }
+            if (previous?.container === area) {
+                if (slotElementAttached(previous, area)) {
+                    clearShadeRetry()
+                    markSurface("shade header")
+                    return true
+                }
+                dropSlot(previous)
+                previous = null
+            }
+            // Measured on the CPH2747: `quick_qs_status_icons` is 0x0 until the shade expands. Laying
+            // Duo out there now would leave it invisible while the hide pass removed the stock battery.
+            // The fallback area is gated the same way: wait for the first layout with a real width,
+            // visible, attached and shown, then attach exactly once. The working slot is kept until
+            // this replacement has passed the check.
+            if (!shadeClusterReady(area.width, area.visibility, area.isAttachedToWindow, area.isShown)) {
+                ShadeProbe.log(
+                    "shadeProbe retry: shade icon area not usable " +
+                        "(${ShadeProbe.describe(area)}) - waiting for the shade to expand"
+                )
+                scheduleShadeRetry(header, window)
+                return false
+            }
+            // The generic route owns the shade header only. A tall/narrow cluster is the QS surface;
+            // attaching it here would consume the shade slot before the wide shade cluster exists.
+            if (area.width < area.height) {
+                ShadeProbe.log(
+                    "shadeProbe generic: header cluster is narrow " +
+                        "(${ShadeProbe.describe(area)}) - waiting for the wide shade cluster"
+                )
+                markSurface("qs header")
+                scheduleShadeRetry(header, window)
+                return false
+            }
+            if (element == null) {
+                ShadeProbe.log("shadeProbe generic: main bar not attached yet - waiting")
+                scheduleShadeRetry(header, window)
+                return false
+            }
+            // The resolved area may change inside the same shade window (header re-inflation). Reuse
+            // the attached slot there instead of replacing it; only a stale view from the old window
+            // or a detached one is dropped before the one new surface is created below.
             if (previous != null) {
-                drop(previous.indicators, previous.container)
-                drop(previous.element, previous.container)
-                previous.stock.restore()
-                extras.remove(previous)
+                val ui = previous.element?.ui
+                val liveParent = ui?.parent as? ViewGroup
+                if (ui != null && liveParent != null &&
+                    slotSharesWindow(ui.isAttachedToWindow, ui.rootView, area.rootView)
+                ) {
+                    previous.container = liveParent
+                    previous.bar = header
+                    applyExtraLayout(previous)
+                    syncExtraIndicators(previous)
+                    clearShadeRetry()
+                    markSurface("shade header")
+                    logOnce.once("reuse:shade header:${System.identityHashCode(liveParent)}") {
+                        L.i("shade header reuse attached slot parent=${liveParent.javaClass.simpleName}")
+                    }
+                    return true
+                }
+                L.i("shade header dropping stale slot before one replacement")
+                dropSlot(previous)
+                previous = null
             }
             // Centred on the header, not the icon area: the area is a 0x0 strip at the header's end
             // (measured - it is laid out later), and the header is what has a real height to cap against.
-            attachExtraView("shade header", area, header, center = false)
+            val attached = replaceSlot(previous) {
+                attachExtraView(
+                    "shade header", area, header, center = false, qsCluster = quick
+                )
+            }
+            if (attached) {
+                clearShadeRetry()
+                markSurface("shade header")
+            } else {
+                scheduleShadeRetry(header, window)
+            }
+            attached
         } catch (t: Throwable) {
             L.e("shade header attach: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
     }
 
+    /**
+     * Window-only route: resolves the laid-out QS cluster from the shade window when the vendor header
+     * controller has not produced a header yet (the live enable-from-off path runs after the vendor
+     * `onInit`, so the cluster is already in the window). Never falls back to the header search here.
+     */
+    fun attachShadeWindow(window: View): Boolean = try {
+        val cluster = finder.findVisibleShadeArea(window)
+        if (cluster == null) {
+            ShadeProbe.logOnce(
+                "shadeProbe:attachShadeWindow:absent",
+                "attachShadeWindow: no visible shade area in ${ShadeProbe.describe(window)}"
+            )
+            false
+        } else {
+            attachShadeCluster(cluster, battery = null, source = "window")
+        }
+    } catch (t: Throwable) {
+        L.e("shade window attach: ${t.javaClass.simpleName}: ${t.message}")
+        false
+    }
+
+    /**
+     * Applies the owner after a QS/shade attach. Before panel state arrives the attach route is the
+     * fallback; afterwards the panel owner wins so a late attach cannot flip the visible copy.
+     */
+    private fun markSurface(slotName: String) {
+        // Before the panel reports a state, the attach route is the best information. After that,
+        // the panel state is authoritative: a late QS/shade attach must not flip the visible copy.
+        if (!panelStateKnown) {
+            shadeOpen = slotName == "shade header"
+        }
+        showSurfaceOwner()
+        // A late attach is the second chance for a cover whose extra was not drawable on the first
+        // frame. The view may already be visible now; re-check once.
+        if (mainCoverPending) armMainCoverGuard(force = true)
+        val effective = if (panelStateKnown) panelOwner ?: "none" else slotName
+        if (lastSurfaceOwner != effective) {
+            lastSurfaceOwner = effective
+            L.i("shade surface owner -> $effective (attach=$slotName, panelState=$panelStateKnown)")
+        }
+    }
+
+    /** Panel callback entry: "qs header", "shade header", or null when collapsed. */
+    fun setPanelOwner(owner: String?) {
+        val previous = panelOwner
+        val wasKnown = panelStateKnown
+        val changed = !wasKnown || previous != owner
+        panelStateKnown = true
+        panelOwner = owner
+        shadeOpen = owner == "shade header"
+        if (changed) {
+            // A new expansion owns the seat again: an old collapse slide must never run into it.
+            // On a collapse, onPanelCollapsed may already have started the slide; cancelling it here
+            // restored the HUD x before the first frame and removed the measured hand-off.
+            if (owner != null) {
+                cancelMainHandoff()
+                drawOrder.onExpand()
+            }
+            // Collapse hand-off: start the slide while the main copy is still hidden, then lock the
+            // outgoing copy out and reveal the main copy opaque. Doing it in that order removes the
+            // measured inversion (main at the HUD x, then the old copy at the shade x again).
+            if (owner == null && wasKnown && previous != null && handoffAnimator == null) {
+                collapseHandoff(previous)
+            }
+            showSurfaceOwner()
+            // HUD -> QS/shade: the panel is now known. Never hide the main copy until this owner's
+            // copy is actually drawable; DuoHook may have requested the hide before this callback.
+            if (owner != null && surfaceEnabled(owner) && mainBarVisible) {
+                mainCoverPending = true
+                armMainCoverGuard(force = true)
+            }
+            L.i("panel owner -> ${owner ?: "collapsed"}")
+        }
+    }
+
+    /**
+     * Panel collapse entry (SystemUI's coverage hook). Runs before [setPanelOwner] when that callback
+     * comes second, so the main copy is positioned on the outgoing x before it is revealed. Both
+     * callbacks are idempotent: once the main copy is visible the slide is not restarted.
+     */
+    fun onPanelCollapsed() {
+        val owner = activeSurfaceOwner()
+        if (owner != null) {
+            collapseHandoff(owner)
+        } else {
+            mainCoverPending = false
+            setMainBarVisible(true, immediateReveal = true)
+        }
+        showSurfaceOwner()
+    }
+
+    /**
+     * The single collapse order: position the hidden main copy on the outgoing copy's last x, latch
+     * the outgoing copy out, then reveal the main copy opaque in the same frame. If the main copy
+     * cannot draw, the outgoing copy is kept (fail silent, never a blackout). If it is already
+     * visible, the slide is skipped: a second slide would be the measured backwards jump.
+     */
+    private fun collapseHandoff(owner: String) {
+        mainCoverPending = false
+        if (surfaceEnabled(owner) && mainCopyReady()) {
+            if (!mainBarVisible) startMainHandoff(owner)
+            lockOutgoingSurface(owner)
+        } else if (surfaceEnabled(owner)) {
+            // No drawable main copy: keep the outgoing copy and clear any old latch.
+            drawOrder.onCollapse(owner, mainReady = false)
+            L.i("panel reveal: keeping the outgoing extra (main copy not drawable)")
+        }
+        setMainBarVisible(true, immediateReveal = true)
+    }
+
+    /**
+     * Hard-hides the outgoing QS/shade copy and latches it out until the next panel expansion. Alpha
+     * zero, not a fade: the owner capture showed the outgoing copy still drawing at the shade x for
+     * ~32 ms after the main copy had reached the HUD x. The latch also ignores late redraws.
+     */
+    private fun lockOutgoingSurface(name: String) {
+        val already = drawOrder.isLocked(name)
+        if (!drawOrder.onCollapse(name, mainReady = true)) return
+        val slot = extras.firstOrNull { it.name == name }
+        if (slot != null) {
+            slot.alphaRequest = null
+            for (view in listOfNotNull(slot.element?.ui, slot.indicators?.ui)) {
+                try {
+                    view.animate().cancel()
+                    view.alpha = 0f
+                } catch (t: Throwable) {
+                    L.w("panel reveal: ${t.javaClass.simpleName}: ${t.message}")
+                }
+            }
+            slot.element?.setRenderActive(false)
+            slot.indicators?.setRenderActive(false)
+        }
+        if (!already) L.i("panel reveal: outgoing $name locked out")
+    }
+
+    /**
+     * True when the main copy can actually draw, even while it is still hidden for the hand-off.
+     * This is the structural gate for locking the outgoing copy; alpha is deliberately not part of
+     * it because the main copy is revealed only after the slide has been positioned.
+     */
+    private fun mainCopyReady(): Boolean {
+        if (element?.isReady != true) return false
+        return mainViews().any { view ->
+            try {
+                view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&
+                    view.width > 0 && view.height > 0
+            } catch (t: Throwable) {
+                L.w("draw guard: ${t.javaClass.simpleName}: ${t.message}")
+                false
+            }
+        }
+    }
+
+    /**
+     * Carries the main copy from the outgoing QS/shade copy's last x, so the collapse does not snap
+     * sideways. Only a bounded translation is applied: y stays host-driven, and the view is neither
+     * moved, resized nor reparented. A skip is logged once and leaves the main copy untouched.
+     */
+    private fun startMainHandoff(owner: String) {
+        val main = element?.ui ?: return
+        val slot = extras.firstOrNull { it.name == owner } ?: return
+        val extraAlpha = listOfNotNull(slot.element?.ui, slot.indicators?.ui)
+            .maxOfOrNull { it.alpha } ?: 0f
+        val stable = mainHandoffBaseStable(main) && extraAlpha > PanelHandoff.EPSILON
+        val maxPx = PanelHandoff.HANDOFF_MAX_DP * context.resources.displayMetrics.density
+        when (val decision = PanelHandoff.horizontalHandoff(
+            extraCenterX = centerXOnScreen(slot.element?.ui ?: slot.indicators?.ui),
+            mainCenterX = centerXOnScreen(main),
+            baseStable = stable,
+            maxPx = maxPx
+        )) {
+            is PanelHandoff.Handoff.Skip ->
+                L.i("panel handoff: no x slide (${decision.reason})")
+            is PanelHandoff.Handoff.Slide -> slideMainX(main, decision)
+        }
+    }
+
+    /** True only when the main view's resting translation can be captured and restored safely. */
+    private fun mainHandoffBaseStable(main: View): Boolean = try {
+        element?.isReady == true &&
+            main.isAttachedToWindow && main.width > 0 && main.height > 0 &&
+            main.translationX.isFinite() &&
+            handoffAnimator == null &&
+            (main.getTag(shakeTag) as? Animator)?.isRunning != true
+    } catch (t: Throwable) {
+        L.w("panel handoff base: ${t.javaClass.simpleName}: ${t.message}")
+        false
+    }
+
+    private fun centerXOnScreen(view: View?): Float? {
+        view ?: return null
+        return try {
+            if (!view.isAttachedToWindow || view.width <= 0) return null
+            val location = IntArray(2)
+            view.getLocationOnScreen(location)
+            location[0] + view.width / 2f
+        } catch (t: Throwable) {
+            L.w("panel handoff centre: ${t.javaClass.simpleName}: ${t.message}")
+            null
+        }
+    }
+
+    private fun slideMainX(main: View, slide: PanelHandoff.Handoff.Slide) {
+        val base = main.translationX
+        if (!base.isFinite()) {
+            L.i("panel handoff: no x slide (base-not-finite)")
+            return
+        }
+        cancelMainHandoff()
+        handoffView = main
+        handoffBaseX = base
+        // Start where the outgoing copy was, then settle on the geometry-owned seat.
+        main.translationX = base + slide.deltaPx
+        val animator = ObjectAnimator.ofFloat(main, "translationX", base + slide.deltaPx, base).apply {
+            duration = slide.durationMs
+            interpolator = HANDOFF_X
+        }
+        animator.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                // An older animator must not clear a newer slide's base.
+                if (handoffAnimator !== animation) return
+                handoffAnimator = null
+                handoffView = null
+                try {
+                    main.translationX = handoffBaseX
+                } catch (t: Throwable) {
+                    L.w("panel handoff end: ${t.javaClass.simpleName}: ${t.message}")
+                }
+            }
+        })
+        handoffAnimator = animator
+        try {
+            animator.start()
+            L.i("panel handoff: x slide ${Math.round(slide.deltaPx)} px over ${slide.durationMs} ms")
+        } catch (t: Throwable) {
+            handoffAnimator = null
+            handoffView = null
+            main.translationX = base
+            L.w("panel handoff start: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /** Stops the slide and puts the main copy back on its geometry-owned seat. */
+    private fun cancelMainHandoff() {
+        val animator = handoffAnimator
+        val view = handoffView
+        val base = handoffBaseX
+        handoffAnimator = null
+        handoffView = null
+        if (animator != null) {
+            try {
+                animator.cancel()
+            } catch (t: Throwable) {
+                L.w("panel handoff cancel: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+        if (view != null) {
+            try {
+                view.translationX = base
+            } catch (t: Throwable) {
+                L.w("panel handoff restore: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /**
+     * Hides/shows the main status-bar copy and its split indicator; extras are untouched.
+     *
+     * Hiding is a short panel fade (≤100 ms) so the copy does not vanish a frame before the panel
+     * covers it. A panel hand-off reveals immediately: the measured QS/shade → collapsed blackout was
+     * the 50 ms delay plus the 320 ms alpha-in, while the outgoing extra was already hidden. The
+     * initial reveal still uses the ROM's own motion (320 ms, `Interpolators.ALPHA_IN`, 50 ms delay).
+     */
+    fun setMainBarVisible(visible: Boolean, immediateReveal: Boolean = false) {
+        // HUD -> QS/shade: the incoming copy is revealed first. The main copy is only faded out once
+        // the guard below has seen that copy draw; a missing extra keeps the main visible (fail silent)
+        // instead of opening a one-frame hole.
+        if (!visible && mainBarVisible && mainViews().isNotEmpty() && panelCoverExpected()) {
+            // An incoming copy that is already opaque needs no delay. A copy that is merely attached
+            // or still fading in buys the one-frame hold (and a missing one keeps the main, fail
+            // silent). A new expansion owns the seat again, so an old collapse latch is cleared first.
+            val owner = activeSurfaceOwner()
+            drawOrder.onExpand()
+            if (owner != null) makeSurfaceOpaque(owner)
+            if (PanelHandoff.coverOrder(
+                    extraCopyDrawable(owner), extraCopyAlpha(owner), waitedFrames = 0
+                ) == PanelHandoff.SwapOrder.SWAP
+            ) {
+                mainCoverPending = false
+                applyMainBarVisible(false, immediateReveal = false)
+                return
+            }
+            mainCoverPending = true
+            showSurfaceOwner()
+            armMainCoverGuard()
+            return
+        }
+        if (visible) mainCoverPending = false
+        applyMainBarVisible(visible, immediateReveal)
+    }
+
+    private fun applyMainBarVisible(visible: Boolean, immediateReveal: Boolean) {
+        if (visible == mainBarVisible && !(visible && immediateReveal)) return
+        mainBarVisible = visible
+        val views = mainViews()
+        if (views.isEmpty()) return
+        for (view in views) {
+            when (val change = PanelHandoff.main(visible, immediateReveal, view.alpha)) {
+                is PanelHandoff.Change.Keep -> Unit
+                is PanelHandoff.Change.Set -> {
+                    view.animate().cancel()
+                    view.alpha = change.alpha
+                }
+                is PanelHandoff.Change.Fade -> {
+                    view.animate().cancel()
+                    view.animate()
+                        .alpha(change.alpha)
+                        .setDuration(change.durationMs)
+                        .setStartDelay(change.startDelayMs)
+                        .setInterpolator(MAIN_ALPHA_IN)
+                        .start()
+                }
+            }
+        }
+        // A hidden main copy must not keep a looping Rive renderer alive. It is re-armed the moment
+        // the copy is revealed again; writing snapshots while hidden still keeps the view model current.
+        element?.setRenderActive(visible)
+        indicators?.setRenderActive(visible)
+    }
+
+    private fun mainViews(): List<View> = listOfNotNull(element?.ui, indicators?.ui)
+
+    /** The surface Duo is expected to be drawing in, or null while the panel is collapsed. */
+    private fun activeSurfaceOwner(): String? = when {
+        panelStateKnown -> panelOwner
+        shadeOpen -> "shade header"
+        else -> null
+    }
+
+    private fun panelIsOpen(): Boolean = activeSurfaceOwner() != null
+
+    /**
+     * Whether a panel expansion owns the current transition. Before the panel callback arrives, any
+     * enabled header surface is reason to hold the main copy for one frame rather than hide it blind.
+     */
+    private fun panelCoverExpected(): Boolean {
+        val owner = activeSurfaceOwner()
+        if (owner != null) return surfaceEnabled(owner)
+        return settings.showInQs || settings.showInShade
+    }
+
+    /**
+     * True only when the view is attached, shown, laid out and actually has ink to draw. This is the
+     * structural proof the one-frame guard uses; it never touches size, parent or renderer state.
+     */
+    private fun copyDrawable(view: View): Boolean = try {
+        view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&
+            view.width > 0 && view.height > 0 && view.alpha > PanelHandoff.EPSILON
+    } catch (t: Throwable) {
+        L.w("draw guard: ${t.javaClass.simpleName}: ${t.message}")
+        false
+    }
+
+    private fun mainCopyDrawable(): Boolean {
+        if (element?.isReady != true) return false
+        return mainViews().any { copyDrawable(it) }
+    }
+
+    private fun extraCopyDrawable(name: String?): Boolean {
+        name ?: return false
+        if (!surfaceEnabled(name)) return false
+        val slot = extras.firstOrNull { it.name == name } ?: return false
+        if (slot.element?.isReady != true) return false
+        return listOfNotNull(slot.element?.ui, slot.indicators?.ui).any { copyDrawable(it) }
+    }
+
+    /** Highest alpha of an extra's ring and indicators; 0 when the slot is absent. */
+    private fun extraCopyAlpha(name: String?): Float {
+        name ?: return 0f
+        val slot = extras.firstOrNull { it.name == name } ?: return 0f
+        return listOfNotNull(slot.element?.ui, slot.indicators?.ui)
+            .maxOfOrNull { it.alpha } ?: 0f
+    }
+
+    /**
+     * Makes the incoming panel copy opaque in this frame. The main copy may only be hidden once the
+     * copy underneath is fully drawn; an attached copy that is still fading in showed a 60 % frame in
+     * the owner capture. A locked outgoing copy is left at zero: the latch owns it.
+     */
+    private fun makeSurfaceOpaque(name: String) {
+        if (drawOrder.isLocked(name) || !surfaceEnabled(name)) return
+        val slot = extras.firstOrNull { it.name == name } ?: return
+        slot.alphaRequest = null
+        for (view in listOfNotNull(slot.element?.ui, slot.indicators?.ui)) {
+            try {
+                view.animate().cancel()
+                view.alpha = 1f
+            } catch (t: Throwable) {
+                L.w("panel cover opaque: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /** A currently visible outgoing copy that must not vanish before the main copy draws. */
+    private fun outgoingSurfaceVisible(): Boolean = extras.any { slot ->
+        surfaceEnabled(slot.name) &&
+            listOfNotNull(slot.element?.ui, slot.indicators?.ui)
+                .any { it.alpha > PanelHandoff.EPSILON }
+    }
+
+    /**
+     * Runs [action] once on the next frame: a pre-draw listener sees the frame's final alpha, and a
+     * single post-on-animation fallback covers a view whose traversal does not happen. There is no
+     * retry loop; the caller decides whether a missed frame is a hold or a fail-silent stop.
+     */
+    private fun onNextFrame(view: View, action: () -> Unit) {
+        var fired = false
+        var listener: ViewTreeObserver.OnPreDrawListener? = null
+        fun finish() {
+            if (fired) return
+            fired = true
+            val pending = listener
+            listener = null
+            if (pending != null) {
+                try {
+                    val observer = view.viewTreeObserver
+                    if (observer.isAlive) observer.removeOnPreDrawListener(pending)
+                } catch (_: Throwable) {
+                }
+            }
+            action()
+        }
+        try {
+            val observer = view.viewTreeObserver
+            if (observer.isAlive) {
+                val pending = object : ViewTreeObserver.OnPreDrawListener {
+                    override fun onPreDraw(): Boolean {
+                        finish()
+                        return true
+                    }
+                }
+                listener = pending
+                observer.addOnPreDrawListener(pending)
+            }
+            if (view.isAttachedToWindow) view.postOnAnimation { finish() } else view.post { finish() }
+        } catch (t: Throwable) {
+            L.w("one-frame guard: ${t.javaClass.simpleName}: ${t.message}")
+            view.post { finish() }
+        }
+    }
+
+    /**
+     * HUD -> QS/shade guard: hide the main copy only after the owner's copy has drawn. If that copy
+     * is still not drawable after one frame, the main stays visible; an attach calls this again.
+     */
+    private fun armMainCoverGuard(force: Boolean = false) {
+        if (!mainCoverPending) return
+        val view = mainViews().firstOrNull() ?: return
+        if (!force && mainCoverGuardView === view) return
+        mainCoverGuardView = view
+        onNextFrame(view) {
+            if (mainCoverGuardView === view) mainCoverGuardView = null
+            if (!mainCoverPending) return@onNextFrame
+            val owner = activeSurfaceOwner()
+            if (owner != null) makeSurfaceOpaque(owner)
+            when (PanelHandoff.coverOrder(
+                    extraCopyDrawable(owner), extraCopyAlpha(owner), waitedFrames = 1
+                )) {
+                PanelHandoff.SwapOrder.SWAP -> {
+                    mainCoverPending = false
+                    applyMainBarVisible(false, immediateReveal = false)
+                    L.i("panel cover: main hidden after the incoming copy drew")
+                }
+                else -> L.i("panel cover: keeping the main copy (incoming copy not drawable)")
+            }
+        }
+    }
+
+    /**
+     * QS/shade -> HUD guard: the outgoing extra is held while the main copy has not drawn. After one
+     * frame the extra is either released over the usual 120 ms fade or kept (fail silent).
+     */
+    private fun armMainRevealGuard() {
+        val view = mainViews().firstOrNull() ?: return
+        if (mainRevealGuardView === view) return
+        mainRevealGuardView = view
+        onNextFrame(view) {
+            if (mainRevealGuardView === view) mainRevealGuardView = null
+            if (panelIsOpen()) return@onNextFrame
+            when (PanelHandoff.swapOrder(mainCopyDrawable(), waitedFrames = 1)) {
+                PanelHandoff.SwapOrder.SWAP -> showSurfaceOwner()
+                else -> L.i("panel reveal: keeping the outgoing extra (main copy not drawable)")
+            }
+        }
+    }
+
+    /** Whether the user allows Duo in one of the optional header surfaces. */
+    private fun surfaceEnabled(name: String): Boolean = when (name) {
+        "qs header" -> settings.showInQs
+        "shade header" -> settings.showInShade
+        else -> true
+    }
+
+    /**
+     * The copy the panel is expected to show. While a cover is pending and the owner callback has not
+     * arrived yet, the last attached surface is the best prediction; showing it for that frame keeps
+     * the call from fading the incoming copy to zero just before the owner names it.
+     */
+    private fun displaySurfaceOwner(): String? = when {
+        panelStateKnown -> panelOwner ?: when {
+            !mainCoverPending -> null
+            shadeOpen -> "shade header"
+            else -> "qs header"
+        }
+        shadeOpen -> "shade header"
+        else -> "qs header"
+    }
+
+    /** Reveals exactly the current owner (QS or shade); the other copy is always hidden. */
+    fun showSurfaceOwner() {
+        val owner = displaySurfaceOwner()
+        val qs = owner == "qs header" && settings.showInQs
+        val shade = owner == "shade header" && settings.showInShade
+        // QS/shade -> HUD: the main copy is already opaque (setMainBarVisible(true, immediateReveal)),
+        // but if it has no drawable view yet the outgoing copy is held for one frame instead of being
+        // faded out over an empty seat.
+        if (!panelIsOpen() && !mainCopyDrawable() && outgoingSurfaceVisible()) {
+            armMainRevealGuard()
+            return
+        }
+        val qsTarget = if (qs) 1f else 0f
+        val shadeTarget = if (shade) 1f else 0f
+        // Apply the incoming copy first. `anotherCopyVisible` reads the current alphas, so hiding the
+        // outgoing copy first turned the QS -> shade swap into a hard cut at two different positions;
+        // the reverse direction faded, which made the six transition directions asymmetric.
+        if (shadeTarget > qsTarget) {
+            setSurfaceAlpha("shade header", shadeTarget)
+            setSurfaceAlpha("qs header", qsTarget)
+        } else {
+            setSurfaceAlpha("qs header", qsTarget)
+            setSurfaceAlpha("shade header", shadeTarget)
+        }
+    }
+
+    /**
+     * Applies a live QS/shade enable toggle. Disabling hides our element and restores the stock
+     * header icons in place; enabling re-hides them. No live Duo is removed or reparented.
+     */
+    private fun applySurfaceSettings() {
+        for (slot in extras) {
+            try {
+                if (!surfaceEnabled(slot.name)) {
+                    slot.alphaRequest = null
+                    slot.element?.ui?.animate()?.cancel()
+                    slot.indicators?.ui?.animate()?.cancel()
+                    slot.element?.ui?.alpha = 0f
+                    slot.indicators?.ui?.alpha = 0f
+                    slot.element?.setRenderActive(false)
+                    slot.indicators?.setRenderActive(false)
+                    slot.stock.restore()
+                } else {
+                    val target = slot.container ?: continue
+                    hideSlotStock(slot, target, slot.element?.ui)
+                }
+            } catch (t: Throwable) {
+                L.w("${slot.name} surface setting: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+        showSurfaceOwner()
+    }
+
+    /**
+     * Applies the same alpha to the ring and its split indicator view for one extra surface.
+     *
+     * A fade is used only while another copy can bridge the swap; a disabled surface and the first
+     * attach with nothing visible are hard-set, so the stock header is never left behind a fade.
+     */
+    private fun setSurfaceAlpha(name: String, alpha: Float) {
+        if (drawOrder.isLocked(name)) {
+            // The collapse latch owns this copy: hard-zero, never fade, until the next expansion.
+            for (slot in extras) {
+                if (slot.name != name) continue
+                slot.alphaRequest = null
+                for (view in listOfNotNull(slot.element?.ui, slot.indicators?.ui)) {
+                    try {
+                        view.animate().cancel()
+                        view.alpha = 0f
+                    } catch (t: Throwable) {
+                        L.w("${slot.name} latch: ${t.javaClass.simpleName}: ${t.message}")
+                    }
+                }
+                slot.element?.setRenderActive(false)
+                slot.indicators?.setRenderActive(false)
+            }
+            return
+        }
+        val enabled = surfaceEnabled(name)
+        val target = if (enabled) alpha else 0f
+        val coexist = anotherCopyVisible(name)
+        for (slot in extras) {
+            if (slot.name != name) continue
+            val views = listOfNotNull(slot.element?.ui, slot.indicators?.ui)
+            if (views.isEmpty()) continue
+            val current = views.maxOf { it.alpha }
+            when (val change = PanelHandoff.extra(target, enabled, current, slot.alphaRequest, coexist)) {
+                is PanelHandoff.Change.Keep -> Unit
+                is PanelHandoff.Change.Set -> {
+                    slot.alphaRequest = null
+                    for (view in views) {
+                        view.animate().cancel()
+                        view.alpha = change.alpha
+                    }
+                }
+                is PanelHandoff.Change.Fade -> {
+                    slot.alphaRequest = change.alpha
+                    for (view in views) {
+                        view.animate().cancel()
+                        view.animate()
+                            .alpha(change.alpha)
+                            .setDuration(change.durationMs)
+                            .withEndAction {
+                                if (slot.alphaRequest == change.alpha) slot.alphaRequest = null
+                            }
+                            .start()
+                    }
+                }
+            }
+            // Keep the renderer in step with the copy's target: a zero-alpha QS/shade copy that keeps
+            // restarting on every status change is the same drain as an off-screen main bar.
+            val renderActive = target > PanelHandoff.EPSILON
+            slot.element?.setRenderActive(renderActive)
+            slot.indicators?.setRenderActive(renderActive)
+        }
+    }
+
+    /**
+     * True when a copy other than [name] is visible enough to cross-fade with. The main bar counts even
+     * while it is fading out (its view alpha is still above zero), which covers panel expansion.
+     */
+    private fun anotherCopyVisible(name: String): Boolean {
+        val mainAlpha = listOfNotNull(element?.ui, indicators?.ui)
+            .maxOfOrNull { it.alpha } ?: 0f
+        if (mainAlpha > PanelHandoff.EPSILON) return true
+        return extras.any { slot ->
+            slot.name != name && listOfNotNull(slot.element?.ui, slot.indicators?.ui)
+                .any { it.alpha > PanelHandoff.EPSILON }
+        }
+    }
+
+    /**
+     * OnePlus/QS route: attaches Duo to the cluster a vendor hook handed over, with the battery that
+     * hook read (the split header keeps it beside the cluster, not inside it). The cluster must have
+     * been laid out; at 0x0 a bounded retry runs instead of hiding anything.
+     */
+    fun attachShadeCluster(cluster: ViewGroup, battery: View?, source: String): Boolean {
+        return try {
+        // Never remove/reparent a live Duo from a layout/hook callback; leave stock and log instead.
+        // The measured CPH2747 squeezes the QS cluster to 9x63 inside the wide header; draw in the
+        // header instead so the ring and the Wi-Fi/cell dots are not squeezed into 9 px. The slot name
+        // is chosen from the *original* cluster, before that normalization: 9x63 is the QS surface and
+        // 386x101 is the shade, so the two routes can never consume one another's slot.
+        // The measured QS cluster is wide too (297x56), so dimensions alone are not enough: the
+        // shade surface is the one under `header_container`. Everything else (the QS panel and the
+        // vendor simple header) owns "qs header", so a QS owner can no longer block the shade.
+        val slotName = if (isShadeSurface(cluster, source)) "shade header" else "qs header"
+        val target = finder.usableShadeHost(cluster)
+        logOnce.once("shadeRoute:$slotName:${System.identityHashCode(target)}") {
+            L.i("shade route slot=$slotName cluster=${cluster.width}x${cluster.height} " +
+                "target=${target.javaClass.name}[${target.width}x${target.height}] source=$source")
+        }
+        if (target === host) return true
+        // One owner per host: QS and shade can both normalize to the same header. A second view in
+        // that header is the duplicate TextureView this change set exists to remove.
+        dropDetachedSlotsFor(target)
+        liveSlotIn(target)?.let { owner ->
+            logOnce.once("shadeOwner:$slotName:${System.identityHashCode(target)}") {
+                L.i("shade host already owned by ${owner.name} " +
+                    "at ${target.javaClass.simpleName}[${target.width}x${target.height}] - " +
+                    "not adding a second Duo")
+            }
+            if (battery != null) owner.stockBattery = battery
+            clearShadeRetry()
+            markSurface(owner.name)
+            return true
+        }
+        // A live same-name slot wins even when its container is not this target: adopt its live parent,
+        // never create a second element or re-add the same view.
+        liveSlotFor(slotName, cluster)?.let { slot ->
+            val liveParent = slot.element?.ui?.parent as? ViewGroup
+            if (liveParent != null) slot.container = liveParent
+            if (battery != null) slot.stockBattery = battery
+            applyExtraLayout(slot)
+            syncExtraIndicators(slot)
+            clearShadeRetry()
+            markSurface(slot.name)
+            logOnce.once("reuse:$slotName:${System.identityHashCode(liveParent)}") {
+                L.i("$slotName reuse attached slot parent=${liveParent?.javaClass?.simpleName}")
+            }
+            return true
+        }
+        // A live same-name slot wins. A detached one is only bookkeeping; it may be discarded before
+        // this safe rebuild, but a live Duo is never removed or reparented. Still update the owner:
+        // the QS slot can live in an overlay parent while this route's target is the stock strip, so
+        // liveSlotIn(target) above does not always find it.
+        if (!ensureSlotAvailable(slotName, cluster)) {
+            markSurface(slotName)
+            return true
+        }
+        when {
+            element == null -> {
+                ShadeProbe.log("shadeProbe $source: main bar not attached yet - waiting")
+                scheduleShadeRetryForCluster(target, battery, source)
+                false
+            }
+            // The host can be a wider ancestor while the original cluster is still 0x0. Keep waiting on
+            // the cluster itself, or Duo would be attached (and the stock battery hidden) before layout.
+            !shadeClusterReady(cluster.width, cluster.visibility, cluster.isAttachedToWindow, cluster.isShown) -> {
+                ShadeProbe.log(
+                    "shadeProbe $source: cluster not laid out " +
+                        "(${ShadeProbe.describe(cluster)}) - waiting"
+                )
+                scheduleShadeRetryForCluster(target, battery, source)
+                false
+            }
+            !containerUsable(target) -> {
+                ShadeProbe.log("shadeProbe $source: shade target not usable - waiting")
+                scheduleShadeRetryForCluster(target, battery, source)
+                false
+            }
+            else -> attachShadeSlot(target, target, battery, source, slotName)
+        }
+    } catch (t: Throwable) {
+        L.e("shade cluster attach: ${t.javaClass.simpleName}: ${t.message}")
+        false
+    }
+    }
+
+    /** Generic header fallback: the controller's header and the wide shade cluster found in its window. */
+    private fun attachGenericShadeCluster(cluster: ViewGroup, header: View): Boolean {
+        val target = finder.usableShadeHost(cluster)
+        val slotName = if (isShadeSurface(cluster, null)) "shade header" else "qs header"
+        logOnce.once("shadeRoute:generic:${System.identityHashCode(target)}") {
+            L.i("shade route slot=$slotName cluster=${cluster.width}x${cluster.height} " +
+                "target=${target.javaClass.name}[${target.width}x${target.height}] source=generic")
+        }
+        if (target === host) return true
+        // A wide QS cluster (297x56) is still the QS surface; only `header_container` owns the shade.
+        dropDetachedSlotsFor(target)
+        liveSlotIn(target)?.let { markSurface(it.name); return true }
+        liveSlotFor(slotName, cluster)?.let { slot ->
+            val liveParent = slot.element?.ui?.parent as? ViewGroup
+            if (liveParent != null) slot.container = liveParent
+            applyExtraLayout(slot)
+            syncExtraIndicators(slot)
+            markSurface(slot.name)
+            logOnce.once("reuse:$slotName:${System.identityHashCode(liveParent)}") {
+                L.i("$slotName reuse attached slot parent=${liveParent?.javaClass?.simpleName}")
+            }
+            return true
+        }
+        if (!ensureSlotAvailable(slotName, cluster)) {
+            markSurface(slotName)
+            return true
+        }
+        return attachShadeSlot(target, header, battery = null, source = null, slotName = slotName)
+    }
+
+    /**
+     * The shared shade slot attach. [cap] is what the element's height is capped by (the vendor cluster
+     * for the OnePlus routes, the header for the generic fallback) and [battery] is passed only when a
+     * hook read it outside the cluster; otherwise it is resolved inside [cluster]. [slotName] is the
+     * owner this route writes to ("qs header" or "shade header").
+     */
+    private fun attachShadeSlot(
+        cluster: ViewGroup,
+        cap: View,
+        battery: View?,
+        source: String?,
+        slotName: String
+    ): Boolean {
+        if (!surfaceEnabled(slotName)) {
+            L.i("$slotName disabled by setting - leaving stock header")
+            return true
+        }
+        if (cluster === host) return true
+        if (!shadeClusterReady(cluster.width, cluster.visibility, cluster.isAttachedToWindow, cluster.isShown)) {
+            ShadeProbe.log(
+                "shadeProbe ${source ?: "shade"}: cluster not laid out " +
+                    "(${ShadeProbe.describe(cluster)}) - waiting"
+            )
+            if (source != null) scheduleShadeRetryForCluster(cluster, battery, source)
+            return false
+        }
+        // One owner per host: a live Duo in this exact cluster wins, whichever slot name it used.
+        liveSlotIn(cluster)?.let { owner ->
+            if (battery != null) owner.stockBattery = battery
+            clearShadeRetry()
+            markSurface(owner.name)
+            return true
+        }
+        // A live same-name slot wins even when its container is not this target.
+        liveSlotFor(slotName, cluster)?.let { slot ->
+            val liveParent = slot.element?.ui?.parent as? ViewGroup
+            if (liveParent != null) slot.container = liveParent
+            if (battery != null) slot.stockBattery = battery
+            applyExtraLayout(slot)
+            syncExtraIndicators(slot)
+            clearShadeRetry()
+            markSurface(slot.name)
+            logOnce.once("reuse:$slotName:${System.identityHashCode(liveParent)}") {
+                L.i("$slotName reuse attached slot parent=${liveParent?.javaClass?.simpleName}")
+            }
+            return true
+        }
+        // A live same-name slot wins. A detached one is only bookkeeping; drop it and rebuild.
+        // Update the owner even when the live slot is in an overlay parent rather than this target.
+        if (!ensureSlotAvailable(slotName, cluster)) {
+            markSurface(slotName)
+            return true
+        }
+        // One size owner: the measured QS header is only 63 high, but Duo keeps the main-bar size
+        // (114 at 133%) and overflows the header rather than shrinking to a tiny ring. Cap against
+        // the window, not the 63 px stock strip.
+        val capView = (cluster.rootView as? View) ?: cap
+        val attached = attachExtraView(
+            slotName, cluster, capView, center = false, qsCluster = true,
+            battery = battery, source = source
+        )
+        if (attached) {
+            clearShadeRetry()
+            markSurface(slotName)
+        }
+        return attached
+    }
+
     /** Attaches into an already-known container (the shade header's icon area). */
     private fun attachExtraView(
-        name: String,
+        slotName: String,
         target: ViewGroup,
         cap: View? = null,
-        center: Boolean = true
+        center: Boolean = true,
+        qsCluster: Boolean = false,
+        battery: View? = null,
+        source: String? = null
     ): Boolean {
-        if (extras.any { it.name == name }) return true
-        if (element == null) return false
+        if (!surfaceEnabled(slotName)) return true
+        // The measured QS chain puts the cluster inside a custom `OplusQuickStatusBarHeader`; a
+        // foreign child there measured 0 px wide. Draw in the nearest plain frame instead, while the
+        // stock icons are still hidden inside the original container.
+        val base = if (geometry.slotBasePx > 0) geometry.slotBasePx else geometry.measuredWidth(target)
+        val capView = (cap as? View) ?: target
+        val desired = geometry.sidePx(target, capView, base)
+        var elementParent = if (finder.isStandardLayout(target)) target
+        else finder.findOverlayContainer(target, target.rootView)
+        // The QS status strip is 63 px high but Duo keeps its 114 px main-bar size (129 px drawing
+        // height). A 63 px parent measured the view 63 px high - the tiny, squashed QS ring. Move
+        // just this surface to the nearest taller QS ancestor; it is still hidden with the QS panel.
+        // Only move out for a real shortfall. The shade header is 140 px while the main bar is 141 px;
+        // a 1 px difference used to select the 688 px QS container, which changed both size and
+        // position. A 1 px overflow is harmless and keeps the stock header as the anchor.
+        if (target.height > 0 && target.height * 10 < desired * 9) {
+            val parent = target.parent as? ViewGroup
+            if (parent != null && parent.height >= desired) elementParent = parent
+        }
+        dropDetachedSlotsFor(target)
+        if (elementParent !== target) dropDetachedSlotsFor(elementParent)
+        liveSlotIn(target)?.let { markSurface(it.name); return true }
+        if (elementParent !== target) {
+            liveSlotIn(elementParent)?.let { markSurface(it.name); return true }
+        }
+        liveSlotFor(slotName, target)?.let { slot ->
+            val liveParent = slot.element?.ui?.parent as? ViewGroup
+            if (liveParent != null) slot.container = liveParent
+            applyExtraLayout(slot)
+            syncExtraIndicators(slot)
+            markSurface(slot.name)
+            logOnce.once("reuse:$slotName:${System.identityHashCode(liveParent)}") {
+                L.i("$slotName reuse attached slot parent=${liveParent?.javaClass?.simpleName}")
+            }
+            return true
+        }
+        if (!ensureSlotAvailable(slotName, target)) {
+            markSurface(slotName)
+            return true
+        }
+        if (element == null) {
+            // The shade header and the QS cluster are built before the main bar binds; keep the bounded
+            // retry alive on every route instead of giving up on the first early callback.
+            if (source != null) scheduleShadeRetryForCluster(target, battery, source)
+            else scheduleShadeRetry(cap ?: target, null)
+            return false
+        }
         return try {
             val stage = guard.stage()
             if (stage == DuoGuard.OFF) return false
-            if (target === host) return true
-            attachInto(name, target, cap, center, elementRoot = target, stage = stage, logClass = target.javaClass.simpleName)
+            if (elementParent === host) return true
+            if (elementParent.height <= 0 || target.height <= 0) {
+                if (source != null) scheduleShadeRetryForCluster(target, battery, source)
+                else scheduleShadeRetry(cap ?: target, null)
+                return false
+            }
+            attachInto(
+                slotName, elementParent, cap, center, elementRoot = elementParent, stage = stage,
+                logClass = target.javaClass.simpleName, qsCluster = qsCluster,
+                battery = battery, source = source, stockTarget = target
+            )
         } catch (t: Throwable) {
-            L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
+            L.e("$slotName attach: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
     }
@@ -366,50 +1643,133 @@ internal class DuoIconHost(private val context: Context) {
         center: Boolean,
         elementRoot: View,
         stage: Int,
-        logClass: String
+        logClass: String,
+        qsCluster: Boolean = false,
+        battery: View? = null,
+        source: String? = null,
+        stockTarget: ViewGroup? = null
     ): Boolean {
+        // Reuse a live same-named slot instead of creating a second element/re-adding the view.
+        liveSlotFor(name, target)?.let { slot ->
+            val liveParent = slot.element?.ui?.parent as? ViewGroup
+            if (liveParent != null) slot.container = liveParent
+            if (battery != null) slot.stockBattery = battery
+            applyExtraLayout(slot)
+            syncExtraIndicators(slot)
+            logOnce.once("reuse:$name:${System.identityHashCode(liveParent)}") {
+                L.i("$name reuse attached slot parent=${liveParent?.javaClass?.simpleName}")
+            }
+            return true
+        }
+        val stock = stockTarget ?: target
+        if (!containerUsable(target) || !containerUsable(stock)) {
+            ShadeProbe.log(
+                "shadeProbe attach: $name target not usable " +
+                    "(${ShadeProbe.describe(target)} / stock ${ShadeProbe.describe(stock)}) - waiting"
+            )
+            return false
+        }
         val slot = ExtraBar(name, center)
         val candidate = createElement(elementRoot, stage, ringPart())
         slot.container = target
-        slot.bar = cap ?: target
+        slot.bar = cap ?: stock
+        slot.qsCluster = qsCluster
+        if (qsCluster) {
+            slot.stockStatusIcons = finder.findShadeStatusIcons(stock)
+            slot.stockBattery = battery ?: finder.findShadeBattery(stock)
+            ShadeProbe.log(
+                "shadeProbe container: ${ShadeProbe.describe(target)} stock=${ShadeProbe.describe(stock)} " +
+                    "statusIcons=${ShadeProbe.describe(slot.stockStatusIcons)} " +
+                    "battery=${ShadeProbe.describe(slot.stockBattery)} " +
+                    "source=${source ?: "generic"}"
+            )
+        }
         // One size for every bar: reuse the width pinned for the main bar at attach, so the lock screen
         // and the shade header cannot draw the ring at a different size than the home bar (reported: "the
         // icon is bigger on the lock screen"). Falls back to this bar's own measurement only when the main
         // bar never captured one. The bar-height cap in [SlotGeometry.sidePx] still applies per bar.
-        slot.basePx = if (geometry.slotBasePx > 0) geometry.slotBasePx else geometry.measuredWidth(target)
+        slot.basePx = if (geometry.slotBasePx > 0) geometry.slotBasePx else geometry.measuredWidth(stock)
         slot.element = candidate
         extras.add(slot)
-        allowOverflow(target)
-        val side = geometry.sidePx(target, slot.bar, slot.basePx)
-        candidate.ui.layoutParams = layoutParamsFor(target, side)
-        target.addView(candidate.ui)
-        applyExtraLayout(slot)
-        syncExtraIndicators(slot)
-        candidate.onReady {
-            if (slot.element !== candidate) return@onReady
-            // The ready callback arrives from the Rive instance poll, i.e. outside attachExtraView's try.
-            // Guard it here so a hiding failure in an optional bar can never propagate into SystemUI.
-            try {
-                hideStock(target, candidate.ui, owner = slot.stock)
-                candidate.reveal(settings.revealMs)
-                L.i("Duo injected into $name ($logClass, ${side}px) - FR-03b")
-            } catch (t: Throwable) {
-                L.w("$name ready: ${t.javaClass.simpleName}: ${t.message}")
+        try {
+            allowOverflow(target)
+            // A 0-height cap is the boot-time header; fall back to the stock container's height so a
+            // 114 px element is never laid out inside the measured 63 px QS header.
+            val capView = slot.bar?.takeIf { it.height > 0 } ?: stock
+            val side = geometry.extraSidePx(target, capView, slot.basePx)
+            candidate.ui.layoutParams = layoutParamsFor(target, side)
+            ensureInjectedViewId(candidate.ui, target)
+            target.addView(candidate.ui)
+            applyExtraLayout(slot)
+            syncExtraIndicators(slot)
+            candidate.onReady {
+                if (slot.element !== candidate) return@onReady
+                // Wait for a real measured box before hiding anything. A 0-width child in a custom
+                // header was the measured QS failure; leaving stock is safer than an empty slot.
+                candidate.ui.post {
+                    if (slot.element !== candidate || !candidate.ui.isAttachedToWindow) return@post
+                    val width = candidate.ui.width
+                    val height = candidate.ui.height
+                    L.i(
+                        "$name layout target=${target.javaClass.name}[${target.width}x${target.height}] " +
+                            "stock=${stock.javaClass.simpleName}[${stock.width}x${stock.height}] " +
+                            "view=${width}x$height side=$side parent=" +
+                            "${candidate.ui.parent?.javaClass?.simpleName ?: "none"}"
+                    )
+                    if (width <= 0 || height <= 0) {
+                        L.w("$name element measured ${width}x$height - leaving stock")
+                        runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
+                        runCatching { candidate.teardown() }
+                        slot.stock.restore()
+                        extras.remove(slot)
+                        return@post
+                    }
+                    // The ready callback arrives from the Rive instance poll, i.e. outside attachExtraView's try.
+                    // Guard it here so a hiding failure in an optional bar can never propagate into SystemUI.
+                    try {
+                        hideSlotStock(slot, stock, candidate.ui)
+                        candidate.reveal(settings.revealMs)
+                        // A cover that was held because this copy was not drawable gets its second
+                        // check once the copy is live. Still one frame, still no retry loop.
+                        if (mainCoverPending) armMainCoverGuard(force = true)
+                        // Hiding the stock battery keeps its INVISIBLE frame, but the cluster may still have
+                        // moved; re-anchor after the hide pass so the element sits on the battery's end.
+                        if (qsCluster) {
+                            applyExtraLayout(slot)
+                            syncExtraIndicators(slot)
+                        }
+                        ShadeProbe.log(
+                            "shadeProbe attach qs=$qsCluster source=${source ?: "generic"}: $name " +
+                                "container=${target.javaClass.simpleName} side=${side}px"
+                        )
+                        val sourceText = source?.let { " source=$it" } ?: ""
+                        L.i("Duo injected into $name ($logClass, ${side}px$sourceText) - FR-03b")
+                    } catch (t: Throwable) {
+                        L.w("$name ready: ${t.javaClass.simpleName}: ${t.message}")
+                    }
+                }
             }
-        }
-        candidate.onFailed {
-            // Optional bar: drop the element and leave its stock icons alone.
-            try {
-                L.w("$name element did not bind - leaving its stock icons")
-                runCatching { target.removeView(candidate.ui) }
-                runCatching { candidate.teardown() }
-                slot.stock.restore()
-                extras.remove(slot)
-            } catch (t: Throwable) {
-                L.w("$name failed: ${t.javaClass.simpleName}: ${t.message}")
+            candidate.onFailed {
+                // Optional bar: drop the element and leave its stock icons alone.
+                try {
+                    L.w("$name element did not bind - leaving its stock icons")
+                    runCatching { target.removeView(candidate.ui) }
+                    runCatching { candidate.teardown() }
+                    slot.stock.restore()
+                    extras.remove(slot)
+                } catch (t: Throwable) {
+                    L.w("$name failed: ${t.javaClass.simpleName}: ${t.message}")
+                }
             }
+            return true
+        } catch (t: Throwable) {
+            // The slot must never outlive a failed injection: it would hide the stock icons with no Duo
+            // drawing over them. Roll it back completely.
+            L.e("$name attach body: ${t.javaClass.simpleName}: ${t.message}")
+            runCatching { target.removeView(candidate.ui) }
+            dropSlot(slot)
+            return false
         }
-        return true
     }
 
     /**
@@ -436,10 +1796,19 @@ internal class DuoIconHost(private val context: Context) {
         height: Int,
         inset: Int
     ): ViewGroup.LayoutParams {
-        val lp = when (container) {
-            is LinearLayout -> LinearLayout.LayoutParams(width, height)
-            is android.widget.FrameLayout -> android.widget.FrameLayout.LayoutParams(width, height)
-            else -> ViewGroup.LayoutParams(width, height)
+        // Ask the container for its own params type. This is what keeps a ConstraintLayout parent (the
+        // measured QS cluster) from being handed a base ViewGroup.LayoutParams it casts and rejects.
+        val lp = try {
+            container.generateLayoutParams(null as AttributeSet?).apply {
+                this.width = width
+                this.height = height
+            }
+        } catch (_: Throwable) {
+            when (container) {
+                is LinearLayout -> LinearLayout.LayoutParams(width, height)
+                is FrameLayout -> FrameLayout.LayoutParams(width, height)
+                else -> ViewGroup.LayoutParams(width, height)
+            }
         }
         // Fresh params start at 0, so a zero inset is already correct. Only a flowing strip uses it.
         if (inset != 0 && container is LinearLayout && lp is ViewGroup.MarginLayoutParams) {
@@ -447,6 +1816,17 @@ internal class DuoIconHost(private val context: Context) {
             else lp.leftMargin = inset
         }
         return lp
+    }
+
+    /** False when [lp] belongs to a different parent type (a cross-container move kept stale params). */
+    private fun paramsFit(container: ViewGroup, lp: ViewGroup.LayoutParams): Boolean = when (container) {
+        is LinearLayout -> lp is LinearLayout.LayoutParams
+        is FrameLayout -> lp is FrameLayout.LayoutParams
+        else -> try {
+            lp.javaClass == container.generateLayoutParams(null as AttributeSet?)?.javaClass
+        } catch (_: Throwable) {
+            true
+        }
     }
 
     /**
@@ -459,7 +1839,7 @@ internal class DuoIconHost(private val context: Context) {
     private fun assignBox(view: View, container: ViewGroup, side: Int, inset: Int) {
         val height = RingGeometry.elementHeightPx(side)
         val lp = view.layoutParams
-        if (lp == null || lp.width != side || lp.height != height) {
+        if (lp == null || !paramsFit(container, lp) || lp.width != side || lp.height != height) {
             view.layoutParams = layoutParamsFor(container, side, height, inset)
             view.requestLayout()
             return
@@ -478,9 +1858,16 @@ internal class DuoIconHost(private val context: Context) {
         val target = slot.container ?: return
         val view = slot.element?.ui ?: return
         try {
-            val side = geometry.sidePx(target, slot.bar, slot.basePx)
+            val side = geometry.extraSidePx(target, slot.bar, slot.basePx)
             assignBox(view, target, side, ringInset(side))
-            place(view, target, slot.bar, side, settings.offsetX, slot.center)
+            val battery = slot.stockBattery
+            if (slot.qsCluster && battery != null) {
+                // Same size as the main bar (slot.basePx is pinned there), never the cluster's 386 px.
+                // The battery stays INVISIBLE with its real frame, so the element can sit on its end.
+                anchorOnBattery(view, target, side, settings.offsetX, battery, alignEnd = true)
+            } else {
+                place(view, target, slot.bar, side, settings.offsetX, slot.center)
+            }
         } catch (t: Throwable) {
             L.w("${slot.name} layout: ${t.message}")
         }
@@ -510,6 +1897,12 @@ internal class DuoIconHost(private val context: Context) {
     /** When true, airplane mode turns the spheres into Wi-Fi, hiding them if Wi-Fi is off too. */
     val wifiDots: Boolean get() = settings.wifiDots
 
+    /** Whether the Wi-Fi glyph inside the ring is drawn at all. */
+    val showWifiGlyph: Boolean get() = settings.showWifiGlyph
+
+    /** Whether the four cellular dots inside the ring are drawn at all. */
+    val showCellDots: Boolean get() = settings.showCellDots
+
     /**
      * FR-08/08b: hides the stock views per the user's choice — everything, or only what Duo replaces.
      * One place so the main bar, the keyguard bar and the shade header can never disagree.
@@ -519,7 +1912,46 @@ internal class DuoIconHost(private val context: Context) {
         if (settings.hideOtherIcons) {
             owner.hideAllExcept(container, keep, keepLayout, ours)
         } else {
-            owner.hideReplaced(container, keep, keepLayout, ours)
+            owner.hideReplaced(container, keep, keepLayout, ours, hiddenStockKeys)
+        }
+    }
+
+    /**
+     * Hides the stock views of one extra bar.
+     *
+     * The QS cluster is not a strip whose every child Duo replaces: it holds the `statusIcons`
+     * container and the battery (`batteryRemainingIcon`). Both are hidden explicitly through the
+     * slot's own [StockIconHider], so each is restored exactly when the slot is dropped. The battery is
+     * kept laid out (`INVISIBLE`) because its end is what the element is anchored to; the icons are
+     * `GONE` + 0x0 like the main bar. A tree where neither view resolves falls back to the normal pass
+     * rather than covering stock icons the module cannot restore.
+     */
+    private fun hideSlotStock(slot: ExtraBar, container: ViewGroup, keep: View?) {
+        if (!slot.qsCluster) {
+            hideStock(container, keep, owner = slot.stock)
+            return
+        }
+        val icons = (slot.stockStatusIcons ?: finder.findShadeStatusIcons(container).also {
+            slot.stockStatusIcons = it
+        }) as? ViewGroup
+        val battery = slot.stockBattery ?: finder.findShadeBattery(container).also {
+            slot.stockBattery = it
+        }
+        // Never hide the whole `statusIcons` container: it carries every icon in the cluster, so a
+        // GONE container removes icons the user did not select and cannot be restored per icon.
+        // Run the same per-icon pass as the main bar inside it instead.
+        if (icons != null && icons !== keep) {
+            hideStock(icons, keep, keepLayout = battery, owner = slot.stock)
+        }
+        if (battery != null && battery !== keep) slot.stock.hideKeepLayout(battery)
+        logOnce.once("shadeStock:${System.identityHashCode(container)}") {
+            L.i("shade stock hidden statusIcons=${icons != null} battery=${battery != null} " +
+                "container=${container.javaClass.simpleName}[${container.width}x${container.height}]")
+        }
+        if (icons == null || battery == null) {
+            // Keep a resolved battery laid out: the element is anchored to its end, so the fallback
+            // pass must not turn it GONE + 0x0 while the other view could not be resolved.
+            hideStock(container, keep, keepLayout = battery, owner = slot.stock)
         }
     }
 
@@ -535,6 +1967,39 @@ internal class DuoIconHost(private val context: Context) {
     /** FR-15: whether the charging bolt is drawn at all. Asked by the monitor on every render. */
     val showChargingBolt: Boolean get() = settings.showChargingBolt
 
+    /** Whether a Punch Hole download may take over the ring. Asked by the monitor on every render. */
+    val downloadProgressEnabled: Boolean get() = settings.downloadProgressEnabled
+
+    /** Whether the main ring alternates its seat by one pixel each hour. Asked on every clock tick. */
+    val burnInEnabled: Boolean get() = settings.burnInEnabled
+
+    /** The main element's current burn-in nudge, derived from the wall clock and the toggle. */
+    private fun burnInShiftNow(): Float =
+        burnInShiftPx(settings.burnInEnabled, System.currentTimeMillis() / BURN_IN_HOUR_MS)
+
+    /**
+     * Re-applies the main ring's horizontal seat for the current burn-in hour.
+     *
+     * Called from the existing `ACTION_TIME_TICK` (and when the toggle changes), so the one-pixel
+     * move costs one translation write and needs no timer, wake lock or render loop. It writes only
+     * the translation: the view is never resized or reparented, and the QS/shade extras are untouched.
+     */
+    fun refreshBurnIn() {
+        val view = element?.ui ?: return
+        val target = host ?: return
+        try {
+            val side = geometry.sidePx(hideStrip ?: target, root)
+            val frame = lockFrame
+            if (ringLocked() && frame != null) {
+                placeLocked(view, frame, side, settings.offsetX)
+            } else {
+                place(view, target, root, side, settings.offsetX, center = true, burnIn = true, rightSeat = true)
+            }
+        } catch (t: Throwable) {
+            L.w("burn-in: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
     /**
      * Shows or hides every element's view outright.
      *
@@ -545,6 +2010,7 @@ internal class DuoIconHost(private val context: Context) {
      * half-drawn.
      */
     fun setElementsVisible(on: Boolean) {
+        if (!on) cancelMainHandoff()
         for (target in allElements()) {
             try {
                 target.ui.visibility = if (on) View.VISIBLE else View.GONE
@@ -569,14 +2035,102 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /**
+     * RIV-003: a 200 ms shake when charging first reaches 20 %. It is applied to the view, not to the
+     * artboard, so Rive and Canvas shake by exactly the same amount; the per-state motion (the bolt's
+     * journey and settle pulse) remains Rive's.
+     */
+    fun shakeAll() {
+        if (!settings.animationsEnabled) return
+        // The shake owns translationX while it runs; a collapse slide must not fight it.
+        cancelMainHandoff()
+        val amp = ChargeMotion.SHAKE_AMPLITUDE_DP * context.resources.displayMetrics.density
+        for (target in allElements()) {
+            val view = target.ui
+            try {
+                (view.getTag(shakeTag) as? Animator)?.cancel()
+                val shake = ObjectAnimator.ofFloat(
+                    view,
+                    "translationX",
+                    0f, -amp, amp, -amp * 0.6f, amp * 0.6f, 0f
+                ).apply {
+                    duration = ChargeMotion.SHAKE_MS
+                    interpolator = LinearInterpolator()
+                }
+                view.setTag(shakeTag, shake)
+                shake.addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        view.translationX = 0f
+                        if (view.getTag(shakeTag) === animation) view.setTag(shakeTag, null)
+                    }
+                })
+                shake.start()
+            } catch (t: Throwable) {
+                view.translationX = 0f
+                L.w("charge shake: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /**
+     * The live stock-icon inventory as the compact JSON the app lists (A4), or null before a bar
+     * exists. The strip is preferred over the whole bar so the list is exactly what the hiding pass
+     * walks; [root] is only a fallback for the first attach.
+     */
+    private fun stockIconInventory(): String? {
+        val container = hideStrip ?: root ?: return null
+        return try {
+            StockIconKey.inventorySummary(container)
+        } catch (t: Throwable) {
+            L.w("stock icon inventory: ${t.javaClass.simpleName}: ${t.message}")
+            null
+        }
+    }
+
+    /**
+     * Publishes [stockIconInventory] to the app once it changes. Every caller (attach, settings
+     * refresh, hiding pass) may run on each layout, so the cached JSON is what keeps the channel quiet.
+     */
+    private fun publishStockIcons() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastStockPublishAt < 750L) return
+        lastStockPublishAt = now
+        val json = stockIconInventory() ?: return
+        if (json == lastStockIconJson) return
+        lastStockIconJson = json
+        DuoSettingsClient.reportStockIcons(context, json)
+    }
+
+    /**
      * Re-reads the user's settings and applies what can change while running (size, offset).
      * Called on attach and whenever the app says something changed, so no restart is needed.
      */
     fun refreshSettings(applySavedSize: Boolean = false): ModuleSettings {
         val fresh = DuoSettingsClient.read(context)
         val changed = fresh != settings
-        val hideModeChanged = changed && fresh.hideOtherIcons != settings.hideOtherIcons
+        val previousDesign = settings.designStyle
+        val designChanged = changed && fresh.designStyle != previousDesign
+        val hideModeChanged = changed &&
+            (fresh.hideOtherIcons != settings.hideOtherIcons ||
+                fresh.hiddenStockIcons != settings.hiddenStockIcons)
+        val surfaceModeChanged = changed &&
+            (fresh.showInQs != settings.showInQs || fresh.showInShade != settings.showInShade)
+        val burnInChanged = changed && fresh.burnInEnabled != settings.burnInEnabled
         settings = fresh
+        hiddenStockKeys = DuoPrefs.parseHiddenStockIcons(fresh.hiddenStockIcons).toSet()
+        if (designChanged) {
+            // A live DuoRiveView loaded one drawing at start and has no reload path; swapping the art
+            // would mean recreating (and reparenting) it, which is the resize path that took System UI
+            // down. Keep the current art and scale until the next start.
+            if (element == null) {
+                // No main element yet: any extra created from now on must use the current drawing,
+                // otherwise a QS/shade copy can be built with the default classic art and sit/size
+                // differently from the main bar.
+                geometry.applyDesignStyle(fresh.designStyle)
+                appliedDesignStyle = fresh.designStyle
+            } else {
+                L.i("design change needs restart ($previousDesign -> ${fresh.designStyle})")
+            }
+        }
         if (changed) {
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
                     "percent=${fresh.showPercent}, percentHeight=${fresh.percentHeight}%, " +
@@ -600,9 +2154,14 @@ internal class DuoIconHost(private val context: Context) {
                 installAllGestures()
                 L.i("live apply off - size/position take effect after Restart System UI")
             }
+            // The toggle is a translation-only change, so it can take effect even when size and
+            // position are waiting for the next start.
+            if (burnInChanged && !(fresh.liveApply || applySavedSize)) refreshBurnIn()
             clock.apply(root, settings.systemClockFont)
             if (hideModeChanged) applyHidingMode()
+            if (surfaceModeChanged) applySurfaceSettings()
         }
+        publishStockIcons()
         return fresh
     }
 
@@ -617,6 +2176,7 @@ internal class DuoIconHost(private val context: Context) {
         hider.restore()
         extras.forEach { it.stock.restore() }
         reapplyHiding()
+        publishStockIcons()
     }
 
     /** Size and offset come from the settings, so reshaping the element needs no re-injection (FR-03/17). */
@@ -625,14 +2185,15 @@ internal class DuoIconHost(private val context: Context) {
         val measureFrom = hideStrip ?: host ?: return
         try {
             val side = geometry.sidePx(measureFrom, root)
+            geometry.noteMainSide(side)
             // assignBox only rewrites layoutParams when the box actually changed. Re-assigning them
             // (even to the same numbers) requests a layout pass, and a layout pass on the Rive
             // TextureView is what took System UI down on rotation.
             if (!ringLocked() || !holdRing(view, side)) {
-                releaseRing(view)
+                releaseRing(view, side)
                 val target = host ?: return
                 assignBox(view, target, side, ringInset(side))
-                place(view, target, root, side, settings.offsetX, center = true)
+                place(view, target, root, side, settings.offsetX, center = true, burnIn = true, rightSeat = true)
             }
             installRingGestures(view)
             indicators?.ui?.let { installIndicatorGestures(it) }
@@ -677,6 +2238,7 @@ internal class DuoIconHost(private val context: Context) {
         if (view.parent !== frame) {
             (view.parent as? ViewGroup)?.removeView(view)
             assignLockedBox(view, side)
+            ensureInjectedViewId(view, frame)
             frame.addView(view)
         } else {
             assignLockedBox(view, side)
@@ -690,7 +2252,7 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /** Puts the ring back in the icon strip and removes the spacer that was holding its slot. */
-    private fun releaseRing(view: View) {
+    private fun releaseRing(view: View, side: Int) {
         dropSpacer()
         lockFrame = null
         // A failed lock while the switch is still on must keep [lockAttempted], or the clock-tick
@@ -699,6 +2261,10 @@ internal class DuoIconHost(private val context: Context) {
         val parent = flowHost ?: hideStrip ?: host ?: return
         if (view.parent !== parent) {
             (view.parent as? ViewGroup)?.removeView(view)
+            // The lock frame used FrameLayout params; the strip is a LinearLayout. Regenerate before the
+            // cross-container add or the strip receives params of the wrong type.
+            view.layoutParams = layoutParamsFor(parent, side, RingGeometry.elementHeightPx(side), ringInset(side))
+            ensureInjectedViewId(view, parent)
             parent.addView(view)
         }
         host = parent
@@ -718,10 +2284,11 @@ internal class DuoIconHost(private val context: Context) {
 
     private fun placeLocked(view: View, frame: FrameLayout, side: Int, offsetDp: Int) {
         if (frame.width <= 0 || frame.height <= 0) return
+        if (view === element?.ui) cancelMainHandoff()
         val density = context.resources.displayMetrics.density
         view.translationX = lockedTranslationX(
             0, frame.width, 0, frame.paddingLeft, side, offsetDp * density
-        )
+        ) + burnInShiftNow()
         view.translationY = lockedTranslationY(
             0, frame.height, 0, frame.paddingTop, side
         )
@@ -738,8 +2305,14 @@ internal class DuoIconHost(private val context: Context) {
         }
         if (spacer.parent !== strip) {
             (spacer.parent as? ViewGroup)?.removeView(spacer)
+            // A rebuilt strip can differ in type from the one the spacer last lived in; give it params
+            // generated by this parent before adding it.
+            spacer.layoutParams = layoutParamsFor(
+                strip, side, RingGeometry.elementHeightPx(side), iconSlotInset(side)
+            )
             val cluster = indicators?.ui
             val index = if (cluster != null && cluster.parent === strip) strip.indexOfChild(cluster) else -1
+            ensureInjectedViewId(spacer, strip)
             if (index >= 0) strip.addView(spacer, index) else strip.addView(spacer)
         }
         assignBox(spacer, strip, side, iconSlotInset(side))
@@ -760,7 +2333,7 @@ internal class DuoIconHost(private val context: Context) {
             for (slot in extras) {
                 val target = slot.container ?: continue
                 val view = slot.element?.ui ?: continue
-                val side = geometry.sidePx(target, slot.bar, slot.basePx)
+                val side = geometry.extraSidePx(target, slot.bar, slot.basePx)
                 assignBox(view, target, side, ringInset(side))
             }
         } catch (t: Throwable) {
@@ -825,21 +2398,44 @@ internal class DuoIconHost(private val context: Context) {
         windowRoot: View?,
         side: Int,
         offsetDp: Int,
-        center: Boolean
+        center: Boolean,
+        /** Only the main ring asks for this; extra surfaces keep their fixed seat. */
+        burnIn: Boolean = false,
+        /** Explicit right-seat (physical right edge) instead of the flow nudge. */
+        rightSeat: Boolean = false
     ) {
+        // A layout pass is the new owner of the seat: stop the slide before writing its resting value.
+        if (view === element?.ui) cancelMainHandoff()
+        val burnInShift = if (burnIn) burnInShiftNow() else 0f
         if (overlay && container === host) {
             // The parent is a plain FrameLayout that places children top-left, so the element is moved
             // onto the battery by translation. On One UI 8 the anchor is not a child of the hidden
             // strip, so this is what actually removes the stock cluster.
             hideOverlayAnchor()
-            anchorOnBattery(view, container, side, offsetDp)
+            anchorOnBattery(view, container, side, offsetDp, burnIn = burnInShift)
             return
         }
-        // A LinearLayout strip applies the edge-spacing setting as a start margin (see assignBox); a
-        // FrameLayout parent (the shade header's icon area) ignores margins, so it is applied as
-        // translation instead. Default 100 % is zero, so an existing user sees no change.
-        val flowInset = if (container is LinearLayout) 0 else edgeInsetPx(side, settings.edgePadding)
-        view.translationX = offsetDp * context.resources.displayMetrics.density + flowInset
+        // Normal mode is right-anchored: 0 sits on the physical right edge, negatives move left.
+        // The seat is computed from the parent's actual width and the view's current left (a delta, so
+        // an already flow-positioned view is not double-counted); the edge spacing is carried as the
+        // right-hand padding. burnIn stays additive.
+        val density = context.resources.displayMetrics.density
+        val offsetPx = (offsetDp * density).toInt()
+        val rtl = container.layoutDirection == View.LAYOUT_DIRECTION_RTL
+        // edgeInsetPx is <= 0; flip it to a positive right-hand padding for the seat formula.
+        val endPadding = -(if (container is LinearLayout) 0 else edgeInsetPx(side, settings.edgePadding))
+        val parentWidth = container.width
+        // The right seam (parent-width based seat) applies only when explicitly requested.
+        // Indicators, and QS/shade extras that are battery-anchored, keep their flow nudge and never
+        // recompute against the parent width.
+        val seat: Int = if (rightSeat && parentWidth > 0) {
+            normalSeatTranslationX(parentWidth, side, endPadding, offsetPx, rtl) - view.left
+        } else {
+            // Keep the unmeasured-parent fallback for the main view, and the old flow nudge for
+            // non-main views (indicators/QS/shade extras).
+            offsetPx + (if (container is LinearLayout) 0 else edgeInsetPx(side, settings.edgePadding))
+        }
+        view.translationX = seat + burnInShift
         // The strip sits low in the window, so centring on it wastes the space above. Centre the
         // ring in the whole status bar instead, which is what lets it grow to the window height.
         // The view is taller than the ring; the extra shift keeps the ring put and leaves the
@@ -917,6 +2513,9 @@ internal class DuoIconHost(private val context: Context) {
             basePx = 0,
             center = true
         ) { indicators = it }
+        // A settings change can create this view while QS is open; do not let its default alpha
+        // show a second main-bar cluster over the QS surface.
+        indicators?.ui?.alpha = if (mainBarVisible) 1f else 0f
     }
 
     /** The same cluster, for a keyguard bar or the shade header. */
@@ -937,7 +2536,9 @@ internal class DuoIconHost(private val context: Context) {
             slot.bar,
             stageRoot,
             slot.basePx,
-            slot.center
+            slot.center,
+            alignOverlay = true,
+            clampSize = slot.name != "qs header"
         ) { slot.indicators = it }
     }
 
@@ -953,16 +2554,42 @@ internal class DuoIconHost(private val context: Context) {
         stageRoot: View,
         basePx: Int,
         center: Boolean,
+        alignOverlay: Boolean = false,
+        clampSize: Boolean = false,
         assign: (DuoElement?) -> Unit
     ): DuoElement? {
-        val side = geometry.sidePx(container, windowRoot, basePx)
+        fun sideFor(container: ViewGroup, windowRoot: View?): Int =
+            if (clampSize) geometry.extraSidePx(container, windowRoot, basePx)
+            else geometry.sidePx(container, windowRoot, basePx)
+
         existing?.let { cluster ->
-            seatBeside(cluster.ui, container, ringView)
-            place(cluster.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
-            holdIconSlot(cluster.ui, container, side)
-            installIndicatorGestures(cluster.ui)
-            return cluster
+            val ui = cluster.ui
+            val liveParent = ui.parent as? ViewGroup
+            if (liveParent != null && slotInSameWindow(ui.rootView, container.rootView)) {
+                // Live element in this window: do not seatBeside/remove/add. Adopt its current parent
+                // and only place/align. `seatBeside` is the only path that may reorder, so it is never
+                // used for a cached Rive view.
+                val liveContainer = liveParent
+                val side = sideFor(liveContainer, windowRoot)
+                place(ui, liveContainer, windowRoot, side, settings.indicatorsOffsetX, center, rightSeat = false)
+                if (alignOverlay) alignIndicatorOverlay(ui, ringView, liveContainer)
+                holdIconSlot(ui, liveContainer, side)
+                installIndicatorGestures(ui)
+                logOnce.once("reuse:cluster:${System.identityHashCode(liveParent)}") {
+                    L.i("cluster reuse attached slot parent=${liveParent.javaClass.simpleName}")
+                }
+                return cluster
+            }
+            // Detached, or left in the old rotation window: a cached Rive view is never reparented.
+            // Drop it once and fall through to create exactly one replacement in this window.
+            L.i(
+                "cluster dropping stale view (attached=${ui.isAttachedToWindow}, " +
+                    "parent=${liveParent?.javaClass?.simpleName ?: "none"})"
+            )
+            drop(cluster, container)
+            assign(null)
         }
+        val side = sideFor(container, windowRoot)
         val stage = guard.stage()
         if (stage == DuoGuard.OFF) return null
         val candidate = createElement(stageRoot, stage, DuoPart.INDICATORS)
@@ -973,15 +2600,20 @@ internal class DuoIconHost(private val context: Context) {
             container, side, RingGeometry.elementHeightPx(side), edgeInsetPx(side, 0)
         )
         val index = container.indexOfChild(ringView)
+        ensureInjectedViewId(candidate.ui, container)
         if (index >= 0) container.addView(candidate.ui, index + 1) else container.addView(candidate.ui)
         assign(candidate)
         allowOverflow(container)
-        place(candidate.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
+        place(candidate.ui, container, windowRoot, side, settings.indicatorsOffsetX, center, rightSeat = false)
+        if (alignOverlay) alignIndicatorOverlay(candidate.ui, ringView, container)
         holdIconSlot(candidate.ui, container, side)
         installIndicatorGestures(candidate.ui)
         candidate.onReady {
             candidate.reveal(settings.revealMs)
-            L.i("icon cluster injected (${side}px, offset ${settings.indicatorsOffsetX}dp)")
+            L.i(
+                "icon cluster injected (${side}px, offset ${settings.indicatorsOffsetX}dp, " +
+                    "split=${settings.splitIndicators}, view=${candidate.ui.width}x${candidate.ui.height})"
+            )
         }
         candidate.onFailed {
             L.w("icon cluster did not bind - drawing it with Canvas")
@@ -995,11 +2627,42 @@ internal class DuoIconHost(private val context: Context) {
             }
             swap(container, candidate, canvas, ringView)
             assign(canvas)
-            place(canvas.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
+            place(canvas.ui, container, windowRoot, side, settings.indicatorsOffsetX, center, rightSeat = false)
+            if (alignOverlay) alignIndicatorOverlay(canvas.ui, ringView, container)
             installIndicatorGestures(canvas.ui)
             canvas.onReady { canvas.reveal(settings.revealMs) }
         }
         return candidate
+    }
+
+    /**
+     * On an overlay parent the Rive indicator cluster must share the ring's position; a flow parent
+     * seats it beside the ring. Without this the QS 5G/cell icons drew at the left edge over the
+     * carrier name (measured on CPH2747).
+     */
+    private fun alignIndicatorOverlay(view: View, ring: View, container: ViewGroup) {
+        // Extras are anchored, not flowed: the QS/shade indicator view must sit exactly on the ring
+        // even when the parent is a LinearLayout (the shade header is one). Setting x/y after layout
+        // is what removes the measured 30 px offset (QS) and the left-edge 5G (shade).
+        val align = Runnable {
+            try {
+                if (view.isAttachedToWindow && ring.isAttachedToWindow && view.parent === ring.parent) {
+                    view.x = ring.x
+                    view.y = ring.y
+                } else {
+                    view.translationX = ring.translationX +
+                        settings.indicatorsOffsetX * context.resources.displayMetrics.density
+                    view.translationY = ring.translationY
+                }
+            } catch (t: Throwable) {
+                L.w("indicator align: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+        view.post(align)
+        // The ring may be anchored once more after this first post (the QS hide pass runs after
+        // layout), which left the indicator view exactly 31 px behind it in the measured QS tree.
+        // One delayed pass after that final anchor aligns both; it is not a per-frame tracker.
+        view.postDelayed(align, 120L)
     }
 
     /** Replaces [from] with [to] in [container], keeping it next to the ring. */
@@ -1013,25 +2676,9 @@ internal class DuoIconHost(private val context: Context) {
             L.w("cluster swap remove: ${t.message}")
         }
         to.ui.layoutParams = from.ui.layoutParams
+        ensureInjectedViewId(to.ui, container)
         if (index != null && index <= container.childCount) container.addView(to.ui, index)
         else container.addView(to.ui)
-    }
-
-    /**
-     * Puts [view] in [container], directly after [ringView] when the ring is in that container.
-     * A ring that lives in the lock frame is not a child here, and an already-seated cluster is left
-     * alone so a settings refresh does not request another layout pass.
-     */
-    private fun seatBeside(view: View, container: ViewGroup, ringView: View) {
-        val ringHere = container.indexOfChild(ringView)
-        if (view.parent === container) {
-            if (ringHere < 0 || container.indexOfChild(view) == ringHere + 1) return
-            container.removeView(view)
-            container.addView(view, ringHere + 1)
-            return
-        }
-        (view.parent as? ViewGroup)?.removeView(view)
-        if (ringHere >= 0) container.addView(view, ringHere + 1) else container.addView(view)
     }
 
     private fun drop(view: DuoElement?, container: ViewGroup?) {
@@ -1041,6 +2688,109 @@ internal class DuoIconHost(private val context: Context) {
             view.teardown()
         } catch (_: Throwable) {
         }
+    }
+
+    /** A container this host may inject into: laid out, shown and in the window. */
+    private fun containerUsable(container: ViewGroup?): Boolean =
+        container != null && container.width > 0 && container.visibility == View.VISIBLE &&
+            container.isAttachedToWindow
+
+    /** True only while the slot's element is still the container's child and attached to a window. */
+    private fun slotElementAttached(slot: ExtraBar?, container: ViewGroup?): Boolean {
+        val ui = slot?.element?.ui ?: return false
+        if (container == null) return false
+        return slotOwnsHost(container, ui.parent as? View, ui.isAttachedToWindow, container)
+    }
+
+    /** The one live slot currently owning [target], if any. */
+    private fun liveSlotIn(target: ViewGroup): ExtraBar? =
+        extras.firstOrNull { slotElementAttached(it, target) }
+
+    /**
+     * A same-named slot whose element is still attached to [windowRoot]'s window, regardless of its
+     * container inside that window. A view left in the old rotation window is not live for this one;
+     * [ensureSlotAvailable] drops it so the new window can build its one replacement.
+     */
+    private fun liveSlotFor(name: String, windowRoot: View?): ExtraBar? {
+        val window = windowRoot?.rootView ?: return null
+        val slot = extras.firstOrNull { it.name == name } ?: return null
+        val ui = slot.element?.ui ?: return null
+        val parent = ui.parent as? ViewGroup ?: return null
+        if (!slotSharesWindow(ui.isAttachedToWindow, ui.rootView, window)) return null
+        // Adopt the live parent instead of reparenting or recreating.
+        slot.container = parent
+        return slot
+    }
+
+    /** Drop only detached bookkeeping slots bound to [target]; never a live Duo. */
+    private fun dropDetachedSlotsFor(target: ViewGroup) {
+        for (slot in extras.toList()) {
+            if (slot.container === target && !slotElementAttached(slot, target)) {
+                L.i("shade dropping detached slot ${slot.name} from " +
+                    "${target.javaClass.simpleName} - no live Duo touched")
+                dropSlot(slot)
+            }
+        }
+    }
+
+    /**
+     * Ensure a same-named slot is available: true if none or dropped; false if still live in this
+     * window. A slot attached to another (old rotation) window is stale here and must be dropped, or
+     * it would block the new window forever and leave its ring in the dead window.
+     */
+    private fun ensureSlotAvailable(slotName: String, windowRoot: View?): Boolean {
+        val slot = extras.firstOrNull { it.name == slotName } ?: return true
+        val ui = slot.element?.ui
+        val liveParent = ui?.parent as? ViewGroup
+        val window = windowRoot?.rootView
+        if (ui != null && liveParent != null &&
+            slotSharesWindow(ui.isAttachedToWindow, ui.rootView, window)
+        ) {
+            // Live in this window regardless of the resolved target: adopt the live parent.
+            slot.container = liveParent
+            logOnce.once("reuse:$slotName:${System.identityHashCode(liveParent)}") {
+                L.i("$slotName reuse attached slot parent=${liveParent.javaClass.simpleName}")
+            }
+            return false
+        }
+        L.i("shade dropping stale slot $slotName - no live Duo in this window")
+        dropSlot(slot)
+        return true
+    }
+
+    /** Removes a slot completely: its views, its element, its hidden stock views and its bookkeeping. */
+    private fun dropSlot(slot: ExtraBar) {
+        try {
+            drop(slot.indicators, slot.container)
+            slot.indicators = null
+            drop(slot.element, slot.container)
+            slot.element = null
+            slot.stock.restore()
+        } finally {
+            extras.remove(slot)
+        }
+    }
+
+    /**
+     * Runs [attach] for a replacement while keeping the working slot available: the old slot leaves the
+     * bookkeeping only for the attempt, is torn down once the new one is in place, and is put back when
+     * the attempt fails. That way a failed replacement can neither hide stock icons nor lose the old one.
+     */
+    private fun replaceSlot(previous: ExtraBar?, attach: () -> Boolean): Boolean {
+        previous ?: return attach()
+        extras.remove(previous)
+        val attached = try {
+            attach()
+        } catch (t: Throwable) {
+            L.w("${previous.name} replacement: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
+        if (attached) {
+            dropSlot(previous)
+        } else {
+            extras.add(previous)
+        }
+        return attached
     }
 
     /** Lets the element draw outside the 61 px icon strip, up to the status bar window's bounds. */
@@ -1136,6 +2886,10 @@ internal class DuoIconHost(private val context: Context) {
             // icons are hidden it reads 0 and the fallback would change the size mid-session.
             val basePx = geometry.measuredWidth(target)
             refreshSettings()
+            // The drawing is captured for this run just like the slot base: the Rive view loads its
+            // artwork once, so the optical scale must match the art it was created with.
+            geometry.applyDesignStyle(settings.designStyle)
+            appliedDesignStyle = settings.designStyle
             val candidate = createElement(statusBarRoot, stage, ringPart())
             // Capture the size once per process: live size changes are deferred to a restart (see
             // [SlotGeometry.appliedSize]) because resizing the Rive view live used to take System UI down.
@@ -1171,14 +2925,18 @@ internal class DuoIconHost(private val context: Context) {
             }
             L.i("element container: ${parent.javaClass.simpleName}" +
                     if (overlay) " (overlay on ${anchorBattery?.javaClass?.simpleName}, strip ${target.javaClass.simpleName})" else "")
+            // Capture the anchor's visibility before the first hide, not after it has been set INVISIBLE.
+            rememberAnchorVisibility()
             val container = if (overlay) parent else target
             val side = geometry.sidePx(target, root)
             allowOverflow(container)
             candidate.ui.layoutParams = layoutParamsFor(container, side)
+            ensureInjectedViewId(candidate.ui, container)
             container.addView(candidate.ui)
             host = container
             flowHost = container
             element = candidate
+            candidate.ui.alpha = if (mainBarVisible) 1f else 0f
             applyLayout()
             syncIndicators()
             clock.apply(root, settings.systemClockFont)
@@ -1199,6 +2957,8 @@ internal class DuoIconHost(private val context: Context) {
     private fun onElementReady(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
         try {
+            // Capture the anchor before hideStock/hideOverlayAnchor can make it INVISIBLE.
+            rememberAnchorVisibility()
             // In overlay mode the element is not a child of the strip, so nothing is "kept" there; the
             // battery keeps its layout instead so the anchor stays valid (and survives rotation).
             hideStock(
@@ -1210,6 +2970,7 @@ internal class DuoIconHost(private val context: Context) {
             // Hiding may have changed the strip's layout, so the overlay anchor is re-read after it.
             applyLayout()
             candidate.reveal(settings.revealMs)
+            publishStockIcons()
             val width = candidate.ui.layoutParams?.width ?: 0
             L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)" +
                     if (overlay) " - overlaid over the battery" else "")
@@ -1244,8 +3005,12 @@ internal class DuoIconHost(private val context: Context) {
         canvas.ui.layoutParams = layoutParamsFor(
             container, width, ViewGroup.LayoutParams.MATCH_PARENT, edgeInsetPx(width, settings.edgePadding)
         )
+        ensureInjectedViewId(canvas.ui, container)
         container.addView(canvas.ui)
         element = canvas
+        // DuoCanvasView.reveal() is a no-op, and setMainBarVisible() is edge/idempotent. Apply the
+        // current visibility here or a fallback that happens while QS/shade is open stays alpha=1.
+        canvas.ui.alpha = if (mainBarVisible) 1f else 0f
         applyLayout()
         syncIndicators()
         canvas.onReady { onElementReady(canvas, target) }
@@ -1284,7 +3049,7 @@ internal class DuoIconHost(private val context: Context) {
             return null
         }
         guard.noteRiveAttempt()
-        val rive = DuoRiveView(context, part)
+        val rive = DuoRiveView(context, part, appliedDesignStyle)
         if (!rive.start()) {
             // A clean failure, not a death: hand the attempt back so the breaker only counts crashes.
             guard.clearRiveAttempts()
@@ -1298,10 +3063,45 @@ internal class DuoIconHost(private val context: Context) {
     /** Once the drawing has survived a few seconds, clear the counter: the breaker tracks deaths only. */
     private fun forgetAttemptsAfterSurvival(element: DuoElement) {
         if (element !is DuoRiveView) return
-        try {
-            element.ui.postDelayed({ guard.clearRiveAttempts() }, SURVIVAL_MS)
-        } catch (_: Throwable) {
+        cancelSurvivalTimer()
+        val view = element.ui
+        val check = object : Runnable {
+            override fun run() {
+                if (survivalRunnable !== this) return
+                survivalView = null
+                survivalRunnable = null
+                try {
+                    if (this@DuoIconHost.element === element && element.isReady) {
+                        guard.clearRiveAttempts()
+                    }
+                } catch (t: Throwable) {
+                    L.w("survival timer: ${t.javaClass.simpleName}: ${t.message}")
+                }
+            }
         }
+        survivalView = view
+        survivalRunnable = check
+        try {
+            view.postDelayed(check, SURVIVAL_MS)
+        } catch (t: Throwable) {
+            L.w("survival timer schedule: ${t.javaClass.simpleName}: ${t.message}")
+            cancelSurvivalTimer()
+        }
+    }
+
+    /** Invalidates the pending survival check; teardown must not leave it referencing a dead view. */
+    private fun cancelSurvivalTimer() {
+        val view = survivalView
+        val check = survivalRunnable
+        if (view != null && check != null) {
+            try {
+                view.removeCallbacks(check)
+            } catch (t: Throwable) {
+                L.w("survival timer cancel: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+        survivalView = null
+        survivalRunnable = null
     }
 
     /**
@@ -1314,7 +3114,6 @@ internal class DuoIconHost(private val context: Context) {
         reapplyExtraHiding()
         // The clock is re-inflated with the strip on some ROMs, so its font is re-applied here too.
         clock.apply(root, settings.systemClockFont)
-        val strip = hideStrip ?: host ?: return
         // Never hide the stock icons over an element that is not drawing yet: a layout pass can arrive
         // before Rive has bound its view model, and hiding then would leave a blank stretch of status bar.
         if (!(element?.isReady ?: false)) return
@@ -1325,7 +3124,16 @@ internal class DuoIconHost(private val context: Context) {
             hider.restore()
             return
         }
+        // Re-read after the re-attach: rotation replaces the strip, so the one captured before it points
+        // at the dead container and the hide pass would miss the live icons.
+        val strip = hideStrip ?: host
+        if (strip == null) {
+            L.w("no icon strip after re-attach - restoring the stock icons instead of leaving a gap")
+            hider.restore()
+            return
+        }
         try {
+            rememberAnchorVisibility()
             // Hide in the strip, never in the element's own (overlay) parent.
             val ring = element?.ui
             hideStock(
@@ -1334,6 +3142,7 @@ internal class DuoIconHost(private val context: Context) {
                 if (overlay) anchorBattery else null
             )
             hideOverlayAnchor()
+            publishStockIcons()
         } catch (t: Throwable) {
             L.w("reapplyHiding: ${t.message}")
         }
@@ -1361,10 +3170,12 @@ internal class DuoIconHost(private val context: Context) {
                 lockAttempted = true
                 view.post { if (ringLocked() && lockFrame == null) applyLayout() }
             }
+            publishStockIcons()
             return true
         }
         if (view.parent === target && view.isAttachedToWindow && (iconsDetached || spacerDetached)) {
             repairStrip()
+            publishStockIcons()
             return true
         }
         return try {
@@ -1393,15 +3204,26 @@ internal class DuoIconHost(private val context: Context) {
             }
             host = parent
             flowHost = parent
+            val side = geometry.sidePx(parent, barRoot)
+            view.layoutParams = layoutParamsFor(
+                parent, side, RingGeometry.elementHeightPx(side), ringInset(side)
+            )
+            ensureInjectedViewId(view, parent)
             parent.addView(view)
             indicators?.ui?.let { icon ->
                 (icon.parent as? ViewGroup)?.removeView(icon)
+                icon.layoutParams = layoutParamsFor(
+                    parent, side, RingGeometry.elementHeightPx(side), edgeInsetPx(side, 0)
+                )
                 val index = parent.indexOfChild(view)
+                ensureInjectedViewId(icon, parent)
                 if (index >= 0) parent.addView(icon, index + 1) else parent.addView(icon)
             }
+            rememberAnchorVisibility()
             applyLayout()
             syncIndicators()
             L.i("element re-attached into ${parent.javaClass.simpleName} after the strip was rebuilt")
+            publishStockIcons()
             true
         } catch (t: Throwable) {
             L.w("re-attach failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -1439,6 +3261,9 @@ internal class DuoIconHost(private val context: Context) {
 
     /** Removes the element and puts the stock icons back exactly as they were. */
     fun teardown() {
+        clearShadeRetry()
+        cancelSurvivalTimer()
+        cancelMainHandoff()
         try {
             drop(indicators, host)
             indicators = null
@@ -1457,15 +3282,17 @@ internal class DuoIconHost(private val context: Context) {
             }
         }
         extras.clear()
+        panelStateKnown = false
+        panelOwner = null
+        shadeOpen = false
+        lastSurfaceOwner = null
+        mainBarVisible = true
         dropSpacer()
         element = null
         hider.restore()
         // The One UI 8 anchor is hidden directly (it is not in the strip the hider restores), so its own
         // visibility is put back here or the stock cluster would be left invisible after teardown.
-        try {
-            anchorOriginalVisibility?.let { anchorBattery?.visibility = it }
-        } catch (_: Throwable) {
-        }
+        restoreAnchorVisibility()
         clock.restore()
         geometry.reset()
         host = null
@@ -1473,30 +3300,85 @@ internal class DuoIconHost(private val context: Context) {
         overlay = false
         overlayOnCombined = false
         anchorBattery = null
-        anchorOriginalVisibility = null
         flowHost = null
         lockFrame = null
         lockAttempted = false
         repairing = false
         holding = false
+        lastStockIconJson = null
         root = null
     }
 
     /** FR-03b: the same hide pass for every extra bar, once its own element is drawing. */
     private fun reapplyExtraHiding() {
+        val stale = ArrayList<ExtraBar>()
         for (slot in extras) {
             val target = slot.container ?: continue
             val keep = slot.element?.ui ?: continue
+            // A rebuilt bar (or a detached shade window) leaves the old element behind; never hide for it.
+            if (keep.parent !== target || !keep.isAttachedToWindow) {
+                stale.add(slot)
+                continue
+            }
             if (!(slot.element?.isReady ?: false)) continue
+            if (!surfaceEnabled(slot.name)) {
+                // The user disabled this surface; leave the stock header exactly as it was, not a
+                // hidden-stock hole behind an invisible Duo. Hard-zero: no fade may re-show it.
+                slot.alphaRequest = null
+                slot.element?.ui?.animate()?.cancel()
+                slot.indicators?.ui?.animate()?.cancel()
+                slot.element?.ui?.alpha = 0f
+                slot.indicators?.ui?.alpha = 0f
+                slot.stock.restore()
+                continue
+            }
             try {
-                hideStock(target, keep, owner = slot.stock)
+                hideSlotStock(slot, target, keep)
+                // Do not re-anchor here. This pass runs on every layout tick while the shade/QS is
+                // dragged; re-anchoring the ring alone made it follow the battery while the split
+                // indicator view stayed put (reported: ring moves, 5G does not). The ring keeps the
+                // box it got at attach; the surface is hidden during the drag and shown at settle.
             } catch (t: Throwable) {
                 L.w("${slot.name} hiding: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+        // Drop outside the iteration: dropSlot mutates the list this loop walks.
+        for (slot in stale) {
+            try {
+                dropSlot(slot)
+            } catch (t: Throwable) {
+                L.w("${slot.name} stale drop: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
 
     // ----------------------------------------------------------------------------- internals
+
+    /**
+     * Records the overlay anchor's visibility before anything hides it. The stock hider may hide the
+     * same battery afterwards; capturing here, before both passes, keeps the original (a post-hide
+     * INVISIBLE here would leave the battery missing after teardown).
+     */
+    private fun rememberAnchorVisibility() {
+        if (!overlay) return
+        val anchor = anchorBattery ?: return
+        if (anchorOriginalVisibility != null) return
+        try {
+            anchorOriginalVisibility = anchor.visibility
+        } catch (t: Throwable) {
+            L.w("anchor remember: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /** Puts the overlay anchor back from the one value captured before the first hide. */
+    private fun restoreAnchorVisibility() {
+        try {
+            anchorOriginalVisibility?.let { anchorBattery?.visibility = it }
+        } catch (t: Throwable) {
+            L.w("anchor restore: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        anchorOriginalVisibility = null
+    }
 
     /**
      * Keeps the overlay anchor out of sight without tearing down its layout.
@@ -1510,7 +3392,7 @@ internal class DuoIconHost(private val context: Context) {
         if (!overlay) return
         val anchor = anchorBattery ?: return
         try {
-            if (anchorOriginalVisibility == null) anchorOriginalVisibility = anchor.visibility
+            rememberAnchorVisibility()
             // The ROM can re-show the stock battery/cluster on its own - an OEM charging animation
             // re-inflates the bar when the charger is plugged in - and this is the only moment we see it.
             // The line is the evidence for "the battery appears over Duo while charging".
@@ -1530,8 +3412,17 @@ internal class DuoIconHost(private val context: Context) {
      * coordinates. The battery is hidden with INVISIBLE (not GONE) in overlay mode, so its frame is real
      * and survives a rotation; [offsetDp] is the user's horizontal nudge.
      */
-    private fun anchorOnBattery(view: View, parent: ViewGroup, side: Int, offsetDp: Int) {
-        val battery = anchorBattery ?: return
+    private fun anchorOnBattery(
+        view: View,
+        parent: ViewGroup,
+        side: Int,
+        offsetDp: Int,
+        battery: View? = anchorBattery,
+        alignEnd: Boolean = false,
+        /** Physical-pixel burn-in nudge; only the main ring passes a non-zero value. */
+        burnIn: Float = 0f
+    ) {
+        battery ?: return
         try {
             val parentLocation = IntArray(2)
             val batteryLocation = IntArray(2)
@@ -1543,8 +3434,15 @@ internal class DuoIconHost(private val context: Context) {
             // setting is applied as translation here instead. Default 100 % is a zero inset, so an
             // untouched device does not move; on HyperOS 3 a lower value now actually pulls the element
             // left off the battery (reported: "icon is all the way to the right", with no effect).
-            view.translationX = batteryLocation[0] + battery.width / 2f - parentLocation[0] -
-                    side / 2f + offsetDp * density + edgeInsetPx(side, settings.edgePadding)
+            // The QS cluster asks for [alignEnd]: its element must end where the battery ends, not be
+            // centred, because the cluster is 386 px wide and Duo keeps the main bar's size.
+            val seat: Float = if (alignEnd) {
+                (batteryLocation[0] + battery.width - side - parentLocation[0]).toFloat()
+            } else {
+                batteryLocation[0] + battery.width / 2f - parentLocation[0] - side / 2f
+            }
+            view.translationX = seat + offsetDp * density + edgeInsetPx(side, settings.edgePadding) +
+                burnIn
             // height/2 is the view centre; the ring sits below that, so the anchor shift brings the
             // ring (not the empty space above it) onto the battery.
             view.translationY = batteryLocation[1] + battery.height / 2f - parentLocation[1] -
@@ -1554,7 +3452,203 @@ internal class DuoIconHost(private val context: Context) {
         }
     }
 
+    /**
+     * Starts (or keeps) one bounded retry for the QS cluster, posted on the shade window when it is
+     * known (otherwise on the header).
+     *
+     * The header is attached long before the shade expands, and its own cluster is 0x0/GONE until then
+     * (measured). A short delayed recheck is used instead of hiding the stock battery inside an
+     * unlaid-out view; every tick re-resolves the *visible* cluster from [window], because the header's
+     * instance is a different, permanently dead one. The retry stops after [MAX_SHADE_RETRIES] or
+     * [SHADE_RETRY_TIMEOUT_MS], on success, detach, or teardown.
+     */
+    private fun scheduleShadeRetry(header: View, window: View?) {
+        startShadeRetry(window ?: header, "window=${window != null}") {
+            onShadeRetryTick(header, window)
+        }
+    }
+
+    /**
+     * The same bounded retry for a cluster handed over directly by an OnePlus vendor hook. Its anchor is
+     * the cluster itself and every tick asks that exact view whether it has been laid out yet; the
+     * generic fallback's re-resolution from the shade window would miss the split header's sibling
+     * battery and could choose the dead 0x0 duplicate.
+     */
+    private fun scheduleShadeRetryForCluster(cluster: ViewGroup, battery: View?, source: String) {
+        startShadeRetry(cluster, "source=$source") {
+            onShadeClusterRetryTick(cluster, battery, source)
+        }
+    }
+
+    /**
+     * The shared bounded delayed retry: attempts, attachment and wall time are tracked in one place so
+     * the generic header resolution and the OnePlus cluster hand-over cannot run unlimited loops.
+     */
+    private fun startShadeRetry(anchor: View, label: String, tick: () -> Unit) {
+        // A retry for this exact anchor is already live; re-posting it here is what used to duplicate
+        // ticks and reset the counters. Its own pending post (or the tick that is running now) covers it.
+        if (shadeRetryView === anchor && shadeRetryRunnable != null) return
+        val sameAnchor = shadeRetryView === anchor
+        val attempts = shadeRetryAttempts
+        val startedAt = shadeRetryStartedAt
+        val seenAttached = if (sameAnchor) shadeRetrySeenAttached else anchor.isAttachedToWindow
+        cancelShadeRetryCallbacks()
+        val retry = object : Runnable {
+            override fun run() {
+                if (shadeRetryRunnable !== this) return
+                try {
+                    shadeRetryAttempts++
+                    if (anchor.isAttachedToWindow) shadeRetrySeenAttached = true
+                    if (!anchor.isAttachedToWindow && shadeRetrySeenAttached) {
+                        ShadeProbe.log(
+                            "shadeProbe retry: window detached after $shadeRetryAttempts attempts - stop"
+                        )
+                        clearShadeRetry()
+                        return
+                    }
+                    val expired = SystemClock.uptimeMillis() - shadeRetryStartedAt >= SHADE_RETRY_TIMEOUT_MS
+                    if (shadeRetryAttempts > MAX_SHADE_RETRIES || expired) {
+                        ShadeProbe.log(
+                            "shadeProbe retry: giving up after $shadeRetryAttempts attempts (expired=$expired)"
+                        )
+                        clearShadeRetry()
+                        return
+                    }
+                    tick()
+                } catch (t: Throwable) {
+                    L.w("shade retry: ${t.javaClass.simpleName}: ${t.message}")
+                    clearShadeRetry()
+                }
+            }
+        }
+        shadeRetryView = anchor
+        shadeRetryRunnable = retry
+        shadeRetryAttempts = attempts
+        shadeRetryStartedAt = if (startedAt > 0L) startedAt else SystemClock.uptimeMillis()
+        shadeRetrySeenAttached = seenAttached || anchor.isAttachedToWindow
+        try {
+            // A re-schedule must never leave a second copy of the same callback queued.
+            anchor.removeCallbacks(retry)
+            anchor.postDelayed(retry, SHADE_RETRY_DELAY_MS)
+            ShadeProbe.log(
+                "shadeProbe retry: scheduled (${SHADE_RETRY_DELAY_MS}ms, max $MAX_SHADE_RETRIES, $label)"
+            )
+        } catch (t: Throwable) {
+            L.w("shade retry schedule: ${t.javaClass.simpleName}: ${t.message}")
+            clearShadeRetry()
+        }
+    }
+
+    /** One bounded retry pass. Re-resolves the visible cluster, attaches once it exists, then stops. */
+    private fun onShadeRetryTick(header: View, window: View?) {
+        val retry = shadeRetryRunnable ?: return
+        val anchor = shadeRetryView ?: return
+        // Re-resolve on every tick: the header's own `quick_qs_status_icons` (split_shade_status_bar)
+        // is the 0x0 duplicate that kept hiding the retry from the laid-out one in qs_frame.
+        val cluster = window?.let { finder.findVisibleQuickQsCluster(it) }
+        ShadeProbe.log(
+            "shadeProbe reResolve $shadeRetryAttempts/$MAX_SHADE_RETRIES: " +
+                "cluster=${ShadeProbe.describe(cluster)}"
+        )
+        if (cluster != null) {
+            ShadeProbe.log(
+                "shadeProbe retry $shadeRetryAttempts/$MAX_SHADE_RETRIES: visible cluster - attaching"
+            )
+            if (attachShadeHeader(header, window)) {
+                clearShadeRetry()
+                return
+            }
+        } else if (window == null) {
+            // No shade window was handed over (an early header hook): keep the old header-only check.
+            val area = finder.findShadeIconsArea(header)
+            if (area != null && area.width > 0 && area.visibility == View.VISIBLE) {
+                ShadeProbe.log(
+                    "shadeProbe retry $shadeRetryAttempts/$MAX_SHADE_RETRIES: header cluster visible - attaching"
+                )
+                if (attachShadeHeader(header)) {
+                    clearShadeRetry()
+                    return
+                }
+            }
+        }
+        ShadeProbe.log(
+            "shadeProbe retry $shadeRetryAttempts/$MAX_SHADE_RETRIES: cluster not visible yet - waiting"
+        )
+        // A failed attach may already have re-scheduled (possibly on a different anchor); only this
+        // runnable may post itself, and only while it is still the current one.
+        if (shadeRetryRunnable !== retry) return
+        try {
+            anchor.removeCallbacks(retry)
+            anchor.postDelayed(retry, SHADE_RETRY_DELAY_MS)
+        } catch (t: Throwable) {
+            L.w("shade retry post: ${t.javaClass.simpleName}: ${t.message}")
+            clearShadeRetry()
+        }
+    }
+
+    /**
+     * One bounded retry pass for a vendor-handled cluster. Only the exact view is checked: once it has a
+     * real width the cluster is handed back to [attachShadeCluster]; if the main bar is not ready yet
+     * that call schedules the same retry again, still bounded by [startShadeRetry].
+     */
+    private fun onShadeClusterRetryTick(cluster: ViewGroup, battery: View?, source: String) {
+        val retry = shadeRetryRunnable ?: return
+        if (shadeClusterReady(cluster.width, cluster.visibility, cluster.isAttachedToWindow, cluster.isShown)) {
+            ShadeProbe.log(
+                "shadeProbe retry $shadeRetryAttempts/$MAX_SHADE_RETRIES: $source cluster laid out - attaching"
+            )
+            if (attachShadeCluster(cluster, battery, source)) {
+                clearShadeRetry()
+                return
+            }
+        }
+        ShadeProbe.log(
+            "shadeProbe retry $shadeRetryAttempts/$MAX_SHADE_RETRIES: $source cluster not laid out - waiting"
+        )
+        if (shadeRetryRunnable !== retry) return
+        try {
+            cluster.removeCallbacks(retry)
+            cluster.postDelayed(retry, SHADE_RETRY_DELAY_MS)
+        } catch (t: Throwable) {
+            L.w("shade cluster retry post: ${t.javaClass.simpleName}: ${t.message}")
+            clearShadeRetry()
+        }
+    }
+
+    /** Drops the pending callback without touching the bounded-attempt counters. */
+    private fun cancelShadeRetryCallbacks() {
+        val view = shadeRetryView
+        val retry = shadeRetryRunnable
+        if (view != null && retry != null) {
+            try {
+                view.removeCallbacks(retry)
+            } catch (_: Throwable) {
+            }
+        }
+        shadeRetryView = null
+        shadeRetryRunnable = null
+    }
+
+    /** Removes the pending retry and ends its bounded lifecycle. Safe from a callback or teardown. */
+    private fun clearShadeRetry() {
+        cancelShadeRetryCallbacks()
+        shadeRetryAttempts = 0
+        shadeRetryStartedAt = 0L
+        shadeRetrySeenAttached = false
+    }
+
     private companion object {
         const val SURVIVAL_MS = 4_000L
+
+        /** Matches the ROM status-bar reveal animation (CollapsedStatusBarFragmentExImpl). */
+        val MAIN_ALPHA_IN = PathInterpolator(0.4f, 0f, 1f, 1f)
+
+        /** Decelerating x slide for the panel hand-off; alpha and y are not part of it. */
+        val HANDOFF_X = PathInterpolator(0.2f, 0f, 0f, 1f)
+
+        /** Short recheck for the QS cluster, bounded by count and wall time (measured 0x0 at attach). */
+        const val SHADE_RETRY_DELAY_MS = 50L
+        const val MAX_SHADE_RETRIES = 60
+        const val SHADE_RETRY_TIMEOUT_MS = 3_000L
     }
 }
