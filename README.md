@@ -8,8 +8,7 @@ Duo Status Bar replaces the battery, Wi-Fi and mobile signal icons in your statu
 animated indicator.
 
 It is an LSPosed module. It does not modify system files. It only hides the icons it replaces and draws
-the new indicator. You can turn it off at any time, and your original icons come back exactly as they
-were.
+the new indicator.
 
 <p align="center">
   <img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/status-bar.png" width="360" alt="Duo Status Bar in the status bar">
@@ -31,26 +30,23 @@ were.
 
 The module is off until you turn it on. Nothing changes before that.
 
-## Settings
+## Customization
 
-- **Battery icon** - show or hide the percentage, change the size, and move the position.
-- **Animations** - turn animations on or off, and set the speed.
-- **Appearance** - icon colour, smooth graphics, the clock font, and what appears in the middle.
-- **Status bar icons** - keep your other icons visible beside the indicator, or hide them.
-- **Tap actions** - optional. Handled by the Auto Expand module.
-- **About** - see the module status and send a report.
+| Default | Default · Invert center |
+|:---:|:---:|
+| <img src="docs/media/custom-default.png" width="160" alt="Default Duo design"> | <img src="docs/media/custom-default-invert.png" width="160" alt="Default Duo design with invert center"> |
+| **Two SIM** | **Two SIM · Invert center** |
+| <img src="docs/media/custom-dual.png" width="160" alt="Two SIM Duo design"> | <img src="docs/media/custom-dual-invert.png" width="160" alt="Two SIM Duo design with invert center"> |
 
 Changing the size needs a System UI restart. The app has a button for it.
 
-## Turn it off
+## PHDP integration
 
-Use the switch in the app, or run one of these commands:
+Duo can show download progress from PHDP on the ring.
 
-```text
-adb shell settings put global duo_statusbar_stage 0   # off
-adb shell settings put global duo_statusbar_stage 1   # simple drawing, no native code
-adb shell settings put global duo_statusbar_stage 2   # full animation
-```
+1. Install [PHDP](https://github.com/hxreborn/punch-hole-download-progress/releases/latest).
+2. In PHDP, open **System → Integrations** and choose **Duo**.
+3. Start a download. Progress appears on the Duo ring.
 
 ## If something goes wrong
 
