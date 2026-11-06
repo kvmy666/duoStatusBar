@@ -80,7 +80,7 @@ jobs:
           RIVE_ANALYTICS: 'off'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libwayland-client0 libx11-6
+          sudo apt-get install -y libegl1 libgles2 libgl1 libxkbcommon0 libwayland-client0 libx11-6
           curl -fsSL https://releases.rive.app/cli/install.sh | sh
           echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
           "$HOME/.rive/bin/rive" --version
