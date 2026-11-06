@@ -30,6 +30,13 @@ the new indicator.
 
 The module is off until you turn it on. Nothing changes before that.
 
+## Supported UIs
+
+| UI | Support |
+| --- | --- |
+| OnePlus OxygenOS 16 | ✅ |
+| Xiaomi HyperOS 3 | ✅ |
+
 ## Customization
 
 | Default | Default · Invert center |
