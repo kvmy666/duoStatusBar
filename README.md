@@ -36,6 +36,12 @@ The module is off until you turn it on. Nothing changes before that.
 | --- | --- |
 | OnePlus OxygenOS 16 | ✅ |
 | Xiaomi HyperOS 3 | ✅ |
+| OPPO/realme ColorOS | ✅ |
+| Samsung One UI | ✅ |
+| vivo OriginOS | ✅ |
+| Honor MagicOS | ✅ |
+| Motorola MyOS | ✅ |
+| Nothing OS | ✅ |
 
 ## Customization
 
