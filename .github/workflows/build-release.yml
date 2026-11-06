@@ -74,6 +74,15 @@ jobs:
           python3 tools/check-rive-eases.py rive/duo/scene.rml
           python3 tools/check-rive-eases.py rive/duo/scene_old.rml
 
+      - name: Install Rive CLI
+        env:
+          CI: '1'
+          RIVE_ANALYTICS: 'off'
+        run: |
+          curl -fsSL https://releases.rive.app/cli/install.sh | sh
+          echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
+          "$HOME/.rive/bin/rive" --version
+
       - name: Both Rive scenes must rebuild to the shipped .riv files
         run: bash tools/build-rive-both.sh
 
