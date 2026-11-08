@@ -367,6 +367,21 @@ internal class DuoIconHost(private val context: Context) {
     private var panelOwner: String? = null
 
     /**
+     * ColorOS 17 (China build) shade/QS header: Duo's header copy is injected into `qs_frame` and hides
+     * the header's battery and cellular icons, but the ring never draws there, so the shade showed
+     * neither (OnePlus PJZ110, ColorOS 17.0.0.103, SystemUI 17.99.02). With both surfaces off the stock
+     * header showed correctly, so on this build the shade/QS copy is forced off and the stock header is
+     * left alone whatever the setting says. OxygenOS builds (EX/IN/EU/NA regions) are not affected:
+     * their shade path is measured and draws.
+     */
+    private val shadeCopyUnsupported: Boolean by lazy {
+        val display = Build.DISPLAY.orEmpty()
+        val unsupported = Build.VERSION.SDK_INT >= 37 && display.contains("(CN")
+        L.i("shade/QS copy ${if (unsupported) "disabled" else "allowed"} on this build (display=$display)")
+        unsupported
+    }
+
+    /**
      * The running collapse slide of the main copy: its resting translation and the animator that is
      * carrying it back there. Only [View.getTranslationX] is touched — alpha, y, size and parent are
      * never changed by the hand-off.
@@ -1069,7 +1084,7 @@ internal class DuoIconHost(private val context: Context) {
     private fun panelCoverExpected(): Boolean {
         val owner = activeSurfaceOwner()
         if (owner != null) return surfaceEnabled(owner)
-        return settings.showInQs || settings.showInShade
+        return surfaceEnabled("qs header") || surfaceEnabled("shade header")
     }
 
     /**
@@ -1244,8 +1259,8 @@ internal class DuoIconHost(private val context: Context) {
 
     /** Whether the user allows Duo in one of the optional header surfaces. */
     private fun surfaceEnabled(name: String): Boolean = when (name) {
-        "qs header" -> settings.showInQs
-        "shade header" -> settings.showInShade
+        "qs header" -> settings.showInQs && !shadeCopyUnsupported
+        "shade header" -> settings.showInShade && !shadeCopyUnsupported
         else -> true
     }
 
@@ -1267,8 +1282,8 @@ internal class DuoIconHost(private val context: Context) {
     /** Reveals exactly the current owner (QS or shade); the other copy is always hidden. */
     fun showSurfaceOwner() {
         val owner = displaySurfaceOwner()
-        val qs = owner == "qs header" && settings.showInQs
-        val shade = owner == "shade header" && settings.showInShade
+        val qs = owner == "qs header" && surfaceEnabled("qs header")
+        val shade = owner == "shade header" && surfaceEnabled("shade header")
         // QS/shade -> HUD: the main copy is already opaque (setMainBarVisible(true, immediateReveal)),
         // but if it has no drawable view yet the outgoing copy is held for one frame instead of being
         // faded out over an empty seat.
