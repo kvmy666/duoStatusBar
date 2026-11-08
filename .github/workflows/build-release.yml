@@ -104,6 +104,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          TELEGRAM_RELAY_KEY: ${{ secrets.TELEGRAM_RELAY_KEY }}
         run: ./gradlew assembleRelease --console=plain
 
       - name: Version name from tag
