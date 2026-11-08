@@ -16,6 +16,7 @@ import android.view.animation.LinearInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import java.util.WeakHashMap
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
@@ -383,9 +384,11 @@ internal class DuoIconHost(private val context: Context) {
      */
     private var mainCoverPending = false
     private var mainCoverGuardView: View? = null
+    private var mainCoverGuardAttempts = 0
 
     /** QS/shade -> HUD: the outgoing extra is held while the main copy has not drawn yet. */
     private var mainRevealGuardView: View? = null
+    private var mainRevealGuardAttempts = 0
 
     /** QS/shade -> HUD: the outgoing copy is latched out once the main copy owns the seat. */
     private val drawOrder = PanelHandoff.OutgoingLatch()
@@ -434,8 +437,8 @@ internal class DuoIconHost(private val context: Context) {
     private var onDownloadRingTap: (() -> Unit)? = null
     private var touchPart: DuoPart? = null
 
-    /** Per-view key for the 20 % charge shake, so a second trigger cancels the first cleanly. */
-    private val shakeTag = View.generateViewId()
+    /** Per-view 20 % charge shake, so a second trigger cancels the first cleanly. */
+    private val shakes = WeakHashMap<View, Animator>()
 
     val duo: DuoElement? get() = element
 
@@ -784,6 +787,7 @@ internal class DuoIconHost(private val context: Context) {
             // HUD -> QS/shade: the panel is now known. Never hide the main copy until this owner's
             // copy is actually drawable; DuoHook may have requested the hide before this callback.
             if (owner != null && surfaceEnabled(owner) && mainBarVisible) {
+                mainCoverGuardAttempts = 0
                 mainCoverPending = true
                 armMainCoverGuard(force = true)
             }
@@ -899,7 +903,7 @@ internal class DuoIconHost(private val context: Context) {
             main.isAttachedToWindow && main.width > 0 && main.height > 0 &&
             main.translationX.isFinite() &&
             handoffAnimator == null &&
-            (main.getTag(shakeTag) as? Animator)?.isRunning != true
+            (shakes[main]?.isRunning != true)
     } catch (t: Throwable) {
         L.w("panel handoff base: ${t.javaClass.simpleName}: ${t.message}")
         false
@@ -1008,6 +1012,7 @@ internal class DuoIconHost(private val context: Context) {
                 applyMainBarVisible(false, immediateReveal = false)
                 return
             }
+            mainCoverGuardAttempts = 0
             mainCoverPending = true
             showSurfaceOwner()
             armMainCoverGuard()
@@ -1168,8 +1173,9 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /**
-     * HUD -> QS/shade guard: hide the main copy only after the owner's copy has drawn. If that copy
-     * is still not drawable after one frame, the main stays visible; an attach calls this again.
+     * HUD -> QS/shade guard: hide the main copy only after the owner's copy has drawn. The incoming
+     * copy may settle over more than one frame, so the check is retried for a bounded window; when it
+     * never becomes drawable the main stays visible and the pending cover is cleared (fail silent).
      */
     private fun armMainCoverGuard(force: Boolean = false) {
         if (!mainCoverPending) return
@@ -1185,18 +1191,28 @@ internal class DuoIconHost(private val context: Context) {
                     extraCopyDrawable(owner), extraCopyAlpha(owner), waitedFrames = 1
                 )) {
                 PanelHandoff.SwapOrder.SWAP -> {
+                    mainCoverGuardAttempts = 0
                     mainCoverPending = false
                     applyMainBarVisible(false, immediateReveal = false)
                     L.i("panel cover: main hidden after the incoming copy drew")
                 }
-                else -> L.i("panel cover: keeping the main copy (incoming copy not drawable)")
+                else -> {
+                    if (mainCoverGuardAttempts < HANDOFF_GUARD_MAX_FRAMES) {
+                        mainCoverGuardAttempts++
+                        armMainCoverGuard(force = true)
+                    } else {
+                        mainCoverGuardAttempts = 0
+                        mainCoverPending = false
+                        L.i("panel cover: keeping the main copy after $HANDOFF_GUARD_MAX_FRAMES frames")
+                    }
+                }
             }
         }
     }
 
     /**
-     * QS/shade -> HUD guard: the outgoing extra is held while the main copy has not drawn. After one
-     * frame the extra is either released over the usual 120 ms fade or kept (fail silent).
+     * QS/shade -> HUD guard: the outgoing extra is held while the main copy has not drawn. The check
+     * is retried for a bounded window; after that the extra is kept (fail silent).
      */
     private fun armMainRevealGuard() {
         val view = mainViews().firstOrNull() ?: return
@@ -1204,10 +1220,24 @@ internal class DuoIconHost(private val context: Context) {
         mainRevealGuardView = view
         onNextFrame(view) {
             if (mainRevealGuardView === view) mainRevealGuardView = null
-            if (panelIsOpen()) return@onNextFrame
+            if (panelIsOpen()) {
+                mainRevealGuardAttempts = 0
+                return@onNextFrame
+            }
             when (PanelHandoff.swapOrder(mainCopyDrawable(), waitedFrames = 1)) {
-                PanelHandoff.SwapOrder.SWAP -> showSurfaceOwner()
-                else -> L.i("panel reveal: keeping the outgoing extra (main copy not drawable)")
+                PanelHandoff.SwapOrder.SWAP -> {
+                    mainRevealGuardAttempts = 0
+                    showSurfaceOwner()
+                }
+                else -> {
+                    if (mainRevealGuardAttempts < HANDOFF_GUARD_MAX_FRAMES) {
+                        mainRevealGuardAttempts++
+                        armMainRevealGuard()
+                    } else {
+                        mainRevealGuardAttempts = 0
+                        L.i("panel reveal: keeping the outgoing extra (main copy not drawable after $HANDOFF_GUARD_MAX_FRAMES frames)")
+                    }
+                }
             }
         }
     }
@@ -1865,6 +1895,10 @@ internal class DuoIconHost(private val context: Context) {
                 // Same size as the main bar (slot.basePx is pinned there), never the cluster's 386 px.
                 // The battery stays INVISIBLE with its real frame, so the element can sit on its end.
                 anchorOnBattery(view, target, side, settings.offsetX, battery, alignEnd = true)
+            } else if (slot.name == "shade header") {
+                // No battery to anchor over: seat the shade copy on the physical right like the main
+                // bar instead of the flow/left fallback, which put it at the header's start.
+                place(view, target, slot.bar, side, settings.offsetX, slot.center, rightSeat = true)
             } else {
                 place(view, target, slot.bar, side, settings.offsetX, slot.center)
             }
@@ -2047,7 +2081,7 @@ internal class DuoIconHost(private val context: Context) {
         for (target in allElements()) {
             val view = target.ui
             try {
-                (view.getTag(shakeTag) as? Animator)?.cancel()
+                shakes.remove(view)?.cancel()
                 val shake = ObjectAnimator.ofFloat(
                     view,
                     "translationX",
@@ -2056,11 +2090,11 @@ internal class DuoIconHost(private val context: Context) {
                     duration = ChargeMotion.SHAKE_MS
                     interpolator = LinearInterpolator()
                 }
-                view.setTag(shakeTag, shake)
+                shakes[view] = shake
                 shake.addListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
                         view.translationX = 0f
-                        if (view.getTag(shakeTag) === animation) view.setTag(shakeTag, null)
+                        if (shakes[view] === animation) shakes.remove(view)
                     }
                 })
                 shake.start()
@@ -3639,6 +3673,9 @@ internal class DuoIconHost(private val context: Context) {
 
     private companion object {
         const val SURVIVAL_MS = 4_000L
+
+        /** Bounded retry for the panel hand-off guards: 6 frames, about 100 ms at 60 Hz. */
+        const val HANDOFF_GUARD_MAX_FRAMES = 6
 
         /** Matches the ROM status-bar reveal animation (CollapsedStatusBarFragmentExImpl). */
         val MAIN_ALPHA_IN = PathInterpolator(0.4f, 0f, 1f, 1f)
