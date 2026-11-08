@@ -78,6 +78,9 @@ jobs:
         env:
           CI: '1'
           RIVE_ANALYTICS: 'off'
+          # The shipped .riv files were produced by 1.9.1. 1.9.2 tightened interpolator validation and
+          # rejects the committed scene, so the release gate must run the toolchain it verifies against.
+          RIVE_VERSION: '1.9.1'
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libgles2 libgl1 libxkbcommon0 libwayland-client0 libx11-6
