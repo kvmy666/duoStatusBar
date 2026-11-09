@@ -1,14 +1,16 @@
-# Duo Status Bar 2.0.1
+# Duo Status Bar 2.0.2
 
-A maintenance release on top of 2.0.0.
+A maintenance release on top of 2.0.1.
 
 ## Fixes
 
-- **QS/shade hand-off**: the panel guards now retry the incoming/outgoing drawable check for a bounded
-  window instead of giving up after one frame, so the main copy no longer stays visible over an expanded
-  panel (or the outgoing copy is no longer kept after collapse).
-- **Charge shake**: the 20 % shake no longer throws when it tags the view, so the animation runs and a
-  second trigger cancels the previous one cleanly.
-- **Shade fallback**: the shade copy keeps the right seat when there is no battery anchor.
+- **Restart / QS / shade**: the element is not hidden or reported attached until it has a real laid-out box. A 0x0 element falls back to the simple Canvas drawing; if that also fails, the stock icons are restored instead of leaving a gap. Panel reveal/handoff retries for a bounded window and no longer treats alpha 0 as "no view".
+- **ROM profiles**: measured OxygenOS and HyperOS profiles now require their measured SDK (OxygenOS 16 / SDK 36, HyperOS 3 / SDK 37). OxygenOS 13 is unverified and uses the generic ids.
+- **Classic fallback**: the Canvas fallback honors Classic (one SIM row) instead of always drawing the dual-SIM row.
+- **DND**: with middle=percent, Do Not Disturb keeps its normal middle seat instead of the inverted low/scaled seat.
+- **Report upload**: 2.0.1 and 2.0.2 builds carry the relay key; full-log upload is configured.
 
-The relay reporting fix is pending configuration and is not part of this build.
+## Known limitations
+
+- ColorOS 17 "both bars hidden" and the Xiaomi Fold lag/restart reports still need the user's ZIP or tombstone to prove the cause.
+- Android 13 OxygenOS may still fall back to Canvas if Rive cannot load its asset.
