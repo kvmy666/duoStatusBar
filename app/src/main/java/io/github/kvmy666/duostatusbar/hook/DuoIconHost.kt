@@ -822,12 +822,19 @@ internal class DuoIconHost(private val context: Context) {
         if (surfaceEnabled(owner) && mainCopyReady()) {
             if (!mainBarVisible) startMainHandoff(owner)
             lockOutgoingSurface(owner)
+            setMainBarVisible(true, immediateReveal = true)
         } else if (surfaceEnabled(owner)) {
             // No drawable main copy: keep the outgoing copy and clear any old latch.
             drawOrder.onCollapse(owner, mainReady = false)
             L.i("panel reveal: keeping the outgoing extra (main copy not drawable)")
+            if (!outgoingSurfaceVisible() && element?.ui?.let { !hasDrawableBox(it) } == true) {
+                L.w("Duo box: 0x0 main on collapse - falling back to Canvas")
+                ensureMainFallback()
+            }
+            // Do not reveal a 0x0 main copy; reveal happens once the fallback has a box.
+        } else {
+            if (mainCopyReady()) setMainBarVisible(true, immediateReveal = true)
         }
-        setMainBarVisible(true, immediateReveal = true)
     }
 
     /**
@@ -862,15 +869,7 @@ internal class DuoIconHost(private val context: Context) {
      */
     private fun mainCopyReady(): Boolean {
         if (element?.isReady != true) return false
-        return mainViews().any { view ->
-            try {
-                view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&
-                    view.width > 0 && view.height > 0
-            } catch (t: Throwable) {
-                L.w("draw guard: ${t.javaClass.simpleName}: ${t.message}")
-                false
-            }
-        }
+        return mainViews().any { hasDrawableBox(it) }
     }
 
     /**
@@ -994,6 +993,11 @@ internal class DuoIconHost(private val context: Context) {
      * initial reveal still uses the ROM's own motion (320 ms, `Interpolators.ALPHA_IN`, 50 ms delay).
      */
     fun setMainBarVisible(visible: Boolean, immediateReveal: Boolean = false) {
+        if (!visible && mainViews().any { !hasDrawableBox(it) } && mainViews().isNotEmpty()) {
+            L.w("setMainBarVisible: main not drawable - restoring stock icons")
+            hider.restore()
+            return
+        }
         // HUD -> QS/shade: the incoming copy is revealed first. The main copy is only faded out once
         // the guard below has seen that copy draw; a missing extra keeps the main visible (fail silent)
         // instead of opening a one-frame hole.
@@ -1077,8 +1081,7 @@ internal class DuoIconHost(private val context: Context) {
      * structural proof the one-frame guard uses; it never touches size, parent or renderer state.
      */
     private fun copyDrawable(view: View): Boolean = try {
-        view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&
-            view.width > 0 && view.height > 0 && view.alpha > PanelHandoff.EPSILON
+        hasDrawableBox(view)
     } catch (t: Throwable) {
         L.w("draw guard: ${t.javaClass.simpleName}: ${t.message}")
         false
@@ -1224,7 +1227,8 @@ internal class DuoIconHost(private val context: Context) {
                 mainRevealGuardAttempts = 0
                 return@onNextFrame
             }
-            when (PanelHandoff.swapOrder(mainCopyDrawable(), waitedFrames = 1)) {
+            val waited = if (mainRevealGuardAttempts == 0) 0 else 1
+            when (PanelHandoff.swapOrder(mainCopyDrawable(), waitedFrames = waited)) {
                 PanelHandoff.SwapOrder.SWAP -> {
                     mainRevealGuardAttempts = 0
                     showSurfaceOwner()
@@ -1235,7 +1239,14 @@ internal class DuoIconHost(private val context: Context) {
                         armMainRevealGuard()
                     } else {
                         mainRevealGuardAttempts = 0
-                        L.i("panel reveal: keeping the outgoing extra (main copy not drawable after $HANDOFF_GUARD_MAX_FRAMES frames)")
+                        if (outgoingSurfaceVisible()) {
+                            L.i("panel reveal: keeping the outgoing extra (main copy not drawable after $HANDOFF_GUARD_MAX_FRAMES frames)")
+                        } else if (element?.ui?.let { !hasDrawableBox(it) } == true) {
+                            L.w("Duo box: 0x0 main on reveal - falling back to Canvas")
+                            ensureMainFallback()
+                        } else {
+                            L.i("panel reveal: keeping the outgoing extra (main copy not drawable after $HANDOFF_GUARD_MAX_FRAMES frames)")
+                        }
                     }
                 }
             }
@@ -2970,6 +2981,8 @@ internal class DuoIconHost(private val context: Context) {
             host = container
             flowHost = container
             element = candidate
+            container.requestLayout()
+            candidate.ui.requestLayout()
             candidate.ui.alpha = if (mainBarVisible) 1f else 0f
             applyLayout()
             syncIndicators()
@@ -2977,8 +2990,15 @@ internal class DuoIconHost(private val context: Context) {
             // The stock icons are hidden and the first reveal fires only once the element reports itself
             // live. A Rive state machine binds *after* this method returns (it needs the view attached to a
             // window), so hiding here would cover an empty slot; Canvas reports ready immediately.
-            candidate.onReady { onElementReady(candidate, target) }
+            candidate.onReady {
+                if (hasDrawableBox(candidate.ui) && (candidate.ui.parent === container || candidate.ui.parent === target)) {
+                    onElementReady(candidate, target)
+                } else {
+                    verifyAttachedBox(candidate, target, 0)
+                }
+            }
             candidate.onFailed { onElementFailed(candidate, target) }
+            verifyAttachedBox(candidate, target, 0)
             forgetAttemptsAfterSurvival(candidate)
             true
         } catch (t: Throwable) {
@@ -2990,6 +3010,11 @@ internal class DuoIconHost(private val context: Context) {
     /** The element is live: now it is safe to take the stock icons out and fire the reveal (FR-08/25). */
     private fun onElementReady(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
+        if (!hasDrawableBox(candidate.ui) || !(candidate.ui.parent === target || candidate.ui.parent === host)) {
+            L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} - not ready; scheduling fallback")
+            onElementFailed(candidate, target)
+            return
+        }
         try {
             // Capture the anchor before hideStock/hideOverlayAnchor can make it INVISIBLE.
             rememberAnchorVisibility()
@@ -3041,14 +3066,69 @@ internal class DuoIconHost(private val context: Context) {
         )
         ensureInjectedViewId(canvas.ui, container)
         container.addView(canvas.ui)
+        container.requestLayout()
+        canvas.ui.requestLayout()
         element = canvas
         // DuoCanvasView.reveal() is a no-op, and setMainBarVisible() is edge/idempotent. Apply the
         // current visibility here or a fallback that happens while QS/shade is open stays alpha=1.
         canvas.ui.alpha = if (mainBarVisible) 1f else 0f
         applyLayout()
         syncIndicators()
-        canvas.onReady { onElementReady(canvas, target) }
+        canvas.onReady {
+            if (hasDrawableBox(canvas.ui) && (canvas.ui.parent === container || canvas.ui.parent === target)) {
+                onElementReady(canvas, target)
+            } else {
+                ensureCanvasBox(canvas, target, 0)
+            }
+        }
+        ensureCanvasBox(canvas, target, 0)
         L.i("element: Canvas (fallback after Rive did not bind)")
+    }
+
+    /** Bounded post-layout validation for an attached element. Falls back to Canvas on a 0x0 box. */
+    private fun verifyAttachedBox(candidate: DuoElement, target: ViewGroup, frame: Int) {
+        if (element !== candidate) return
+        val parentOk = candidate.ui.parent === host || candidate.ui.parent === target
+        if (parentOk && hasDrawableBox(candidate.ui)) return
+        if (frame < 6) {
+            (host ?: target).requestLayout()
+            candidate.ui.requestLayout()
+            candidate.ui.postOnAnimation { verifyAttachedBox(candidate, target, frame + 1) }
+        } else {
+            L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"}")
+            onElementFailed(candidate, target)
+        }
+    }
+
+    /** Bounded validation for the Canvas fallback; restores stock icons if it never gets a box. */
+    private fun ensureCanvasBox(canvas: DuoElement, target: ViewGroup, frame: Int) {
+        if (element !== canvas) return
+        val parentOk = canvas.ui.parent === host || canvas.ui.parent === target
+        if (parentOk && hasDrawableBox(canvas.ui)) {
+            onElementReady(canvas, target)
+            return
+        }
+        if (frame < 6) {
+            (host ?: target).requestLayout()
+            canvas.ui.requestLayout()
+            canvas.ui.postOnAnimation { ensureCanvasBox(canvas, target, frame + 1) }
+        } else {
+            L.w("fallback box: ${canvas.ui.width}x${canvas.ui.height} parent=${canvas.ui.parent?.javaClass?.simpleName ?: "none"}")
+            try {
+                (canvas.ui.parent as? ViewGroup)?.removeView(canvas.ui)
+                canvas.teardown()
+            } catch (_: Throwable) {
+            }
+            element = null
+            hider.restore()
+        }
+    }
+
+    /** Triggers the Canvas fallback for the main element when it has no drawable box. */
+    private fun ensureMainFallback() {
+        val candidate = element ?: return
+        val target = hideStrip ?: (host as? ViewGroup) ?: return
+        onElementFailed(candidate, target)
     }
 
     private fun createElement(root: View, stage: Int, part: DuoPart = DuoPart.ALL): DuoElement {
@@ -3151,6 +3231,11 @@ internal class DuoIconHost(private val context: Context) {
         // Never hide the stock icons over an element that is not drawing yet: a layout pass can arrive
         // before Rive has bound its view model, and hiding then would leave a blank stretch of status bar.
         if (!(element?.isReady ?: false)) return
+        if (element?.ui?.let { !hasDrawableBox(it) } == true) {
+            L.w("Duo box: 0x0 on reapply - restoring stock icons")
+            hider.restore()
+            return
+        }
         if (!ensureElementAttached()) {
             // Never leave a hole: if the element cannot live in the rebuilt strip, the stock icons come back
             // rather than an empty stretch of status bar. The next hide pass remembers them again.
@@ -3672,6 +3757,14 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private companion object {
+        /** True only when the view is attached, visible, laid out and has ink to draw. */
+        internal fun hasDrawableBox(view: View): Boolean = try {
+            view.isAttachedToWindow && view.visibility == View.VISIBLE &&
+                view.width > 0 && view.height > 0 && view.alpha > PanelHandoff.EPSILON
+        } catch (_: Throwable) {
+            false
+        }
+
         const val SURVIVAL_MS = 4_000L
 
         /** Bounded retry for the panel hand-off guards: 6 frames, about 100 ms at 60 Hz. */
