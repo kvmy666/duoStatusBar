@@ -82,6 +82,8 @@ internal object RomProfiles {
                         notes = o.optString("notes"),
                         match = o.optJSONArray("match").toStringList(),
                         measured = o.optBoolean("measured", false),
+                        apiMin = o.optInt("apiMin", 0),
+                        apiMax = o.optInt("apiMax", Int.MAX_VALUE),
                         shadeContainerIds = o.optJSONArray("shadeContainerIds").toStringList(),
                         shadeBatteryId = o.optString("shadeBatteryId").trim(),
                         shadeStatusIconIds = o.optJSONArray("shadeStatusIconIds").toStringList(),

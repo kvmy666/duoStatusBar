@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.view.View
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 
 /**
  * The element drawn with plain Android Canvas — no Rive, no native code, nothing that can fault.
@@ -36,8 +37,11 @@ import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
  */
 internal class DuoCanvasView(
     context: Context,
-    part: DuoPart = DuoPart.ALL
+    part: DuoPart = DuoPart.ALL,
+    designStyle: String = DuoPrefs.DESIGN_OLD
 ) : View(context), DuoElement {
+
+    private val classic = DuoPrefs.normalizeDesignStyle(designStyle) == DuoPrefs.DESIGN_OLD
 
     private var incoming: DuoVisual? = null
 
@@ -298,7 +302,8 @@ internal class DuoCanvasView(
             val cells = floatArrayOf(
                 visual.cell1Opacity, visual.cell2Opacity, visual.cell3Opacity, visual.cell4Opacity
             )
-            for (side in intArrayOf(1, -1)) {
+            val sides = if (classic) intArrayOf(1) else intArrayOf(1, -1)
+            for (side in sides) {
                 for (i in cells.indices) {
                     if (cells[i] <= 0f) continue
                     moonPaint.color = withAlpha(visual.fgColor, cells[i])
@@ -313,7 +318,7 @@ internal class DuoCanvasView(
             val moons = floatArrayOf(
                 visual.moon1Opacity, visual.moon2Opacity, visual.moon3Opacity, visual.moon4Opacity
             )
-            for (side in intArrayOf(1, -1)) {
+            for (side in sides) {
                 for (i in moons.indices) {
                     if (moons[i] <= 0f) continue
                     drawMoon(

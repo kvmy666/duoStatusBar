@@ -178,6 +178,8 @@ object DuoMapping {
             DuoPrefs.MIDDLE_SLOT_CHARGING -> if (charging) MIDDLE_NETWORK else MIDDLE_OFF
             else -> mode
         }
+        val invertCentre = DuoPrefs.normalizeMiddleSlot(middleSlot) == DuoPrefs.MIDDLE_SLOT_PERCENT
+        val invertMiddle = invertCentre && chosenMode != MIDDLE_DND
         val chosenText = when (DuoPrefs.normalizeMiddleSlot(middleSlot)) {
             DuoPrefs.MIDDLE_SLOT_PERCENT -> if (chosenMode == SignalMapping.MIDDLE_NETWORK) networkText else ""
             DuoPrefs.MIDDLE_SLOT_CLOCK -> clockText
@@ -185,7 +187,6 @@ object DuoMapping {
             DuoPrefs.MIDDLE_SLOT_CELL, DuoPrefs.MIDDLE_SLOT_AUTO -> if (chosenMode == SignalMapping.MIDDLE_NETWORK) networkText else ""
             else -> ""
         }
-        val invertCentre = DuoPrefs.normalizeMiddleSlot(middleSlot) == DuoPrefs.MIDDLE_SLOT_PERCENT
         val (outerRaw, middleRaw, dotRaw) = SignalMapping.wifiOpacities(wifiLevel)
     val (outer, middle, dot) = if (showWifiGlyph) {
         Triple(outerRaw, middleRaw, dotRaw)
@@ -222,8 +223,8 @@ object DuoMapping {
             percentY = if (invertCentre) RingGeometry.INVERTED_PERCENT_TOP_Y
                        else RingGeometry.percentTopY(percentHeight),
             batteryLineStart = RingGeometry.batteryLineStart(level),
-            middleY = if (invertCentre) RingGeometry.INVERTED_MIDDLE_Y else 0f,
-            middleScale = if (invertCentre) RingGeometry.INVERTED_MIDDLE_SCALE else 1f,
+            middleY = if (invertMiddle) RingGeometry.INVERTED_MIDDLE_Y else 0f,
+            middleScale = if (invertMiddle) RingGeometry.INVERTED_MIDDLE_SCALE else 1f,
             boltY = if (invertCentre) 49.5f else 0f,
             // Only the slot's actual occupant carries text: a hidden one never shows a stale label.
             networkText = chosenText,

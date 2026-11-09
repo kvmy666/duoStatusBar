@@ -118,7 +118,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         Build.MANUFACTURER.orEmpty(),
         Build.BRAND.orEmpty(),
         Build.PRODUCT.orEmpty(),
-        Build.DISPLAY.orEmpty()
+        Build.DISPLAY.orEmpty(),
+        Build.VERSION.SDK_INT
     )
 
     /**

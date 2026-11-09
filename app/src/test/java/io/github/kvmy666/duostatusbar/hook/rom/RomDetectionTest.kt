@@ -199,4 +199,50 @@ class RomDetectionTest {
         }
     }
 
+
+    @Test
+    fun `oneplus sdk gating marks measured only on sdk 36`() {
+        val sdk33 = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 33)
+        assertFalse("SDK 33 is not the measured build", sdk33.measured)
+        assertTrue(sdk33.notes.contains("unverified"))
+
+        val sdk36 = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 36)
+        assertTrue("SDK 36 is the measured build", sdk36.measured)
+        assertTrue(sdk36.notes.contains("measured"))
+    }
+
+    @Test
+    fun `xiaomi sdk gating marks measured only on sdk 37`() {
+        val sdk37 = RomDetection.forThisRom("Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37)
+        assertTrue("SDK 37 is the measured build", sdk37.measured)
+
+        val sdk36 = RomDetection.forThisRom("Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 36)
+        assertFalse("SDK 36 is not the measured build", sdk36.measured)
+    }
+
+    @Test
+    fun `a data profile whose api range excludes the sdk is rejected`() {
+        val profile = RomAdapter(
+            id = "oxygenos",
+            label = "OxygenOS / OnePlus (measured)",
+            systemUiPackage = "com.android.systemui",
+            containerIds = listOf("system_icons"),
+            batteryId = "battery",
+            notes = "measured",
+            match = listOf("oneplus"),
+            measured = true,
+            apiMin = 36,
+            apiMax = 36
+        )
+        val rom = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", listOf(profile), 33
+        )
+        assertFalse("profile out of range must not override", rom.measured)
+        // convenience overload, SDK first
+        val rom2 = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 33, listOf(profile)
+        )
+        assertFalse("profile out of range must not override", rom2.measured)
+    }
+
 }

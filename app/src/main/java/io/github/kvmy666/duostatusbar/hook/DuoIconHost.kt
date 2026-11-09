@@ -400,7 +400,8 @@ internal class DuoIconHost(private val context: Context) {
         Build.PRODUCT.orEmpty(),
         Build.DISPLAY.orEmpty(),
         // Measured profiles from assets may override; only `measured` ones are accepted.
-        RomProfiles.load(context)
+        RomProfiles.load(context),
+        Build.VERSION.SDK_INT
     )
 
     /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
@@ -2663,7 +2664,7 @@ internal class DuoIconHost(private val context: Context) {
         candidate.onFailed {
             L.w("icon cluster did not bind - drawing it with Canvas")
             val canvas = try {
-                DuoCanvasView(context, DuoPart.INDICATORS).also { it.start() }
+                DuoCanvasView(context, DuoPart.INDICATORS, appliedDesignStyle).also { it.start() }
             } catch (t: Throwable) {
                 L.e("icon cluster fallback failed: ${t.javaClass.simpleName}: ${t.message}")
                 drop(candidate, container)
@@ -3048,7 +3049,7 @@ internal class DuoIconHost(private val context: Context) {
         // Tell the app so it can ask the user to send the log; this is the failure we most need evidence for.
         DuoSettingsClient.reportFallback(context, "Rive did not bind on ${android.os.Build.MODEL}; using the simple drawing")
         val canvas = try {
-            DuoCanvasView(context, ringPart()).also { it.start() }
+            DuoCanvasView(context, ringPart(), appliedDesignStyle).also { it.start() }
         } catch (t: Throwable) {
             L.e("Canvas fallback failed: ${t.javaClass.simpleName}: ${t.message}")
             return
@@ -3138,7 +3139,7 @@ internal class DuoIconHost(private val context: Context) {
                 return rive
             }
         }
-        val canvas = DuoCanvasView(context, part)
+        val canvas = DuoCanvasView(context, part, appliedDesignStyle)
         canvas.start()
         L.i("element: Canvas (stage $stage, $part)")
         return canvas

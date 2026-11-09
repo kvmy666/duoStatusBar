@@ -1324,4 +1324,24 @@ class DuoMappingTest {
         assertFalse(hidden.eventVisible)
     }
 
+
+    @Test
+    fun `percent middle slot with dnd keeps the middle in its normal seat`() {
+        val withDnd = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, dnd = true,
+            showDnd = true, middleSlot = DuoPrefs.MIDDLE_SLOT_PERCENT
+        )
+        assertEquals(DuoMapping.MIDDLE_DND, withDnd.middleMode)
+        assertEquals(0f, withDnd.middleY, 0.0001f)
+        assertEquals(1f, withDnd.middleScale, 0.0001f)
+
+        val withoutDnd = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, dnd = false,
+            showDnd = true, middleSlot = DuoPrefs.MIDDLE_SLOT_PERCENT
+        )
+        org.junit.Assert.assertNotEquals(0f, withoutDnd.middleY, 0.0001f)
+    }
+
 }

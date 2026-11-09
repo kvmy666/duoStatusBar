@@ -150,7 +150,8 @@ internal fun appEnvironment(context: Context): String = buildString {
     val rom = runCatching {
         RomDetection.forThisRom(
             android.os.Build.MANUFACTURER.orEmpty(), android.os.Build.BRAND.orEmpty(),
-            android.os.Build.PRODUCT.orEmpty(), android.os.Build.DISPLAY.orEmpty(), RomProfiles.load(context)
+            android.os.Build.PRODUCT.orEmpty(), android.os.Build.DISPLAY.orEmpty(), RomProfiles.load(context),
+            android.os.Build.VERSION.SDK_INT
         )
     }.getOrNull()
     appendLine("rom adapter: ${rom?.id ?: "unknown"} (measured=${rom?.measured ?: false})")

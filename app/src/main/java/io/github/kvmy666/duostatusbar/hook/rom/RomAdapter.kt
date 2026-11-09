@@ -25,6 +25,11 @@ internal data class RomAdapter(
     /** Where the facts came from — "measured" is a device, "unverified" is a guess to be replaced. */
     val notes: String,
     /**
+     * SDK gate for measured profiles.
+     */
+    val apiMin: Int = 0,
+    val apiMax: Int = Int.MAX_VALUE,
+    /**
      * Lowercase substrings of the build identity that select this profile from an asset. Empty for the
      * code defaults, so only profiles loaded from data (see [RomProfiles]) carry a match.
      */
@@ -76,16 +81,17 @@ internal object RomDetection {
         manufacturer: String,
         brand: String,
         product: String,
-        display: String
+        display: String,
+        api: Int = 0
     ): RomAdapter {
         val haystack = haystack(manufacturer, brand, product, display)
         return when {
             haystack.contains("samsung") -> samsung()
-            haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs()
+            haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs(api)
             haystack.contains("oppo") || haystack.contains("oplus") || haystack.contains("coloros") ->
                 colorOs()
             haystack.contains("xiaomi") || haystack.contains("redmi") || haystack.contains("poco") ->
-                hyperOs()
+                hyperOs(api)
             haystack.contains("vivo") || haystack.contains("iqoo") || haystack.contains("origin") ||
                 haystack.contains("funtouch") -> vivo()
             haystack.contains("honor") || haystack.contains("magic") -> honor()
@@ -107,17 +113,35 @@ internal object RomDetection {
         brand: String,
         product: String,
         display: String,
-        profiles: List<RomAdapter>
+        profiles: List<RomAdapter>,
+        api: Int = 0
     ): RomAdapter {
         val haystack = haystack(manufacturer, brand, product, display)
         profiles.firstOrNull { profile ->
-            profile.measured && profile.match.any { haystack.contains(it.lowercase()) }
+            profile.measured && apiInRange(profile.apiMin, profile.apiMax, api) &&
+                profile.match.any { haystack.contains(it.lowercase()) }
         }?.let { return it }
-        return forThisRom(manufacturer, brand, product, display)
+        return forThisRom(manufacturer, brand, product, display, api)
     }
+
+    /**
+     * Convenience overload: SDK first, then profiles. Allows callers/tests that pass the SDK before
+     * the profile list.
+     */
+    fun forThisRom(
+        manufacturer: String,
+        brand: String,
+        product: String,
+        display: String,
+        api: Int,
+        profiles: List<RomAdapter>
+    ): RomAdapter = forThisRom(manufacturer, brand, product, display, profiles, api)
 
     private fun haystack(manufacturer: String, brand: String, product: String, display: String): String =
         listOf(manufacturer, brand, product, display).joinToString(" ").lowercase()
+
+    /** SDK gate helper for measured profiles; api == 0 means legacy/tests (any SDK). */
+    fun apiInRange(min: Int, max: Int, api: Int): Boolean = api == 0 || (api in min..max)
 
     /**
      * Measured on the OnePlus 15 (CPH2747), Android 16 / OxygenOS 16.0.9.400: the strip is a `LinearLayout`
@@ -125,23 +149,26 @@ internal object RomDetection {
      *
      * The later spellings are only fallbacks for a build that renamed the strip; the measured one is first.
      */
-    private fun oxygenOs(): RomAdapter = RomAdapter(
+    private fun oxygenOs(api: Int): RomAdapter {
+        val verified = api == 0 || api in 36..36
+        return RomAdapter(
         id = "oxygenos",
         label = "OxygenOS / OnePlus",
         systemUiPackage = AOSP,
         containerIds = listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
         batteryId = "battery",
-        notes = "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px",
+        notes = if (verified) "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px" else "unverified: OnePlus SDK $api; measured only on OxygenOS 16 (CPH2747, SDK 36)",
         match = listOf("oneplus", "oxygen"),
-        measured = true,
+        measured = verified,
         shadeContainerIds = listOf("quick_qs_status_icons", "shade_header_system_icons"),
         shadeBatteryId = "batteryRemainingIcon",
-        shadeMeasured = true,
+        shadeMeasured = verified,
         coverHook = true,
         panelExpansionKind = "panel_type_5arg",
-        panelHookMeasured = true,
-        panelOwnerAvailable = true
+        panelHookMeasured = verified,
+        panelOwnerAvailable = verified
     )
+    }
 
     /**
      * OPPO ColorOS 14 and 16 (Android 14 / 16).
@@ -217,7 +244,9 @@ internal object RomDetection {
      * build that renames `system_icons` still attaches beside the icons. `status_bar_icons` is the
      * `FrameLayout` above both. The AOSP name stays first so a stock-AOSP Xiaomi needs no special case.
      */
-    private fun hyperOs(): RomAdapter = RomAdapter(
+    private fun hyperOs(api: Int): RomAdapter {
+        val verified = api == 0 || api in 37..37
+        return RomAdapter(
         id = "hyperos",
         label = "HyperOS / MIUI",
         systemUiPackage = AOSP,
@@ -229,10 +258,10 @@ internal object RomDetection {
             "system_icons_container"
         ),
         batteryId = "battery",
-        notes = "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> " +
-            "MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent",
+        notes = if (verified) "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> " +
+            "MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent" else "unverified: Xiaomi SDK $api; measured only on HyperOS 3 (24129PN74G, SDK 37)",
         match = listOf("xiaomi", "redmi", "poco"),
-        measured = true,
+        measured = verified,
         shadeContainerIds = listOf("shade_header_system_icons", "system_icons"),
         shadeBatteryId = "battery",
         shadeMeasured = false,
@@ -240,6 +269,7 @@ internal object RomDetection {
         panelExpansionKind = "fzz_3arg",
         panelHookMeasured = false
     )
+    }
 
     /**
      * vivo OriginOS 6 / Funtouch. Static resource map only: no device dump, so the adapter says

@@ -81,7 +81,8 @@ internal object Diag {
             Build.BRAND.orEmpty(),
             Build.PRODUCT.orEmpty(),
             Build.DISPLAY.orEmpty(),
-            profiles
+            profiles,
+            Build.VERSION.SDK_INT
         )
         val fromAsset = profiles.any { it == rom }
         buildString {

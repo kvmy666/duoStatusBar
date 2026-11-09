@@ -18,6 +18,8 @@
         "oxygen"
       ],
       "measured": true,
+      "apiMin": 36,
+      "apiMax": 36,
       "notes": "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px",
       "shadeContainerIds": [
         "quick_qs_status_icons",
@@ -49,6 +51,8 @@
         "poco"
       ],
       "measured": true,
+      "apiMin": 37,
+      "apiMax": 37,
       "notes": "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent",
       "coverHook": true,
       "panelExpansionKind": "fzz_3arg",

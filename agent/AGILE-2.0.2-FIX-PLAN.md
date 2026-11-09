@@ -11,7 +11,11 @@
 ## Code changes
 - DuoIconHost.kt: added `hasDrawableBox`, used in `copyDrawable` and `mainCopyReady`; attach post-layout validation; onElementReady/onElementFailed box gates; bounded Canvas validation; reveal/collapse/setMainBarVisible guards; reapplyHiding box check.
 
+## P1 (this change)
+- SDK gating: OnePlus measured only on SDK 36, Xiaomi on SDK 37; data profiles rejected when apiMin/apiMax exclude the running SDK.
+- Classic Canvas: classic design resolves to `duo_old` and scales 0.9286; fallback keeps the gap track.
+- DND normal seat: with `middleSlot=percent` and DND active, the middle stays in its normal seat (middleY=0, scale=1); inversion applies otherwise.
+
 ## Remaining unverified
-- #60/#61 need ZIP/tombstone.
+- #60/#61 need ZIP/tombstone artifacts.
 - DN2101 Rive asset fallback unverified.
-- ROM SDK gating and DND priority deferred to later task.

@@ -234,4 +234,24 @@ class RomProfilesTest {
         assertEquals("samsung", samsung.id)
         assertFalse(samsung.measured)
     }
+
+    @Test
+    fun `parses apiMin and apiMax from json`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "oxygenos",
+                  "containerIds": ["system_icons"],
+                  "apiMin": 36,
+                  "apiMax": 36
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertEquals(36, p.apiMin)
+        assertEquals(36, p.apiMax)
+    }
+
 }
