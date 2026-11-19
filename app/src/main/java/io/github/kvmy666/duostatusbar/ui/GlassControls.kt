@@ -209,18 +209,6 @@ fun GlassSlider(
     val span = (range.endInclusive - range.start).takeIf { it > 0f } ?: 1f
     val fraction = ((value - range.start) / span).coerceIn(0f, 1f)
 
-    fun valueAt(x: Float, width: Int): Float {
-        val travel = (width - thumbPx).coerceAtLeast(1f)
-        val raw = (x / travel).coerceIn(0f, 1f)
-        val snapped = if (steps > 0) {
-            val divisions = steps + 1
-            (raw * divisions).roundToInt().toFloat() / divisions
-        } else {
-            raw
-        }
-        return range.start + snapped * span
-    }
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()

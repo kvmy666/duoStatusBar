@@ -562,8 +562,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         handler.postDelayed(runnable, delayMs)
     }
 
-    fun activeLiveEvent(): LiveEvent? = liveEvents.active
-
     /** Re-reads Wi-Fi, cellular and the network generation, then redraws. Never throws. */
     fun refresh() {        try {
             val wifi = WifiReader.sample(context, wifiLevel, wifiOn, wifiActive, wifiValidated)

@@ -50,16 +50,9 @@
     <string name="settings_anim_arrival_detail">Bounce when the screen turns on.</string>
     <string name="settings_anim_departure">Disappear</string>
     <string name="settings_anim_departure_detail">Shrink when the screen turns off.</string>
-    <string name="settings_anim_charging">Charging</string>
-    <string name="settings_anim_charging_detail">Bolt animation while charging.</string>
-    <string name="settings_anim_preview">Live preview</string>
 
     <!-- Appearance -->
     <string name="section_look">Appearance</string>
-    <string name="settings_renderer">Smooth graphics</string>
-    <string name="settings_renderer_detail">Turn off if the icon looks wrong or lags.</string>
-    <string name="settings_clock_font">System-font clock</string>
-    <string name="settings_clock_font_detail">Match the clock font to the ring.</string>
     <string name="settings_icon_color">Icon colour</string>
     <string name="settings_icon_color_auto">Match status bar</string>
     <string name="settings_icon_color_black">Black</string>
@@ -71,7 +64,6 @@
     <string name="middle_slot_cell">Cellular</string>
     <string name="middle_slot_percent">Battery %</string>
     <string name="middle_slot_clock">Clock</string>
-    <string name="middle_slot_charging">Charging %</string>
     <string name="settings_show_airplane">Airplane mode</string>
     <string name="settings_show_dnd">Do Not Disturb</string>
     <string name="settings_dnd_detail">Where the moon shows when Do Not Disturb is on.</string>
@@ -136,8 +128,6 @@
     <string name="settings_root_guide_steps">In root manager, enable Superuser for Duo Status Bar.</string>
     <string name="settings_root_guide_note">Only if Duo never works or you find a bug — then send the report.</string>
     <string name="settings_root_guide_image">KernelSU Next Superuser toggle for Duo Status Bar</string>
-    <string name="settings_send_need_description">Describe the problem first.</string>
-    <string name="settings_send_need_access">Allow root or Shizuku, or wait for the module.</string>
 
     <!-- Fallback alert -->
     <string name="fallback_title">Duo is using a simple drawing</string>
@@ -153,7 +143,6 @@
     <string name="settings_checking">Checking…</string>
     <string name="settings_update_uptodate">You\'re up to date (v%1$s).</string>
     <string name="settings_update_available">New version v%1$s is available.</string>
-    <string name="settings_update_open">Open the release</string>
     <string name="settings_update_failed">Couldn\'t check for updates.</string>
     <string name="settings_update_download">Download and install</string>
     <string name="settings_update_no_apk">No download file; open the release page.</string>
@@ -170,10 +159,8 @@
     <!-- About -->
     <string name="section_about">About</string>
     <string name="settings_status">Status</string>
-    <string name="settings_no_status">Waiting for the module…</string>
     <string name="settings_module_never">Duo hasn\'t loaded yet. Turn it on in LSPosed, then restart your phone.</string>
     <string name="settings_module_loaded">Duo is running since %1$s.</string>
-    <string name="settings_module_loaded_recent">Duo is running.</string>
     <string name="settings_reboot">Reboot</string>
     <string name="settings_report_bug">Send a bug report</string>
     <string name="module_health_restart_title">Restart needed</string>
@@ -187,17 +174,12 @@
     <string name="module_health_contact">Contact on Telegram</string>
     <string name="module_health_contact_hint">Still not working? Contact here.</string>
     <string name="module_health_export">Export my log</string>
-    <string name="settings_problem">What went wrong?</string>
-    <string name="settings_problem_hint">Describe the problem</string>
-    <string name="settings_collect_log">Send the bug to the developer</string>
-    <string name="settings_contact_developer">Contact the developer on Telegram</string>
     <string name="settings_log_sent">Log sent. Thank you!</string>
     <string name="settings_log_wait">Please wait a minute before sending again.</string>
     <string name="settings_export_log">Export log to a file</string>
     <string name="settings_log_saved">Log saved.</string>
     <string name="settings_log_save_failed">Couldn\'t save the log.</string>
     <string name="settings_collecting">Collecting…</string>
-    <string name="settings_history">Recent activity</string>
     <string name="settings_donate">Support the developer</string>
     <string name="settings_log_share_title">Send Duo log</string>
     <string name="settings_version">Duo Status Bar %1$s</string>
@@ -213,26 +195,10 @@
     <string name="settings_live_events_detail">Show an animated icon when the event happens. Each event has its own switch.</string>
     <string name="settings_event_alarm">Alarm</string>
     <string name="settings_event_alarm_detail">Show an animated icon while an alarm rings.</string>
-    <string name="section_simulation">Simulation</string>
-    <string name="settings_simulation_detail">Try the live-event animation inside Duo. Pick an event icon, then play it.</string>
-    <string name="settings_simulation_alarm">Alarm icon</string>
-    <string name="settings_simulation_flashlight">Flashlight icon</string>
-    <string name="settings_simulation_screenshot">Screenshot icon</string>
-    <string name="settings_simulation_play">Play simulation</string>
-    <string name="settings_simulation_note">Preview art. Not included in release.</string>
-    <string name="settings_cell_simulation">Cellular dots</string>
-    <string name="settings_cell_simulation_detail">Preview every level now. Full signal shows four dots.</string>
-    <string name="settings_cell_simulation_level">Level %1$d</string>
     <string name="settings_event_flashlight">Flashlight</string>
     <string name="settings_event_flashlight_detail">Show an animated icon while the flashlight is on.</string>
     <string name="settings_event_screenshot">Screenshot</string>
     <string name="settings_event_screenshot_detail">Show an animated icon when a screenshot is taken.</string>
-    <string name="settings_event_microphone">Microphone</string>
-    <string name="settings_event_microphone_detail">Show an animated icon while the microphone is in use.</string>
-    <string name="settings_event_location">Location</string>
-    <string name="settings_event_location_detail">Show an animated icon while location is in use.</string>
-    <string name="settings_event_volume">Volume</string>
-    <string name="settings_event_volume_detail">Show an animated icon when the volume changes.</string>
     <string name="settings_event_unlock">Unlock</string>
     <string name="settings_event_unlock_detail">Show an animated icon when the screen is unlocked.</string>
     <!-- Download progress (PHDP) -->

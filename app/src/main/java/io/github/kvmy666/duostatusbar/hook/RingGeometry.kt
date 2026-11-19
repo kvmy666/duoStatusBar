@@ -118,7 +118,6 @@ object RingGeometry {
      * `rive/duo/scene.rml` is authored from this same table; a change here needs the matching RML
      * edit (and vice versa), otherwise Canvas and Rive drift.
      */
-    const val DOT_RING_RADIUS = 46.08f
     const val DOT_DIAMETER = 11.74f
     const val DOT_RADIUS = DOT_DIAMETER / 2f
 
@@ -132,9 +131,6 @@ object RingGeometry {
         floatArrayOf(42.55f, -17.71f),
         floatArrayOf(32.13f, -33.03f)
     )
-
-    /** The same seats as [CELL_DOT_POSITIONS], as clockwise degrees from 12 o'clock. */
-    val CELL_DOT_ANGLES = floatArrayOf(115.5f, 91.15f, 67.4f, 44.2f)
 
     /**
      * The battery line: ring radius, 9.4-unit stroke, bottom span 136.7deg..222.9deg clockwise
@@ -160,9 +156,7 @@ object RingGeometry {
         BATTERY_LINE_END - (BATTERY_LINE_END - BATTERY_LINE_START) *
             (level.coerceIn(0, 100) / 100f)
 
-    // Invert-center geometry (moved from ui/PreviewSimulator.kt measured seats; do not guess).
-    /** Percentage text center in the normal (top-gap) seat, relative to the ring centre. */
-    const val INVERT_NUMBER_SEAT_Y = -39f
+    // Invert-center geometry (measured seats; do not guess).
     /** The middle occupant's seat when inverted, relative to the ring centre.
      *  Compensates for the group's local centre (17): -34 - 17*0.55 so the Wi-Fi/event
      *  visual centre lands at -34 after the group scale. */

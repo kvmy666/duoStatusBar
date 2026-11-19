@@ -63,19 +63,15 @@ internal object GlassTokens {
 
     val NavigationLensHeight = 24.dp
     val NavigationLensAmount = 24.dp
-    val ControlLensHeight = 8.dp
-    val ControlLensAmount = 12.dp
 
     val CardShape = RoundedCornerShape(DuoRadius.surface)
     val CardTint = Color.White.copy(alpha = 0.07f)
-    val ControlTint = Color.White.copy(alpha = 0.09f)
     val BorderHighlight = Color.White.copy(alpha = 0.20f)
 
     // ColorDuo 1.1.7 liquid navigation: #121212/#FAFAFA at 0.40, a 16% liquid selection surface
     // and a white rim instead of a border. The 18dp shadow and the wine gradient are gone.
     val NavigationTintDark = Color(0xFF121212).copy(alpha = 0.40f)
     val NavigationTintLight = Color(0xFFFAFAFA).copy(alpha = 0.40f)
-    const val NavigationSelectionAlpha = 0.16f
     const val NavigationReflectionAlpha = 0.16f
     val NavigationRimWidth = 0.75.dp
     val NavigationRimBlur = 0.4.dp

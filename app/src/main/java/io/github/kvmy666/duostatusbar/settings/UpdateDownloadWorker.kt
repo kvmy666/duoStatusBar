@@ -128,7 +128,6 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
 
-        private const val NAME = "duo-update-download"
         private const val NOTIFICATION_ID = 0x5A19
 
         /** Enqueues one download, replacing any previous request. Sent from the notification's action. */

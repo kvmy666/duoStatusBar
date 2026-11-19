@@ -612,14 +612,6 @@ internal class DuoCanvasView(
         /** Alarm artwork is authored at 2x; screenshot/flashlight paths are already final-size. */
         const val EVENT_ICON_SCALE = 2.0f
 
-        /** Alarm silhouette from `scene.rml` (`eventAlarmIcon`). */
-        val alarmPath = Path().apply {
-            moveTo(-8f, -2f); lineTo(-6f, -8f); lineTo(-2f, -10f); lineTo(2f, -10f)
-            lineTo(6f, -8f); lineTo(8f, -2f); lineTo(9f, 4f); lineTo(8f, 8f)
-            lineTo(4f, 10f); lineTo(-4f, 10f); lineTo(-8f, 8f); lineTo(-9f, 4f)
-            close()
-        }
-
         /** Owned vertical torch matching the QS affordance: cap bar, shoulders, handle, switch. */
         val flashlightPath = Path().apply {
             moveTo(-4.6f, -11f); lineTo(4.6f, -11f); lineTo(4.6f, -7.3f); lineTo(5.7f, -7.3f)
@@ -633,15 +625,6 @@ internal class DuoCanvasView(
         /** Cone of light from the cap: narrow at the mouth, wider at the top. */
         val flashlightBeamPath = Path().apply {
             moveTo(-3f, -11f); lineTo(3f, -11f); lineTo(12f, -17f); lineTo(-12f, -17f)
-            close()
-        }
-        val flashlightBeamLeft = Path().apply { moveTo(-3f, -11f); lineTo(-10f, -25f) }
-        val flashlightBeamRight = Path().apply { moveTo(3f, -11f); lineTo(10f, -25f) }
-
-        /** Outline camera body; the lens is a separate stroked circle in `drawEventIcon`. */
-        val screenshotBodyPath = Path().apply {
-            moveTo(-19f, -9f); lineTo(-7f, -9f); lineTo(-4f, -13f); lineTo(4f, -13f)
-            lineTo(7f, -9f); lineTo(19f, -9f); lineTo(19f, 11f); lineTo(-19f, 11f)
             close()
         }
 

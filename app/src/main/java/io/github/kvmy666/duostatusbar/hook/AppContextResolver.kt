@@ -54,13 +54,6 @@ internal object AppContextResolver {
     }
 
     /**
-     * Adopts a status-bar window that was added before the module was injected.
-     *
-     * Kept for compatibility; the shade window has its own type, so use [findExistingWindow] directly.
-     */
-    fun findExistingStatusBarWindow(): View? = findExistingWindow(TYPE_STATUS_BAR)
-
-    /**
      * Adopts a window of [type] that was added before the module was injected.
      *
      * When injection is late, `WindowManagerImpl.addView` already fired and the addView hook will never see

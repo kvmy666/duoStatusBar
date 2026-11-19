@@ -818,8 +818,6 @@ object DuoPrefs {
      */
     val REVEAL_CHOICES = intArrayOf(500, 750, 1000, 1250, 1500)
     const val DEFAULT_REVEAL_MS = 1000
-    const val MIN_REVEAL_MS = 500
-    const val MAX_REVEAL_MS = 1500
 
     /** Snaps a requested arrival to the nearest the file can actually play. */
     fun nearestReveal(ms: Int): Int =

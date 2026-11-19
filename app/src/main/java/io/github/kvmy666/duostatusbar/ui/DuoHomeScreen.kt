@@ -139,8 +139,8 @@ fun DuoHomeScreen() {
 }
 
 /**
- * Camera mode is independent of the selected design: it only writes [DuoSettings.lockRing] and never
- * moves the Default/Compact/Custom selection or the Custom snapshot.
+ * Camera mode is independent of the ring design: it only writes [DuoSettings.lockRing] and leaves
+ * [DuoSettings.designStyle] untouched.
  */
 internal fun writeCameraMode(context: Context, settings: DuoSettings, on: Boolean): DuoSettings {
     val updated = settings.copy(lockRing = on)
@@ -151,9 +151,8 @@ internal fun writeCameraMode(context: Context, settings: DuoSettings, on: Boolea
 }
 
 /**
- * Ring design is its own state: it only writes [DuoSettings.designStyle]. The selected
- * Default/Compact/Custom preset and the Custom snapshot are left exactly where the user put them,
- * so this choice survives a later preset change.
+ * Ring design is its own state: it only writes [DuoSettings.designStyle] and leaves
+ * [DuoSettings.lockRing] untouched, so the camera choice survives a design change.
  */
 internal fun writeRingDesign(context: Context, settings: DuoSettings, style: String): DuoSettings {
     val updated = settings.copy(designStyle = DuoPrefs.normalizeDesignStyle(style))

@@ -115,8 +115,6 @@ object L {
 
     fun d(msg: String) = both(msg)
 
-    fun v(msg: String) = both(msg)
-
     fun e(msg: String) = both(msg)
 
     fun e(where: String, t: Throwable?) {

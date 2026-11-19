@@ -24,7 +24,6 @@ import io.github.kvmy666.duostatusbar.L
  */
 internal object AutoExpand {
 
-    const val PACKAGE = "io.github.kvmy666.autoexpand"
     const val ACTION_PRIVILEGED = "io.github.kvmy666.autoexpand.ZONE_PRIVILEGED_ACTION"
     const val EXTRA_ACTION_KEY = "zone_action_key"
 
@@ -33,13 +32,6 @@ internal object AutoExpand {
 
     private const val SYSTEMUI = "com.android.systemui"
     private const val TAG = "DuoSB"
-
-    fun isInstalled(context: Context): Boolean = try {
-        context.packageManager.getApplicationInfo(PACKAGE, 0)
-        true
-    } catch (_: Throwable) {
-        false
-    }
 
     /** Asks Auto Expand to run [key]. Returns false when there is nothing to ask for. */
     fun request(context: Context, key: String): Boolean {

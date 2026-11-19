@@ -43,12 +43,6 @@ internal object UpdateChecker {
     /** The newest release (stable or pre-release), or null when it cannot be read. */
     fun check(): UpdateInfo? = relayRelease() ?: githubRelease()
 
-    /** A strictly newer release than the installed one, or null. */
-    fun updateAvailable(): UpdateInfo? {
-        val info = check() ?: return null
-        return if (isNewer(info.version, BuildConfig.VERSION_NAME)) info else null
-    }
-
     // ------------------------------------------------------------------------------ sources
 
     /** Route 1: the relay's cached, normalized JSON. */

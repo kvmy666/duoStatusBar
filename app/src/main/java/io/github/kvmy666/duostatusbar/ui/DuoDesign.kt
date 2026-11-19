@@ -36,7 +36,6 @@ internal object DuoColors {
     val Hairline = Color(0x14FFFFFF)
 
     val Success = Color(0xFF9AD1A8)
-    val Warning = Color(0xFFE3A6B8)
     val Danger = Color(0xFFF08A8A)
 }
 
@@ -45,21 +44,14 @@ internal object DuoSpace {
     val xs = 4.dp
     val sm = 8.dp
     val md = 12.dp
-    val lg = 16.dp
     val xl = 20.dp
     val xxl = 24.dp
-    val section = 32.dp
-    val hero = 40.dp
 }
 
-/** One radius hierarchy: control, field, button, surface, pill. */
+/** One radius hierarchy: control, surface, pill. */
 internal object DuoRadius {
-    val badge = 8.dp
-    val field = 12.dp
     val control = 14.dp
-    val button = 16.dp
     val surface = 24.dp
-    val sheet = 32.dp
     val pill = 999.dp
 }
 

@@ -24,17 +24,12 @@ object BackupCodec {
     const val EMPTY = "EMPTY"
     const val BAD_VALUE = "BAD_VALUE"
 
-    enum class ErrorCode {
-        BAD_JSON, UNSUPPORTED_SCHEMA, UNSUPPORTED_VERSION, EMPTY, BAD_VALUE
-    }
-
     sealed class Result {
         abstract val values: Map<String, Any?>?
         abstract val warnings: List<String>
         abstract val error: String?
 
         val code: String? get() = error
-        val errorCode: ErrorCode? get() = error?.let { runCatching { ErrorCode.valueOf(it) }.getOrNull() }
         val isSuccess: Boolean get() = error == null && values != null
 
         data class Success(

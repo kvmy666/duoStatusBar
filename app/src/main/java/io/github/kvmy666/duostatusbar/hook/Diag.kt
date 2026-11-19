@@ -44,7 +44,6 @@ internal object Diag {
         "status_bar_icons",
         "system_icon_area",
         "systemIcons",
-        "status_icons",
         "battery",
         "clock",
         "clock_for_fake",

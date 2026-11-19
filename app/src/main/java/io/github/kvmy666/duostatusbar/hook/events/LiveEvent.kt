@@ -28,9 +28,6 @@ enum class LiveEventType(val priority: Int, val defaultDurationMs: Long?, val ri
     VOLUME(20, 1200L, 5),
     UNLOCK(10, 1800L, 6),
     CALL(95, 2500L, 8);
-
-    /** Convenience: whether this event is transient by default. */
-    val isTransientByDefault: Boolean get() = defaultDurationMs != null
 }
 
 /**
@@ -49,13 +46,3 @@ data class LiveEvent(
     /** Rive id for this event's type; 0 means no event. */
     val riveId: Int get() = type.riveId
 }
-
-/**
- * A named slot that an event occupies in the Duo element. The animation belongs to [event] (the event
- * type); [iconKey] only selects which artwork is drawn inside that animation, so an icon pack can
- * provide several variants without duplicating the animation.
- */
-data class EventIconSlot(
-    val event: LiveEventType,
-    val iconKey: String = "default",
-)

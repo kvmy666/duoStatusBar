@@ -255,22 +255,6 @@ internal object CellReader {
         -1
     }
 
-    /**
-     * Whether the radio is registered to a network ("in service"). Guarded: any failure returns true so
-     * a read that cannot determine service keeps the previous behaviour (raw 0 -> first bar) instead of
-     * blanking a working bar. No new permissions: ServiceState comes from TelephonyManager.getServiceState(),
-     * already reflected for NR state; CellInfo is not consulted.
-     *
-     * Fallback when ServiceState is unavailable: a known data/voice network type means registered.
-     * Fallback when even that is unavailable: true (preserve the old "raw 0 = first bar" behaviour).
-     */
-    fun hasService(context: Context): Boolean = try {
-        val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-        serviceInService(tm)
-    } catch (_: Throwable) {
-        true
-    }
-
     /** Service-state check for one TelephonyManager (default or per-subscription). */
     private fun serviceInService(tm: TelephonyManager?): Boolean {
         if (tm == null) return true

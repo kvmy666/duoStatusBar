@@ -31,8 +31,6 @@ object DuoActions {
         "toggle_power_saver" to "Toggle Power Saver"
     )
 
-    fun label(key: String): String = ALL.firstOrNull { it.first == key }?.second ?: key
-
     fun isAutoExpandInstalled(context: Context): Boolean = try {
         context.packageManager.getApplicationInfo(AUTO_EXPAND_PACKAGE, 0)
         true

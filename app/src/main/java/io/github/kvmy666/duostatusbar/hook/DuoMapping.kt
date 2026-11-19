@@ -12,12 +12,8 @@ import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 object DuoMapping {
 
     // Ring geometry - see RingGeometry.
-    const val LEFT_START = RingGeometry.LEFT_START
-    const val RIGHT_FULL = RingGeometry.RIGHT_FULL
     const val GAP_PERCENT_DEG = RingGeometry.GAP_PERCENT_DEG
     const val GAP_CHARGING_DEG = RingGeometry.GAP_CHARGING_DEG
-    val RIGHT_START = RingGeometry.RIGHT_START
-    val LEFT_FULL = RingGeometry.LEFT_FULL
     const val DRAWN_ARC = RingGeometry.DRAWN_ARC
 
     fun gapClosed(charging: Boolean, showPercent: Boolean): Boolean =

@@ -5,7 +5,7 @@ import io.github.kvmy666.duostatusbar.R
 /**
  * Single replaceable icon source for the four nav tabs. Production art lives in drawable-nodpi
  * (`nav_home`, `nav_custom`, `nav_report`, `nav_settings`); an owner-supplied set can drop in by
- * replacing [icons] without touching layout code. Reset with [reset] (used by tests).
+ * replacing [icons] without touching layout code.
  */
 internal object NavIconSource {
     val defaultIcons: Map<DuoPage, Int> = mapOf(
@@ -19,8 +19,4 @@ internal object NavIconSource {
 
     fun iconFor(page: DuoPage): Int =
         icons[page] ?: defaultIcons[page] ?: R.drawable.nav_home
-
-    fun reset() {
-        icons = defaultIcons
-    }
 }

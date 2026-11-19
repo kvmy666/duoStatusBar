@@ -179,11 +179,6 @@ private fun LensNavigationBar(
         val heldWidth = minOf(94.dp, itemWidth * 0.98f)
         val heldHeight = 73.dp
         val restWidthPx = with(density) { restWidth.toPx() }
-        val restHeightPx = with(density) { restHeight.toPx() }
-        val heldWidthPx = with(density) { heldWidth.toPx() }
-        val heldHeightPx = with(density) { heldHeight.toPx() }
-        val maxStretchPx = with(density) { 26.dp.toPx() }
-        val maxSquashPx = with(density) { 4.dp.toPx() }
         val index = items.indexOfFirst { it.page == selected }.coerceAtLeast(0)
         val lastIndex = items.lastIndex
         fun stationX(tab: Int): Float = itemWidthPx * (tab + 0.5f)
