@@ -26,8 +26,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          total=$(gh api "repos/${{ github.repository }}/releases" --paginate --slurp \
-            --jq '[.[] | .[] | .assets[] | .download_count] | add // 0')
+          total=$(gh api "repos/${{ github.repository }}/releases" --paginate \
+            --jq '.[] | .assets[] | .download_count' | awk '{s+=$1} END {print s+0}')
           mkdir -p docs/badges
           printf '{\n  "downloads": %s\n}\n' "$total" > docs/badges/downloads.json
           echo "total downloads: $total"

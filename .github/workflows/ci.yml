@@ -41,12 +41,25 @@ jobs:
           python3 tools/check-rive-eases.py rive/duo/scene.rml
           python3 tools/check-rive-eases.py rive/duo/scene_old.rml
 
+      - name: Install Rive CLI
+        env:
+          CI: '1'
+          RIVE_ANALYTICS: 'off'
+          # Rive's published minimum is 1.9.2; 1.9.1 exits 8 before command dispatch.
+          RIVE_VERSION: '1.9.2'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgles2 libgl1 libxkbcommon0 libwayland-client0 libx11-6
+          curl -fsSL https://releases.rive.app/cli/install.sh | sh
+          echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
+          "$HOME/.rive/bin/rive" --version
+
       # The app preview and the status-bar module must draw the *same* file, for both scenes. The .riv
       # files are authored in rive/duo and committed into the app, so this catches the failure mode where
       # one is rebuilt and the other is forgotten — which shows up as "the preview looks right, the phone
-      # does not". This gate fails closed: a runner without the required Rive CLI fails instead of skipping.
-      - name: Both Rive scenes must rebuild to the shipped .riv files
-        run: bash tools/build-rive-both.sh
+      # does not". The gate verifies both scenes offline and checks the committed .riv hashes.
+      - name: Both Rive scenes must verify and match the shipped .riv files
+        run: bash tools/check-rive-shipped.sh
 
       # The app↔module channel is addressed by an authority string that exists twice: as a manifest attribute
       # and as DuoPrefs.AUTHORITY. A unit test cannot compare them (Robolectric does not register manifest

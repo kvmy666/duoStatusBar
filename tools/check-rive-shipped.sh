@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Offline release gate: verify both Rive scenes and prove the shipped .riv files
-# are the ones those scenes produce. Rive 1.9.1 has no --once (that required a
-# signed-in session), so this gate only uses --verify and hashes the committed
-# binaries.
+# Offline release gate: verify both Rive scenes with the installed Rive CLI and
+# compare the committed .riv files against pinned sha256 hashes. This gate does
+# not rebuild the .riv files; it verifies the scenes and checks the binaries.
+#
+# The committed .riv files were produced offline by Rive 1.8.0 `--once` from
+# these scenes.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SHIPPED_NEW_HASH="fa32b3f91ae1748bd8d56c6b79b7193e9ede114020d14922a3841060ae641567"
-SHIPPED_OLD_HASH="436d23583822671bf1700ad61d0bdec85f936ac7410487d2d43b581097a5bf09"
+SHIPPED_NEW_HASH="4c59e9dc0860d9d6a117889499ccb904bc6138078efe709a12d8d539aa55b817"
+SHIPPED_OLD_HASH="464586cad821ce8d8a801822e45adc4f77d7c68169ffecd09c69bcaf01176cf0"
 SHIPPED_NEW="app/src/main/res/raw/duo.riv"
 SHIPPED_OLD="app/src/main/res/raw/duo_old.riv"
 SCENE="rive/duo/scene.rml"

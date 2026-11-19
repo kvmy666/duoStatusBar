@@ -3510,17 +3510,17 @@
                         <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
                     </KeyFrameDouble>
                     <KeyFrameDouble value="1" interpolationType="hold" frame="66" />
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="78" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="78" />
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:303">
                 <KeyedProperty propertyKey="13">
                     <KeyFrameDouble value="0" interpolationType="hold" frame="30" />
-                    <KeyFrameDouble value="9" interpolationType="cubic" frame="54" />
+                    <KeyFrameDouble value="9" interpolationType="hold" frame="54" />
                 </KeyedProperty>
                 <KeyedProperty propertyKey="14">
                     <KeyFrameDouble value="0" interpolationType="hold" frame="30" />
-                    <KeyFrameDouble value="-2" interpolationType="cubic" frame="54" />
+                    <KeyFrameDouble value="-2" interpolationType="hold" frame="54" />
                 </KeyedProperty>
             </KeyedObject>
                     <KeyedObject objectId="0:235">
@@ -3528,7 +3528,7 @@
                     <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
                     <KeyFrameDouble value="1" interpolationType="hold" frame="4" />
                     <KeyFrameDouble value="1" interpolationType="hold" frame="66" />
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="78" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="78" />
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:237">
@@ -3561,7 +3561,7 @@
                         <CubicEaseInterpolator x1="0.22" y1="1" x2="0.36" y2="1" />
                     </KeyFrameDouble>
                     <KeyFrameDouble value="1" interpolationType="hold" frame="140" />
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="150" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="150" />
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:320">
@@ -3579,7 +3579,7 @@
                     <KeyFrameDouble value="-4" interpolationType="cubic" frame="38">
                         <CubicEaseInterpolator x1="0.42" y1="0" x2="0.58" y2="1" />
                     </KeyFrameDouble>
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="46" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="46" />
                 </KeyedProperty>
             </KeyedObject>
                     <KeyedObject objectId="0:235">
@@ -3587,7 +3587,7 @@
                     <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
                     <KeyFrameDouble value="1" interpolationType="hold" frame="4" />
                     <KeyFrameDouble value="1" interpolationType="hold" frame="142" />
-                    <KeyFrameDouble value="0" interpolationType="cubic" frame="150" />
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="150" />
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:237">
