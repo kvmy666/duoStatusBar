@@ -20,6 +20,7 @@ import java.util.WeakHashMap
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
@@ -294,6 +295,9 @@ internal class DuoIconHost(private val context: Context) {
                     } catch (t: Throwable) {
                         L.w("icon hide: ${t.javaClass.simpleName}: ${t.message}")
                         // A partial hide must not leave a hole: put this container's stock views back.
+                        logOnce.once("restore:icon-hide-failure") {
+                            L.w("icon hide failed - restoring this container's stock icons")
+                        }
                         try {
                             owner.restore()
                         } catch (r: Throwable) {
@@ -401,7 +405,9 @@ internal class DuoIconHost(private val context: Context) {
         Build.DISPLAY.orEmpty(),
         // Measured profiles from assets may override; only `measured` ones are accepted.
         RomProfiles.load(context),
-        Build.VERSION.SDK_INT
+        Build.VERSION.SDK_INT,
+        // A Xiaomi brand alone is not HyperOS; this reads the SystemUI APK/class markers.
+        RomMarkerSource.read(context)
     )
 
     /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
@@ -1320,6 +1326,9 @@ internal class DuoIconHost(private val context: Context) {
                     slot.indicators?.ui?.alpha = 0f
                     slot.element?.setRenderActive(false)
                     slot.indicators?.setRenderActive(false)
+                    logOnce.once("surface-disabled:${slot.name}") {
+                        L.i("${slot.name}: surface disabled - hiding its element and restoring its stock icons")
+                    }
                     slot.stock.restore()
                 } else {
                     val target = slot.container ?: continue
@@ -2059,6 +2068,9 @@ internal class DuoIconHost(private val context: Context) {
      * half-drawn.
      */
     fun setElementsVisible(on: Boolean) {
+        logOnce.once(if (on) "elements-visible" else "elements-hidden") {
+            L.i("element views ${if (on) "shown" else "hidden"} on ${allElements().size} surface(s)")
+        }
         if (!on) cancelMainHandoff()
         for (target in allElements()) {
             try {
@@ -2835,6 +2847,9 @@ internal class DuoIconHost(private val context: Context) {
             false
         }
         if (attached) {
+            logOnce.once("slot-replaced:${previous.name}") {
+                L.i("${previous.name}: replaced by a new slot - dropping the previous element and restoring its stock icons")
+            }
             dropSlot(previous)
         } else {
             extras.add(previous)
@@ -3016,6 +3031,7 @@ internal class DuoIconHost(private val context: Context) {
         if (element !== candidate) return
         if (!hasBox(candidate.ui) || !(candidate.ui.parent === target || candidate.ui.parent === host)) {
             L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} - not ready; scheduling fallback")
+            L.w("Duo box detail: target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"} ready=${candidate.isReady}")
             onElementFailed(candidate, target)
             return
         }
@@ -3102,6 +3118,7 @@ internal class DuoIconHost(private val context: Context) {
             candidate.ui.postOnAnimation { verifyAttachedBox(candidate, target, frame + 1) }
         } else {
             L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"}")
+            L.w("Duo box detail: size=${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"} ready=${candidate.isReady}")
             onElementFailed(candidate, target)
         }
     }
@@ -3120,12 +3137,14 @@ internal class DuoIconHost(private val context: Context) {
             canvas.ui.postOnAnimation { ensureCanvasBox(canvas, target, frame + 1) }
         } else {
             L.w("fallback box: ${canvas.ui.width}x${canvas.ui.height} parent=${canvas.ui.parent?.javaClass?.simpleName ?: "none"}")
+            L.w("fallback box detail: size=${canvas.ui.width}x${canvas.ui.height} parent=${canvas.ui.parent?.javaClass?.simpleName ?: "none"} target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"}")
             try {
                 (canvas.ui.parent as? ViewGroup)?.removeView(canvas.ui)
                 canvas.teardown()
             } catch (_: Throwable) {
             }
             element = null
+            L.w("Canvas fallback never got a box - restoring stock icons")
             hider.restore()
         }
     }
@@ -3372,6 +3391,9 @@ internal class DuoIconHost(private val context: Context) {
             if (ringLocked() && !overlay) ensureSpacer(fresh, geometry.sidePx(fresh, barRoot))
             val icons = indicators
             if (icons != null && (icons.ui.parent == null || !icons.ui.isAttachedToWindow)) {
+                logOnce.once("repair:indicator-recreate") {
+                    L.i("strip repaired - split indicator view was detached; recreating it")
+                }
                 try {
                     icons.teardown()
                 } catch (_: Throwable) {
@@ -3386,6 +3408,7 @@ internal class DuoIconHost(private val context: Context) {
 
     /** Removes the element and puts the stock icons back exactly as they were. */
     fun teardown() {
+        L.i("teardown: removing Duo element and restoring stock icons (element=${element != null}, extras=${extras.size})")
         clearShadeRetry()
         cancelSurvivalTimer()
         cancelMainHandoff()
@@ -3454,6 +3477,9 @@ internal class DuoIconHost(private val context: Context) {
                 slot.indicators?.ui?.animate()?.cancel()
                 slot.element?.ui?.alpha = 0f
                 slot.indicators?.ui?.alpha = 0f
+                logOnce.once("surface-disabled:${slot.name}") {
+                    L.i("${slot.name}: surface disabled - hiding its element and restoring its stock icons")
+                }
                 slot.stock.restore()
                 continue
             }

@@ -15,6 +15,9 @@ internal object AppContextResolver {
     /** `WindowManager.LayoutParams.TYPE_NOTIFICATION_SHADE`, which is @hide. */
     const val TYPE_NOTIFICATION_SHADE = 2040
 
+    /** One-shot gate: "no Application yet" is one fact per process, not one per retry. */
+    private val loggedNone = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /**
      * Resolves a usable Application/context for the SystemUI process.
      *
@@ -24,7 +27,10 @@ internal object AppContextResolver {
      */
     fun resolveAppContext(): Context? {
         try {
-            android.app.AndroidAppHelper.currentApplication()?.let { return it }
+            android.app.AndroidAppHelper.currentApplication()?.let {
+                L.i("context source: currentApplication pkg=${runCatching { it.packageName }.getOrDefault("?")}")
+                return it
+            }
         } catch (t: Throwable) {
             L.w("currentApplication unreadable: ${t.javaClass.simpleName}: ${t.message}")
         }
@@ -38,18 +44,27 @@ internal object AppContextResolver {
                 // Settings.Global override and the settings provider read. Only contexts whose package is
                 // the app are usable here.
                 val field = thread.getDeclaredField("mInitialApplication").also { it.isAccessible = true }
-                (field.get(current) as? Context)?.let { if (it.packageName != "android") return it }
+                (field.get(current) as? Context)?.let {
+                    if (it.packageName != "android") {
+                        L.i("context source: mInitialApplication pkg=${runCatching { it.packageName }.getOrDefault("?")}")
+                        return it
+                    }
+                }
                 val bound = thread.getDeclaredField("mBoundApplication").also { it.isAccessible = true }
                     .get(current)
                 if (bound != null) {
                     val app = bound.javaClass.getDeclaredField("appContext").also { it.isAccessible = true }
                         .get(bound) as? Context
-                    if (app != null && app.packageName != "android") return app
+                    if (app != null && app.packageName != "android") {
+                        L.i("context source: mBoundApplication pkg=${runCatching { app.packageName }.getOrDefault("?")}")
+                        return app
+                    }
                 }
             }
         } catch (t: Throwable) {
             L.w("ActivityThread context unreadable: ${t.javaClass.simpleName}: ${t.message}")
         }
+        if (loggedNone.compareAndSet(false, true)) L.i("context source: none - no Application yet")
         return null
     }
 

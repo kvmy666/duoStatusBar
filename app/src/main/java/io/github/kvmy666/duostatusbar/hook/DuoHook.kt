@@ -22,7 +22,10 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.hook.events.flashlightStateFromDispatch
+import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
+import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
@@ -94,6 +97,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private var monitor: DuoStateMonitor? = null
     private var statusBarRoot: View? = null
 
+    /** How many unreachable-provider re-reads have been scheduled since the last successful read. */
+    private var settingsRereadAttempt = 0
+
+    /** One-shot logging gates, so a repeated apply does not flood the report with the same cause. */
+    private val logOnce = LogOnce()
+
     /**
      * The keyguard/shade window (FR-03b). On the lock screen the `StatusBar` window still draws our
      * element, but the keyguard's own status bar is a *second* bar in this window and sits on top of
@@ -113,13 +122,21 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         { listOf("shade window" to shadeRoot, "shade header" to shadeHeader) }
     )
 
-    /** The ROM adapter, used only to resolve resource ids against SystemUI's package. */
-    private val rom = RomDetection.forThisRom(
+    /**
+     * The ROM adapter, used only to resolve resource ids against SystemUI's package.
+     *
+     * A plain field, not `lazy`: the SystemUI markers need a context to read the installed APK/class, and
+     * a lazy initializer that happened to run before `app` existed would freeze the UNKNOWN result for
+     * the whole process. It starts as the UNKNOWN resolution (old brand behaviour) and [start] reassigns
+     * it as soon as a context exists. The first use happens inside hooks, after [start].
+     */
+    private var rom: RomAdapter = RomDetection.forThisRom(
         Build.MANUFACTURER.orEmpty(),
         Build.BRAND.orEmpty(),
         Build.PRODUCT.orEmpty(),
         Build.DISPLAY.orEmpty(),
-        Build.VERSION.SDK_INT
+        Build.VERSION.SDK_INT,
+        RomMarkers.UNKNOWN
     )
 
     /**
@@ -132,14 +149,37 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         val ctx = app ?: return@Runnable
         L.guard("DuoHook settings changed") {
             val applySavedSize = orientationPending.getAndSet(false)
-            val stage = DuoGuard(ctx).stage()
+            val guard = DuoGuard(ctx)
+            val stage = guard.stage()
+            // C10: an adb override pinning 0 is a real "off", never an unreachable provider.
+            val adbOverride = guard.override() != null
+            val action = settingsApplyAction(
+                stage,
+                adbOverride,
+                DuoSettingsClient.providerUnreachable,
+                DuoSettingsClient.servedFromBridge,
+                host?.duo != null
+            )
+            if (action == SettingsApplyAction.KEEP_UNREACHABLE) {
+                // The unreachable read is ModuleSettings.DEFAULT; applying it would visually reset the
+                // live element, so keep the current settings until a read succeeds. Do not consume a
+                // pending rotation apply either - the next successful read still has to draw it.
+                if (applySavedSize) orientationPending.set(true)
+                scheduleSettingsReread()
+                reporter.report(ctx, stage, null)
+                return@guard
+            }
+            settingsRereadAttempt = 0
             val settings = host?.refreshSettings(applySavedSize)
-            when {
-                stage == DuoGuard.OFF -> {
+            when (action) {
+                SettingsApplyAction.TEARDOWN -> {
                     // Stop the broadcast receiver, content observer, screenshot watcher and heartbeat
                     // before tearing the host down. Leaving the monitor registered kept every
                     // RSSI/connectivity refresh (and the 20 s Settings.Global write) alive with no
                     // element attached after a live disable.
+                    logOnce.once("settings-off-teardown") {
+                        L.i("settings apply: stage OFF from the settings source - tearing down (stock icons restored)")
+                    }
                     monitor?.stop()
                     monitor = null
                     host?.teardown()
@@ -147,11 +187,38 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // Switched on live: install the full boot hook set first, then attach. Attaching only
                 // the main bar left the shade/vendor/tint/orientation hooks missing until a restart.
                 // enable() installs them behind its one-shot guard and schedules the attach itself.
-                host?.duo == null -> enable(ctx, attempt = 0)
-                else -> monitor?.refresh()
+                SettingsApplyAction.ENABLE -> enable(ctx, attempt = 0)
+                SettingsApplyAction.REFRESH -> monitor?.refresh()
+                SettingsApplyAction.KEEP_UNREACHABLE -> Unit
             }
             reporter.report(ctx, stage, settings)
         }
+    }
+
+    /**
+     * Re-reads the settings after an unreachable provider looked like "off" (C-07 / I-2).
+     *
+     * The element is deliberately kept: an unreachable provider is not a user decision, and tearing the
+     * live element down would blank a working bar. The budget is bounded but never ends in a teardown -
+     * once exhausted, the loop waits for the next real settings change (or the next boot read).
+     */
+    private fun scheduleSettingsReread() {
+        if (settingsRereadAttempt >= StageRetry.retryCount) {
+            logOnce.once("settings-reread-exhausted") {
+                L.w(
+                    "settings provider still unreachable after ${StageRetry.budgetMs} ms - " +
+                        "keeping the element, waiting for the next settings change"
+                )
+            }
+            return
+        }
+        val delay = StageRetry.delayFor(settingsRereadAttempt) ?: return
+        settingsRereadAttempt++
+        logOnce.once("settings-reread-keep") {
+            L.w("stage reads OFF but the settings provider is unreachable - keeping the element and re-reading in $delay ms")
+        }
+        handler.removeCallbacks(settingsApply)
+        handler.postDelayed(settingsApply, delay)
     }
 
     fun install() {
@@ -170,12 +237,18 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // users' logs show exactly that: "MainHook loaded" then silence, and the element never drew.
             // Watching addView from the first instant of the process catches the window on every ROM.
             hookWindowManagerAddView()
+            L.i("install step: window-hook")
             hookApplication()
+            L.i("install step: app-hook")
             // If the Application already exists (injected late), start now; otherwise Application.onCreate
             // calls [start] the moment it fires, and [bootstrap] retries in case neither is ready yet.
             adoptExistingWindows()
+            L.i("install step: adopt-existing")
             startWithCurrentApplication()
+            L.i("install step: start-existing")
             bootstrap()
+            L.i("install step: bootstrap")
+            L.i("install step: done")
         }
     }
 
@@ -275,6 +348,17 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun start(ctx: Context) {
         if (!ProcessState.started.compareAndSet(false, true)) return
         app = ctx
+        // Now that a context exists the SystemUI package can be inspected. Only a successful read that
+        // proves a non-MIUI SystemUI may switch a Xiaomi-brand device to AOSP; an unreadable one keeps
+        // the old HyperOS/brand behaviour (see [RomMarkers]).
+        rom = RomDetection.forThisRom(
+            Build.MANUFACTURER.orEmpty(),
+            Build.BRAND.orEmpty(),
+            Build.PRODUCT.orEmpty(),
+            Build.DISPLAY.orEmpty(),
+            Build.VERSION.SDK_INT,
+            RomMarkerSource.read(ctx)
+        )
         L.guard("DuoHook start") {
             // The settings/restart receiver goes in *before* the gate. It is the app's only way to reach a
             // module that read itself as "off": "Restart System UI" and a live enable both arrive here.
@@ -312,12 +396,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // Retry only while the provider itself was unreachable; a real "off" answer is final.
                 // An unreachable read looks like "off", so it must not be treated as the other
                 // orientation being off too — that would skip the hooks and never retry.
-                if (DuoSettingsClient.providerUnreachable && attempt < MAX_STAGE_RETRIES) {
-                    L.w("settings provider unreachable (attempt ${attempt + 1}/$MAX_STAGE_RETRIES) - retrying")
-                    handler.postDelayed({
-                        L.guard("DuoHook enable retry") { enable(ctx, attempt + 1) }
-                    }, STAGE_RETRY_MS)
-                    return@guard
+                if (DuoSettingsClient.providerUnreachable && attempt < StageRetry.retryCount) {
+                    val delay = StageRetry.delayFor(attempt)
+                    if (delay != null) {
+                        L.w("settings provider unreachable (attempt ${attempt + 1}/${StageRetry.retryCount}) - retrying")
+                        handler.postDelayed({
+                            L.guard("DuoHook enable retry") { enable(ctx, attempt + 1) }
+                        }, delay)
+                        return@guard
+                    }
                 }
                 // Off in *both* orientations leaves the process untouched, the same as a single off switch.
                 // Off in only this orientation still installs the hooks: rotating has to be able to attach
@@ -760,14 +847,17 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 L.w("shade/QS coverage hook absent: ${t.javaClass.simpleName}: ${t.message}")
             }
 
+            var phase = "manager"
             try {
                 val cls = XposedHelpers.findClass(
                     "com.android.systemui.shade.ShadeExpansionStateManager",
                     lp.classLoader
                 )
+                phase = "panelType"
                 val panelType = XposedHelpers.findClass(
                     "com.android.systemui.shade.PanelType", lp.classLoader
                 )
+                phase = "method"
                 XposedHelpers.findAndHookMethod(
                     cls, "onPanelExpansionChanged",
                     Float::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
@@ -839,6 +929,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     detail = "${t.javaClass.simpleName}: ${t.message}"
                 )
                 L.w("shade panel expansion hook unavailable: ${t.javaClass.simpleName}: ${t.message}")
+                L.w("shade panel expansion lookup failed at phase=$phase - panel owner falls back to attach order: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
@@ -1152,13 +1243,5 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         const val SETTINGS_DEBOUNCE_MS = 250L
         const val RETRY_MS = 2_000L
         const val MAX_ATTEMPTS = 6
-
-        /**
-         * How many times a boot-time stage read is retried when the settings provider is unreachable, and
-         * the gap between them. Covers the app process still starting on ColorOS/realme without mistaking a
-         * genuinely switched-off module (whose provider answers) for a broken one.
-         */
-        const val MAX_STAGE_RETRIES = 5
-        const val STAGE_RETRY_MS = 1_500L
     }
 }

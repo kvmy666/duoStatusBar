@@ -25,7 +25,9 @@ class MainHook : IXposedHookLoadPackage {
                 // A report without them cannot tell "Rive is denied by SELinux" from "Rive crashed".
                 L.i("device: selinux=${DeviceFacts.selinux()} abi=${DeviceFacts.abi()} " +
                         "sdk=${android.os.Build.VERSION.SDK_INT}")
+                L.i("MainHook step: target matched - installing DuoHook")
                 DuoHook(lpparam).install()
+                L.i("MainHook step: DuoHook.install completed")
             } else {
                 L.i("out of scope: not SystemUI - doing nothing")
             }

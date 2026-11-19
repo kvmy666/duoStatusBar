@@ -228,6 +228,11 @@ internal object DuoSettingsClient {
     var providerUnreachable: Boolean = false
         private set
 
+    /** Whether the last [read] was answered by the signed app bridge because the provider was unreachable. */
+    @Volatile
+    var servedFromBridge: Boolean = false
+        private set
+
     // ------------------------------------------------------------ provider-independent bridge
     // On a ROM where System UI cannot see the app's provider (One UI 8: "Unknown authority"), settings
     // arrive over a broadcast. The payload is the exact provider row, parsed by the same [fromCursor], so
@@ -311,6 +316,7 @@ internal object DuoSettingsClient {
     fun read(context: Context): ModuleSettings {
         ensureBridge(context)
         val orientation = effectiveOrientation(context)
+        servedFromBridge = false
         val fromProvider = readProvider(context, orientation)
         if (fromProvider != null) {
             providerUnreachable = false
@@ -320,6 +326,7 @@ internal object DuoSettingsClient {
         val bridged = if (orientation == Configuration.ORIENTATION_LANDSCAPE) bridgeLandscape else bridge
         if (bridged != null) {
             L.i("settings via bridge (rev ${bridged.revision})")
+            servedFromBridge = true
             return bridged
         }
         requestFromApp(context)
