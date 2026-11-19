@@ -15,7 +15,7 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-04 | Animations powered by Rive | 2, 4 | `[x]` |
 | FR-05 | Integration with Auto Expand (my other module): tap/double-tap/… actions from the status bar | 6 | `[ ]` |
 | FR-06 | States: Wi-Fi, 4G/5G, DND, airplane mode, charging | 3 | `[x]` |
-| FR-07 | No conflict with live notifications — user chooses Duo, notifications, or both | 8 | `[ ]` |
+| FR-07 | No conflict with live notifications — user chooses Duo, notifications, or both | 8 | `[x]` |
 | FR-08 | Stock battery / signal / Wi-Fi are **really** removed (not covered); silent mode and the rest hidden too | 3 | `[x]` |
 | FR-09 | Every setting in the app has an **infinite looping animation** explaining on/off behaviour | 5 | `[~]` |
 | FR-10 | Premium Material design, built on established frameworks (no hand-rolled UI kit) | 5 | `[ ]` |
@@ -27,8 +27,8 @@ KernelSU + LSPosed v2.2.0 (7854)**. Design spec: [`DESIGN-duo.md`](DESIGN-duo.md
 | FR-16 | Optional charging/battery percentage in the middle, splitting the indicator in two halves | 3, 5 | `[~]` |
 | FR-17 | Live dragging so the user controls the position inside the status bar | 5 | `[ ]` |
 | FR-18 | Tapping it triggers user actions **without** conflicting with Auto Expand; clear separation when both exist | 6 | `[ ]` |
-| FR-19 | `plan` + requirements `.md` with checkmarks · `draw.io` architecture file · function-dependency file | 0, 1 | `[x]` |
-| FR-20 | Use-case tests per feature, tested in many conditions; test features individually, not full regression | all | `[ ]` |
+| FR-19 | requirements `.md` with checkmarks · function-dependency file (historical plan/diagram retired) | 0, 1 | `[x]` |
+| FR-20 | Use-case tests per feature, tested in many conditions; test features individually, not full regression · [`test-cases.md`](test-cases.md) | all | `[~]` |
 | FR-21 | Never break SystemUI: try/catch everywhere, fail silently | all | `[x]` |
 | FR-22 | Plan split into small phases, executed incrementally / agile | all | `[x]` |
 | FR-23 | Ambiguity is returned to you instead of being decided silently | all | `[x]` |

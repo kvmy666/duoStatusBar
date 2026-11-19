@@ -27,7 +27,7 @@ So on those devices Rive **does** start and the state machine **is** playing; th
 fires. What stops is the *idle* motion, about 3 seconds after the last change, by design:
 
 - `DuoRiveView.idleStop` pauses the renderer so a looping idle animation cannot keep drawing at frame
-  rate (the fix for the reported 130 mAh vs ~15 mAh drain — see `docs/plan.md` Phase 12).
+  rate (the fix for the reported 130 mAh vs ~15 mAh drain — see `AGENTS.md` C8).
 - Every real change (`render`, `reveal`) restarts it, so charging, the reveal and state changes animate;
   only ambient idle motion is stopped.
 

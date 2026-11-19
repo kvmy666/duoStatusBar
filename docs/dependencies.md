@@ -7,29 +7,29 @@ Read it top-down for design, bottom-up for debugging.
 
 ```
 BatteryManager / BroadcastReceiver(ACTION_BATTERY_CHANGED)
-      └─> DuoStateBinder.battery() ──┐
+      └─> DuoStateMonitor.battery() ──┐
 WifiManager (WIFI_STATE / RSSI)       │
-      └─> DuoStateBinder.wifi()    ──┤
+      └─> DuoStateMonitor.wifi()    ──┤
 TelephonyManager (signal / 4G-5G)     ├─> DuoState (immutable snapshot)
-      └─> DuoStateBinder.cellular()─┤        │
+      └─> DuoStateMonitor.cellular()─┤        │
 Settings.Global.airplane_mode_on      │        ├─> DuoRiveView.inputs()   (Rive state machine)
-      └─> DuoStateBinder.airplane()─┤        ├─> DuoRiveView.palette()   (green/yellow/red)
-NotificationManager (DND)             │        └─> DuoGestureBridge.actions()
-      └─> DuoStateBinder.dnd()    ──┘
+      └─> DuoStateMonitor.airplane()─┤        ├─> DuoRiveView.palette()   (green/yellow/red)
+NotificationManager (DND)             │        └─> ElementGestures.actions()
+      └─> DuoStateMonitor.dnd()    ──┘
 ```
 
 ## 2. Component → depends on → breaks what if it fails
 
 | Component | Depends on | If it fails, what stops working | Fail behaviour required |
 |---|---|---|---|
-| `ProbeHook` / `ProbeReport` (Phase 0) | SystemUI classloader, `Application.onCreate` | Evidence collection only | log + continue (never throws) |
-| `DuoIconHider` (FR-08) | `StatusBarIconControllerImpl` (real method names from P-01) | Stock icons stay visible → the Duo element overlaps them | do **not** draw the Duo element either; log; auto-disable after N strikes |
-| `DuoInjector` (FR-03) | status-bar view found via `WindowManagerImpl.addView` (P-02), plus `KeyguardStatusBarView` for the lock screen | nothing on screen | log; keep stock status bar intact |
+| `MainHook` / `DeviceFacts` / `Diag` / `HookReporter` (current evidence path) | SystemUI classloader (`lpparam.classLoader`), `Application.onCreate` hook install | Diagnostic dump/report only | log + continue (never throws) |
+| `StockIconHider` / `DuoIconHost` (FR-08) | `StatusBarIconControllerImpl` (real method names from P-01) | Stock icons stay visible → the Duo element overlaps them | do **not** draw the Duo element either; log; auto-disable after N strikes |
+| `DuoHook` / `DuoIconHost` (FR-03) | status-bar view found via `WindowManagerImpl.addView` (P-02), plus `KeyguardStatusBarView` for the lock screen | nothing on screen | log; keep stock status bar intact |
 | `DuoRiveView` (FR-04) | `librive.so` loadable in SysUI (P-03) + `.riv` asset readable from the module APK | animation missing | fall back to a static vector draw (or nothing), never crash |
-| `DuoStateBinder` (FR-06/15) | the four system services above; the receivers must be cancelled on disable | wrong/blank values | last known value, no throw |
-| `DuoGestureBridge` (FR-05/18) | `GestureDetector` on the Duo view + Auto Expand coexistence flag | taps do nothing | log; Auto Expand keeps working untouched |
-| `PrefsBridge` (NFR-5) | prefs file written by the app + readable inside SysUI | settings appear ignored | ship compiled-in defaults |
-| `SafetyGuard` (FR-21/NFR-4) | every hook registers here | a fault becomes a bootloop | hard rule: all hooks go through `L.guard{}` |
+| `DuoStateMonitor` (FR-06/15) | the four system services above; the receivers must be cancelled on disable | wrong/blank values | last known value, no throw |
+| `ElementGestures` (FR-05/18) | `GestureDetector` on the Duo view + Auto Expand coexistence flag | taps do nothing | log; Auto Expand keeps working untouched |
+| `DuoPrefs` / settings provider (NFR-5) | prefs file written by the app + readable inside SysUI | settings appear ignored | ship compiled-in defaults |
+| `DuoGuard` (FR-21/NFR-4) | every hook registers here | a fault becomes a bootloop | hard rule: all hooks go through `L.guard{}` |
 
 ## 3. Cross-module contracts
 

@@ -4,7 +4,7 @@
 
 | Item | Value |
 |---|---|
-| Product state | `1.8.0-alpha.8`, versionCode 97 |
+| Product state | `2.0.2`, versionCode 102 |
 | Scope | The Android app shell (`GlassBackdrop`, `GlassSurface`, `GlassControls`, `DuoShell`) |
 | Not in scope | The SystemUI module. Its status-bar element stays on the Canvas/Rive path and never links Backdrop (`GlassSurface.kt:118-126`). |
 | Dependency | `io.github.kyant0:backdrop:1.0.1` |
@@ -12,7 +12,7 @@
 | Document date | 2026-11-06 |
 
 This document describes the glass as it is built, not a proposed redesign. The measured ColorDuo numbers are
-factual literals obtained from a read-only APK analysis (`agent/archive/originals/AGILE-1.7-COLORDUO.md`); no ColorDuo source,
+factual literals obtained from a read-only APK analysis (`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.7-COLORDUO.md`)); no ColorDuo source,
 shader text or drawable asset is copied into Duo. The implementation in this repository is independent.
 
 **Naming traps before you read further**
@@ -64,7 +64,7 @@ implementation(libs.backdrop)
 
 The Phase 5 dependency audit rejected `2.0.1`: it is a Compose Multiplatform JAR requiring Kotlin 2.4.10 and
 CMP 1.12, which is a different stack. Do not "upgrade" the coordinate without re-testing the effect order and
-the Highlight constructor (`agent/archive/originals/PHASE-5-PLAN.md:15-29`).
+the Highlight constructor (`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-5-PLAN.md`)).
 
 ### 1.3 API surface actually used
 
@@ -114,7 +114,7 @@ barBackdrop = rememberCombinedBackdrop(wallpaper, page)
 
 - `content` receives `wallpaper`, not the combined layer. Cards and controls inside the page therefore sample
   the static wallpaper and never the layer that contains themselves. This is the structural fix for the
-  RC-017 recursive-capture crash (`GlassSurface.kt:117-126`, `agent/archive/originals/PHASE-5-REPORT.md` C-01).
+  RC-017 recursive-capture crash (`GlassSurface.kt:117-126`, `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-5-REPORT.md`) C-01).
 - `floatingBar` and `scrollEdge` receive `barBackdrop`. The bar can refract the page content; the scroll edge
   can blur the page under the top/bottom edge.
 - The nav adds two more recordings (`DuoShell.kt:165-168`):
@@ -161,7 +161,7 @@ Treat their exact compositing order as library-owned and verify it if you pin a 
 
 **Color controls.** Duo uses brightness `0.04`, contrast `1.0`, saturation `1.5`
 (`GlassSurface.kt:54-57`). Saturation 1.5 matches the measured ColorDuo vibrancy matrix; the matrix is a
-Rec.709 saturation matrix, not an arbitrary color grade (`agent/archive/originals/AGILE-1.7-COLORDUO.md:89-104`).
+Rec.709 saturation matrix, not an arbitrary color grade (`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.7-COLORDUO.md`)).
 
 **Blur.** The argument is in pixels. `GlassTokens.NavigationBlur = 12.dp` is converted at the draw site with
 `toPx()` (`GlassSurface.kt:220`). Passing `16f` as if it were dp was the early flat-glass bug
@@ -169,7 +169,7 @@ Rec.709 saturation matrix, not an arbitrary color grade (`agent/archive/original
 
 **Lens.** `refractionHeight` and `refractionAmount` are pixel distances. The measured liquid values are
 24 dp / 24 dp with `depthEffect = true` and `chromaticAberration = true`
-(`agent/archive/originals/AGILE-1.7-COLORDUO.md:47-50, 106-115`). The lens is a runtime shader; it needs API 33+ and is the most
+(`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.7-COLORDUO.md`)). The lens is a runtime shader; it needs API 33+ and is the most
 expensive effect in the chain. Duo does not author AGSL: it calls the library's lens with the measured uniforms.
 That is a requirement (GLASS3-01), not an implementation detail. The measured reference shader uses a seven-tap
 dispersion for chromatic aberration; Duo only toggles the boolean.
@@ -206,8 +206,8 @@ idea is why the selector animates width/height through layout, never `scale` (`D
 The trigger is `Build.FINGERPRINT` / `Build.HARDWARE` (`generic`, `emulator`, `ranchu`, `goldfish`). The
 comment records the reason: the API 36 emulator's software GPU produced 263 ms frames and an ANR on the live
 lens path (`GlassSurface.kt:95-99`). Phase 7 measured a full live-glass ANR; three surfaces were reduced to one
-live bar on phones, static cards, and static controls on the emulator (`agent/archive/originals/PHASE-7-REPORT.md:27-34`,
-`agent/archive/originals/WALKTHROUGH-REVIEW-1.5.0.md:53-64`).
+live bar on phones, static cards, and static controls on the emulator (`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-7-REPORT.md`),
+`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: WALKTHROUGH-REVIEW-1.5.0.md`)).
 
 Fallback paths:
 
@@ -315,7 +315,7 @@ the pill + row. The pill does not sample its own recorded layer: it samples `pag
 The press glow is drawn inside the pill recording box after the pill surface (`DuoShell.kt:332-365`). It is
 therefore part of `tabsBackdrop` and is sampled by the selector on the next frame. It is a radial white
 `0.16 * press`, radius `1.5 * selectorHeight`, inset 8 dp, clipped to the pill shape. This is a measured
-ColorDuo behaviour (`agent/archive/originals/AGILE-1.7-COLORDUO.md:165-186`).
+ColorDuo behaviour (`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.7-COLORDUO.md`)).
 
 ### 3.5 The selector
 
@@ -443,7 +443,7 @@ Legend:
 **Measured navigation literals:** blur 12 dp; lens 24/24 with depth + chroma; dark/light tint 0.40; 64 dp pill;
 50% shape; rim 0.75/0.4 dp at 0.78/0.96; white 0.5 highlight at 45°, falloff 1.0; press reflection 0.16;
 reference full-row selection tint 0.16; saturation 1.5; press/stretch/settle springs. These are the numbers
-you can defend with `agent/archive/originals/AGILE-1.7-COLORDUO.md`.
+you can defend with `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.7-COLORDUO.md`).
 
 **Not measured:** card blur/tint, control blur/tint/lens, selector frost, idle highlight factor, inner shadow,
 selector drop shadow, selector geometry, tab icon sizes/label style, the 0.04 moving tint, the 0.45x idle
@@ -458,10 +458,10 @@ material, not as a clone.
 ### 4.3 Two measured-literal warnings
 
 1. **`BarBlurRadius = 40.0f` is not a blur radius.** In ColorDuo it is constant-folded into the highlight angle
-   sweep `45° + 40 * velocity` (`agent/archive/originals/AGILE-1.7-COLORDUO.md:117-125`). The actual glass blur is 12 dp. Do not
+   sweep `45° + 40 * velocity` (`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.7-COLORDUO.md`)). The actual glass blur is 12 dp. Do not
    port 40 as a blur.
 2. **`PROGRESSIVE_BLUR_ALPHA_MASK_SHADER` has no consumer in the measured APK.** The string exists but no smali
-   reference uses it (`agent/archive/originals/AGILE-1.7-COLORDUO.md:127-129`). Do not infer a progressive-blur implementation
+   reference uses it (`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.7-COLORDUO.md`)). Do not infer a progressive-blur implementation
    from its presence; Duo's scroll edge is its own `DstIn` mask.
 
 ---
@@ -636,13 +636,15 @@ if (wallpaper == null) {
 | `1.8.0-alpha.3` | 92 | `9467e98` | Packaged nav icons; movement-only lens; 5-bar cell map; explicit seats | Delivered |
 | `1.8.0-alpha.4` | 93 | `e047324` | v89 extras, center bolt, clock, unsnapped sliders | Delivered |
 | `1.8.0-alpha.5` | 94 | `d82fbd7` | Shade seat; presets removed; selected blue / others white; idle static rim; lens movement-only | Delivered; phone was offline for direct install |
-| `1.8.0-alpha.6` | — | not recorded | Not described in `AGILE-1.8-NOTES.md` | Unknown |
+| `1.8.0-alpha.6` | — | not recorded | Not described in `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) | Unknown |
 | `1.8.0-alpha.7` | 96 | `6611fe2` | Pill owns blur; selector below row with no blur; frost 0.12/0.06; inner + drop shadow; always-on highlight | Movement lens disappeared |
-| `1.8.0-alpha.8` | 97 | `3d5ea0d` | Idle: row above selector; moving: selector above row and samples page + pill + row; lens/chroma restored | Current; owner visual pass pending in the notes |
+| `1.8.0-alpha.8` | 97 | `3d5ea0d` | Idle: row above selector; moving: selector above row and samples page + pill + row; lens/chroma restored | Historical; owner visual pass pending in the notes |
+| `1.8.0-alpha.9` | — | not recorded | Security and correctness fixes; details not documented in this file; glass-specific changes not documented | not recorded |
+| `1.8.0-alpha.10` | 99 | `5ba4188` | 20% is critical red; QS extras use the applied drawing before the main bar exists; QS indicator cluster keeps its alpha.8 seat while shade/keyguard retain the capped size; all alpha.9 security/correctness fixes included | Historical; glass-specific changes not documented |
 
 The Phase 5 report declared beta.14 "locked" against Phase 6–8 visual retuning. The 1.6 ColorDuo pass and the
 1.8 selector work later revised the navigation material. Treat that lock as scoped to the Phase 5 prototype,
-not as a promise that the navigation glass would never change (`agent/archive/originals/PHASE-5-REPORT.md:1-6`).
+not as a promise that the navigation glass would never change (`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-5-REPORT.md`)).
 
 ### 6.2 Wrong turns and the rule each produced
 
@@ -659,10 +661,10 @@ not as a promise that the navigation glass would never change (`agent/archive/or
 
 ### 6.3 Verification status
 
-`AGILE-1.8-NOTES.md` records alpha.8 as installed on CPH2747 (13:50:03) and delivered to the owner, with the
-owner visual pass still pending. Gates at that build: 482 unit tests, 0 failures; release build passes; route
+`agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) records alpha.8 as installed on CPH2747 (13:50:03) and delivered to the owner, with the
+owner visual pass still pending. Gates at that build (historical): 482 unit tests, 0 failures; release build passes; route
 log check clean; both Rive scenes 158/158 keyframes with easing. The notes explicitly leave the movement lens
-unverified on device. Other ROMs remain `unverified`.
+unverified on device. The current build is `2.0.2`, versionCode 102 (`app/build.gradle.kts:47-48`); glass-specific changes and test numbers after alpha.10 are not documented in this file. Other ROMs remain `unverified`.
 
 The owner feedback that drove alpha.8 was concrete: the shade was fixed and the idle selector was right, but
 the liquid lens disappeared during movement. Alpha.8 restores it by changing the z-order and the moving
@@ -927,14 +929,14 @@ contract in one place.
 
 ### Project evidence and decisions
 
-- `agent/archive/originals/AGILE-1.7-COLORDUO.md` — statically measured ColorDuo 1.1.7 values, warnings, porting map.
-- `agent/archive/originals/AGILE-1.8-NOTES.md` — alpha.2 through alpha.8 build notes and open verification.
-- `agent/archive/originals/AGILE-1.8-REQUIREMENTS.md` — GLASS3-01/02, NAV3-01.
-- `agent/archive/originals/AGILE-1.8-PLAN.md` — rim ownership, one live surface, no custom AGSL.
-- `agent/archive/originals/PHASE-5-PLAN.md` — dependency audit, Apple-reference implementation, beta.14.
-- `agent/archive/originals/PHASE-5-REPORT.md` — beta.14 lock, RC-017, selector/controls/scroll work.
-- `agent/archive/originals/PHASE-7-REPORT.md` — adaptive glass quality and the ANR finding.
-- `agent/archive/originals/WALKTHROUGH-REVIEW-1.5.0.md` — all-live glass review and performance baseline.
+- `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.7-COLORDUO.md`) — statically measured ColorDuo 1.1.7 values, warnings, porting map.
+- `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) — alpha.2 through alpha.8 build notes and open verification.
+- `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-REQUIREMENTS.md`) — GLASS3-01/02, NAV3-01.
+- `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-PLAN.md`) — rim ownership, one live surface, no custom AGSL.
+- `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-5-PLAN.md`) — dependency audit, Apple-reference implementation, beta.14.
+- `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-5-REPORT.md`) — beta.14 lock, RC-017, selector/controls/scroll work.
+- `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-7-REPORT.md`) — adaptive glass quality and the ANR finding.
+- `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: WALKTHROUGH-REVIEW-1.5.0.md`) — all-live glass review and performance baseline.
 
 ### Measured ColorDuo identity
 

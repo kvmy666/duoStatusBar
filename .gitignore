@@ -49,7 +49,7 @@ logcat/
 # user-submitted diagnostics: private device data (SSIDs, hardware ids) - keep locally, never publish
 duo-diagnostics-*.txt
 diagnose from users/
-# pulled from the device by tools/dump-lsposed-scope.py - regenerate rather than commit
+# pulled from the device - regenerate rather than commit
 docs/evidence/modules_config.db*
 docs/evidence/*-statusbar.png
 

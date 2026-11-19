@@ -2,7 +2,7 @@
 
 **Status:** active from 2026-11-06. Owner: Abdulkarim.
 **Scope:** project state, working agreement, architecture, timeline, mistakes registry, review, and release gates.
-**Supersedes:** the old `agent/*` documents listed in section 1.3. They are archived under `agent/archive/originals/` and concatenated in `agent/archive/AGENT-DOCS-DEPRECATED.md`.
+**Supersedes:** the old `agent/*` documents listed in section 1.3. They are archived in `agent/archive/AGENT-DOCS-DEPRECATED.md` (raw originals removed).
 **Authority:** this file is the operational source of truth for `agent/`. The root `AGENTS.md` remains the short project charter; its C/M/m registry is reproduced and extended here. If a statement conflicts, the current-state section of this file wins for *current state*; safety rules never become weaker.
 
 ---
@@ -31,19 +31,9 @@ Read this file first, then the current device dump/log. Do not read an old plan 
 
 ### 1.3 Documents superseded by this file
 
-The following are historical after this file. The files now live under `agent/archive/originals/`, and their full contents are concatenated in `agent/archive/AGENT-DOCS-DEPRECATED.md`; the former `agent/README.md` index was replaced by the new short `agent/README.md`.
+The following are historical after this file. Their contents now live in the single archive file `agent/archive/AGENT-DOCS-DEPRECATED.md` as `## FILE:` blocks, and the former `agent/README.md` index was removed.
 
-- `agent/archive/originals/AGENT.md`, the former `README.md` index (replaced)
-- `agent/archive/originals/PLAN-v2.md`, `agent/archive/originals/PLAN-1.6.md`
-- `agent/archive/originals/REQUIREMENTS.md`, `agent/archive/originals/REQUIREMENTS-1.6.md`, `agent/archive/originals/REQUIREMENTS-GAP-AUDIT.md`
-- `agent/archive/originals/TEST-PLAN.md`, `agent/archive/originals/TEST-PLAN-1.6.md`, `agent/archive/originals/APP-TEST-PLAN.md`
-- `agent/archive/originals/AGILE-1.7-*.md`, `agent/archive/originals/AGILE-1.8-*.md`
-- `agent/archive/originals/CODE-REVIEW-PLAN-1.7.0.md`, `agent/archive/originals/CODE-REVIEW-REPORT-1.7.0.md`
-- `agent/archive/originals/CODE-REVIEW-PLAN-1.8.0.md`, `agent/archive/originals/WALKTHROUGH-PLAN-1.7.0.md`, `agent/archive/originals/WALKTHROUGH-PLAN-1.8.0.md`
-- `agent/archive/originals/PHASE-*-PLAN.md`, `agent/archive/originals/PHASE-*-REPORT.md`, `agent/archive/originals/PHASE-1-5-WALKTHROUGH.md`
-- `agent/archive/originals/REPAIR-CATALOG.md`, `agent/archive/originals/ICON-MISTAKES.md`, `agent/archive/originals/EVENT-ARCHITECTURE.md`
-- `agent/archive/originals/DECISIONS.md`, `agent/archive/originals/EVIDENCE.md`, `agent/archive/originals/UI-MATRIX.md`
-- the other one-off reports now in `agent/archive/originals/`
+- Archive section index (63 blocks): `AGENT.md`, `AGILE-1.7-CELL-MAP.md`, `AGILE-1.7-COLORDUO.md`, `AGILE-1.7-PLAN.md`, `AGILE-1.7-REQUIREMENTS.md`, `AGILE-1.7-TEST-PLAN.md`, `AGILE-1.7-TRANSITIONS-AFTER.md`, `AGILE-1.7-TRANSITIONS.md`, `AGILE-1.8-ALPHA11.md`, `AGILE-1.8-NOTES.md`, `AGILE-1.8-PLAN.md`, `AGILE-1.8-REQUIREMENTS.md`, `AGILE-1.8-TEST-PLAN.md`, `APP-TEST-PLAN.md`, `BRAINSTORM-2026-11-02.md`, `BRAINSTORM.md`, `CODE-REVIEW-PLAN-1.7.0.md`, `CODE-REVIEW-PLAN-1.8.0.md`, `CODE-REVIEW-REPORT-1.7.0.md`, `DECISIONS.md`, `DEVICE-TEST-REQUEST-1.8.0.md`, `DEVICE-TEST-REQUEST-2026-11-04.md`, `EMULATOR-CALL-TEST.md`, `EMULATOR-LOCK-TEST.md`, `EMULATOR-TEST-MATRIX.md`, `EVENT-ARCHITECTURE.md`, `EVENT-ICON-CANDIDATES.md`, `EVENT-ICONS-PULL-REPORT.md`, `EVIDENCE.md`, `ICON-MISTAKES.md`, `ICON-REDRAW-PLAN.md`, `KEYGUARD-CROSS-UI-AUDIT.md`, `LIST-THE-PLAN.md`, `MODEL-ROUTING.md`, `PHASE-1-5-WALKTHROUGH.md`, `PHASE-1-CHECKPOINT.md`, `PHASE-1-REPORT.md`, `PHASE-1-TEST.md`, `PHASE-2-REPORT.md`, `PHASE-3-REPORT.md`, `PHASE-4-PLAN.md`, `PHASE-4-REPORT.md`, `PHASE-5-PLAN.md`, `PHASE-5-REPORT.md`, `PHASE-6-REPORT.md`, `PHASE-7-REPORT.md`, `PHASE-8-REPORT.md`, `PLAN-1.6.md`, `PLAN-v2.md`, `RELEASE-NOTES-1.7.0.md`, `REPAIR-CATALOG.md`, `REQUIREMENTS-1.6.md`, `REQUIREMENTS-GAP-AUDIT.md`, `REQUIREMENTS.md`, `ROM-PROFILE-ASSET-AUDIT.md`, `SCREENSHOT-SOURCE-AUDIT.md`, `TEST-PLAN-1.6.md`, `TEST-PLAN.md`, `UI-MATRIX.md`, `WALKTHROUGH-PLAN-1.7.0.md`, `WALKTHROUGH-PLAN-1.8.0.md`, `WALKTHROUGH-REVIEW-1.5.0.md`, `WALKTHROUGH-REVIEW-PHASES-1-8.md`
 
 They remain useful as evidence and history. They are **not** current instructions.
 
@@ -53,7 +43,7 @@ They remain useful as evidence and history. They are **not** current instruction
 2. Do not create another parallel plan, requirements file or test plan for the same release. Add a dated subsection here instead.
 3. All file names and file contents are English. The owner communicates in Arabic; the repository stays English.
 4. Evidence stays under `docs/evidence/` (git-ignored). Never commit evidence, vendor APKs, user dumps, `.env`, keystores, or `.kilo/`.
-5. Keep old `agent/` files under `agent/archive/originals/` (one archive file plus raw originals); do not delete history silently.
+5. Keep old `agent/` files in the single archive file `agent/archive/AGENT-DOCS-DEPRECATED.md`; do not delete history silently.
 6. Every user-facing string belongs in `res/values/strings.xml` when practical; no developer jargon in UI copy.
 7. Keep the root `AGENTS.md` short and stable. Keep the detail in this file.
 
@@ -71,19 +61,19 @@ They remain useful as evidence and history. They are **not** current instruction
 | Version | `1.8.0-alpha.8` | `app/build.gradle.kts:47-48` |
 | versionCode | `97` | `app/build.gradle.kts:47` |
 | APK | `app/build/outputs/apk/release/app-release.apk`, 7,511,605 bytes, built 13:48:18 | file stat |
-| APK SHA-256 | `28b19f230d705baed4b55faac6616e15319bc1c53578034706f29999a8a1c833` | `sha256sum`; `agent/archive/originals/AGILE-1.8-NOTES.md` |
-| Install | installed on CPH2747 at 13:50:03; delivered through Telegram message 45 | `agent/archive/originals/AGILE-1.8-NOTES.md` |
+| APK SHA-256 | `28b19f230d705baed4b55faac6616e15319bc1c53578034706f29999a8a1c833` | `sha256sum`; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) |
+| Install | installed on CPH2747 at 13:50:03; delivered through Telegram message 45 | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) |
 | Worktree | no app source diff; the documentation/organization changes are committed on the branch (not untracked); older agent docs live under `agent/archive/` | `git status --short` |
-| Rollback baseline | 1.7.0 stable, versionCode 89, 449 tests, APK SHA-256 `3e15a8a92502f73773c459baffe9c7fae80e19a93417ea4d041126192519a2a6` | `agent/archive/originals/RELEASE-NOTES-1.7.0.md` |
+| Rollback baseline | 1.7.0 stable, versionCode 89, 449 tests, APK SHA-256 `3e15a8a92502f73773c459baffe9c7fae80e19a93417ea4d041126192519a2a6` | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: RELEASE-NOTES-1.7.0.md`) |
 
 ### 2.2 Device truth
 
 | Device | State | Evidence tier |
 |---|---|---|
 | CPH2747, OxygenOS 16 / Android 16 / SDK 36 | measured; alpha.8 installed | owner-confirmed install; no alpha.8 host log |
-| Xiaomi HyperOS 3 (24129PN74G) | measured historically | `AGENTS.md`; `agent/archive/originals/UI-MATRIX.md` |
-| AOSP emulator API 36 | prototype evidence only | `agent/archive/originals/PHASE-7-REPORT.md` |
-| Every other vendor UI | `unverified` | `agent/archive/originals/UI-MATRIX.md` |
+| Xiaomi HyperOS 3 (24129PN74G) | measured historically | `AGENTS.md`; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: UI-MATRIX.md`) |
+| AOSP emulator API 36 | prototype evidence only | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-7-REPORT.md`) |
+| Every other vendor UI | `unverified` | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: UI-MATRIX.md`) |
 
 CPH2747 is the only current device truth. A visual confirmation on it does not promote any other ROM.
 
@@ -139,12 +129,12 @@ The **movement** layering (selector above the row, combined row backdrop, lens/c
 
 | Conflict | Sources | Current state / decision |
 |---|---|---|
-| Alpha.8 "device verification pending" vs the reported final state | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.8 vs the 2026-11-06 owner brief | Shade fixed and idle selector are owner-confirmed; movement lens restored in alpha.8 but not yet visually confirmed; no fresh dump is claimed |
-| 1.8 requirement says animated runtime Rive design cards | `agent/archive/originals/AGILE-1.8-REQUIREMENTS.md` DEMO3-01 | Current implementation uses static PNG cards; the owner later chose static assets to stop the crash |
-| `classic_demo.gif` vs `classic_demo.png` | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.2 vs `app/src/main/res/drawable/classic_demo.png` | The file on disk is `classic_demo.png`; the note is stale |
-| Shade seat: pre-Phase-1 `place()` vs v89 battery anchor | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.5 vs alpha.7/alpha.8 | Final: v89 battery-anchor placement, no clamp; owner confirmed |
+| Alpha.8 "device verification pending" vs the reported final state | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.8 vs the 2026-11-06 owner brief | Shade fixed and idle selector are owner-confirmed; movement lens restored in alpha.8 but not yet visually confirmed; no fresh dump is claimed |
+| 1.8 requirement says animated runtime Rive design cards | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-REQUIREMENTS.md`) DEMO3-01 | Current implementation uses static PNG cards; the owner later chose static assets to stop the crash |
+| `classic_demo.gif` vs `classic_demo.png` | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.2 vs `app/src/main/res/drawable/classic_demo.png` | The file on disk is `classic_demo.png`; the note is stale |
+| Shade seat: pre-Phase-1 `place()` vs v89 battery anchor | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.5 vs alpha.7/alpha.8 | Final: v89 battery-anchor placement, no clamp; owner confirmed |
 | `1.8.0-alpha.6` | No notes entry; git jumps from code 94 to 96 | Treat alpha.6/code 95 as undocumented and unreleased; do not invent changes |
-| 483 tests (alpha.3) vs 482 (alpha.4-alpha.8) | `agent/archive/originals/AGILE-1.8-NOTES.md` | Current suite is 482; the one-test difference is not explained by a current source |
+| 483 tests (alpha.3) vs 482 (alpha.4-alpha.8) | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) | Current suite is 482; the one-test difference is not explained by a current source |
 
 ---
 
@@ -182,57 +172,7 @@ These rules are inherited from the root `AGENTS.md` and updated with the 1.8 inc
 
 ## 4. Architecture map
 
-### 4.1 Runtime flow
-
-```text
-LSPosed
-  -> assets/xposed_init
-  -> MainHook.handleLoadPackage
-     -> SystemUiProcess.isTarget(packageName, processName)
-     -> DuoHook.install()
-        -> WindowManagerImpl.addView hook / existing-window adoption
-        -> status-bar, keyguard, QS and shade surfaces
-        -> OnePlusShadeHooks (measured OnePlus vendor paths)
-        -> status-icon container / tint / rotation hooks
-  -> DuoIconHost
-     -> ContainerFinder: resolve the strip / shade cluster
-     -> StockIconHider: hide only the replaced icons; keep the battery anchor
-     -> DuoElement: Rive or Canvas
-     -> SlotGeometry / RingGeometry / DuoIconHost.place:
-        size, right seat, battery anchor, extra seats, panel hand-off
-     -> DuoStateMonitor:
-        CellReader / WifiReader / DeviceStateReader / Battery / DND / events
-        -> DuoMapping -> DuoVisual
-        -> DuoBinder (Rive) or DuoCanvasView (Canvas)
-  -> settings channel:
-     app SharedPreferences -> DuoSettingsProvider / SettingsBridge -> SystemUI
-```
-
-### 4.2 Package responsibilities
-
-| Package | Responsibility | Key files |
-|---|---|---|
-| Root | Xposed entry, app startup, native Rive bootstrap, log router, root capture, device facts, process identity, app preview | `MainHook.kt`, `DuoApp.kt`, `MainActivity.kt`, `RiveInit.kt`, `L.kt`, `RootLogs.kt`, `RootProbe.kt`, `DeviceFacts.kt`, `SystemUiProcess.kt`, `DuoPreview.kt` |
-| `hook/` | SystemUI hook entry, host attach/hide/position, surfaces, transitions, renderers, mapping, state, diagnostics, events | `DuoHook.kt`, `DuoIconHost.kt`, `ContainerFinder.kt`, `DuoElement.kt`, `DuoRiveView.kt`, `DuoCanvasView.kt`, `DuoBinder.kt`, `DuoMapping.kt`, `DuoVisual.kt`, `SlotGeometry.kt`, `RingGeometry.kt`, `PanelHandoff.kt`, `DuoStateMonitor.kt`, `DuoGuard.kt`, `DuoLog.kt`, `Diag.kt` |
-| `hook/rom/` | ROM adapter/detection, measured profile asset, resource lookup | `RomAdapter.kt`, `RomDetection`, `RomProfiles.kt`, `RomResources.kt` |
-| `hook/events/` | Pure live-event contract and arbiter | `LiveEvent.kt`, `EventArbiter.kt` |
-| `settings/` | Settings schema/provider/bridge, backup, actions, health, stock-icon inventory, updates, Telegram delivery, stage override | `DuoPrefs.kt`, `DuoSettingsProvider.kt`, `SettingsBridge.kt`, `BackupCodec.kt`, `DuoActions.kt`, `ModuleHealth.kt`, `StockIconInventory.kt`, `UpdateChecker.kt`, `TelegramLog.kt`, `StageOverride.kt`, `ShellService.kt` |
-| `ui/` | Four-tab Compose shell, Home, Custom/Settings, Report, glass controls, previews, nav icons, theme | `DuoShell.kt`, `DuoHomeScreen.kt`, `DuoSettingsScreen.kt`, `DuoSettingsSections.kt`, `DuoSettingsComponents.kt`, `DuoReportScreen.kt`, `GlassSurface.kt`, `GlassControls.kt`, `DuoSettingPreview.kt`, `DesignDemo.kt`, `DuoTheme.kt` |
-| `rive/duo/` | Authored Rive scenes and build project | `scene.rml` (new/2 SIM), `scene_old.rml` (Classic), `rive.yaml` |
-| `app/src/main/res/raw/` | Shipped Rive binaries | `duo.riv`, `duo_old.riv` |
-| `app/src/main/assets/` | Measured/static ROM profiles and Xposed entry | `rom-profiles.json`, `xposed_init` |
-| `tools/` | Static gates and measurement helpers | `route-module-logs.py`, `check-rive-eases.py`, `check-perf.py`, `check-cell-report.py`, `check-rom-profile-assets.py` |
-| `docs/evidence/` | Screenshots, captures, logs, measurements (git-ignored) | `agile-1.7/`, `agile-1.8/`, `phase7/`, `full-app/` |
-
-### 4.3 Important ownership boundaries
-
-- **Size:** `SlotGeometry` pins the main slot width once at attach. Extras reuse that width; only the bar height caps them. Never re-measure after hiding the stock icons.
-- **Seat:** the main ring is right-seated by default (`0 = physical right edge`); Camera/`lockRing` is a separate centered mode. QS uses the measured battery anchor with `alignEnd`; the shade header uses the v89 extra seat. Extras never use the main `rightSeat` path.
-- **Battery line:** one level-derived `batteryLineStart` feeds Rive, Canvas and preview. The line's moving start is the left end; 0% draws a zero-length line at that end, 100% fills the span.
-- **Invert center:** persisted as `middle_slot=percent`; no new settings column. `middleY = -43.35`, `middleScale = 0.55`, `boltY = 49.5`; the Rive `eventGroup` y is 17. One percentage only.
-- **Panel hand-off:** `PanelHandoff` owns the crossfade/swap order; outgoing copy is held until the incoming copy is drawable. Do not add a second owner in a layout callback.
-- **Rive:** `DuoBinder` property names and `PROPERTY_COUNT` are a frozen contract. Both scenes must match. `DuoRiveView` resolves the raw resource by id, not path.
-- **Glass:** Backdrop 1.0.1 is the only glass library. The app-side pill owns the blur. The selector has no blur. The live path has one rim owner (Backdrop highlight); the manual rim is fallback-only.
+The code map — runtime flow, component/package responsibilities and ownership boundaries — now lives in [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md), kept current per release. This file no longer duplicates it; history and the timeline remain in §5 and the mistake registry in §6.
 
 ---
 
@@ -242,15 +182,15 @@ LSPosed
 
 | Step | Version / branch | Key outcome | Evidence |
 |---|---|---|---|
-| Phase 0 | docs/evidence, no code | Requirements, test plan, repair catalog, tools, measured baseline; 8 vendor maps planned | `agent/archive/originals/PLAN-v2.md` §5; `agent/archive/originals/UI-MATRIX.md` |
-| Phase 1 | `1.4.3-beta.1` (code 24), `phase/1-shade-qs` | Shade/QS/header owner follows SystemUI panel state; one visible copy; stock restored; unsafe reparent path removed; CPH2747 owner-approved | `agent/archive/originals/PHASE-1-REPORT.md` |
-| Phase 2 | `1.4.3-beta.1` (code 24), `phase/2-multi-ui` | `DuoLog` structured line, 2 MB ring, report ZIP, PII redaction, capability fields; 261 tests | `agent/archive/originals/PHASE-2-REPORT.md` |
-| Phase 3 | `1.4.3-beta.4` (code 27), `phase/3-app-customization` | Three-page shell, engine selector, presets, backup/import core, middle-slot choices, per-icon Wi-Fi/cell toggles, event prototype; 317 tests | `agent/archive/originals/PHASE-3-REPORT.md` |
-| Phase 4 | `1.4.4-beta.3` (code 30), `phase/4-cell-accuracy` | Explicit stock-level-to-four-dot mapping, slot-aware SIM selection, raw/max/dots diagnostics; 319 tests; CPH2747 full/5G measured | `agent/archive/originals/PHASE-4-REPORT.md` |
-| Phase 5 | `1.5.0-beta.14` (code 44), `phase/5-liquid-glass` | Liquid-glass shell locked: selector physics, glass tokens, controls, scroll edges; 319 tests | `agent/archive/originals/PHASE-5-REPORT.md` |
-| Phase 6 | `1.5.0` prototype on beta.14, `phase/6-rive` | Charging settle pulse, 20% shake, alarm/flashlight/screenshot motions and Canvas clones; 321 tests | `agent/archive/originals/PHASE-6-REPORT.md` |
-| Phase 7 | `1.5.0-beta.20` (code 50), `phase/7-multi-ui-perf` | 9 ROM profiles (2 measured, 7 static), adaptive glass, `check-perf.py`; emulator p95 216.88 ms fails 32 ms budget; device pending | `agent/archive/originals/PHASE-7-REPORT.md` |
-| Phase 8 | `1.5.0-beta.20` (code 50), `phase/8-release` | Code/gates complete; stable blocked on device, frame budget and owner approval | `agent/archive/originals/PHASE-8-REPORT.md` |
+| Phase 0 | docs/evidence, no code | Requirements, test plan, repair catalog, tools, measured baseline; 8 vendor maps planned | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PLAN-v2.md`) §5; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: UI-MATRIX.md`) |
+| Phase 1 | `1.4.3-beta.1` (code 24), `phase/1-shade-qs` | Shade/QS/header owner follows SystemUI panel state; one visible copy; stock restored; unsafe reparent path removed; CPH2747 owner-approved | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-1-REPORT.md`) |
+| Phase 2 | `1.4.3-beta.1` (code 24), `phase/2-multi-ui` | `DuoLog` structured line, 2 MB ring, report ZIP, PII redaction, capability fields; 261 tests | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-2-REPORT.md`) |
+| Phase 3 | `1.4.3-beta.4` (code 27), `phase/3-app-customization` | Three-page shell, engine selector, presets, backup/import core, middle-slot choices, per-icon Wi-Fi/cell toggles, event prototype; 317 tests | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-3-REPORT.md`) |
+| Phase 4 | `1.4.4-beta.3` (code 30), `phase/4-cell-accuracy` | Explicit stock-level-to-four-dot mapping, slot-aware SIM selection, raw/max/dots diagnostics; 319 tests; CPH2747 full/5G measured | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-4-REPORT.md`) |
+| Phase 5 | `1.5.0-beta.14` (code 44), `phase/5-liquid-glass` | Liquid-glass shell locked: selector physics, glass tokens, controls, scroll edges; 319 tests | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-5-REPORT.md`) |
+| Phase 6 | `1.5.0` prototype on beta.14, `phase/6-rive` | Charging settle pulse, 20% shake, alarm/flashlight/screenshot motions and Canvas clones; 321 tests | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-6-REPORT.md`) |
+| Phase 7 | `1.5.0-beta.20` (code 50), `phase/7-multi-ui-perf` | 9 ROM profiles (2 measured, 7 static), adaptive glass, `check-perf.py`; emulator p95 216.88 ms fails 32 ms budget; device pending | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-7-REPORT.md`) |
+| Phase 8 | `1.5.0-beta.20` (code 50), `phase/8-release` | Code/gates complete; stable blocked on device, frame budget and owner approval | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-8-REPORT.md`) |
 
 Plan v2's phase numbering stops being the delivery model after Phase 8; the 1.6/1.7/1.8 agiles below are the actual line to alpha.8.
 
@@ -258,7 +198,7 @@ Plan v2's phase numbering stops being the delivery model after Phase 8; the 1.6/
 
 | Step | Version / code | Key outcome | Evidence |
 |---|---|---|---|
-| 1.6.0 | code 76 | Fatal fixes, one Rive surface/import, safe fallback, per-icon hiding, event icons, PHDP download card, eight SIM dots/battery line | `git log`; `agent/archive/originals/PHASE-3-REPORT.md` |
+| 1.6.0 | code 76 | Fatal fixes, one Rive surface/import, safe fallback, per-icon hiding, event icons, PHDP download card, eight SIM dots/battery line | `git log`; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: PHASE-3-REPORT.md`) |
 | 1.7.0-alpha.1 | code 77 | ColorDuo glass values and nav foundation | commit `4a50bc4` |
 | 1.7.0-alpha.2 | code 78 | Unified 0-100 logical size scale (`physical = 50 + 1.7 x logical`) | commit `c18786d` / `d7f46bb` |
 | 1.7.0-alpha.3 | code 79 | Animated live-event previews | commit `9e937a0` / `46bc18c` |
@@ -269,15 +209,15 @@ Plan v2's phase numbering stops being the delivery model after Phase 8; the 1.6/
 | 1.7.0-alpha.8 | code 84 | Live preview lab on Home | commit `0e1f9fc` / `571241e` |
 | 1.7.0-alpha.9 | code 85 | Complete layout simulator | commit `3827c03` / `4ec95f7` |
 | 1.7.0-alpha.10 | code 86 | Pause idle app preview renderer | commit `128edc0` / `63a70d8` |
-| 1.7.0-alpha.11 | code 87 | Smooth horizontal panel hand-off; owner capture later measured 62.855 fps VFR | commit `37d2ece` / `5805a69`; `agent/archive/originals/AGILE-1.8-ALPHA11.md` |
+| 1.7.0-alpha.11 | code 87 | Smooth horizontal panel hand-off; owner capture later measured 62.855 fps VFR | commit `37d2ece` / `5805a69`; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-ALPHA11.md`) |
 | 1.7.0-alpha.12 | code 88 | Remove one-frame hand-off gaps; lock outgoing extra | commit `652024d`, `4b54538`, `ba5e301` |
-| 1.7.0 stable | code 89 | 449 tests/51 suites; 158/158 easing; APK `3e15a8…a2a6`; owner accepted alpha.12 transition behaviour | `agent/archive/originals/RELEASE-NOTES-1.7.0.md` |
+| 1.7.0 stable | code 89 | 449 tests/51 suites; 158/158 easing; APK `3e15a8…a2a6`; owner accepted alpha.12 transition behaviour | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: RELEASE-NOTES-1.7.0.md`) |
 
 ### 5.3 1.8.0 alpha series
 
 | Step | Version / code | Key outcome | Evidence |
 |---|---|---|---|
-| alpha.1 | 1.8.0-alpha.1 / 90 | Selector, invert, preview, position groundwork; installed 18:14:24 with data kept; APK `fb3d1d…e4e8` | commit `0fc12e4`; `agent/archive/originals/AGILE-1.8-NOTES.md` |
+| alpha.1 | 1.8.0-alpha.1 / 90 | Selector, invert, preview, position groundwork; installed 18:14:24 with data kept; APK `fb3d1d…e4e8` | commit `0fc12e4`; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) |
 | alpha.2 | 1.8.0-alpha.2 / 91 | Design-switch fatal fixed with two persistent Rive preview panes and static design cards; `batteryLineStart`; event seat `INVERTED_MIDDLE_Y=-43.35`; selector under tabs with 0.04 tint/no blur; installed 19:31:22; APK `5d0ddf…2a2f9` | commit `a2bb594`; notes |
 | alpha.3 | 1.8.0-alpha.3 / 92 | Navigation icons packaged/tinted; 5-bar mapping 1,1,2,3,4; explicit `rightSeat` shade/home seat; gray 22% 2-SIM track; static Classic card; previews follow selected design; 483 tests; APK `6c1c38…e591` | commit `9467e98`; notes |
 | alpha.4 | 1.8.0-alpha.4 / 93 | v89 extras placement; static selector rim with movement-only lens; invert bolt at ring centre in both designs and Canvas; hour-only clock; unsnapped Wi-Fi/cell/5G sliders; Classic card `#101014`; 482 tests; APK `6b3dc0…e9cf` | commit `e047324`; notes |
@@ -309,8 +249,8 @@ The registry uses five columns: ID, symptom, root cause, rule/fix, evidence. Exi
 | C9 | "Wi-Fi icon not show" | Canvas fallback drew no Wi-Fi while stock Wi-Fi was hidden | Every occupant the Rive path draws must exist in Canvas from the same geometry | `AGENTS.md`; `DuoCanvasView.kt` |
 | C10 | `useRive=true` but stage 1 forever | Leftover `duo_statusbar_stage` override, invisible in the app | Surface the override, explain it, make it clearable; never hide a developer switch | `AGENTS.md`; `StageOverride.kt` |
 | C11 | Module gave up at stage 0 forever | "Provider unreachable" was treated as "user switched it off"; first read landed before the app process was ready | Distinguish unreachable from off; retry; re-read on every change | `AGENTS.md`; `DuoSettingsClient.kt` |
-| C12 | App/SystemUI crash on design switch or repeated preview imports | Rive views were re-created/imported on layout/design changes; each `File::import` leaked ~110 Paint global refs; 444 imports produced 48,771 refs against the 51,200 limit; 8-12 attaches/s; persistent panes now keep one view per scene | One Rive view/import per surface; never re-import on layout/design switch; keep persistent preview panes (`DuoPreview.kt`); use static design cards; add import/global-ref counters and a hard guard | `agent/archive/originals/BRAINSTORM-2026-11-02.md` §3.9; `agent/archive/originals/LIST-THE-PLAN.md` §6.6; `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.2; `DuoPreview.kt` |
-| C13 | Home design cards with live Rive views crashed the app on design switch | Multiple live Rive surfaces were created/destroyed by the design cards, repeating the import/global-ref path | Home cards use static assets (`classic_demo.png`, `design_dual.png`) on a `#101014` background; no live Rive view is created per card; live preview remains one pair of persistent panes | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.2; `ui/DesignDemo.kt`; `ui/DuoHomeScreen.kt` |
+| C12 | App/SystemUI crash on design switch or repeated preview imports | Rive views were re-created/imported on layout/design changes; each `File::import` leaked ~110 Paint global refs; 444 imports produced 48,771 refs against the 51,200 limit; 8-12 attaches/s; persistent panes now keep one view per scene | One Rive view/import per surface; never re-import on layout/design switch; keep persistent preview panes (`DuoPreview.kt`); use static design cards; add import/global-ref counters and a hard guard | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: BRAINSTORM-2026-11-02.md`) §3.9; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: LIST-THE-PLAN.md`) §6.6; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.2; `DuoPreview.kt` |
+| C13 | Home design cards with live Rive views crashed the app on design switch | Multiple live Rive surfaces were created/destroyed by the design cards, repeating the import/global-ref path | Home cards use static assets (`classic_demo.png`, `design_dual.png`) on a `#101014` background; no live Rive view is created per card; live preview remains one pair of persistent panes | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.2; `ui/DesignDemo.kt`; `ui/DuoHomeScreen.kt` |
 
 ### 6.2 Moderate — broken behaviour, misleading reports, wasted battery
 
@@ -333,16 +273,16 @@ The registry uses five columns: ID, symptom, root cause, rule/fix, evidence. Exi
 | M15 | Ring bigger on lock screen/shade | Each extra bar captured its own slot width | One size owner: extras reuse the width pinned for the main bar; only this bar's height caps it | `AGENTS.md`; `SlotGeometry.kt` |
 | M16 | Every report `FileNotFoundException: rom-profiles.json` | `RomProfiles.load` read from the host SystemUI context | Read module assets through the module package's context (`createPackageContext`) | `AGENTS.md`; `RomProfiles.kt` |
 | M17 | Element flipped black/white several times a second | `BarTint` read a `darkIntensity` int as an icon colour; HyperOS passes the intensity as an int | Only accept an int with a non-zero alpha byte; unit-test `BarTint.pickTint` | `AGENTS.md`; `BarTint.kt` |
-| M18 | Icons and labels blurred inside the selector | Blur was applied to the selector/layer that also sampled the row, so the tab art was softened | Blur belongs to the background/pill only. Selector has **no blur** in either state. Idle: row above selector (owner-confirmed). Moving: selector above row, combined `page + pill + row` backdrop only for the lens/chromatic effect (restored in alpha.8, not yet visually confirmed). | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.7/alpha.8; `ui/DuoShell.kt` z-order/backdrops; project memory decisions; owner brief 2026-11-06 |
-| M19 | Shade copy oscillated/jumped between seats | The shade seat changed through pre-Phase-1 `place()`, battery anchor, a removed clamp, then a `rightSeat` path; each change moved the copy | Final: use the 1.7.0/v89 extra placement for the shade header, `anchorOnBattery(alignEnd = true)` for the QS cluster, and **no shade-only clamp**. Owner confirmed fixed. | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.5/alpha.7; `agent/archive/originals/CODE-REVIEW-REPORT-1.7.0.md` §6.3; `DuoIconHost.applyExtraLayout` / `anchorOnBattery`; owner brief 2026-11-06 |
-| M20 | Shade jumped after the "right seat" change | `rightSeat` was intended for the main ring but was applied to extras/indicators | `rightSeat` is main-ring only; extras keep their fixed battery/flow seat; indicators always pass `rightSeat = false` | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.3; `DuoIconHost.place` comment and call sites |
-| M21 | Battery line did not follow level or grew from the wrong end | The line was static or its trim endpoint was bound to the wrong edge | One moving start, `batteryLineStart`: the left end is the zero origin; 0% draws zero length, 100% fills the span; Canvas and preview read the same value | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.2/alpha.4; `hook/RingGeometry.kt`; `hook/DuoCanvasView.kt`; `hook/DuoMapping.kt` |
-| M22 | Full signal showed 1/3 dots; raw 0 looked like no service | 5-level stock source was mapped as if it were a 4-level index; raw 0 was conflated with "no service" | 5-bar table: raw 0..4 with service -> 1,1,2,3,4 dots. Raw 0 is a weak-but-present first bar, not no-service. `hasService`/raw < 0 is the separate no-service case. | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.3; `hook/SignalMapping.kt`; `DuoMappingTest` |
-| M23 | Invert center had a stray bolt/event overlay, a duplicated number or a mis-seated middle occupant | The bolt/event group and the middle group were not compensated for the invert seat; the percentage and old network text could both draw | One percentage in the centre; normal middle occupant above at `middleScale = 0.55`; `middleY = -43.35`; `boltY = 49.5`; Rive `eventGroup` y = 17; Canvas uses the same seats | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.2/alpha.4; `hook/RingGeometry.kt`; `hook/DuoMapping.kt`; `rive/duo/scene.rml:229`; `DuoMappingTest` |
-| M24 | Clock showed AM/PM or only the hour | The 12-hour format included AM/PM; a later fix over-corrected to hour-only | Final: `H:mm` for 24-hour and `h:mm` for 12-hour; minutes always shown; no AM/PM text in the ring | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.4/alpha.7; `hook/DuoStateMonitor.kt`; `ClockTimeHelperTest` |
-| M25 | Sliders stuck at an endpoint | The drag accumulator added snapped values, so repeated snapping lost the drag fraction at the ends | Keep an unsnapped `dragFraction`; start from the pointer position on the whole track; snap only the emitted/display value; never feed the snapped value back into the accumulator | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.4; `ui/GlassControls.kt`; `GlassSliderTest`; owner brief 2026-11-06 |
-| M26 | The Custom tab showed no presets, but preset code/tests stayed behind | Default/Compact/Custom chips and the Compact shortcut were removed; `DuoPresetStore`, `DuoPresets` and their tests were not deleted | Current settings are the Custom baseline. Delete the dead store/presets and update `DuoPresetsTest`, `DuoSizePersistenceTest`, `RingDesignTest`, `CameraModeTest`; do not reintroduce a second design/preset selector | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.5; `settings/DuoPresetStore.kt`; `settings/DuoPresets.kt`; test references |
-| M27 | Classic card was animated with a maroon background | The design card used a live/animated surface and a wine background | Classic card is a still image on a black `#101014` background; no live Rive view per card; the fixed demo must not follow the selected design | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.3/alpha.4; `ui/DesignDemo.kt`; `ui/DuoHomeScreen.kt`; owner brief 2026-11-06 |
+| M18 | Icons and labels blurred inside the selector | Blur was applied to the selector/layer that also sampled the row, so the tab art was softened | Blur belongs to the background/pill only. Selector has **no blur** in either state. Idle: row above selector (owner-confirmed). Moving: selector above row, combined `page + pill + row` backdrop only for the lens/chromatic effect (restored in alpha.8, not yet visually confirmed). | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.7/alpha.8; `ui/DuoShell.kt` z-order/backdrops; project memory decisions; owner brief 2026-11-06 |
+| M19 | Shade copy oscillated/jumped between seats | The shade seat changed through pre-Phase-1 `place()`, battery anchor, a removed clamp, then a `rightSeat` path; each change moved the copy | Final: use the 1.7.0/v89 extra placement for the shade header, `anchorOnBattery(alignEnd = true)` for the QS cluster, and **no shade-only clamp**. Owner confirmed fixed. | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.5/alpha.7; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: CODE-REVIEW-REPORT-1.7.0.md`) §6.3; `DuoIconHost.applyExtraLayout` / `anchorOnBattery`; owner brief 2026-11-06 |
+| M20 | Shade jumped after the "right seat" change | `rightSeat` was intended for the main ring but was applied to extras/indicators | `rightSeat` is main-ring only; extras keep their fixed battery/flow seat; indicators always pass `rightSeat = false` | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.3; `DuoIconHost.place` comment and call sites |
+| M21 | Battery line did not follow level or grew from the wrong end | The line was static or its trim endpoint was bound to the wrong edge | One moving start, `batteryLineStart`: the left end is the zero origin; 0% draws zero length, 100% fills the span; Canvas and preview read the same value | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.2/alpha.4; `hook/RingGeometry.kt`; `hook/DuoCanvasView.kt`; `hook/DuoMapping.kt` |
+| M22 | Full signal showed 1/3 dots; raw 0 looked like no service | 5-level stock source was mapped as if it were a 4-level index; raw 0 was conflated with "no service" | 5-bar table: raw 0..4 with service -> 1,1,2,3,4 dots. Raw 0 is a weak-but-present first bar, not no-service. `hasService`/raw < 0 is the separate no-service case. | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.3; `hook/SignalMapping.kt`; `DuoMappingTest` |
+| M23 | Invert center had a stray bolt/event overlay, a duplicated number or a mis-seated middle occupant | The bolt/event group and the middle group were not compensated for the invert seat; the percentage and old network text could both draw | One percentage in the centre; normal middle occupant above at `middleScale = 0.55`; `middleY = -43.35`; `boltY = 49.5`; Rive `eventGroup` y = 17; Canvas uses the same seats | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.2/alpha.4; `hook/RingGeometry.kt`; `hook/DuoMapping.kt`; `rive/duo/scene.rml:229`; `DuoMappingTest` |
+| M24 | Clock showed AM/PM or only the hour | The 12-hour format included AM/PM; a later fix over-corrected to hour-only | Final: `H:mm` for 24-hour and `h:mm` for 12-hour; minutes always shown; no AM/PM text in the ring | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.4/alpha.7; `hook/DuoStateMonitor.kt`; `ClockTimeHelperTest` |
+| M25 | Sliders stuck at an endpoint | The drag accumulator added snapped values, so repeated snapping lost the drag fraction at the ends | Keep an unsnapped `dragFraction`; start from the pointer position on the whole track; snap only the emitted/display value; never feed the snapped value back into the accumulator | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.4; `ui/GlassControls.kt`; `GlassSliderTest`; owner brief 2026-11-06 |
+| M26 | The Custom tab showed no presets, but preset code/tests stayed behind | Default/Compact/Custom chips and the Compact shortcut were removed; `DuoPresetStore`, `DuoPresets` and their tests were not deleted | Current settings are the Custom baseline. Delete the dead store/presets and update `DuoPresetsTest`, `DuoSizePersistenceTest`, `RingDesignTest`, `CameraModeTest`; do not reintroduce a second design/preset selector | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.5; `settings/DuoPresetStore.kt`; `settings/DuoPresets.kt`; test references |
+| M27 | Classic card was animated with a maroon background | The design card used a live/animated surface and a wine background | Classic card is a still image on a black `#101014` background; no live Rive view per card; the fixed demo must not follow the selected design | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.3/alpha.4; `ui/DesignDemo.kt`; `ui/DuoHomeScreen.kt`; owner brief 2026-11-06 |
 
 ### 6.3 Minor — noise, duplication, cosmetic, docs
 
@@ -355,11 +295,11 @@ The registry uses five columns: ID, symptom, root cause, rule/fix, evidence. Exi
 | m5 | `restartSystemUi` always returned `true` | Ignored the real outcome | Report the real outcome, including timeout | `AGENTS.md` |
 | m6 | README emoji/marketing tone | Casual copy | User docs are formal, short and plain | `AGENTS.md` |
 | m7 | Previews white-on-light, invisible | Preview background did not show the real thing | Previews must show the real thing on a readable background | `AGENTS.md` |
-| m8 | `SlotGeometryTest` is an empty class | The `needsTallerParent`/shadeHeader change was reverted, but its test file remained | Either write the real slot-geometry tests or delete the empty file; an empty suite is false coverage | `agent/archive/originals/CODE-REVIEW-REPORT-1.7.0.md` §6.3; `app/src/test/.../SlotGeometryTest.kt` |
-| m9 | Dead preview code and stale references | `PreviewSimulator.kt` was deleted; a comment still names it; `DuoCellSimulationPreview` was removed; `StockIconHider.isReplaced` has no production caller | Remove stale comments/references; delete test-only code or give it a production caller | `agent/archive/originals/CODE-REVIEW-REPORT-1.7.0.md` §5; `hook/RingGeometry.kt:163`; `StockIconHider.kt` |
-| m10 | Duplicate/superseded documents | Plans, requirements, test plans, phase reports and review reports accumulated over eight phases | This file is the canonical summary; old files live under `agent/archive/originals/`; do not create another parallel plan | `agent/` listing; section 1.3 |
-| m11 | Mixed EOL and whitespace-only churn | Windows/Linux editing and broad rewrites | Normalize before a real commit; do not mass-rewrite; use `git diff --check`; keep one feature per diff | `agent/archive/originals/AGENT.md` EOL caveat; `agent/archive/originals/TEST-PLAN.md`; owner brief |
-| m12 | Notes say `classic_demo.gif`; the asset is `classic_demo.png` | The note was written before/after the static-asset change | Keep the note and asset names in sync; cite the file actually on disk | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.2; `app/src/main/res/drawable/classic_demo.png` |
+| m8 | `SlotGeometryTest` is an empty class | The `needsTallerParent`/shadeHeader change was reverted, but its test file remained | Either write the real slot-geometry tests or delete the empty file; an empty suite is false coverage | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: CODE-REVIEW-REPORT-1.7.0.md`) §6.3; `app/src/test/.../SlotGeometryTest.kt` |
+| m9 | Dead preview code and stale references | `PreviewSimulator.kt` was deleted; a comment still names it; `DuoCellSimulationPreview` was removed; `StockIconHider.isReplaced` has no production caller | Remove stale comments/references; delete test-only code or give it a production caller | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: CODE-REVIEW-REPORT-1.7.0.md`) §5; `hook/RingGeometry.kt:163`; `StockIconHider.kt` |
+| m10 | Duplicate/superseded documents | Plans, requirements, test plans, phase reports and review reports accumulated over eight phases | This file is the canonical summary; old files live in `agent/archive/AGENT-DOCS-DEPRECATED.md`; do not create another parallel plan | `agent/` listing; section 1.3 |
+| m11 | Mixed EOL and whitespace-only churn | Windows/Linux editing and broad rewrites | Normalize before a real commit; do not mass-rewrite; use `git diff --check`; keep one feature per diff | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGENT.md`) EOL caveat; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: TEST-PLAN.md`); owner brief |
+| m12 | Notes say `classic_demo.gif`; the asset is `classic_demo.png` | The note was written before/after the static-asset change | Keep the note and asset names in sync; cite the file actually on disk | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.2; `app/src/main/res/drawable/classic_demo.png` |
 | m13 | Custom-preset comments still describe a removed feature | `DuoHomeScreen` comments mention Default/Compact/Custom and the Custom snapshot | Update comments with the code; no stale design guidance | `ui/DuoHomeScreen.kt` comments near `writeCameraMode`/`writeRingDesign` |
 
 ### 6.4 Security and process
@@ -367,8 +307,8 @@ The registry uses five columns: ID, symptom, root cause, rule/fix, evidence. Exi
 | ID | Symptom | Root cause | Rule / fix | Evidence |
 |---|---|---|---|---|
 | S1 | Local tool output exposed a provider key | A command printed environment/config containing the key; the value is not recorded here | Never print environment variables, provider keys, tokens or full tool output. Redact before sharing. Rotate the key if it was exposed; do not repeat the value in docs, logs or commits. | Owner report 2026-11-06; no secret value is committed in the repository |
-| S2 | A release could bake in a direct Telegram bot token | `app/build.gradle.kts` injects `TELEGRAM_BOT_TOKEN` from `.env`/CI as a fallback; the 1.7.0 shipped APK had a placeholder and no token pattern, but a local/CI release with a real token would violate the rule | Relay-only delivery. Keep the direct token empty in release builds or restrict it to a non-publishable build type. Add a release secret scan. | `app/build.gradle.kts:59`; `settings/TelegramLog.kt`; `agent/archive/originals/CODE-REVIEW-REPORT-1.7.0.md` deploy findings |
-| P1 | Shared worktree conflicted during a stash recovery; work was recovered from `stash@{0}` without `git reset` or `git stash pop`; the stash is still retained | `git stash` was used in a shared/worktree workflow where another worktree or concurrent edits changed the base | Do not use `git stash` in shared worktrees. Use `git diff > backup.patch`, a backup branch, or copied files. Never pop/drop/reset without the owner. Keep `stash@{0}` until the owner says otherwise. | `agent/archive/originals/AGILE-1.8-NOTES.md` alpha.5; `git stash list` (stash from `a2bb594` retained) |
+| S2 | A release could bake in a direct Telegram bot token | `app/build.gradle.kts` injects `TELEGRAM_BOT_TOKEN` from `.env`/CI as a fallback; the 1.7.0 shipped APK had a placeholder and no token pattern, but a local/CI release with a real token would violate the rule | Relay-only delivery. Keep the direct token empty in release builds or restrict it to a non-publishable build type. Add a release secret scan. | `app/build.gradle.kts:59`; `settings/TelegramLog.kt`; `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: CODE-REVIEW-REPORT-1.7.0.md`) deploy findings |
+| P1 | Shared worktree conflicted during a stash recovery; work was recovered from `stash@{0}` without `git reset` or `git stash pop`; the stash is still retained | `git stash` was used in a shared/worktree workflow where another worktree or concurrent edits changed the base | Do not use `git stash` in shared worktrees. Use `git diff > backup.patch`, a backup branch, or copied files. Never pop/drop/reset without the owner. Keep `stash@{0}` until the owner says otherwise. | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) alpha.5; `git stash list` (stash from `a2bb594` retained) |
 
 ---
 
@@ -398,13 +338,13 @@ The registry uses five columns: ID, symptom, root cause, rule/fix, evidence. Exi
 | `runtime comment in hook/RingGeometry.kt:163` | Says geometry was moved from `ui/PreviewSimulator.kt`; that file is deleted | `grep -rn PreviewSimulator app/src` | Update the comment to name the current owner |
 | `settings/StockIconHider.kt` `isReplaced` | Production method has only test callers | `grep -rn "isReplaced" app/src` | Delete or use it in the hide path |
 | `ui/DuoHomeScreen.kt` comments near `writeCameraMode`/`writeRingDesign` | Describe Default/Compact/Custom and the Custom snapshot | source comments | Update to the current one-design-selector behaviour |
-| `agent/archive/originals/AGILE-1.8-NOTES.md` `classic_demo.gif` | Asset on disk is `classic_demo.png` | file listing | Correct the note or provide the GIF deliberately |
+| `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) `classic_demo.gif` | Asset on disk is `classic_demo.png` | file listing | Correct the note or provide the GIF deliberately |
 
 No other dead production class was confirmed in this pass. `ModuleHealth` is used by `ModuleHealthCheck`; `DesignDemo` is used by Home; the Compose helpers in `DuoHomeScreen` are used inside that file.
 
 ### 7.3 Folder organisation recommendations (partly executed)
 
-1. **Archive, do not delete (done 2026-11-06):** the superseded `agent/*` documents now live in `agent/archive/originals/`, concatenated in `agent/archive/AGENT-DOCS-DEPRECATED.md`; this file stays at `agent/AGENTS-V2.md`.
+1. **Archive, do not delete (done 2026-11-06):** the superseded `agent/*` documents now live in the single archive `agent/archive/AGENT-DOCS-DEPRECATED.md` as `## FILE:` blocks; this file stays at `agent/AGENTS-V2.md`.
 2. **One current plan:** keep one requirements/test/release section in this file; move phase history to the archive.
 3. **Evidence index:** add a short `docs/evidence/README.md` index (dates, device, build, path). Evidence remains git-ignored.
 4. **Hook subpackages:** `hook/` is large (35+ files). A future, owner-approved refactor could split it into `hook/host`, `hook/render`, `hook/state`, `hook/diagnostics`; do not do this during a behaviour fix.
@@ -520,7 +460,7 @@ bash tools/build-rive-both.sh
 | Evidence | Location | Notes |
 |---|---|---|
 | Current session state | this file, section 2 | update after each owner test |
-| Alpha.8 notes and prior alpha history | `agent/archive/originals/AGILE-1.8-NOTES.md` | historical; alpha.8 owner confirmation is in this file |
+| Alpha.8 notes and prior alpha history | `agent/archive/AGENT-DOCS-DEPRECATED.md` (`## FILE: AGILE-1.8-NOTES.md`) | historical; alpha.8 owner confirmation is in this file |
 | 1.7/1.8 transition captures | `docs/evidence/agile-1.7/`, `docs/evidence/agile-1.8/` | git-ignored; owner video/report included |
 | 1.8 device/tombstone captures | `docs/evidence/agile-1.8/device/`, `docs/evidence/agile-1.8/tombstones/` | check before claiming a device result |
 | Phase 7 performance | `docs/evidence/phase7/` | emulator p95 failure and baseline |
@@ -530,9 +470,9 @@ bash tools/build-rive-both.sh
 | Vendor APKs/corpus | `reverse/`, `corpus/` | git-ignored; never commit |
 | User dumps | `diagnose from users/`, `from users/` | git-ignored; PII risk |
 | Build artifacts/rollback | `build/`, `app/build/outputs/apk/release/` | ignored build outputs |
-| Old agent docs | `agent/archive/originals/` | archived 2026-11-06; concatenated in `agent/archive/AGENT-DOCS-DEPRECATED.md` |
+| Old agent docs | `agent/archive/AGENT-DOCS-DEPRECATED.md` | archived 2026-11-06; single archive file |
 
-**Archive status (executed 2026-11-06):** the documents listed in section 1.3 live in `agent/archive/originals/`; their contents are concatenated in `agent/archive/AGENT-DOCS-DEPRECATED.md`. `agent/AGENTS-V2.md` and the new `agent/README.md` are the only current `agent/` documents. Do not delete evidence or old APKs.
+**Archive status (executed 2026-11-06):** the documents listed in section 1.3 live in the single archive file `agent/archive/AGENT-DOCS-DEPRECATED.md`; that archive is the single home. `agent/AGENTS-V2.md` is the only current `agent/` document; the `agent/README.md` index was removed. Do not delete evidence or old APKs.
 
 ---
 
@@ -548,7 +488,7 @@ bash tools/build-rive-both.sh
 6. **Provider key:** rotate it if the exposure was real; confirm no key or token appears in logs, reports, docs or commits.
 7. **Stash:** keep `stash@{0}` until the owner confirms; decide whether it is still needed, then archive the patch instead of popping it.
 8. **1.7 residuals:** decide whether Camera-mode `too-far` hand-off, Classic 127 px shade strip and the true-60 fps capture block 1.8 or move to 1.9.
-9. **Docs:** approve the archive move and the one-document rule.
+9. **Docs:** archive move approved by owner 2026-11-19; the one-document rule stands (`agent/AGENTS-V2.md` is the only current `agent/` document).
 
 ### 10.2 Ordered next actions
 
@@ -558,7 +498,7 @@ bash tools/build-rive-both.sh
 4. Remove or repair the dead preset code/tests and the empty `SlotGeometryTest` after owner approval; update the three referencing tests.
 5. Resolve the DEMO3-01 static-vs-runtime conflict in the requirements and copy.
 6. Remove the direct Telegram token from release builds; scan the APK; rotate any exposed provider key.
-7. Keep the old `agent/*` docs archived under `agent/archive/originals/`; this file and `README.md` are the only current `agent/` documents.
+7. Keep the old `agent/*` docs archived in `agent/archive/AGENT-DOCS-DEPRECATED.md`; `agent/AGENTS-V2.md` is the only current `agent/` document.
 8. Keep other ROMs `unverified`; do not claim support without a dump, screenshot and log.
 9. Do not release, merge, tag, push or publish until the owner explicitly approves.
 
