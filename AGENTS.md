@@ -102,7 +102,9 @@ If a change cannot be reconciled with this file, stop and ask; do not "just make
 - **Measured ROMs:** OxygenOS (CPH2747), HyperOS 3 (24129PN74G). Everything else is `unverified`.
 - **Frozen surface:** `docs/rom-contract.md`. Refactors are behaviour-freezing; diff the dump.
 - **Design:** FR-01 role locator in `docs/rom-support-design.md`; FR-03 root/SELinux in
-  `docs/rive-selinux-root.md`; review findings in `docs/code-review.md`.
+  `docs/rive-selinux-root.md`; review findings in `docs/code-review.md`; Rive authoring/verification in
+  `docs/rive-pipeline.md`.
+- **Code map:** `docs/ARCHITECTURE.md` — architecture as of 2.0.2 (component ownership, attach/fallback story).
 - **Tests:** `./gradlew :app:testDebugUnitTest :app:assembleDebug`, plus `tools/route-module-logs.py
   --check`, `tools/check-rive-eases.py`, the authority grep, and the `.riv` hash compare.
 - **Build JDK:** AGP needs Java 17+. On this machine use
