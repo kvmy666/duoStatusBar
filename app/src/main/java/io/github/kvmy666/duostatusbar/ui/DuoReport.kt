@@ -24,6 +24,27 @@ internal data class DuoReportInputs(
     val screenshotPng: ByteArray? = null
 )
 
+/**
+ * Labels a diagnostic dump written by a different build than the one producing this report.
+ *
+ * A stored dump outlives the process that wrote it: one report carried `version: 1.4.2` while the app
+ * was 2.0.2, and it read as if it described the current run. The dump stays intact (it is still
+ * evidence) but is prefixed so nobody mistakes it for this run. A matching, unversioned or blank dump
+ * is returned unchanged.
+ */
+internal fun labelStaleDump(dump: String, appVersion: String): String {
+    if (dump.isBlank()) return dump
+    val version = dump.lineSequence()
+        .mapNotNull { VERSION_LINE.find(it)?.groupValues?.get(1) }
+        .firstOrNull()
+        ?: return dump
+    if (version == appVersion) return dump
+    return "[stale diagnostic dump from $version — app is $appVersion; do not read it as this run]\n$dump"
+}
+
+/** The first token after a leading `version:` line of a diagnostic dump. */
+private val VERSION_LINE = Regex("""^\s*version:\s*(\S+)""")
+
 internal object DuoReport {
 
     /**

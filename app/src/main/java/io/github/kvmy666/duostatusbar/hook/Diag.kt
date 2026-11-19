@@ -10,6 +10,7 @@ import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.DeviceFacts
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 
@@ -81,7 +82,8 @@ internal object Diag {
             Build.PRODUCT.orEmpty(),
             Build.DISPLAY.orEmpty(),
             profiles,
-            Build.VERSION.SDK_INT
+            Build.VERSION.SDK_INT,
+            RomMarkerSource.read(context)
         )
         val fromAsset = profiles.any { it == rom }
         buildString {

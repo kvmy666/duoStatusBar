@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.hook.rom
 
+import android.content.Context
 
 /**
  * What a ROM is called and where its status-bar icon strip lives (FR-01/02).
@@ -75,14 +76,15 @@ internal data class RomAdapter(
  */
 internal object RomDetection {
 
-    private const val AOSP = "com.android.systemui"
+    internal const val AOSP = "com.android.systemui"
 
     fun forThisRom(
         manufacturer: String,
         brand: String,
         product: String,
         display: String,
-        api: Int = 0
+        api: Int = 0,
+        markers: RomMarkers = RomMarkers.UNKNOWN
     ): RomAdapter {
         val haystack = haystack(manufacturer, brand, product, display)
         return when {
@@ -91,7 +93,12 @@ internal object RomDetection {
             haystack.contains("oppo") || haystack.contains("oplus") || haystack.contains("coloros") ->
                 colorOs()
             haystack.contains("xiaomi") || haystack.contains("redmi") || haystack.contains("poco") ->
-                hyperOs(api)
+                // The brand alone is not proof of HyperOS, but it is also not proof of AOSP: LineageOS
+                // whyred and AOSPA sweet keep the Xiaomi/Redmi brand and are AOSP-based (evidence:
+                // .pm/evidence/duo-report-20261110-201707/diagnostics.txt:11-14 and
+                // duo-log-20261115-214854.txt:22-25). Only a *successful* SystemUI inspection that finds
+                // no MIUI marker proves non-MIUI; an unreadable inspection keeps the old brand rule.
+                if (markers.provesNonMiui) aosp() else hyperOs(api)
             haystack.contains("vivo") || haystack.contains("iqoo") || haystack.contains("origin") ||
                 haystack.contains("funtouch") -> vivo()
             haystack.contains("honor") || haystack.contains("magic") -> honor()
@@ -114,14 +121,20 @@ internal object RomDetection {
         product: String,
         display: String,
         profiles: List<RomAdapter>,
-        api: Int = 0
+        api: Int = 0,
+        markers: RomMarkers = RomMarkers.UNKNOWN
     ): RomAdapter {
         val haystack = haystack(manufacturer, brand, product, display)
         profiles.firstOrNull { profile ->
             profile.measured && apiInRange(profile.apiMin, profile.apiMax, api) &&
+                // Custom AOSPA/Lineage/Infinity builds keep the Xiaomi brand and would otherwise take
+                // the measured HyperOS asset profile (evidence: .pm/evidence/duo-log-20261115-214854.txt:22-25).
+                // Gate the measured HyperOS profile on the same proof as the code branch above: skip it
+                // only when a successful read proved a non-MIUI SystemUI (UNKNOWN keeps the old rule).
+                (profile.id != "hyperos" || !markers.provesNonMiui) &&
                 profile.match.any { haystack.contains(it.lowercase()) }
         }?.let { return it }
-        return forThisRom(manufacturer, brand, product, display, api)
+        return forThisRom(manufacturer, brand, product, display, api, markers)
     }
 
     /**
@@ -134,8 +147,9 @@ internal object RomDetection {
         product: String,
         display: String,
         api: Int,
-        profiles: List<RomAdapter>
-    ): RomAdapter = forThisRom(manufacturer, brand, product, display, profiles, api)
+        profiles: List<RomAdapter>,
+        markers: RomMarkers = RomMarkers.UNKNOWN
+    ): RomAdapter = forThisRom(manufacturer, brand, product, display, profiles, api, markers)
 
     private fun haystack(manufacturer: String, brand: String, product: String, display: String): String =
         listOf(manufacturer, brand, product, display).joinToString(" ").lowercase()
@@ -352,4 +366,88 @@ internal object RomDetection {
         panelExpansionKind = "panel_type_5arg",
         panelHookMeasured = false
     )
+}
+
+/**
+ * Evidence about the installed SystemUI, read from its package.
+ *
+ * The brand strings (`Xiaomi`, `Redmi`, `POCO`) survive on custom AOSP ROMs, so they cannot select the
+ * measured HyperOS ids: LineageOS whyred and AOSPA sweet were both reported as HyperOS (evidence:
+ * `.pm/evidence/duo-report-20261110-201707/diagnostics.txt:11-14`,
+ * `.pm/evidence/duo-log-20261115-214854.txt:22-25`). A genuine MIUI SystemUI can be told apart by:
+ *  - the APK path containing `MiuiSystemUI` (proven: `.pm/evidence/duo-report-20261113-202904/
+ *    diagnostics-dump.txt:18` → `sourceDir=/system_ext/priv-app/MiuiSystemUI/MiuiSystemUI.apk`);
+ *  - the application class `com.android.systemui.MiuiSystemUIApplication` (listed in the frozen hook
+ *    surface, `docs/rom-contract.md:24`, and already hooked in `DuoHook`).
+ *
+ * The three states are:
+ *  - **UNKNOWN** (`read = false`): nothing usable was read -> keep the old brand rule.
+ *  - **HyperOS**: a read that found a MIUI marker -> the measured HyperOS adapter.
+ *  - **AOSP**: a read with a non-blank, non-MIUI path or class -> AOSP, even on a Xiaomi brand.
+ *
+ * A package record with neither a source path nor an application class proves nothing: it is treated as
+ * UNKNOWN, never as proof of a non-MIUI SystemUI. A PackageManager exception, a missing context or a
+ * package miss likewise says nothing about the ROM. [RomMarkerSource.read] maps both to [UNKNOWN], which
+ * keeps the pre-F-2 brand behaviour instead of guessing AOSP.
+ *
+ * The `ro.mi.os.version.name` / `ro.miui.ui.version.code` properties mentioned in the plan were **not**
+ * used: no evidence dump or document in this repo reads them, so they remain unproven.
+ */
+internal data class RomMarkers(
+    /** True only when the SystemUI package was read *and* returned a usable field. False = UNKNOWN. */
+    val read: Boolean = false,
+    val systemUiApplicationClass: String = "",
+    val systemUiSourceDir: String = ""
+) {
+    /**
+     * True when either marker proves a HyperOS/MIUI SystemUI. The path check ignores case because the
+     * APK file name is not guaranteed to keep its case across builds; the class check compares the exact
+     * simple name so a look-alike such as `...MyMiuiSystemUIApplication` is not accepted.
+     */
+    val hasHyperOsMarker: Boolean
+        get() = systemUiSourceDir.contains("MiuiSystemUI", ignoreCase = true) ||
+            systemUiApplicationClass.substringAfterLast('.') == "MiuiSystemUIApplication"
+
+    /**
+     * True only when a read found positive evidence of a *different* SystemUI: a usable field was read
+     * and it carries no MIUI marker. A read that returned neither field is UNKNOWN, not proof.
+     */
+    val provesNonMiui: Boolean
+        get() = read && !hasHyperOsMarker &&
+            (systemUiSourceDir.isNotBlank() || systemUiApplicationClass.isNotBlank())
+
+    companion object {
+        /** Not inspected / unreadable: keep the pre-F-2 brand behaviour. */
+        val UNKNOWN = RomMarkers()
+
+        /**
+         * A package record read from the PackageManager. If neither field is present the record proves
+         * nothing, so the result is UNKNOWN ([read] stays false) rather than a non-MIUI verdict.
+         */
+        fun of(systemUiApplicationClass: String = "", systemUiSourceDir: String = ""): RomMarkers =
+            RomMarkers(
+                read = systemUiSourceDir.isNotBlank() || systemUiApplicationClass.isNotBlank(),
+                systemUiApplicationClass = systemUiApplicationClass,
+                systemUiSourceDir = systemUiSourceDir
+            )
+    }
+}
+
+/**
+ * Reads [RomMarkers] from the SystemUI package. Never throws: on any failure (PackageManager exception, no
+ * context, package miss) the result is [RomMarkers.UNKNOWN], which keeps the caller on the old brand rule
+ * instead of guessing. A read that returns neither a source path nor an application class is also
+ * [RomMarkers.UNKNOWN]: only positive evidence of a non-MIUI field can prove the ROM is not MIUI.
+ */
+internal object RomMarkerSource {
+
+    fun read(context: Context): RomMarkers = try {
+        val info = context.packageManager.getApplicationInfo(RomDetection.AOSP, 0)
+        RomMarkers.of(
+            systemUiApplicationClass = info.className.orEmpty(),
+            systemUiSourceDir = info.sourceDir.orEmpty()
+        )
+    } catch (_: Throwable) {
+        RomMarkers.UNKNOWN
+    }
 }

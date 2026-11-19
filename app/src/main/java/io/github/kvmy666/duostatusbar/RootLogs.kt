@@ -9,6 +9,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import rikka.shizuku.Shizuku
 
+/** The result of a root System UI restart: whether the shell finished, and why not when it did not. */
+internal data class RestartOutcome(val ok: Boolean, val reason: String)
+
 /**
  * App-side diagnostics capture that works on **every** root method and on none at all.
  *
@@ -232,20 +235,70 @@ internal object RootLogs {
      * its process from inside SystemUI) needs no root, so this is the fallback that still works before
      * LSPosed has injected anything — and it is the root prompt users of other modules expect.
      */
-    fun restartSystemUi(): Boolean = try {
-        // Different ROMs keep different tools, so every spelling is tried in turn: `pkill -f` (AOSP),
-        // `killall` (some vendors) and `pidof` + `kill -9` (the one that survives SELinux-restricted
-        // pkill). `true` makes the script succeed even when the process was already gone.
-        val script = "pkill -f com.android.systemui; " +
-            "killall com.android.systemui 2>/dev/null; " +
-            "kill -9 ${'$'}(pidof com.android.systemui) 2>/dev/null; true"
-        val finished = ProcessBuilder(findSuBinary(), "-c", script).redirectErrorStream(true).start()
-            .waitFor(ROOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        if (!finished) L.w("root restart timed out after ${ROOT_TIMEOUT_SECONDS}s")
-        finished
-    } catch (t: Throwable) {
-        L.w("root restart failed: ${t.javaClass.simpleName}: ${t.message}")
-        false
+    fun restartSystemUi(): Boolean = restartSystemUiDetailed().ok
+
+    /**
+     * The same restart with the reason kept, so the settings screen can say why the button did nothing
+     * instead of leaving the user with silence. Never throws.
+     */
+    fun restartSystemUiDetailed(): RestartOutcome {
+        var su = "su"
+        return try {
+            su = findSuBinary()
+            // Different ROMs keep different tools, so every spelling is tried in turn: `pkill -f` (AOSP),
+            // `killall` (some vendors) and `pidof` + `kill -9` (the one that survives SELinux-restricted
+            // pkill). `true` makes the script succeed even when the process was already gone.
+            //
+            // Because the script ends with `; true`, a process this call killed is not provable from the
+            // exit code; the non-zero branch below is specifically for `su` denial / exec failure, where
+            // the root manager refuses the shell and exits immediately.
+            val script = "pkill -f com.android.systemui; " +
+                "killall com.android.systemui 2>/dev/null; " +
+                "kill -9 ${'$'}(pidof com.android.systemui) 2>/dev/null; true"
+            val process = ProcessBuilder(su, "-c", script).redirectErrorStream(true).start()
+            val finished = process.waitFor(ROOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            if (!finished) {
+                process.destroy()
+                L.w("root restart timed out after ${ROOT_TIMEOUT_SECONDS}s")
+                RestartOutcome(false, restartTimeoutReason(su, ROOT_TIMEOUT_SECONDS))
+            } else {
+                val exit = process.exitValue()
+                if (exit == 0) {
+                    RestartOutcome(true, "")
+                } else {
+                    // The process has ended, so reading the merged stream cannot block.
+                    val output = process.inputStream.bufferedReader().readText().trim()
+                    val reason = restartExitReason(su, exit, output)
+                    L.w("root restart failed: $reason")
+                    RestartOutcome(false, reason)
+                }
+            }
+        } catch (t: Throwable) {
+            val reason = rootRestartFailure(t, su)
+            L.w("root restart failed: $reason")
+            RestartOutcome(false, reason)
+        }
+    }
+
+    /** The failure text for a restart that could not run the shell, naming the binary that was tried. */
+    internal fun rootRestartFailure(t: Throwable, su: String): String =
+        "su $su: ${t.javaClass.simpleName}: ${t.message}"
+
+    /** The failure text for a restart that was still running when the timeout fired. */
+    internal fun restartTimeoutReason(su: String, seconds: Long): String =
+        "su $su: timed out after ${seconds}s"
+
+    /**
+     * The failure text for a shell that ran but exited non-zero: the usual case is a root manager
+     * denying the request (the prompt was refused or the app is not allowlisted), which exits at once.
+     * The first non-blank line of the merged output is included when there is one, capped so a noisy
+     * denial cannot fill the toast.
+     */
+    internal fun restartExitReason(su: String, exitCode: Int, output: String): String {
+        val base = "su $su: exit $exitCode"
+        val line = output.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+            ?: return base
+        return "$base: ${line.take(200)}"
     }
 
     /**

@@ -21,6 +21,8 @@
     <string name="settings_size">Size</string>
     <string name="settings_size_restart">Restart to apply the new size.</string>
     <string name="settings_restart">Restart</string>
+    <!-- Both restart routes failed; %1$s is the su/root reason (e.g. su path and errno). -->
+    <string name="settings_restart_failed">Restart failed: %1$s</string>
     <string name="settings_live_apply">Apply changes live</string>
     <string name="settings_live_apply_detail">Apply size and position right away.</string>
     <string name="settings_position">Position</string>
@@ -169,6 +171,8 @@
     <string name="module_health_noreport_text">Loaded but not responding. Restart your phone.</string>
     <string name="module_health_never_title">Duo is not running</string>
     <string name="module_health_never_text">Enable in LSPosed, choose status bar, restart. Missing? Contact support.</string>
+    <string name="module_health_disabled_title">Duo is switched off</string>
+    <string name="module_health_disabled_text">The module is loaded. Turn on Duo Status Bar to show the ring.</string>
     <string name="module_health_open_lsposed">Open LSPosed</string>
     <string name="module_health_scope_hint">Turn on Duo and choose the status bar.</string>
     <string name="module_health_contact">Contact on Telegram</string>
@@ -232,6 +236,11 @@
     <string name="nav_settings">Settings</string>
     <string name="settings_back">Back</string>
     <string name="home_tagline">One ring for battery, Wi-Fi and signal.</string>
+    <string name="home_setup_title">Set up Duo</string>
+    <string name="home_setup_step_1">1. Turn on Duo Status Bar in LSPosed.</string>
+    <string name="home_setup_step_2">2. Add System UI to the module scope.</string>
+    <string name="home_setup_step_3">3. Reboot the phone.</string>
+    <string name="home_disabled_hint">Duo is switched off. Turn it on in Settings.</string>
     <string name="home_live_preview">Live preview controls</string>
     <string name="home_live_preview_detail">Drive the real element with simulated battery, signal and mode changes.</string>
     <string name="home_live_preview_note">Simulations only. This lab never changes your settings.</string>
@@ -239,6 +248,7 @@
     <string name="home_status_running">Running</string>
     <string name="home_status_setup">Setup needed</string>
     <string name="home_status_restart">Restart needed</string>
+    <string name="home_status_off">Switched off</string>
     <string name="home_status_no_report">No response</string>
     <string name="home_camera">Camera</string>
     <string name="home_camera_detail">Ring wraps front camera. QS, notifications, lock screen keep normal.</string>

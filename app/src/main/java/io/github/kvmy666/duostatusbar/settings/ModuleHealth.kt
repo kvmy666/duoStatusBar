@@ -13,6 +13,12 @@ internal enum class ModuleState {
     /** The app APK was updated after the module last loaded: System UI still runs the old code. */
     NEEDS_RESTART,
 
+    /**
+     * The module loaded and heartbeats, but the user turned "Use Duo Status Bar" off in both
+     * orientations: nothing is broken, the ring is simply not wanted.
+     */
+    DISABLED,
+
     /** The module loaded but never reported: the settings channel is broken (the One UI 8 case). */
     NOT_REPORTING
 }
@@ -20,7 +26,7 @@ internal enum class ModuleState {
 internal data class ModuleHealth(val state: ModuleState, val loadedAt: Long, val appUpdatedAt: Long)
 
 /**
- * Diagnoses the module from two stores the app can always read, even when the settings provider is
+ * Diagnoses the module from stores the app can always read, even when the settings provider is
  * invisible to System UI:
  *
  *  - `Settings.Global.duo_statusbar_last_load`, which the module stamps *before* the gate; and
@@ -29,6 +35,9 @@ internal data class ModuleHealth(val state: ModuleState, val loadedAt: Long, val
  * That distinguishes the two failures a "no report yet" state hides: the app was updated and System UI
  * was never restarted (the running module is the old code), versus the module loaded but its provider
  * call is rejected (`Unknown authority …`, measured on One UI 8) so it can never report.
+ *
+ * The user's own switch (read from the settings store, both orientations) is a third input, so a loaded
+ * module the user turned off reports [ModuleState.DISABLED] instead of looking broken.
  */
 internal object ModuleHealthCheck {
 
@@ -37,8 +46,12 @@ internal object ModuleHealthCheck {
         val statusBlank = DuoPrefs.status(context).isBlank()
         val updatedAt = appUpdatedAt(context)
         val heartbeat = DuoPrefs.heartbeat(context)
+        // The module is effectively on when either orientation is on: an unsaved landscape copy reads
+        // the portrait one, so reading both never reports "off" while the bar is drawing.
+        val settingsEnabled = DuoPrefs.read(context, DuoOrientation.PORTRAIT).enabled ||
+            DuoPrefs.read(context, DuoOrientation.LANDSCAPE).enabled
         return ModuleHealth(
-            decide(loadedAt, updatedAt, statusBlank, heartbeat, System.currentTimeMillis()),
+            decide(loadedAt, updatedAt, statusBlank, heartbeat, System.currentTimeMillis(), settingsEnabled),
             loadedAt,
             updatedAt
         )
@@ -52,19 +65,27 @@ internal object ModuleHealthCheck {
      * build predates the heartbeat), and an old one means it was unscoped and System UI restarted without
      * it. Both are [ModuleState.NEVER_LOADED], so a report taken then cannot ship the previous run's
      * dump/status as if the module were healthy (measured: unscope, restart, send -> full but stale).
+     *
+     * [settingsEnabled] is the user's own switch. It is checked *after* the load/heartbeat conditions
+     * because a module that never loaded is a setup problem, not a turned-off one: telling that user to
+     * "turn it on" would skip the LSPosed steps they actually need. It is also checked after
+     * [ModuleState.NEEDS_RESTART] because an APK update still needs the restart regardless of the
+     * switch — the running code is the old build either way.
      */
     fun decide(
         loadedAt: Long,
         appUpdatedAt: Long,
         statusBlank: Boolean,
         heartbeatAt: Long = 0L,
-        nowMs: Long = 0L
+        nowMs: Long = 0L,
+        settingsEnabled: Boolean = true
     ): ModuleState = when {
         loadedAt <= 0L -> ModuleState.NEVER_LOADED
         heartbeatAt <= 0L -> ModuleState.NEVER_LOADED
         nowMs > 0L && nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS -> ModuleState.NEVER_LOADED
         // The APK changed after the module last loaded, so System UI is running the previous build.
         appUpdatedAt > loadedAt -> ModuleState.NEEDS_RESTART
+        !settingsEnabled -> ModuleState.DISABLED
         statusBlank -> ModuleState.NOT_REPORTING
         else -> ModuleState.OK
     }

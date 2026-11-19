@@ -48,4 +48,34 @@ class ModuleHealthTest {
         val stale = now - DuoPrefs.HEARTBEAT_STALE_MS - 1
         assertEquals(ModuleState.NEVER_LOADED, ModuleHealthCheck.decide(200L, 100L, false, stale, now))
     }
+
+    // The Infinix case: the module loaded (fresh heartbeat) but the user's own switch is off. That is a
+    // choice, not a failure, so the app must not show "not running" or recovery advice.
+    @Test
+    fun `loaded with a fresh heartbeat and the switch off is disabled`() {
+        assertEquals(ModuleState.DISABLED, ModuleHealthCheck.decide(200L, 100L, false, fresh, now, false))
+    }
+
+    @Test
+    fun `a module that never loaded stays never loaded when the switch is off`() {
+        // Setup steps, not "turn it on": no load stamp means LSPosed never injected the module.
+        assertEquals(ModuleState.NEVER_LOADED, ModuleHealthCheck.decide(0L, 100L, false, fresh, now, false))
+    }
+
+    @Test
+    fun `a stale heartbeat stays never loaded when the switch is off`() {
+        val stale = now - DuoPrefs.HEARTBEAT_STALE_MS - 1
+        assertEquals(ModuleState.NEVER_LOADED, ModuleHealthCheck.decide(200L, 100L, false, stale, now, false))
+    }
+
+    @Test
+    fun `an apk update still needs a restart when the switch is off`() {
+        // The running code is the old build regardless of the switch, so the restart advice stands.
+        assertEquals(ModuleState.NEEDS_RESTART, ModuleHealthCheck.decide(100L, 200L, false, fresh, now, false))
+    }
+
+    @Test
+    fun `switched on with a blank status is not reporting`() {
+        assertEquals(ModuleState.NOT_REPORTING, ModuleHealthCheck.decide(200L, 100L, true, fresh, now, true))
+    }
 }

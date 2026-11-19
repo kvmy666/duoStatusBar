@@ -151,4 +151,33 @@ class DuoReportTest {
         assertFalse(f1.exists())
         assertFalse(f2.exists())
     }
+
+    @Test
+    fun labelStaleDumpPrefixesMismatchedVersion() {
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: 1.4.2 (code 23, debug=false)\n" +
+            "build:\n  x=1"
+        val labelled = labelStaleDump(dump, "2.0.2")
+        assertTrue(labelled.startsWith("[stale diagnostic dump from 1.4.2"))
+        assertTrue("the dump itself must be kept", labelled.contains(dump))
+    }
+
+    @Test
+    fun labelStaleDumpLeavesMatchingVersionUnchanged() {
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: 2.0.2 (code 30, debug=false)\n" +
+            "build:\n  x=1"
+        assertEquals(dump, labelStaleDump(dump, "2.0.2"))
+    }
+
+    @Test
+    fun labelStaleDumpLeavesDumpWithoutVersionLineUnchanged() {
+        val dump = "Duo Status Bar diagnostic dump\nbuild:\n  x=1"
+        assertEquals(dump, labelStaleDump(dump, "2.0.2"))
+    }
+
+    @Test
+    fun labelStaleDumpLeavesBlankUnchanged() {
+        assertEquals("", labelStaleDump("", "2.0.2"))
+    }
 }

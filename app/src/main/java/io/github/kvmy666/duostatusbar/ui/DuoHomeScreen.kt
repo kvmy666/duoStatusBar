@@ -112,6 +112,25 @@ fun DuoHomeScreen() {
             color = DuoColors.TextSecondary
         )
 
+        // Switched off is a choice, not a fault: one line points at Settings, and no setup steps are
+        // shown because LSPosed already injected the module.
+        if (showDisabledHint(health)) {
+            Spacer(Modifier.height(DuoSpace.sm))
+            Text(
+                text = stringResource(R.string.home_disabled_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = DuoColors.TextSecondary
+            )
+            Spacer(Modifier.height(DuoSpace.sm))
+        }
+
+        // Never loaded is the only state the user can fix on their own: explain the setup here, while
+        // the pill above still reports the state. A loaded module must not get install advice.
+        if (showSetupGuide(health)) {
+            Spacer(Modifier.height(DuoSpace.md))
+            SetupStepsCard()
+        }
+
         Spacer(Modifier.height(DuoSpace.xxl))
         LivePreviewLabCard(
             designStyle = settings.designStyle,
@@ -180,6 +199,63 @@ internal fun invertCenterToMiddleSlot(on: Boolean, current: String): String =
     if (on) DuoPrefs.MIDDLE_SLOT_PERCENT
     else if (current == DuoPrefs.MIDDLE_SLOT_PERCENT) DuoPrefs.MIDDLE_SLOT_AUTO
     else DuoPrefs.normalizeMiddleSlot(current)
+
+/**
+ * Setup guidance belongs to [ModuleState.NEVER_LOADED] only: that is the one state LSPosed has not
+ * injected the module in, so enabling it, scoping System UI and rebooting are the actual next steps.
+ * The other states mean it did load, and those steps would be wrong advice.
+ */
+internal fun showSetupGuide(state: ModuleState): Boolean = state == ModuleState.NEVER_LOADED
+
+/**
+ * The one-line hint belongs to [ModuleState.DISABLED] only: the module is loaded and alive, so the
+ * next step is the user's own switch in Settings, not a reinstall or a restart.
+ */
+internal fun showDisabledHint(state: ModuleState): Boolean = state == ModuleState.DISABLED
+
+/** The steps in the order they are shown; a test pins the order and the resource wiring. */
+internal val HOME_SETUP_STEP_STRINGS = listOf(
+    R.string.home_setup_step_1,
+    R.string.home_setup_step_2,
+    R.string.home_setup_step_3
+)
+
+/**
+ * Explains the never-loaded state and opens LSPosed, where the first two steps are done. This is text
+ * and one intent only: no module or hook behaviour is involved.
+ */
+@Composable
+private fun SetupStepsCard() {
+    val context = LocalContext.current
+    GlassCard(
+        shape = RoundedCornerShape(DuoRadius.surface),
+        colors = CardDefaults.cardColors(containerColor = DuoColors.Surface),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(DuoSpace.xl),
+            verticalArrangement = Arrangement.spacedBy(DuoSpace.sm)
+        ) {
+            Text(
+                text = stringResource(R.string.home_setup_title),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            HOME_SETUP_STEP_STRINGS.forEach { step ->
+                Text(
+                    text = stringResource(step),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DuoColors.TextSecondary
+                )
+            }
+            OutlinedButton(
+                onClick = { openLsposed(context) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.module_health_open_lsposed))
+            }
+        }
+    }
+}
 
 /**
  * The single Live Preview Controls card: the interactive Rive preview plus its real-model controls.
@@ -361,6 +437,7 @@ private fun StatusPill(state: ModuleState) {
         ModuleState.OK -> R.string.home_status_running to DuoColors.Success
         ModuleState.NEVER_LOADED -> R.string.home_status_setup to DuoColors.WineMist
         ModuleState.NEEDS_RESTART -> R.string.home_status_restart to DuoColors.WineMist
+        ModuleState.DISABLED -> R.string.home_status_off to DuoColors.TextTertiary
         ModuleState.NOT_REPORTING -> R.string.home_status_no_report to DuoColors.Danger
     }
     val shape = RoundedCornerShape(DuoRadius.pill)

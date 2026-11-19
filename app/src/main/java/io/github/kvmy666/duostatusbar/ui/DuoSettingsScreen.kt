@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,9 +45,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.rememberResumed
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.RestartOutcome
 import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoOrientation
@@ -678,21 +682,38 @@ private val BRAND_WINE = Color(0xFF7B1E3A)
  * (the ColorOS/realme report: loaded, `stage=0`, no report) never registered the receiver, so the button
  * was silently dead. Now a fresh module load is the success signal: if System UI does not come back with a
  * newer load stamp, the app falls back to root, then to Shizuku — which is what makes the button work on a
- * ROM without `su` as long as Shizuku is running.
+ * ROM without `su` as long as Shizuku is running. When neither route can act, the failure says why
+ * instead of leaving the button silent.
  */
 internal fun restartSystemUi(context: Context) {
     val before = DuoPrefs.moduleLoadTime(context)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_RESTART_SYSTEMUI))
     Thread {
         if (before > 0L && moduleReloadedSince(context, before)) return@Thread
-        val ok = runCatching { RootLogs.restartSystemUi() }.getOrDefault(false)
-        if (!ok && StockIconHider.isShizukuRunning() && StockIconHider.isPermissionGranted()) {
+        // A throw here must not kill the worker thread and leave the button silent.
+        val outcome = runCatching { RootLogs.restartSystemUiDetailed() }.getOrElse { t ->
+            RestartOutcome(false, "root restart failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        if (outcome.ok) return@Thread
+        val reason = outcome.reason.ifBlank { "root restart failed" }
+        if (StockIconHider.isShizukuRunning() && StockIconHider.isPermissionGranted()) {
+            L.w("root restart failed: $reason; trying Shizuku")
             StockIconHider.exec(
                 context,
                 "pkill -f com.android.systemui || killall com.android.systemui || " +
                     "kill -9 ${'$'}(pidof com.android.systemui)",
                 {}
             )
+        } else {
+            // Nothing else can restart System UI, so name the reason instead of failing silently.
+            L.w("restart failed: $reason")
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.settings_restart_failed, reason),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }.start()
 }

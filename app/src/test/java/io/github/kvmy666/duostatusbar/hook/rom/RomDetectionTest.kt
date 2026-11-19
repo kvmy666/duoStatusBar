@@ -12,6 +12,21 @@ import org.junit.Test
  */
 class RomDetectionTest {
 
+    /**
+     * The measured HyperOS 3 SystemUI APK path, taken verbatim from
+     * `.pm/evidence/duo-report-20261113-202904/diagnostics-dump.txt:18`. A Xiaomi brand alone is not
+     * HyperOS; this marker is what keeps the measured HyperOS ids on a real MIUI build.
+     */
+    private val hyperOsMarkers = RomMarkers.of(
+        systemUiSourceDir = "/system_ext/priv-app/MiuiSystemUI/MiuiSystemUI.apk"
+    )
+
+    /** A successful read of a plain AOSP SystemUI: the only state that proves non-MIUI. */
+    private val plainSystemUiMarkers = RomMarkers.of(
+        systemUiSourceDir = "/system/priv-app/SystemUI/SystemUI.apk",
+        systemUiApplicationClass = "com.android.systemui.SystemUIApplication"
+    )
+
     @Test
     fun `oneplus is recognised as oxygenos and keeps the measured ids`() {
         val rom = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16")
@@ -41,8 +56,12 @@ class RomDetectionTest {
 
     @Test
     fun `xiaomi maps to the measured hyperos adapter`() {
-        val rom = RomDetection.forThisRom("Xiaomi", "24129PN74G", "dada", "CP2A.260605.016")
+        // The measured identity with a proven MIUI SystemUI marker keeps the HyperOS choice.
+        val rom = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, hyperOsMarkers
+        )
         assertEquals("hyperos", rom.id)
+        assertTrue("measured on HyperOS 3, not guessed", rom.measured)
         assertEquals("system_icons", rom.containerIds.first())
         assertTrue("measured on HyperOS 3, not guessed", rom.notes.contains("measured"))
         assertTrue("the wider strip is a fallback", rom.containerIds.contains("system_icon_area"))
@@ -149,7 +168,9 @@ class RomDetectionTest {
         )
         assertTrue("OnePlus shade was measured on the device", oxygen.shadeMeasured)
 
-        val hyper = RomDetection.forThisRom("Xiaomi", "24129PN74G", "dada", "CP2A.260605.016")
+        val hyper = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, hyperOsMarkers
+        )
         assertEquals("hyperos", hyper.id)
         assertEquals(listOf("shade_header_system_icons", "system_icons"), hyper.shadeContainerIds)
         assertFalse("HyperOS shade has no device dump yet", hyper.shadeMeasured)
@@ -189,7 +210,10 @@ class RomDetectionTest {
         // map each to expected id
         val expectedIds = listOf("oxygenos","hyperos","samsung","vivo","motorola","nothing","coloros","honor","aosp")
         for ((i, input) in inputs.withIndex()) {
-            val rom = RomDetection.forThisRom(input.first, input.second, "p", "d")
+            // HyperOS now needs a proven SystemUI marker; the other brands ignore it. SDK 36 keeps
+            // OxygenOS's measured result intact (its own gating test pins that separately).
+            val markers = if (expectedIds[i] == "hyperos") hyperOsMarkers else RomMarkers.UNKNOWN
+            val rom = RomDetection.forThisRom(input.first, input.second, "p", "d", 36, markers)
             assertEquals(expectedIds[i], rom.id)
             val (cover, kind, measured) = cases[rom.id]!!
             assertEquals(cover, rom.coverHook)
@@ -213,10 +237,14 @@ class RomDetectionTest {
 
     @Test
     fun `xiaomi sdk gating marks measured only on sdk 37`() {
-        val sdk37 = RomDetection.forThisRom("Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37)
+        val sdk37 = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, hyperOsMarkers
+        )
         assertTrue("SDK 37 is the measured build", sdk37.measured)
 
-        val sdk36 = RomDetection.forThisRom("Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 36)
+        val sdk36 = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 36, hyperOsMarkers
+        )
         assertFalse("SDK 36 is not the measured build", sdk36.measured)
     }
 
@@ -243,6 +271,222 @@ class RomDetectionTest {
             "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 33, listOf(profile)
         )
         assertFalse("profile out of range must not override", rom2.measured)
+    }
+
+    @Test
+    fun `unreadable markers keep the old hyperos selection`() {
+        // UNKNOWN = the SystemUI package could not be inspected (PackageManager exception, no context,
+        // package miss). That is not proof of AOSP: the pre-F-2 brand rule must keep Xiaomi on HyperOS.
+        val aospa = RomDetection.forThisRom(
+            "Xiaomi",
+            "Xiaomi",
+            "aospa_sweet",
+            "sweet_global-user 13 TKQ1.221013.002 V14.0.9.0.TKFMIXM release-keys",
+            37,
+            RomMarkers.UNKNOWN
+        )
+        assertEquals("hyperos", aospa.id)
+
+        // Evidence: .pm/evidence/duo-report-20261110-201707/diagnostics.txt:11-14 - Redmi Note 5 on
+        // LineageOS. Without a successful read the old brand rule still reports HyperOS.
+        val lineage = RomDetection.forThisRom(
+            "Xiaomi", "Redmi", "lineage_whyred", "13", 33, RomMarkers.UNKNOWN
+        )
+        assertEquals("hyperos", lineage.id)
+        assertFalse("SDK 33 is not the measured HyperOS build", lineage.measured)
+
+        // Evidence: .pm/evidence/duo-report-20261118-090105/diagnostics.txt:11-14 - Redmi zircon.
+        val poco = RomDetection.forThisRom(
+            "Xiaomi", "POCO", "zorn", "zorn-user 13", 36, RomMarkers.UNKNOWN
+        )
+        assertEquals("hyperos", poco.id)
+    }
+
+    @Test
+    fun `a read that proves a plain systemui switches xiaomi to aosp`() {
+        // Evidence: .pm/evidence/duo-log-20261115-214854.txt:22-25 - Xiaomi sweet running AOSPA was
+        // reported as `hyperos (measured=true)`. A successful read of a plain SystemUI proves non-MIUI.
+        val aospa = RomDetection.forThisRom(
+            "Xiaomi",
+            "Xiaomi",
+            "aospa_sweet",
+            "sweet_global-user 13 TKQ1.221013.002 V14.0.9.0.TKFMIXM release-keys",
+            37,
+            plainSystemUiMarkers
+        )
+        assertEquals("aosp", aospa.id)
+        assertFalse("a custom ROM is not the measured HyperOS build", aospa.measured)
+
+        val lineage = RomDetection.forThisRom(
+            "Xiaomi", "Redmi", "lineage_whyred", "13", 33, plainSystemUiMarkers
+        )
+        assertEquals("aosp", lineage.id)
+        assertFalse(lineage.measured)
+
+        val poco = RomDetection.forThisRom(
+            "Xiaomi", "POCO", "zorn", "zorn-user 13", 36, plainSystemUiMarkers
+        )
+        assertEquals("aosp", poco.id)
+        assertFalse(poco.measured)
+    }
+
+    @Test
+    fun `hyperos marker in the systemui path selects hyperos measured on sdk 37`() {
+        // The marker is the measured sourceDir from
+        // .pm/evidence/duo-report-20261113-202904/diagnostics-dump.txt:18.
+        val rom = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, hyperOsMarkers
+        )
+        assertEquals("hyperos", rom.id)
+        assertTrue("measured on HyperOS 3", rom.measured)
+        assertEquals("system_icons", rom.containerIds.first())
+        assertTrue(rom.notes.contains("measured"))
+    }
+
+    @Test
+    fun `hyperos marker in the application class selects hyperos`() {
+        // docs/rom-contract.md:24 lists `com.android.systemui.MiuiSystemUIApplication` as a frozen hook
+        // target, so a real MIUI SystemUI may prove itself by its application class instead of the path.
+        val byClass = RomMarkers.of(
+            systemUiApplicationClass = "com.android.systemui.MiuiSystemUIApplication"
+        ).hasHyperOsMarker
+        assertTrue("the proven application class is a marker", byClass)
+
+        val rom = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37,
+            RomMarkers.of(systemUiApplicationClass = "com.android.systemui.MiuiSystemUIApplication")
+        )
+        assertEquals("hyperos", rom.id)
+        assertTrue("measured on HyperOS 3", rom.measured)
+
+        // The class check is an exact simple-name match, so a look-alike must not count.
+        assertFalse(
+            "a look-alike class is not the proven marker",
+            RomMarkers.of(
+                systemUiApplicationClass = "com.android.systemui.MyMiuiSystemUIApplication"
+            ).hasHyperOsMarker
+        )
+    }
+
+    @Test
+    fun `the measured hyperos asset profile follows the tri-state marker`() {
+        val assetHyper = RomAdapter(
+            id = "hyperos",
+            label = "HyperOS / MIUI",
+            systemUiPackage = "com.android.systemui",
+            containerIds = listOf("system_icons", "system_icon_area"),
+            batteryId = "battery",
+            notes = "measured",
+            match = listOf("xiaomi", "redmi", "poco"),
+            measured = true,
+            apiMin = 37,
+            apiMax = 37
+        )
+        val profiles = listOf(assetHyper)
+        val display = "sweet_global-user 13 TKQ1.221013.002 V14.0.9.0.TKFMIXM release-keys"
+
+        // UNKNOWN is the old behaviour: the measured HyperOS profile is still accepted.
+        val unknown = RomDetection.forThisRom(
+            "Xiaomi", "Xiaomi", "aospa_sweet", display, profiles, 37, RomMarkers.UNKNOWN
+        )
+        assertEquals("hyperos", unknown.id)
+        assertTrue("UNKNOWN accepts the measured asset profile", unknown.measured)
+
+        // Only a successful read that proves non-MIUI skips the measured HyperOS profile, so a custom
+        // AOSPA/Lineage build does not take the measured HyperOS asset map.
+        val provenNonMiui = RomDetection.forThisRom(
+            "Xiaomi", "Xiaomi", "aospa_sweet", display, profiles, 37, plainSystemUiMarkers
+        )
+        assertEquals("aosp", provenNonMiui.id)
+        assertFalse(provenNonMiui.measured)
+
+        val provenMiui = RomDetection.forThisRom(
+            "Xiaomi", "Xiaomi", "aospa_sweet", display, profiles, 37, hyperOsMarkers
+        )
+        assertEquals("hyperos", provenMiui.id)
+        assertTrue("the measured asset profile is accepted with the MIUI marker", provenMiui.measured)
+    }
+
+    @Test
+    fun `oxygenos CPH2747 is unchanged with and without markers`() {
+        val display = "OnePlus/CPH2747/OP611FL1:16"
+        val without = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", display, 36)
+        val withMarkers = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", display, 36, hyperOsMarkers
+        )
+
+        assertEquals(without.id, withMarkers.id)
+        assertEquals("oxygenos", withMarkers.id)
+        assertEquals(without.measured, withMarkers.measured)
+        assertTrue("CPH2747 on SDK 36 is the measured build", withMarkers.measured)
+        assertEquals(without.containerIds, withMarkers.containerIds)
+        assertEquals(without.shadeContainerIds, withMarkers.shadeContainerIds)
+        assertEquals(without.shadeBatteryId, withMarkers.shadeBatteryId)
+        assertEquals(without.panelExpansionKind, withMarkers.panelExpansionKind)
+        assertEquals(without.panelOwnerAvailable, withMarkers.panelOwnerAvailable)
+        assertEquals("the marker must not leak into OxygenOS", without, withMarkers)
+    }
+
+    @Test
+    fun `hasHyperOsMarker and provesNonMiui truth table`() {
+        // UNKNOWN: nothing was read, so it is neither a marker nor proof of non-MIUI.
+        assertFalse("UNKNOWN has no marker", RomMarkers.UNKNOWN.hasHyperOsMarker)
+        assertFalse("UNKNOWN proves nothing", RomMarkers.UNKNOWN.provesNonMiui)
+
+        // A successful read of the measured MiuiSystemUI APK: marker, not non-MIUI.
+        assertTrue("the MIUI path is a marker", hyperOsMarkers.hasHyperOsMarker)
+        assertFalse("a MIUI read is not non-MIUI", hyperOsMarkers.provesNonMiui)
+
+        // A successful read of plain SystemUI: no marker, proves non-MIUI.
+        assertFalse("a plain path is not a marker", plainSystemUiMarkers.hasHyperOsMarker)
+        assertTrue("a plain read proves non-MIUI", plainSystemUiMarkers.provesNonMiui)
+
+        assertTrue(
+            "the APK path check ignores case",
+            RomMarkers.of(
+                systemUiSourceDir = "/system_ext/priv-app/miuisystemui/MiuiSystemUI.apk"
+            ).hasHyperOsMarker
+        )
+        assertTrue(
+            "the application class is the second proven marker",
+            RomMarkers.of(
+                systemUiApplicationClass = "com.android.systemui.MiuiSystemUIApplication"
+            ).hasHyperOsMarker
+        )
+        assertFalse(
+            "a look-alike class is not the proven marker",
+            RomMarkers.of(
+                systemUiApplicationClass = "com.android.systemui.MyMiuiSystemUIApplication"
+            ).hasHyperOsMarker
+        )
+
+        // A PackageManager record with neither field proves nothing: it is UNKNOWN, not non-MIUI.
+        val emptyRecord = RomMarkers.of()
+        assertFalse("an empty record was not usefully read", emptyRecord.read)
+        assertFalse("an empty record has no marker", emptyRecord.hasHyperOsMarker)
+        assertFalse("an empty record proves nothing", emptyRecord.provesNonMiui)
+
+        // Positive evidence of a plain SystemUI by the application class alone.
+        assertTrue(
+            "a plain application class proves non-MIUI",
+            RomMarkers.of(
+                systemUiApplicationClass = "com.android.systemui.SystemUIApplication"
+            ).provesNonMiui
+        )
+
+        // Positive evidence of a plain SystemUI by the source path alone.
+        assertTrue(
+            "a plain APK path proves non-MIUI",
+            RomMarkers.of(
+                systemUiSourceDir = "/system/priv-app/SystemUI/SystemUI.apk"
+            ).provesNonMiui
+        )
+
+        // Belt and braces: even a hand-written `read = true` with neither field is UNKNOWN, not proof.
+        assertFalse(
+            "read without any field is still not proof",
+            RomMarkers(read = true).provesNonMiui
+        )
     }
 
 }

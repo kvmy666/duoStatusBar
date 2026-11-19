@@ -7,8 +7,12 @@ import androidx.core.content.FileProvider
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
+import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
@@ -97,6 +101,48 @@ internal fun openGitHubIssue(context: Context, fallback: String, status: String)
         .onFailure { L.w("github open: ${it.message}") }
 }
 
+/**
+ * The `module load:` value for a report.
+ *
+ * The screen that builds a report can only pass 0 for the load time, so trusting that alone printed
+ * "never" on devices where the module was demonstrably running. The load stamp and the heartbeat are
+ * both readable from `Settings.Global`, so they are consulted instead of claiming the module never
+ * loaded. An explicit [moduleLoadAt] still wins when a caller has it.
+ */
+internal fun moduleLoadLine(
+    moduleLoadAt: Long,
+    status: String,
+    history: List<String>,
+    lastLoadAt: Long,
+    heartbeatAt: Long,
+    nowMs: Long
+): String = when {
+    moduleLoadAt > 0L -> formatTimestamp(moduleLoadAt)
+    lastLoadAt > 0L -> {
+        // A load stamp alone does not prove the module is still here: after an unscope and a System UI
+        // restart, the old stamp survives. Pair it with a fresh heartbeat, or the report would present
+        // the previous run's load as current.
+        val fresh = heartbeatAt > 0L &&
+            (nowMs <= 0L || nowMs - heartbeatAt <= DuoPrefs.HEARTBEAT_STALE_MS)
+        if (fresh) {
+            formatTimestamp(lastLoadAt)
+        } else {
+            formatTimestamp(lastLoadAt) + " (last load; module not running now)"
+        }
+    }
+    heartbeatAt > 0L -> {
+        val stamp = "${formatTimestamp(heartbeatAt)} (heartbeat)"
+        // An old beat means the module was unscoped and System UI restarted without it.
+        if (nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS) {
+            "$stamp — module not running now"
+        } else {
+            stamp
+        }
+    }
+    status.isNotBlank() || history.isNotEmpty() -> "unknown (module reported, no load stamp)"
+    else -> "never (LSPosed has not injected the module into System UI)"
+}
+
 /** The report the About buttons send — one text, shared or written to a file. */
 internal fun buildDiagnostics(
     context: Context,
@@ -110,11 +156,14 @@ internal fun buildDiagnostics(
         appendLine("Duo Status Bar diagnostics")
         appendLine("settings: $settings")
         appendLine(
-            "module load: " + if (moduleLoadAt <= 0L) {
-                "never (LSPosed has not injected the module into System UI)"
-            } else {
-                formatTimestamp(moduleLoadAt)
-            }
+            "module load: " + moduleLoadLine(
+                moduleLoadAt,
+                status,
+                history,
+                DuoPrefs.moduleLoadTime(context),
+                DuoPrefs.heartbeat(context),
+                System.currentTimeMillis()
+            )
         )
         appendLine("module: ").append(status.ifEmpty { "no report yet" })
         if (history.isNotEmpty()) {
@@ -128,9 +177,26 @@ internal fun buildDiagnostics(
         // The debug build's full dump (build identity, id probes, view tree, readers). Empty in release.
         if (dump.isNotEmpty()) {
             appendLine()
-            appendLine(dump)
+            append(labelStaleDump(dump, BuildConfig.VERSION_NAME))
         }
     }
+
+/**
+ * The ROM adapter for this device, with the SDK gate applied. Both the app environment and the report
+ * ZIP go through here so they cannot disagree; omitting the SDK is what let a profile measured on one
+ * Android version claim `measured=true` on another. [markers] is the SystemUI proof that keeps a
+ * Xiaomi-brand custom ROM from being reported as HyperOS.
+ */
+internal fun reportRom(
+    manufacturer: String,
+    brand: String,
+    product: String,
+    display: String,
+    profiles: List<RomAdapter>,
+    sdk: Int,
+    markers: RomMarkers = RomMarkers.UNKNOWN
+): RomAdapter =
+    RomDetection.forThisRom(manufacturer, brand, product, display, profiles, sdk, markers)
 
 /**
  * Facts the app can always read, even when the module never loaded and there is no root. This is what
@@ -148,10 +214,11 @@ internal fun appEnvironment(context: Context): String = buildString {
     val sysui = packageVersion(context, "com.android.systemui") ?: "not visible"
     appendLine("systemui: $sysui")
     val rom = runCatching {
-        RomDetection.forThisRom(
+        reportRom(
             android.os.Build.MANUFACTURER.orEmpty(), android.os.Build.BRAND.orEmpty(),
-            android.os.Build.PRODUCT.orEmpty(), android.os.Build.DISPLAY.orEmpty(), RomProfiles.load(context),
-            android.os.Build.VERSION.SDK_INT
+            android.os.Build.PRODUCT.orEmpty(), android.os.Build.DISPLAY.orEmpty(),
+            RomProfiles.load(context), android.os.Build.VERSION.SDK_INT,
+            RomMarkerSource.read(context)
         )
     }.getOrNull()
     appendLine("rom adapter: ${rom?.id ?: "unknown"} (measured=${rom?.measured ?: false})")
@@ -260,10 +327,11 @@ internal fun writeReportZip(
     val destination = File(dir, "duo-report-$stamp.zip")
 
     val rom = runCatching {
-        RomDetection.forThisRom(
+        reportRom(
             android.os.Build.MANUFACTURER.orEmpty(), android.os.Build.BRAND.orEmpty(),
             android.os.Build.PRODUCT.orEmpty(), android.os.Build.DISPLAY.orEmpty(),
-            RomProfiles.load(context)
+            RomProfiles.load(context), android.os.Build.VERSION.SDK_INT,
+            RomMarkerSource.read(context)
         )
     }.getOrNull()
 
@@ -297,7 +365,8 @@ internal fun writeReportZip(
         diagnostics = report,
         moduleLog = moduleLog,
         logcat = logs,
-        diagnosticsDump = dump.takeIf { it.isNotBlank() },
+        diagnosticsDump = dump.takeIf { it.isNotBlank() }
+            ?.let { labelStaleDump(it, BuildConfig.VERSION_NAME) },
         screenshotPng = null
     )
 

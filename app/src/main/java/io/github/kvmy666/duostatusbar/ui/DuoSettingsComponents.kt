@@ -165,9 +165,12 @@ internal fun StageOverrideAlert(
 }
 
 /**
- * The module-health card (red): the module is not running, is running old code after an update, or is
- * loaded but cannot report. It offers the two ways to recover and a one-tap report, which is what a
- * "no report in the log" report needs to become actionable.
+ * The module-health card: the module is not running, is running old code after an update, or is
+ * loaded but cannot report — those are red, and offer the two ways to recover plus a one-tap report,
+ * which is what a "no report in the log" report needs to become actionable.
+ *
+ * [ModuleState.DISABLED] is not a failure: the module is loaded and the user chose to switch it off,
+ * so the card is neutral, explains the switch, and offers only the contact route.
  */
 @Composable
 internal fun ModuleHealthCard(
@@ -182,48 +185,58 @@ internal fun ModuleHealthCard(
 ) {
     val title = when (state) {
         ModuleState.NEEDS_RESTART -> R.string.module_health_restart_title
+        ModuleState.DISABLED -> R.string.module_health_disabled_title
         ModuleState.NOT_REPORTING -> R.string.module_health_noreport_title
         else -> R.string.module_health_never_title
     }
     val text = when (state) {
         ModuleState.NEEDS_RESTART -> R.string.module_health_restart_text
+        ModuleState.DISABLED -> R.string.module_health_disabled_text
         ModuleState.NOT_REPORTING -> R.string.module_health_noreport_text
         else -> R.string.module_health_never_text
     }
+    val disabled = state == ModuleState.DISABLED
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer
+            containerColor = if (disabled) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.errorContainer,
+            contentColor = if (disabled) MaterialTheme.colorScheme.onSecondaryContainer
+            else MaterialTheme.colorScheme.onErrorContainer
         )
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(text), style = MaterialTheme.typography.bodyMedium)
-            // Not injected: the fix is in LSPosed (enable + System UI scope) and a restart, not a report -
-            // the module has produced nothing to report. A user in this state can never send a useful dump,
-            // so the report button is replaced by the two recovery steps and a way to reach support.
-            if (state == ModuleState.NEVER_LOADED) {
-                Text(stringResource(R.string.module_health_scope_hint), style = MaterialTheme.typography.bodySmall)
-                Button(onClick = onOpenLsposed, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.module_health_open_lsposed))
+            when {
+                // Switched off by the user: there is nothing to restart, reboot or report.
+                disabled -> Unit
+                // Not injected: the fix is in LSPosed (enable + System UI scope) and a restart, not a report -
+                // the module has produced nothing to report. A user in this state can never send a useful dump,
+                // so the report button is replaced by the two recovery steps and a way to reach support.
+                state == ModuleState.NEVER_LOADED -> {
+                    Text(stringResource(R.string.module_health_scope_hint), style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = onOpenLsposed, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.module_health_open_lsposed))
+                    }
+                    OutlinedButton(onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.settings_restart))
+                    }
+                    // Even without an injection there is an app-side report worth having (build, device, ROM,
+                    // module state), so a user stuck here can still save it and send it on.
+                    OutlinedButton(onClick = onExport, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.module_health_export))
+                    }
                 }
-                OutlinedButton(onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.settings_restart))
-                }
-                // Even without an injection there is an app-side report worth having (build, device, ROM,
-                // module state), so a user stuck here can still save it and send it on.
-                OutlinedButton(onClick = onExport, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.module_health_export))
-                }
-            } else {
-                Button(onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.settings_restart))
-                }
-                OutlinedButton(onClick = onReboot, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.settings_reboot))
-                }
-                OutlinedButton(onClick = onReport, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(if (busy) R.string.settings_collecting else R.string.settings_report_bug))
+                else -> {
+                    Button(onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.settings_restart))
+                    }
+                    OutlinedButton(onClick = onReboot, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.settings_reboot))
+                    }
+                    OutlinedButton(onClick = onReport, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(if (busy) R.string.settings_collecting else R.string.settings_report_bug))
+                    }
                 }
             }
             // Escalation, for when the automatic recovery does not work.

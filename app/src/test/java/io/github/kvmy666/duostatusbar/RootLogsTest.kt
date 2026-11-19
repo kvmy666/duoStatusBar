@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 
 /**
  * FR-03/NFR-06: a root shell that is named but does not exist is why locked-bootloader reports came
@@ -83,5 +84,36 @@ class RootLogsTest {
         assertFalse("unfiltered LSPosed tail must be removed", script.contains("tail -n 120"))
         // DuoSB lines must still be retained through the filtered grep.
         assertTrue("DuoSB lines must still be retained", script.contains("DuoSB"))
+    }
+
+    @Test
+    fun `rootRestartFailure names the su binary and the errno`() {
+        val t = IOException(
+            "Cannot run program \"/system/bin/su\": error=13, Permission denied"
+        )
+        val reason = RootLogs.rootRestartFailure(t, "/system/bin/su")
+        assertTrue(reason.contains("/system/bin/su"))
+        assertTrue(reason.contains("IOException"))
+        assertTrue(reason.contains("error=13"))
+        assertTrue(reason.contains("Permission denied"))
+    }
+
+    @Test
+    fun `restartTimeoutReason names the su binary and the timeout`() {
+        val reason = RootLogs.restartTimeoutReason("/system/bin/su", 25L)
+        assertTrue(reason.contains("su"))
+        assertTrue(reason.contains("/system/bin/su"))
+        assertTrue(reason.contains("25s"))
+    }
+
+    @Test
+    fun `restartExitReason names the su binary and the exit code without output`() {
+        assertEquals("su /system/bin/su: exit 1", RootLogs.restartExitReason("/system/bin/su", 1, "   "))
+    }
+
+    @Test
+    fun `restartExitReason appends the first non-blank output line`() {
+        val reason = RootLogs.restartExitReason("su", 1, "\n  permission denied  \nmore")
+        assertEquals("su su: exit 1: permission denied", reason)
     }
 }
