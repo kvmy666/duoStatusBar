@@ -420,6 +420,22 @@ class IosMappingTest {
     }
 
     @Test
+    fun `forced single with two active sims but one visible slot is none`() {
+        // One iOS row beside one stock icon is never acceptable, so a forced single that cannot map both
+        // active SIMs to visible slots leaves the stock icons alone.
+        val sims = listOf(sig(slot = 0, sub = 1, level = 3), sig(slot = 1, sub = 2, level = 2))
+        assertEquals(
+            IosCellPlan.None,
+            plan(
+                sims,
+                defaultSubId = 1,
+                slots = listOf(CellSlot(1, true), CellSlot(2, false)),
+                display = IosSimDisplay.SINGLE
+            )
+        )
+    }
+
+    @Test
     fun `forced single falls back to the first active sim when the default is unknown`() {
         val p = single(
             plan(

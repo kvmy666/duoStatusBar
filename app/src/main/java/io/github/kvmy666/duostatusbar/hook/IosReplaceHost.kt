@@ -752,19 +752,24 @@ internal class IosReplaceHost(
         deferredArea.remove(icon.view)
     }
 
-    /** Adopts one stock icon with its plan, falling back exactly as the plan says. */
+    /**
+     * Adopts one stock icon with its plan, falling back exactly as the plan says.
+     *
+     * The user transform is not computed from the outer slot here: the record is created with the plain
+     * [visual] and [applyVisual] then derives it from that record's actual draw box, the same call every
+     * later refresh uses. Computing it from the outer at adoption made the offset jump once a refresh
+     * ran (an OPLUS battery is 90 px outer but a 79 px leaf).
+     */
     private fun adoptIcon(kind: IosIconKind, icon: StockIcon, visual: IosVisual): Record? {
         if (icon.view.visibility != View.VISIBLE) return null
-        val drawnWidth = drawnWidthFor(kind, icon.view.width, icon.view.height, visual)
-        val transformed = visual.copy(userTransform = userTransformFor(kind, drawnWidth))
         val plan = planForSafe(icon.view)
-        return when (plan.mechanism) {
+        val record = when (plan.mechanism) {
             IosReplaceMechanism.IMAGE_DRAWABLE -> {
                 val leaf = findLeaf(icon.view, plan.leafIds, allowFirstImageView = isAospBattery(plan))
                 if (leaf != null) {
-                    adoptImage(kind, icon.view, leaf, transformed, plan.siblingIds)
+                    adoptImage(kind, icon.view, leaf, visual, plan.siblingIds)
                 } else {
-                    adoptFallback(kind, icon.view, plan, transformed)
+                    adoptFallback(kind, icon.view, plan, visual)
                 }
             }
             IosReplaceMechanism.OUTER_DRAW -> {
@@ -772,12 +777,12 @@ internal class IosReplaceHost(
                 if (leaf == null) {
                     null
                 } else if (installOuterHook(icon.view, plan)) {
-                    adoptOuter(kind, icon.view, leaf, transformed, plan)
+                    adoptOuter(kind, icon.view, leaf, visual, plan)
                 } else {
                     // OPLUS composites draw in/out/type siblings in the same outer; a leaf-only
                     // fallback must blank them or they sit over our glyph (A1 §wifi/mobile).
                     val image = leaf as? ImageView ?: return null
-                    adoptImage(kind, icon.view, image, transformed, plan.fallbackSiblingIds)
+                    adoptImage(kind, icon.view, image, visual, plan.fallbackSiblingIds)
                 }
             }
             IosReplaceMechanism.LEAF_DRAW -> {
@@ -785,14 +790,16 @@ internal class IosReplaceHost(
                 if (leaf == null) {
                     null
                 } else if (ensureLeafHook(plan, leaf)) {
-                    adoptLeaf(kind, icon.view, leaf, transformed, plan)
+                    adoptLeaf(kind, icon.view, leaf, visual, plan)
                 } else {
-                    adoptOverlay(kind, icon.view, null, transformed)
+                    adoptOverlay(kind, icon.view, null, visual)
                 }
             }
-            IosReplaceMechanism.OVERLAY -> adoptOverlay(kind, icon.view, null, transformed)
+            IosReplaceMechanism.OVERLAY -> adoptOverlay(kind, icon.view, null, visual)
             IosReplaceMechanism.SKIP -> null
         }
+        if (record != null) applyVisual(record, record.visual ?: visual)
+        return record
     }
 
     private fun adoptFallback(

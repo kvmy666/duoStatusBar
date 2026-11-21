@@ -1385,6 +1385,32 @@ class IosReplaceHostTest {
         assertEquals(IosUserTransform.IDENTITY, host.userTransformFor(IosIconKind.BATTERY, 100f))
     }
 
+    @Test
+    fun `adopted drawable transform uses the leaf draw box and does not jump on refresh`() {
+        val tree = oplusBatteryTree()
+        val host = host()
+        host.refreshSettings(
+            ModuleSettings.DEFAULT.copy(iosBatteryOffset = 10, iosBatteryScale = 100)
+        )
+        assertTrue(host.attachIn(tree.strip, null))
+
+        val leafWidth = IosGeometry.Relative.sizeFor(IosIconKind.BATTERY, 79, 48).first
+        val outerWidth = IosGeometry.Relative.sizeFor(IosIconKind.BATTERY, 90, 48).first
+        assertTrue("the fixture must make the two boxes differ", leafWidth != outerWidth)
+
+        val drawable = tree.leaf.drawable as IosBatteryDrawable
+        val adopted = drawable.userTransform
+        // The offset is a percent of the LEAF's 100 % draw width (79 px), never the 90 px outer.
+        assertEquals(0.10f * leafWidth, adopted.dxPx, 0.01f)
+
+        host.refresh()
+
+        assertSame("the drawable instance is reused", drawable, tree.leaf.drawable)
+        assertEquals("refresh must not move the glyph", adopted, drawable.userTransform)
+
+        host.teardown()
+    }
+
     // ------------------------------------------------------------- sim display: forced single
 
     @Test
