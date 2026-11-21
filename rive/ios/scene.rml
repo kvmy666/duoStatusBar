@@ -57,42 +57,43 @@
                 <DataBindContext propertyKey="18" sourcePathIds="0:1000-0:1007" />
             </Shape>
 
-            <!-- Cap nub: the owner-annotated right-hand half of a superellipse (n=1.8) as a 25-gon
-                 in absolute artboard coordinates — a chunky rounded-triangular/trapezoid shape,
-                 15.2 x 36.8, with its flat base on the body side.  Annotated cap IoU 0.971 (old
-                 24-gon 0.789); the light PNG is the same shape at a smaller size (0.987).
-                 A foreground shape, so tint. -->
-            <Shape name="cap" id="0:1106">
+            <!-- Cap nub: the measured right-hand half of a superellipse (n=1.8) as a 25-gon in
+                 absolute artboard coordinates, 9.5 x 26.0, with its flat base on the body side.
+                 It is the inactive grey, the SAME colour as the uncharged remainder, so its Fill is
+                 bound to batteryFillColor (0:1006), not the dynamic tint, at shape opacity 0.50
+                 (Battery.CAP_ALPHA). Owner rule; refs 1/5/6 confirm 0.50 for a partial charge. The
+                 light 100 % reference draws the cap at full ink — UNVERIFIED exception, not adopted. -->
+            <Shape name="cap" id="0:1106" opacity="0.50">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="201.00" y="32.60" />
-                    <StraightVertex x="206.20" y="34.13" />
-                    <StraightVertex x="208.49" y="35.67" />
-                    <StraightVertex x="210.19" y="37.20" />
-                    <StraightVertex x="211.55" y="38.73" />
-                    <StraightVertex x="212.67" y="40.27" />
-                    <StraightVertex x="213.59" y="41.80" />
-                    <StraightVertex x="214.36" y="43.33" />
-                    <StraightVertex x="214.99" y="44.87" />
-                    <StraightVertex x="215.49" y="46.40" />
-                    <StraightVertex x="215.86" y="47.93" />
-                    <StraightVertex x="216.10" y="49.47" />
-                    <StraightVertex x="216.20" y="51.00" />
-                    <StraightVertex x="216.10" y="52.53" />
-                    <StraightVertex x="215.86" y="54.07" />
-                    <StraightVertex x="215.49" y="55.60" />
-                    <StraightVertex x="214.99" y="57.13" />
-                    <StraightVertex x="214.36" y="58.67" />
-                    <StraightVertex x="213.59" y="60.20" />
-                    <StraightVertex x="212.67" y="61.73" />
-                    <StraightVertex x="211.55" y="63.27" />
-                    <StraightVertex x="210.19" y="64.80" />
-                    <StraightVertex x="208.49" y="66.33" />
-                    <StraightVertex x="206.20" y="67.87" />
-                    <StraightVertex x="201.00" y="69.40" />
+                    <StraightVertex x="201.00" y="38.00" />
+                    <StraightVertex x="201.99" y="38.12" />
+                    <StraightVertex x="203.12" y="38.49" />
+                    <StraightVertex x="204.27" y="39.09" />
+                    <StraightVertex x="205.40" y="39.92" />
+                    <StraightVertex x="206.47" y="40.95" />
+                    <StraightVertex x="207.46" y="42.15" />
+                    <StraightVertex x="208.35" y="43.51" />
+                    <StraightVertex x="209.10" y="44.98" />
+                    <StraightVertex x="209.70" y="46.53" />
+                    <StraightVertex x="210.14" y="48.10" />
+                    <StraightVertex x="210.41" y="49.65" />
+                    <StraightVertex x="210.50" y="51.00" />
+                    <StraightVertex x="210.41" y="52.35" />
+                    <StraightVertex x="210.14" y="53.90" />
+                    <StraightVertex x="209.70" y="55.47" />
+                    <StraightVertex x="209.10" y="57.02" />
+                    <StraightVertex x="208.35" y="58.49" />
+                    <StraightVertex x="207.46" y="59.85" />
+                    <StraightVertex x="206.47" y="61.05" />
+                    <StraightVertex x="205.40" y="62.08" />
+                    <StraightVertex x="204.27" y="62.91" />
+                    <StraightVertex x="203.12" y="63.51" />
+                    <StraightVertex x="201.99" y="63.88" />
+                    <StraightVertex x="201.00" y="64.00" />
                 </PointsPath>
                 <Fill name="Fill">
                     <SolidColor colorValue="FFFFFFFF" name="Color">
-                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1006" />
                     </SolidColor>
                 </Fill>
             </Shape>
@@ -399,20 +400,21 @@
     </Artboard>
 
     <!-- =========================================================== CELLULAR -->
-    <!-- Single: four bottom-aligned capsules at pitch 41, bottom y 100 (annotated heights
-         .480/.634/.812/.990 H).
+    <!-- Single: four bottom-aligned capsules at pitch 41, bottom y 96.5 (bar 4 top = 1.0, level
+         with the battery body top; measured ref 6 heights 36 / 52.8 / 73 / 95.5).
          Dual: one stacked block rendered by ONE view over both stock slots — the data SIM's
          four bars on top (bottom-aligned at y 63.7), the other SIM's four dots below (centred
-         at y 90.9).  BOTH draws the whole block; DATA and OTHER remain supported artboard
+         at y 90.1).  BOTH draws the whole block; DATA and OTHER remain supported artboard
          values for a single row.  Bars are horizontally centred on the single columns
-         (x = 0.9 + i*41), exactly as IosCanvasView does. -->
+         (x = 0.9 + i*41), exactly as IosCanvasView does.  The artboard stays 150.1 x 105.6
+         (a frozen envelope); the measured dual block is 102.8. -->
     <Artboard x="440" y="0" width="150.1" height="105.6" name="IosCell" id="0:1300"
               viewModelId="0:1000" viewModelInstanceId="0:1013" defaultStateMachineId="0:1330">
         <Node name="cellRoot" id="0:1301">
 
             <Node name="singleBars" id="0:1302">
-                <Shape x="1" y="52" name="singleBar1" id="0:1310">
-                    <Rectangle width="25.1" height="48" originX="0" originY="0"
+                <Shape x="1" y="60.5" name="singleBar1" id="0:1310">
+                    <Rectangle width="25.1" height="36" originX="0" originY="0"
                                cornerRadiusTL="12.55" name="Path" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -420,8 +422,8 @@
                         </SolidColor>
                     </Fill>
                 </Shape>
-                <Shape x="42" y="36.6" name="singleBar2" id="0:1311">
-                    <Rectangle width="25.1" height="63.4" originX="0" originY="0"
+                <Shape x="42" y="43.7" name="singleBar2" id="0:1311">
+                    <Rectangle width="25.1" height="52.8" originX="0" originY="0"
                                cornerRadiusTL="12.55" name="Path" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -429,8 +431,8 @@
                         </SolidColor>
                     </Fill>
                 </Shape>
-                <Shape x="83" y="18.8" name="singleBar3" id="0:1312">
-                    <Rectangle width="25.1" height="81.2" originX="0" originY="0"
+                <Shape x="83" y="23.5" name="singleBar3" id="0:1312">
+                    <Rectangle width="25.1" height="73" originX="0" originY="0"
                                cornerRadiusTL="12.55" name="Path" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -439,7 +441,7 @@
                     </Fill>
                 </Shape>
                 <Shape x="124" y="1" name="singleBar4" id="0:1313">
-                    <Rectangle width="25.1" height="99" originX="0" originY="0"
+                    <Rectangle width="25.1" height="95.5" originX="0" originY="0"
                                cornerRadiusTL="12.55" name="Path" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -489,7 +491,7 @@
             </Node>
 
             <Node name="dots" id="0:1304" opacity="0">
-                <Shape x="13.55" y="90.9" name="dot1" id="0:1318">
+                <Shape x="13.55" y="90.1" name="dot1" id="0:1318">
                     <Ellipse width="26" height="27.4" originX="0.5" originY="0.5" name="Path" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -497,7 +499,7 @@
                         </SolidColor>
                     </Fill>
                 </Shape>
-                <Shape x="54.55" y="90.9" name="dot2" id="0:1319">
+                <Shape x="54.55" y="90.1" name="dot2" id="0:1319">
                     <Ellipse width="26" height="27.4" originX="0.5" originY="0.5" name="Path" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -505,7 +507,7 @@
                         </SolidColor>
                     </Fill>
                 </Shape>
-                <Shape x="95.55" y="90.9" name="dot3" id="0:1320">
+                <Shape x="95.55" y="90.1" name="dot3" id="0:1320">
                     <Ellipse width="26" height="27.4" originX="0.5" originY="0.5" name="Path" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -513,7 +515,7 @@
                         </SolidColor>
                     </Fill>
                 </Shape>
-                <Shape x="136.55" y="90.9" name="dot4" id="0:1321">
+                <Shape x="136.55" y="90.1" name="dot4" id="0:1321">
                     <Ellipse width="26" height="27.4" originX="0.5" originY="0.5" name="Path" />
                     <Fill name="Fill">
                         <SolidColor colorValue="FFFFFFFF" name="Color">

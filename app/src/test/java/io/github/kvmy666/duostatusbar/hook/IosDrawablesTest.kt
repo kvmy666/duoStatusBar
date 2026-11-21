@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.BatteryManager
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -223,8 +224,216 @@ class IosDrawablesTest {
         assertTrue("data row taller than other row", dataSpan > otherSpan * 2)
     }
 
-    // ----------------------------------------------------------------------------- helpers
+    // ------------------------------------------------------------------- cap colour parity
 
+    @Test
+    fun `battery cap is the fill colour at half alpha not the tint`() {
+        // A fixed LOW state keeps batteryFillColor while a white system tint is captured; the cap must
+        // follow the fill colour (inactive grey), not the tint.
+        val visual = batteryVisual(level = 15, tint = Color.BLACK)
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
+        drawable.setTint(Color.WHITE)
+
+        val bitmap = render(drawable, BATTERY_W, BATTERY_H)
+        // Cap centre is artboard (205.75, 51); BATTERY_W x BATTERY_H is a 1:1 fit. A 50 % alpha on a
+        // transparent bitmap round-trips through premultiplication, so allow a few channel units.
+        val c = bitmap.getPixel(206, 51)
+        assertTrue(
+            "cap red ${Color.red(c)} vs ${Color.red(IosMapping.COLOR_LOW)}",
+            kotlin.math.abs(Color.red(c) - Color.red(IosMapping.COLOR_LOW)) <= 4
+        )
+        assertTrue(
+            "cap green ${Color.green(c)} vs ${Color.green(IosMapping.COLOR_LOW)}",
+            kotlin.math.abs(Color.green(c) - Color.green(IosMapping.COLOR_LOW)) <= 4
+        )
+        assertTrue(
+            "cap blue ${Color.blue(c)} vs ${Color.blue(IosMapping.COLOR_LOW)}",
+            kotlin.math.abs(Color.blue(c) - Color.blue(IosMapping.COLOR_LOW)) <= 4
+        )
+        assertTrue("cap colour is not the white tint", c != Color.WHITE)
+        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
+    }
+
+    // --------------------------------------------------------------------- user transform
+
+    @Test
+    fun `identity user transform draws the default pixels`() {
+        val visuals = mapOf(
+            IosIconKind.BATTERY to batteryVisual(level = 60),
+            IosIconKind.WIFI to wifiVisual(),
+            IosIconKind.CELL to cellVisual(IosCellMode.SINGLE, IosCellRole.DATA)
+        )
+        for ((kind, visual) in visuals) {
+            val plain = IosDrawables.create(kind, visual, 0, 0)
+            val explicit = IosDrawables.create(kind, visual, 0, 0, IosUserTransform(0f, 1f))
+            assertArrayEquals(
+                "${kind.name} identity pixels",
+                pixels(render(plain, 160, 90)),
+                pixels(render(explicit, 160, 90))
+            )
+            // The same identity through the setter must also be pixel-identical.
+            plain.userTransform = IosUserTransform(0f, 1f)
+            assertArrayEquals(
+                "${kind.name} setter identity pixels",
+                pixels(render(IosDrawables.create(kind, visual, 0, 0), 160, 90)),
+                pixels(render(plain, 160, 90))
+            )
+        }
+    }
+
+    @Test
+    fun `user transform dx shifts ink right without resizing it or the bounds`() {
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
+        val before = inkBox(render(drawable, 160, 90))
+
+        drawable.setBounds(0, 0, 160, 90)
+        drawable.userTransform = IosUserTransform(dxPx = 3f, scale = 1f)
+        // The transform must not write the bounds (C2).
+        assertEquals(0, drawable.bounds.left)
+        assertEquals(0, drawable.bounds.top)
+        assertEquals(160, drawable.bounds.right)
+        assertEquals(90, drawable.bounds.bottom)
+
+        val after = inkBox(render(drawable, 160, 90))
+        assertEquals("shifted right", 3.0, (after.left - before.left).toDouble(), 1.0)
+        assertTrue("width unchanged (${before.width} vs ${after.width})", kotlin.math.abs(before.width - after.width) <= 1)
+    }
+
+    @Test
+    fun `user transform dx is independent of scale`() {
+        // Android concatenates transforms as M' = M * X, so a translate() issued BEFORE a pivot
+        // scale() is applied in the already-scaled (device) space: dx must not shrink with scale.
+        // A regression to scale-then-translate would make the 0.5x shift ~3 px instead of 6 px.
+        fun box(scale: Float, dx: Float): InkBox {
+            val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
+            drawable.userTransform = IosUserTransform(dxPx = dx, scale = scale)
+            return inkBox(render(drawable, 160, 90))
+        }
+
+        val fullBaseline = box(scale = 1f, dx = 0f)
+        val fullShifted = box(scale = 1f, dx = 6f)
+        val halfBaseline = box(scale = 0.5f, dx = 0f)
+        val halfShifted = box(scale = 0.5f, dx = 6f)
+
+        assertEquals(
+            "dx shift at scale 1",
+            6.0,
+            (fullShifted.left - fullBaseline.left).toDouble(),
+            1.0
+        )
+        assertEquals(
+            "dx shift at scale 0.5 (scaled dx is the bug)",
+            6.0,
+            (halfShifted.left - halfBaseline.left).toDouble(),
+            1.0
+        )
+        // Each draw still has its own scaled size (allow 1 px for the bounds clip at scale 1).
+        assertEquals("scale-1 width", fullBaseline.width.toFloat(), fullShifted.width.toFloat(), 2f)
+        assertEquals("scale-0.5 width", halfBaseline.width.toFloat(), halfShifted.width.toFloat(), 2f)
+        assertEquals("half/full width", 0.5f, halfShifted.width.toFloat() / fullShifted.width, 0.08f)
+        assertEquals("half/full height", 0.5f, halfShifted.height.toFloat() / fullShifted.height, 0.08f)
+    }
+
+    @Test
+    fun `scale 0_5 shrinks the ink around the centre`() {
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
+        val full = inkBox(render(drawable, 200, 120))
+        drawable.userTransform = IosUserTransform(0f, 0.5f)
+        val half = inkBox(render(drawable, 200, 120))
+
+        assertEquals(0.5f, half.width.toFloat() / full.width, 0.08f)
+        assertEquals(0.5f, half.height.toFloat() / full.height, 0.08f)
+        assertTrue(half.left >= 0 && half.right < 200 && half.top >= 0 && half.bottom < 120)
+    }
+
+    @Test
+    fun `scale zero draws nothing and invalid values are safe`() {
+        val drawable = IosDrawables.create(IosIconKind.WIFI, wifiVisual(), 0, 0)
+
+        drawable.userTransform = IosUserTransform(0f, 0f)
+        assertEquals(0, inkCount(render(drawable, 160, 90)))
+
+        drawable.userTransform = IosUserTransform(0f, -1f)
+        assertEquals(0, inkCount(render(drawable, 160, 90)))
+
+        // Non-finite components fall back to identity (dx -> 0, scale -> 1).
+        drawable.userTransform = IosUserTransform(Float.NaN, 1f)
+        assertTrue(inkCount(render(drawable, 160, 90)) > 0)
+
+        drawable.userTransform = IosUserTransform(0f, Float.POSITIVE_INFINITY)
+        assertTrue(inkCount(render(drawable, 160, 90)) > 0)
+    }
+
+    @Test
+    fun `user transform never writes the intrinsic size`() {
+        val drawable = IosDrawables.create(
+            IosIconKind.CELL,
+            cellVisual(IosCellMode.SINGLE, IosCellRole.DATA),
+            40,
+            30
+        )
+        drawable.setBounds(5, 6, 45, 36)
+        drawable.userTransform = IosUserTransform(dxPx = 4f, scale = 0.8f)
+
+        assertEquals(40, drawable.intrinsicWidth)
+        assertEquals(30, drawable.intrinsicHeight)
+        assertEquals(5, drawable.bounds.left)
+        assertEquals(6, drawable.bounds.top)
+        assertEquals(45, drawable.bounds.right)
+        assertEquals(36, drawable.bounds.bottom)
+    }
+
+    @Test
+    fun `non-identity transform clips ink to the drawable bounds`() {
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
+        drawable.setBounds(20, 10, 180, 100)
+        drawable.userTransform = IosUserTransform(dxPx = -100f, scale = 1f)
+
+        val bitmap = Bitmap.createBitmap(220, 140, Bitmap.Config.ARGB_8888)
+        drawable.draw(Canvas(bitmap))
+
+        var inside = 0
+        var outside = 0
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                if (Color.alpha(bitmap.getPixel(x, y)) <= 8) continue
+                val inBounds = x >= 20 && x < 180 && y >= 10 && y < 100
+                if (inBounds) inside++ else outside++
+            }
+        }
+        assertEquals("ink outside the drawable bounds", 0, outside)
+        assertTrue("some ink remains inside the drawable bounds", inside > 0)
+    }
+
+    // ------------------------------------------------------------------- CONTAIN, no squash
+
+    @Test
+    fun `contain fit never squashes and stays centred in extreme slots`() {
+        val visuals = listOf(
+            IosIconKind.WIFI to wifiVisual(),
+            IosIconKind.CELL to cellVisual(IosCellMode.SINGLE, IosCellRole.DATA)
+        )
+        for ((kind, visual) in visuals) {
+            val reference = inkBox(render(IosDrawables.create(kind, visual, 0, 0), 300, 300))
+            val referenceAspect = reference.width.toFloat() / reference.height
+            for ((w, h) in listOf(200 to 40, 40 to 200)) {
+                val box = inkBox(render(IosDrawables.create(kind, visual, 0, 0), w, h))
+                val aspect = box.width.toFloat() / box.height
+                assertEquals(
+                    "${kind.name} ${w}x$h aspect (no squash)",
+                    referenceAspect,
+                    aspect,
+                    referenceAspect * 0.04f
+                )
+                assertEquals("${kind.name} ${w}x$h centre x", w / 2f, box.centerX, 2f)
+                // The cell ink sits slightly above the artboard centre by design (frozen 105.6
+                // envelope vs the 96.5 bar baseline); 3 px covers it at these extreme slots.
+                assertEquals("${kind.name} ${w}x$h centre y", h / 2f, box.centerY, 3f)
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------------------- helpers
     private fun batteryVisual(
         level: Int = 100,
         saver: Boolean = false,
@@ -282,6 +491,39 @@ class IosDrawablesTest {
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         return pixels.count { Color.alpha(it) > 8 }
+    }
+
+    private data class InkBox(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        val width: Int get() = right - left + 1
+        val height: Int get() = bottom - top + 1
+        val centerX: Float get() = (left + right) / 2f
+        val centerY: Float get() = (top + bottom) / 2f
+    }
+
+    /** The tight non-transparent bbox of [bitmap]. */
+    private fun inkBox(bitmap: Bitmap): InkBox {
+        var minX = Int.MAX_VALUE
+        var minY = Int.MAX_VALUE
+        var maxX = -1
+        var maxY = -1
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                if (Color.alpha(bitmap.getPixel(x, y)) > 8) {
+                    minX = minOf(minX, x)
+                    maxX = maxOf(maxX, x)
+                    minY = minOf(minY, y)
+                    maxY = maxOf(maxY, y)
+                }
+            }
+        }
+        require(maxX >= 0 && maxY >= 0) { "no ink in the bitmap" }
+        return InkBox(minX, minY, maxX, maxY)
+    }
+
+    private fun pixels(bitmap: Bitmap): IntArray {
+        val out = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(out, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        return out
     }
 
     private fun inkRowSpan(bitmap: Bitmap): Int {

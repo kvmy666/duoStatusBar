@@ -136,16 +136,17 @@ internal object IosGlyphRenderer {
         )
         canvas.restore()
 
-        // Cap nub, full tint. The owner-annotated 25-gon is the right-hand half of a superellipse
-        // (n=1.8): a chunky rounded-triangular/trapezoid shape, 15.2 x 36.8, not a circle or capsule.
-        // Its flat base sits against the body; the light PNG is the same shape at a smaller size.
+        // Cap nub: the measured right-hand half of a superellipse (n=1.8), 9.5 x 26.0, not a
+        // circle or capsule. It is the inactive grey, i.e. the same colour as the uncharged
+        // remainder (batteryFillColor at CAP_ALPHA), not the dynamic tint. Its flat base sits against
+        // the body.
         val cap = Path().apply {
             val points = b.CAP_POINTS
             moveTo(points[0], points[1])
             for (i in 2 until points.size step 2) lineTo(points[i], points[i + 1])
             close()
         }
-        fill.color = withAlpha(tint, 1f, alpha)
+        fill.color = withAlpha(bodyFill, b.CAP_ALPHA, alpha)
         canvas.drawPath(cap, fill)
 
         if (v.boltOpacity > 0f) {
@@ -230,8 +231,9 @@ internal object IosGlyphRenderer {
         val tint = overrideTint ?: v.tint
 
         if (v.cellMode == IosCellMode.SINGLE) {
-            // SINGLE draws the four tall bars in the full artboard; the dot row is hidden.
-            drawBars(canvas, fill, v, c.SINGLE_BAR_HEIGHTS, c.BAR_W, c.TOP + c.SINGLE_BAR_HEIGHTS.last(), tint, alpha)
+            // SINGLE draws the four tall bars in the full artboard; the dot row is hidden. The
+            // baseline is the named SINGLE_BAR_BOTTOM (96.5), so bar 4's top is exactly TOP.
+            drawBars(canvas, fill, v, c.SINGLE_BAR_HEIGHTS, c.BAR_W, c.SINGLE_BAR_BOTTOM, tint, alpha)
             return
         }
 

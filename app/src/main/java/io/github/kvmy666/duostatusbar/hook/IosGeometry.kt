@@ -1,17 +1,19 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import kotlin.math.roundToInt
+
 /**
  * The one source of truth for every iOS glyph dimension, in design units where the battery body
  * height is exactly [UNIT_HEIGHT] (100).
  *
- * The numbers come from the owner's two reference images, measured with a 50%-threshold connected-
- * component script at battery height 88.93 px (light) and 71.28 px (dark, a 0.798x image). The dark
- * image is only trusted for the dual-SIM layout, the inactive alpha and the battery split; the light
- * image supplies the proportions. The step-3 cap/bar polish target is the owner's annotated
- * reference capture (measurements in
- * the measured polish tables, kept outside the repository); where it conflicts with the light PNG the conflict
- * is recorded as UNVERIFIED rather than averaged. See the B3 measurement notes (kept outside the repository) and
- * `docs/ios-geometry.md`.
+ * The numbers come from the real-iPhone references (ref 6 single-SIM, ref 5 dual-SIM, ref 1 target)
+ * and the owner device (ref 7), measured with a 50%-threshold connected-component script at battery
+ * height 88.93 px (light) and 71.28 px (dark, a 0.798x image). The dark image is only trusted for the
+ * dual-SIM layout, the inactive alpha and the battery split; the light image supplies the proportions.
+ * The old step-3 "annotated" target (`ios-reference-arrows`, cap 15.2 x 36.8 and bars 48..99) is the
+ * outlier: the recovered ref 6 confirms the light capture instead. Every superseded or unconfirmed
+ * value is recorded as UNVERIFIED rather than averaged. The full R2 evidence is in
+ * `.pm/ref/out-r2/measurements.md` and the frozen table is `docs/ios-geometry.md`.
  *
  * Both runtime renderers consume this object through [IosGlyphRenderer] ([IosCanvasView] and
  * [IosGlyphDrawable] share it), and `rive/ios/scene.rml` repeats the same numbers. `IosGeometryParityTest`
@@ -35,27 +37,37 @@ internal object IosGeometry {
         const val BODY_RADIUS = 33f
 
         /**
-         * Step-3 polish target: the owner's annotated reference, which measures 15.17 x 36.84 units
-         * (annotated 50% bbox 19.62 x 47.64 px at s=1.2930). The light PNG's 9.79 x 28.76 is a
-         * different, smaller variant; the size conflict is UNVERIFIED and is not averaged. See
-         * the measured polish tables (kept outside the repository) §1 and `docs/ios-geometry.md`.
+         * Measured cap (refs 1/5/6): median 9.5 x 26.0 with a 7.5 gap, same colour as the uncharged
+         * remainder ([CAP_ALPHA]). The earlier annotated 15.2 x 36.8 target is the outlier (55 %
+         * wider / 26 % taller than the light capture) and is superseded by the recovered evidence.
          */
-        const val CAP_W = 15.2f
-        const val CAP_H = 36.8f
+        const val CAP_W = 9.5f
+        const val CAP_H = 26.0f
         const val CAP_GAP = 7.5f
-        /** The annotated cap centre sits on the body centre (annotated delta -0.07 units). */
+        /** The measured cap centre sits on the body centre. */
         const val CAP_LIFT = 0f
 
         /**
-         * The cap is the right-hand half of a superellipse with this exponent, flat on the body side:
-         * the owner-annotated chunky/rounded-triangular (trapezoid-like) shape. The light PNG shows
-         * the same shape at a smaller size (shape IoU 0.987).
+         * The cap is the inactive grey, i.e. the same colour as the uncharged remainder. The owner
+         * rule is 0.50; confirmed by the partial-charge refs 1/5 and the dual dark capture. The light
+         * 100 % reference draws the cap at full ink (UNVERIFIED exception, see `docs/ios-geometry.md`).
+         */
+        const val CAP_ALPHA = 0.50f
+
+        /**
+         * The cap is the right-hand half of a superellipse with this exponent, flat on the body side.
+         * The measured refs show the same rounded-triangular/trapezoid shape, just smaller than the
+         * old annotated one.
          */
         const val CAP_SHAPE_N = 1.8f
 
-        /** 1-unit margin around the tight glyph bounds. */
-        const val ARTBOARD_W = BODY_W + CAP_GAP + CAP_W + 2f
-        const val ARTBOARD_H = BODY_H + 2f
+        /**
+         * Frozen envelope: keep the pre-R2 217.2 x 102 so every runtime/preview/evidence placement
+         * that pins the battery artboard does not move. The smaller cap simply leaves more room on
+         * the right; do not derive the width from [CAP_W] again.
+         */
+        const val ARTBOARD_W = 217.2f
+        const val ARTBOARD_H = 102f
 
         const val BODY_LEFT = 1f
         const val BODY_TOP = 1f
@@ -63,38 +75,38 @@ internal object IosGeometry {
         const val CAP_TOP = BODY_TOP + (BODY_H - CAP_H) / 2f - CAP_LIFT
 
         /**
-         * The owner-annotated cap: the right-hand half of the [CAP_SHAPE_N] superellipse, discretised
-         * as a 25-gon (rounded triangular/trapezoid), flat base on the body side. The annotated cap
-         * IoU is 0.971 (n=1.8) versus 0.789 for the old 24-gon; the light PNG matches this shape at
-         * its smaller size (0.987). Absolute artboard coordinates, closed, clockwise; the closing edge
-         * is the flat base at x=CAP_LEFT. Both renderers draw this same polygon.
+         * The measured cap: the right-hand half of the [CAP_SHAPE_N] superellipse, discretised as a
+         * 25-gon, flat base on the body side. Absolute artboard coordinates, closed, ordered from the
+         * top end to the bottom end; the closing edge is the flat base at x=[CAP_LEFT]. Generated at
+         * [CAP_W] x [CAP_H] (bbox exactly CAP_LEFT..CAP_LEFT+CAP_W / CAP_TOP..CAP_TOP+CAP_H). Both
+         * renderers draw this same polygon.
          */
         val CAP_POINTS: FloatArray = floatArrayOf(
-            201.00f, 32.60f,
-            206.20f, 34.13f,
-            208.49f, 35.67f,
-            210.19f, 37.20f,
-            211.55f, 38.73f,
-            212.67f, 40.27f,
-            213.59f, 41.80f,
-            214.36f, 43.33f,
-            214.99f, 44.87f,
-            215.49f, 46.40f,
-            215.86f, 47.93f,
-            216.10f, 49.47f,
-            216.20f, 51.00f,
-            216.10f, 52.53f,
-            215.86f, 54.07f,
-            215.49f, 55.60f,
-            214.99f, 57.13f,
-            214.36f, 58.67f,
-            213.59f, 60.20f,
-            212.67f, 61.73f,
-            211.55f, 63.27f,
-            210.19f, 64.80f,
-            208.49f, 66.33f,
-            206.20f, 67.87f,
-            201.00f, 69.40f
+            201.00f, 38.00f,
+            201.99f, 38.12f,
+            203.12f, 38.49f,
+            204.27f, 39.09f,
+            205.40f, 39.92f,
+            206.47f, 40.95f,
+            207.46f, 42.15f,
+            208.35f, 43.51f,
+            209.10f, 44.98f,
+            209.70f, 46.53f,
+            210.14f, 48.10f,
+            210.41f, 49.65f,
+            210.50f, 51.00f,
+            210.41f, 52.35f,
+            210.14f, 53.90f,
+            209.70f, 55.47f,
+            209.10f, 57.02f,
+            208.35f, 58.49f,
+            207.46f, 59.85f,
+            206.47f, 61.05f,
+            205.40f, 62.08f,
+            204.27f, 62.91f,
+            203.12f, 63.51f,
+            201.99f, 63.88f,
+            201.00f, 64.00f
         )
 
         /** The uncharged part of the body is the same colour at half alpha. */
@@ -132,26 +144,38 @@ internal object IosGeometry {
         const val INACTIVE_ALPHA = 0.25f
 
         /**
-         * Step-3 target: the owner-annotated single bars, 0.480 / 0.634 / 0.812 / 0.990 of the
-         * battery height, bottom-aligned at y=100 in the 105.6 artboard (annotated 47.95 / 63.42 /
-         * 81.21 / 98.99; the light PNG's 0.364..0.948 is a shorter variant, UNVERIFIED).
+         * Measured single bars (ref 6 light/native): 36.0 / 52.8 / 73.0 / 95.5, bottom-aligned at
+         * [SINGLE_BAR_BOTTOM] = 96.5, so bar 4's top is exactly [TOP] (1.0, level with the battery
+         * body top). Supersedes the annotated 48 / 63.4 / 81.2 / 99 mockup, which is the outlier.
          */
-        val SINGLE_BAR_HEIGHTS = floatArrayOf(48.0f, 63.4f, 81.2f, 99.0f)
+        val SINGLE_BAR_HEIGHTS = floatArrayOf(36.0f, 52.8f, 73.0f, 95.5f)
 
-        /** Measured dark (compressed dual row): 0.303 / 0.375 / 0.499 / 0.627. */
+        /** Measured dark (compressed dual row): 0.303 / 0.375 / 0.499 / 0.627 (unchanged). */
         val DUAL_BAR_HEIGHTS = floatArrayOf(30.3f, 37.5f, 49.9f, 62.7f)
 
         const val BLOCK_W = 3f * PITCH + BAR_W
         const val DUAL_ROW_H = 62.7f
-        const val DUAL_GAP = 13.5f
+        /** Measured row gap 12.68 units (old 13.5). */
+        const val DUAL_GAP = 12.7f
         const val DUAL_BLOCK_H = DUAL_ROW_H + DUAL_GAP + DOT_H
 
-        /** Artboard holds the taller dual block; the single bars keep their measured height inside it. */
+        /**
+         * Frozen envelope: the measured dual block is [DUAL_BLOCK_H] = 102.8, but the artboard stays
+         * at the pre-R2 150.1 x 105.6 so the scene/preview/compare placements do not move. Do not
+         * derive the height from [DUAL_BLOCK_H] again.
+         */
         const val ARTBOARD_W = BLOCK_W + 2f
-        const val ARTBOARD_H = DUAL_BLOCK_H + 2f
+        const val ARTBOARD_H = 105.6f
 
         const val LEFT = 1f
         const val TOP = 1f
+
+        /**
+         * The single-bar baseline in the frozen 105.6 artboard. Bar 4's top is exactly [TOP]; the
+         * bottom is 4.5 units above the body bottom, as measured on ref 6.
+         */
+        const val SINGLE_BAR_BOTTOM = TOP + 95.5f
+
         const val DOT_TOP = TOP + DUAL_ROW_H + DUAL_GAP
 
         /**
@@ -282,4 +306,78 @@ internal object IosGeometry {
         /** Top alignment: battery, Wi-Fi and single cell share the top; the dual cell is 4.2 units above. */
         const val DUAL_CELL_TOP_OFFSET = -4.2f
     }
+
+    /**
+     * Intrinsic glyph sizes relative to the battery body height (1.0) and the per-kind draw scale that
+     * brings our on-device glyphs to the iOS target ratio.
+     *
+     * The ratios are measured from the recovered ref 6 (single-SIM), ref 5 (dual-SIM) and ref 1
+     * (owner target): battery body = 1.0, clock digit cap = [CLOCK_CAP] (1.00 +/-3 %). The draw scales
+     * are the ref 7 on-device calibration, `iOS target ratio / current on-device ratio`:
+     * battery 1.23 -> 1.00 = 0.81, Wi-Fi 1.67 -> 0.944 = 0.57, cell single 1.267 -> 0.955 = 0.754
+     * (0.75; the older 1.32 -> 0.726 held before bar 4 became 95.5 units), cell dual 1.38 -> 1.042 =
+     * 0.76. [CELL_DUAL_H] = 1.042 is the measured ref target; the shipped design block is
+     * [Cell.DUAL_BLOCK_H] = 102.8 (1.028 of the battery body) because the dual bar heights are
+     * unchanged, and the 0.76 scale is calibrated against the ref-7 on-device 1.377 ratio, not this
+     * envelope. The cell scales are medium confidence (the logging phone showed the known
+     * side-by-side dual bug). These constants are data only: the host applies them, the renderer and
+     * the drawable do not.
+     */
+    object Relative {
+        /** Clock digit cap / battery body height (ref 6: 30/31 px, +/-3 %). */
+        const val CLOCK_CAP = 1.00f
+        const val BATTERY_H = 1.00f
+        const val WIFI_H = 0.944f
+        const val WIFI_W = 1.256f
+        const val CELL_SINGLE_H = 0.955f
+        const val CELL_DUAL_H = 1.042f
+        const val CAP_H = 0.260f
+        const val CAP_W = 0.095f
+        const val CAP_GAP = 0.075f
+
+        /** Ref 7 calibration: target ratio / current on-device ratio (see the object KDoc). */
+        const val BATTERY_DRAW_SCALE = 0.81f
+        const val WIFI_DRAW_SCALE = 0.57f
+        const val CELL_DRAW_SCALE = 0.75f
+        const val CELL_DUAL_DRAW_SCALE = 0.76f
+
+        /** The draw scale for [kind]; a dual-SIM cell uses its own measured scale. */
+        fun drawScale(kind: IosIconKind, dualCell: Boolean = false): Float = when (kind) {
+            IosIconKind.BATTERY -> BATTERY_DRAW_SCALE
+            IosIconKind.WIFI -> WIFI_DRAW_SCALE
+            IosIconKind.CELL -> if (dualCell) CELL_DUAL_DRAW_SCALE else CELL_DRAW_SCALE
+        }
+
+        /**
+         * The inner glyph box for a stock slot.
+         *
+         * The host insets the drawable to this box (it never resizes the stock view, C2); the renderer
+         * then fits the glyph inside with its usual `min(w/W, h/H)` CONTAIN. A non-positive slot
+         * returns `0 x 0`; the result never exceeds the slot.
+         */
+        fun sizeFor(
+            kind: IosIconKind,
+            slotWidth: Int,
+            slotHeight: Int,
+            dualCell: Boolean = false
+        ): Pair<Int, Int> {
+            if (slotWidth <= 0 || slotHeight <= 0) return 0 to 0
+            val scale = drawScale(kind, dualCell)
+            val w = (slotWidth * scale).roundToInt().coerceIn(0, slotWidth)
+            val h = (slotHeight * scale).roundToInt().coerceIn(0, slotHeight)
+            return w to h
+        }
+    }
 }
+
+/**
+ * Per-user placement offset and scale for an in-place iOS glyph.
+ *
+ * [dxPx] is a device-pixel horizontal shift applied after scaling, so it is independent of [scale].
+ * [scale] is applied around the drawable's bounds centre. The drawable clips the result to its own
+ * bounds and never writes its layout or intrinsic size (C2).
+ *
+ * R2C declares the same type for its settings model; the PM merge dedupes the two declarations, so
+ * keep this exact signature.
+ */
+internal data class IosUserTransform(val dxPx: Float = 0f, val scale: Float = 1f)
