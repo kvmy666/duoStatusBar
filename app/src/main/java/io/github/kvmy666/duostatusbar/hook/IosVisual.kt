@@ -46,5 +46,7 @@ internal data class IosVisual(
     /** Dual-SIM data row, 0..4 bars. */
     val cellBars: Float = 0f,
     /** Dual-SIM other row, 0..4 dots. */
-    val cellDots: Float = 0f
+    val cellDots: Float = 0f,
+    /** R2C per-icon offset/scale; identity keeps today's pixels. */
+    val userTransform: IosUserTransform = IosUserTransform.IDENTITY
 )

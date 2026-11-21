@@ -80,6 +80,16 @@ internal object IosGlyphRenderer {
         val saved = canvas.save()
         canvas.translate(dx, dy)
         canvas.scale(scale, scale)
+        // R2C user transform: applied after the CONTAIN fit so identity is byte-for-byte the old draw.
+        // The scale is centred on the artboard; dxPx is a device-pixel shift. The drawing is still in
+        // artboard units, so divide by both the fit scale and the user scale to keep it in device pixels.
+        val user = visual.userTransform
+        if (user.scale != 1f) {
+            canvas.scale(user.scale, user.scale, artboardW / 2f, artboardH / 2f)
+        }
+        if (user.dxPx != 0f) {
+            canvas.translate(user.dxPx / (scale * user.scale), 0f)
+        }
         try {
             when (kind) {
                 IosIconKind.BATTERY -> drawBattery(canvas, visual, alpha, overrideTint)

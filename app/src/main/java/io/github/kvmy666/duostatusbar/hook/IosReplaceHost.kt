@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.graphics.PorterDuffColorFilter
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Handler
@@ -18,6 +19,7 @@ import android.widget.ImageView
 import de.robv.android.xposed.XposedHelpers
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import java.util.Collections
 import java.util.IdentityHashMap
 import kotlin.math.roundToInt
@@ -59,6 +61,7 @@ internal class IosReplaceHost(
     private val classLoader: ClassLoader?,
     private val sizeOwner: IosSizeOwner = IosSizeOwner(),
     private val isMainBar: Boolean = true,
+    private val surface: String = if (isMainBar) "main bar" else "extra",
     private val batterySource: (Context) -> IosBatteryReading? = ::readStickyBattery,
     private val cellSource: (Context) -> CellReading = { CellReader.read(it, airplane = false) },
     private val wifiSource: (Context, Int, Boolean, Boolean, Boolean) -> WifiSample =
@@ -105,9 +108,13 @@ internal class IosReplaceHost(
         var cellRole: IosCellRole? = null,
         var cellSlot: Int = -1,
         var subId: Int = 0,
+        /** Dual-SIM item 2: the other stock slot this one block removes (restored exactly). */
+        var collapse: IosCollapse? = null,
         /** A dual-SIM overlay skins both outers; the primary is [outer]. */
-        val clusterSkins: List<IosSkin> = emptyList(),
-        val clusterOuters: List<View> = emptyList()
+        var clusterSkins: List<IosSkin> = emptyList(),
+        var clusterOuters: List<View> = emptyList(),
+        /** Extra views whose tint writes refresh this record (an overlay's optional leaf). */
+        val tintViews: List<View> = emptyList()
     ) {
         val drawTarget: View?
             get() = when (mechanism) {
@@ -133,12 +140,15 @@ internal class IosReplaceHost(
     val attached: Boolean get() = isAttached
 
     private var settings = ModuleSettings.DEFAULT
+    private var hiddenStockKeys: Set<String> = emptySet()
+    /** Item 8-runtime: hides the selected stock icons, and every non-replaced one when asked. */
+    private val hider = StockIconHider()
     private var strip: ViewGroup? = null
     private var overlayParent: FrameLayout? = null
     private var layer: FrameLayout? = null
     private var rootView: View? = null
 
-    /** All-overlay strips delegate to [IosIconHost] with its Rive path closed (Canvas only). */
+    /** All-overlay strips delegate to [IosIconHost]; the delegate draws with Canvas only (IOS-R2 0c). */
     private var composed: IosIconHost? = null
 
     private var receiverRegistered = false
@@ -155,14 +165,22 @@ internal class IosReplaceHost(
     private var lastWifiActive = false
     private var lastWifiValidated = false
 
-    /** IOS-LAG: attach/teardown churn and drawable re-assert fights are backed off separately. */
-    private val lifecycleThrash = ThrashGuard()
-    private val reassertThrash = ThrashGuard()
-    private var thrashTripped = false
-    private var thrashRoot: View? = null
+    /** IOS-LAG: attach/teardown churn and drawable re-assert fights are backed off per surface. */
+    private val thrashTripped: Boolean
+        get() = IosSurfaceThrash.isTripped(surface)
     private var thrashTripInProgress = false
 
     private val refreshRunnable = Runnable { refresh() }
+
+    /** One debounced repaint per burst of OEM tint writes; nothing draws from the hook itself. */
+    private val tintRefreshRunnable = Runnable { if (isAttached) refresh() }
+    private val tintCallback: () -> Unit = {
+        try {
+            handler.removeCallbacks(tintRefreshRunnable)
+            handler.post(tintRefreshRunnable)
+        } catch (_: Throwable) {
+        }
+    }
 
     private val layoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
         onLayoutChanged()
@@ -329,6 +347,22 @@ internal class IosReplaceHost(
     internal fun visualTintForTest(view: View): Int? =
         records.firstOrNull { it.leaf === view || it.outer === view }?.visual?.tint
 
+    /** Test seam: the kinds of the records currently owned. */
+    internal fun recordKindsForTest(): List<IosIconKind> = records.map { it.kind }
+
+    /**
+     * Test seam: recomputes every record's tint from its current leaf/outer, without re-reading any
+     * system state, and repaints the visuals. This is exactly the tint path a real tint callback feeds.
+     */
+    internal fun refreshTintForTest() {
+        if (!isAttached) return
+        for (record in records.toList()) {
+            val current = record.visual ?: continue
+            val tint = tintFor(record.leaf, record.outer, record.oemTint)
+            applyVisual(record, current.withTint(tint))
+        }
+    }
+
     /**
      * Test seam: attaches into an explicit strip/overlay pair, skipping ROM-specific resolution. A null
      * [overlayParent] is allowed; only OVERLAY records need one.
@@ -351,11 +385,25 @@ internal class IosReplaceHost(
 
     /** Stores the user's iOS options and repaints from the last snapshot. A real change resets backoff. */
     fun refreshSettings(settings: ModuleSettings) {
-        if (this.settings != settings) resetThrash()
+        val previous = this.settings
+        val changed = previous != settings
+        if (changed) resetThrash()
         this.settings = settings
+        hiddenStockKeys = DuoPrefs.parseHiddenStockIcons(settings.hiddenStockIcons).toSet()
         composed?.let {
             it.refreshSettings(settings)
             return
+        }
+        val hideChanged = changed &&
+            (previous.hideOtherIcons != settings.hideOtherIcons ||
+                previous.hiddenStockIcons != settings.hiddenStockIcons)
+        if (hideChanged && isAttached) {
+            // Put the stock views back first, so an icon that should now show is not left hidden,
+            // then re-apply the new selection and only then let refresh adopt what is left.
+            hider.restore()
+            strip?.let { applyHiding(it) }
+            dropUserHiddenRecords()
+            strip?.let { applyHiding(it) }
         }
         refresh()
     }
@@ -409,8 +457,16 @@ internal class IosReplaceHost(
             val batteryRecord = recordOf(IosIconKind.BATTERY)
             val wifiRecord = recordOf(IosIconKind.WIFI)
 
-            val batteryTint = tintFor(batteryRecord?.leaf ?: batteryIcon?.view, batteryRecord?.oemTint ?: 0)
-            val wifiTint = tintFor(wifiRecord?.leaf ?: wifiIcon?.view, wifiRecord?.oemTint ?: 0)
+            val batteryTint = tintFor(
+                batteryRecord?.leaf,
+                batteryRecord?.outer ?: batteryIcon?.view,
+                batteryRecord?.oemTint ?: 0
+            )
+            val wifiTint = tintFor(
+                wifiRecord?.leaf,
+                wifiRecord?.outer ?: wifiIcon?.view,
+                wifiRecord?.oemTint ?: 0
+            )
             val battery = if (batteryRecord != null || batteryIcon != null) batteryVisual(batteryTint) else null
             val wifi = if (wifiRecord != null || wifiIcon != null) wifiVisual(wifiTint) else null
 
@@ -517,6 +573,32 @@ internal class IosReplaceHost(
         extraBattery: View?
     ): Boolean {
         if (thrashTripped) return false
+        // Rule 7: claim before any view write. A refused claim leaves the tree exactly as stock.
+        if (!IosSurfaceOwners.claim(surface, targetStrip, this)) {
+            logOnce.once("owner-refused:$surface") {
+                val owner = IosSurfaceOwners.ownerOf(targetStrip)
+                    ?: IosSurfaceOwners.ownerOfSurface(surface)
+                    ?: "another host"
+                L.i("iOS owner $surface: refused, already owned by $owner")
+            }
+            return false
+        }
+        var keep = false
+        try {
+            keep = attachToStripClaimed(name, targetStrip, root, overlayParent, extraBattery)
+            return keep
+        } finally {
+            if (!keep) IosSurfaceOwners.release(surface, this)
+        }
+    }
+
+    private fun attachToStripClaimed(
+        name: String?,
+        targetStrip: ViewGroup,
+        root: View,
+        overlayParent: FrameLayout?,
+        extraBattery: View?
+    ): Boolean {
         val inventory = inventoryOf(targetStrip, extraBattery)
         if (inventory.isEmpty()) {
             logOnce.once("no-icons:$name") {
@@ -524,9 +606,10 @@ internal class IosReplaceHost(
             }
             return false
         }
+        logCellSubIds(inventory)
 
-        // All-overlay strips use the approved hide-in-place + Canvas fallback. No Rive is created: the
-        // delegate is constructed with `canvasOnly = true`.
+        // All-overlay strips use the approved hide-in-place + Canvas fallback. No Rive is created:
+        // IosIconHost only builds the Canvas element (IOS-R2 0c).
         val plans = inventory.map { planForSafe(it.view) }
         val allOverlayOrSkip = plans.all {
             it.mechanism == IosReplaceMechanism.OVERLAY || it.mechanism == IosReplaceMechanism.SKIP
@@ -539,7 +622,7 @@ internal class IosReplaceHost(
                 context = context,
                 sizeOwner = sizeOwner,
                 isMainBar = isMainBar,
-                canvasOnly = true,
+                surface = "$surface overlay",
                 batterySource = batterySource,
                 cellSource = cellSource,
                 wifiSource = wifiSource
@@ -550,11 +633,8 @@ internal class IosReplaceHost(
             rootView = root
             this.overlayParent = parent
             isAttached = true
-            L.i(
-                "iOS replace ${name ?: "main bar"} attached via Canvas fallback: " +
-                    "icons=${inventory.size}"
-            )
-            noteLifecycle(root)
+            L.i("iOS owner $surface: overlay host attached")
+            noteLifecycle(root, attach = true)
             if (thrashTripped) {
                 teardownInternal(countLifecycle = false)
                 return false
@@ -569,16 +649,31 @@ internal class IosReplaceHost(
         for (icon in inventory) addLayoutListener(icon.view)
         registerReceivers()
         isAttached = true
+        // Item 8-runtime: hide the user's selected stock icons (and, with the legacy switch, the
+        // non-replaced ones) before the first refresh, so a selected replaced icon is never adopted.
+        applyHiding(targetStrip)
         refresh()
+        if (records.isEmpty() && !thrashTripped) {
+            // Item 8-runtime: when the user hid every replaceable icon there is nothing to draw, but
+            // the hide list is still the feature. Keep the attachment (so teardown restores them) only
+            // if no replaceable stock icon is left visible; otherwise the ROM had nothing to replace.
+            val visibleLeft = inventory.any { it.view.visibility == View.VISIBLE }
+            if (!visibleLeft && inventory.any { it.view.visibility != View.VISIBLE }) {
+                L.i("iOS owner $surface: stock icons hidden by the user - nothing to draw")
+                noteLifecycle(root, attach = true)
+                if (thrashTripped) {
+                    teardownInternal(countLifecycle = false)
+                    return false
+                }
+                return true
+            }
+        }
         if (records.isEmpty() || thrashTripped) {
             teardownInternal(countLifecycle = false)
             return false
         }
-        L.i(
-            "iOS replace ${name ?: "main bar"} attached: records=${records.size} " +
-                "strip=${targetStrip.javaClass.simpleName}"
-        )
-        noteLifecycle(root)
+        L.i("iOS owner $surface: replace host attached")
+        noteLifecycle(root, attach = true)
         if (thrashTripped) {
             teardownInternal(countLifecycle = false)
             return false
@@ -616,6 +711,22 @@ internal class IosReplaceHost(
         return out
     }
 
+    /**
+     * IOS-R2 0e: the per-view SIM identity actually used by the cell plan. The mapping already reads
+     * each view's proven `getSubId()` ([cellSlots]); this line makes that mapping visible in a report.
+     * Built once per attach, never on a draw path.
+     */
+    private fun logCellSubIds(inventory: List<StockIcon>) {
+        val cells = inventory.filter { it.kind == StockIconKind.CELLULAR }
+        if (cells.isEmpty()) return
+        val entries = cells.mapIndexed { index, icon ->
+            val entry = entryName(icon.view) ?: icon.label
+            "$entry#${index + 1}=${subIdOf(icon.view)}"
+        }
+        val subIds = cells.map { subIdOf(it.view) }.joinToString(",", "[", "]")
+        L.i("iOS replace subIds: ${entries.joinToString(" ")} subIds=$subIds")
+    }
+
     // ----------------------------------------------------------------------------- adoption
 
     private fun adoptOrDefer(kind: IosIconKind, icon: StockIcon, visual: IosVisual) {
@@ -639,14 +750,15 @@ internal class IosReplaceHost(
     /** Adopts one stock icon with its plan, falling back exactly as the plan says. */
     private fun adoptIcon(kind: IosIconKind, icon: StockIcon, visual: IosVisual): Record? {
         if (icon.view.visibility != View.VISIBLE) return null
+        val transformed = visual.copy(userTransform = userTransformFor(kind))
         val plan = planForSafe(icon.view)
         return when (plan.mechanism) {
             IosReplaceMechanism.IMAGE_DRAWABLE -> {
                 val leaf = findLeaf(icon.view, plan.leafIds, allowFirstImageView = isAospBattery(plan))
                 if (leaf != null) {
-                    adoptImage(kind, icon.view, leaf, visual, plan.siblingIds)
+                    adoptImage(kind, icon.view, leaf, transformed, plan.siblingIds)
                 } else {
-                    adoptFallback(kind, icon.view, plan, visual)
+                    adoptFallback(kind, icon.view, plan, transformed)
                 }
             }
             IosReplaceMechanism.OUTER_DRAW -> {
@@ -654,12 +766,12 @@ internal class IosReplaceHost(
                 if (leaf == null) {
                     null
                 } else if (installOuterHook(icon.view, plan)) {
-                    adoptOuter(kind, icon.view, leaf, visual, plan)
+                    adoptOuter(kind, icon.view, leaf, transformed, plan)
                 } else {
                     // OPLUS composites draw in/out/type siblings in the same outer; a leaf-only
                     // fallback must blank them or they sit over our glyph (A1 §wifi/mobile).
                     val image = leaf as? ImageView ?: return null
-                    adoptImage(kind, icon.view, image, visual, plan.fallbackSiblingIds)
+                    adoptImage(kind, icon.view, image, transformed, plan.fallbackSiblingIds)
                 }
             }
             IosReplaceMechanism.LEAF_DRAW -> {
@@ -667,12 +779,12 @@ internal class IosReplaceHost(
                 if (leaf == null) {
                     null
                 } else if (ensureLeafHook(plan, leaf)) {
-                    adoptLeaf(kind, icon.view, leaf, visual, plan)
+                    adoptLeaf(kind, icon.view, leaf, transformed, plan)
                 } else {
-                    adoptOverlay(kind, icon.view, null, visual)
+                    adoptOverlay(kind, icon.view, null, transformed)
                 }
             }
-            IosReplaceMechanism.OVERLAY -> adoptOverlay(kind, icon.view, null, visual)
+            IosReplaceMechanism.OVERLAY -> adoptOverlay(kind, icon.view, null, transformed)
             IosReplaceMechanism.SKIP -> null
         }
     }
@@ -712,7 +824,10 @@ internal class IosReplaceHost(
         val height = original?.intrinsicHeight?.takeIf { it > 0 } ?: image.height
         if (width <= 0 || height <= 0) return null
 
-        val drawable = IosDrawables.create(kind, visual, width, height)
+        // Item 6: capture the colour the system applied to this very icon, then draw with it.
+        val oemTint = oemTintOf(image, outer)
+        val tinted = visual.withTint(tintFor(image, outer, oemTint))
+        val drawable = IosDrawables.create(kind, tinted, width, height)
         val swap = IosDrawableSwap(
             leaf = image,
             drawable = drawable,
@@ -721,7 +836,25 @@ internal class IosReplaceHost(
         )
         if (!swap.apply()) return null
 
-        val siblings = applySiblings(outer, image, siblingIds, kind, width, height)
+        // Item 0d: adopt the OEM's own push in the same call instead of waiting for the next frame.
+        IosPushHooks.watch(image, swap)
+        IosPushHooks.onTint(image, tintCallback)
+        IosPushHooks.onTint(outer, tintCallback)
+
+        val siblings = try {
+            applySiblings(outer, image, siblingIds, kind, width, height)
+        } catch (t: Throwable) {
+            // A half-adopted record must not leave our drawable installed without a record to restore.
+            IosPushHooks.unwatch(image)
+            IosPushHooks.offTint(image, tintCallback)
+            IosPushHooks.offTint(outer, tintCallback)
+            try {
+                swap.restore()
+            } catch (_: Throwable) {
+            }
+            failAdopt(kind, t)
+            return null
+        }
         val record = Record(
             kind = kind,
             outer = outer,
@@ -734,7 +867,8 @@ internal class IosReplaceHost(
             overlay = null,
             overlayParams = null,
             siblings = siblings,
-            visual = visual
+            visual = tinted,
+            oemTint = oemTint
         )
         records.add(record)
         addLayoutListener(outer)
@@ -759,7 +893,9 @@ internal class IosReplaceHost(
         val height = leaf.height.takeIf { it > 0 } ?: outer.height
         if (width <= 0 || height <= 0) return null
 
-        val drawable = IosDrawables.create(kind, visual, width, height)
+        val oemTint = oemTintOf(leaf, outer)
+        val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
+        val drawable = IosDrawables.create(kind, tinted, width, height)
         // One bounds/offset array per session: the draw hook must not allocate per frame.
         val boundsOut = IntArray(4)
         val offsetOut = IntArray(2)
@@ -770,7 +906,18 @@ internal class IosReplaceHost(
             skipOriginal = true
         )
         IosDrawingHooks.register(outer, session)
-        val siblings = applySiblings(outer, leaf, plan.siblingIds, kind, width, height)
+        IosPushHooks.onTint(leaf, tintCallback)
+        IosPushHooks.onTint(outer, tintCallback)
+        val siblings = try {
+            applySiblings(outer, leaf, plan.siblingIds, kind, width, height)
+        } catch (t: Throwable) {
+            IosDrawingHooks.unregister(outer)
+            IosPushHooks.offTint(leaf, tintCallback)
+            IosPushHooks.offTint(outer, tintCallback)
+            IosDrawHookInstaller.releaseWhenEmpty()
+            failAdopt(kind, t)
+            return null
+        }
         val record = Record(
             kind = kind,
             outer = outer,
@@ -783,7 +930,8 @@ internal class IosReplaceHost(
             overlay = null,
             overlayParams = null,
             siblings = siblings,
-            visual = visual
+            visual = tinted,
+            oemTint = oemTint
         )
         records.add(record)
         addLayoutListener(outer)
@@ -816,7 +964,9 @@ internal class IosReplaceHost(
         val width = leaf.width
         val height = leaf.height
         if (width <= 0 || height <= 0) return null
-        val drawable = IosDrawables.create(kind, visual, width, height)
+        val oemTint = oemTintOf(leaf, outer)
+        val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
+        val drawable = IosDrawables.create(kind, tinted, width, height)
         val boundsOut = IntArray(4)
         val session = IosDrawSession(
             drawable = drawable,
@@ -831,7 +981,18 @@ internal class IosReplaceHost(
             skipOriginal = true
         )
         IosDrawingHooks.register(leaf, session)
-        val siblings = applySiblings(outer, leaf, plan.siblingIds, kind, width, height)
+        IosPushHooks.onTint(leaf, tintCallback)
+        IosPushHooks.onTint(outer, tintCallback)
+        val siblings = try {
+            applySiblings(outer, leaf, plan.siblingIds, kind, width, height)
+        } catch (t: Throwable) {
+            IosDrawingHooks.unregister(leaf)
+            IosPushHooks.offTint(leaf, tintCallback)
+            IosPushHooks.offTint(outer, tintCallback)
+            IosDrawHookInstaller.releaseWhenEmpty()
+            failAdopt(kind, t)
+            return null
+        }
         val record = Record(
             kind = kind,
             outer = outer,
@@ -844,7 +1005,8 @@ internal class IosReplaceHost(
             overlay = null,
             overlayParams = null,
             siblings = siblings,
-            visual = visual
+            visual = tinted,
+            oemTint = oemTint
         )
         records.add(record)
         addLayoutListener(outer)
@@ -872,7 +1034,12 @@ internal class IosReplaceHost(
             skin.restore()
             return null
         }
-        overlay.render(visual)
+        val oemTint = oemTintOf(leaf, outer)
+        val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
+        overlay.render(tinted)
+        // The colour may arrive on the outer (background/foreground tint) or on the leaf.
+        val tintViews = listOfNotNull(outer, leaf)
+        for (view in tintViews) IosPushHooks.onTint(view, tintCallback)
         val params = FrameLayout.LayoutParams(size.first, size.second).apply {
             leftMargin = bounds[0]
             topMargin = bounds[1]
@@ -885,6 +1052,7 @@ internal class IosReplaceHost(
         }
         if (!added) {
             skin.restore()
+            for (view in tintViews) IosPushHooks.offTint(view, tintCallback)
             overlay.teardown()
             return null
         }
@@ -901,7 +1069,9 @@ internal class IosReplaceHost(
             overlay = overlay,
             overlayParams = params,
             siblings = emptyList(),
-            visual = visual
+            visual = tinted,
+            oemTint = oemTint,
+            tintViews = tintViews
         )
         records.add(record)
         addLayoutListener(outer)
@@ -915,7 +1085,7 @@ internal class IosReplaceHost(
             IosCellPlan.None -> dropCellRecords(restore = true)
             is IosCellPlan.Single -> {
                 val icon = cellIcons.getOrNull(plan.slot) ?: return
-                val visual = IosMapping.cellVisual(plan, tintFor(icon.view, 0)) ?: return
+                val visual = IosMapping.cellVisual(plan, tintFor(null, icon.view, 0)) ?: return
                 val record = adoptIcon(IosIconKind.CELL, icon, visual) ?: return
                 record.cellRole = IosCellRole.DATA
                 record.cellSlot = plan.slot
@@ -925,62 +1095,117 @@ internal class IosReplaceHost(
                 val dataIcon = cellIcons.getOrNull(plan.dataSlot) ?: return
                 val otherIcon = cellIcons.getOrNull(plan.otherSlot) ?: return
                 val dataPlan = planForSafe(dataIcon.view)
-                val otherPlan = planForSafe(otherIcon.view)
-                if (isTrueReplacement(dataPlan) && isTrueReplacement(otherPlan)) {
-                    val dataVisual = dualVisual(plan, IosCellRole.DATA, tintFor(dataIcon.view, 0))
-                    val otherVisual = dualVisual(plan, IosCellRole.OTHER, tintFor(otherIcon.view, 0))
-                    val dataRecord = adoptIcon(IosIconKind.CELL, dataIcon, dataVisual)
-                    val otherRecord = adoptIcon(IosIconKind.CELL, otherIcon, otherVisual)
-                    if (dataRecord != null && otherRecord != null) {
-                        dataRecord.cellRole = IosCellRole.DATA
-                        dataRecord.cellSlot = plan.dataSlot
-                        dataRecord.subId = plan.dataSubId
-                        otherRecord.cellRole = IosCellRole.OTHER
-                        otherRecord.cellSlot = plan.otherSlot
-                        otherRecord.subId = plan.otherSubId
+                if (isTrueReplacement(dataPlan)) {
+                    // Item 2: ONE stacked BOTH block in the data SIM's slot; the other slot is removed.
+                    val visual = IosMapping.cellVisual(plan, tintFor(null, dataIcon.view, 0)) ?: return
+                    val record = adoptIcon(IosIconKind.CELL, dataIcon, visual)
+                    if (record != null) {
+                        record.cellRole = IosCellRole.BOTH
+                        record.cellSlot = plan.dataSlot
+                        record.subId = plan.dataSubId
+                        if (!suppressDualOther(record, dataIcon, otherIcon)) {
+                            // The other slot could not be removed or suppressed: never leave one iOS
+                            // row beside one stock icon. Fall back to the one-block overlay.
+                            dropRecord(record, restore = true)
+                            adoptCellOverlay(plan, dataIcon, otherIcon)
+                        }
                     } else {
                         dropCellRecords(restore = true)
                         adoptCellOverlay(plan, dataIcon, otherIcon)
                     }
                 } else {
-                    // One slot cannot be truly replaced: one BOTH block over the union, skinning both
-                    // outers, or both stock. Never one iOS row beside one stock icon.
+                    // The data slot cannot be truly replaced: one BOTH overlay at the DATA bounds,
+                    // skinning both outers, or both stock. Never one iOS row beside one stock icon.
                     adoptCellOverlay(plan, dataIcon, otherIcon)
                 }
             }
         }
     }
 
+    /**
+     * Removes the other SIM's slot for the one BOTH record. Collapsing is only allowed for a visible,
+     * measurable sibling of the data view; otherwise the approved [IosSkin] INVISIBLE suppression keeps
+     * the slot rather than guessing at a layout write (C2).
+     */
+    private fun suppressDualOther(record: Record, dataIcon: StockIcon, otherIcon: StockIcon): Boolean {
+        val otherView = otherIcon.view
+        val collapse = collapseSibling(dataIcon.view, otherView)
+        if (collapse != null) {
+            record.collapse = collapse
+            IosPushHooks.onTint(otherView, tintCallback)
+            addLayoutListener(otherView)
+            L.i(
+                "iOS dual: one slot on ${entryName(dataIcon.view) ?: dataIcon.label}, " +
+                    "collapsed ${entryName(otherView) ?: otherIcon.label}"
+            )
+            return true
+        }
+        val skin = IosSkin()
+        if (skin.suppress(otherView)) {
+            record.clusterSkins = listOf(skin)
+            record.clusterOuters = listOf(otherView)
+            IosPushHooks.onTint(otherView, tintCallback)
+            addLayoutListener(otherView)
+            return true
+        }
+        return false
+    }
+
+    private fun collapseSibling(data: View, other: View): IosCollapse? {
+        val parent = data.parent ?: return null
+        if (other.parent !== parent) return null
+        if (other.visibility != View.VISIBLE) return null
+        if (contentArea(data) <= 0) return null
+        if (contentArea(other) <= 0) return null
+        val collapse = IosCollapse(other)
+        return if (collapse.apply()) collapse else null
+    }
+
     private fun adoptCellOverlay(plan: IosCellPlan.Dual, dataIcon: StockIcon, otherIcon: StockIcon) {
         val parent = resolveOverlayParent() ?: return
         val layer = ensureLayer(parent) ?: return
-        val union = unionBoundsIn(listOf(dataIcon.view, otherIcon.view), layer)
-        if (union[2] <= 0 || union[3] <= 0) return
+        // Item 2: anchor the one BOTH block to the DATA slot, never the two-slot union.
+        val bounds = boundsIn(dataIcon.view, layer)
+        if (bounds[2] <= 0 || bounds[3] <= 0) return
         val size = if (isMainBar) {
-            Pair(union[2], union[3])
+            Pair(bounds[2], bounds[3])
         } else {
-            sizeOwner.sizeForBlock(union[2], union[3])
+            sizeOwner.sizeForBlock(bounds[2], bounds[3])
         }
         if (size.first <= 0 || size.second <= 0) return
-        val visual = IosMapping.cellVisual(plan, tintFor(dataIcon.view, 0)) ?: return
+        val oemTint = oemTintOf(null, dataIcon.view)
+        val visual = (IosMapping.cellVisual(plan, tintFor(null, dataIcon.view, oemTint)) ?: return)
+            .copy(userTransform = userTransformFor(IosIconKind.CELL))
 
+        val collapse = collapseSibling(dataIcon.view, otherIcon.view)
         val firstSkin = IosSkin()
-        if (!firstSkin.suppress(dataIcon.view)) return
-        val secondSkin = IosSkin()
-        if (!secondSkin.suppress(otherIcon.view)) {
-            firstSkin.restore()
+        if (!firstSkin.suppress(dataIcon.view)) {
+            collapse?.restore()
             return
+        }
+        val secondSkin = if (collapse == null) {
+            val skin = IosSkin()
+            if (!skin.suppress(otherIcon.view)) {
+                firstSkin.restore()
+                return
+            }
+            skin
+        } else {
+            null
         }
         val overlay = IosCanvasView(context, IosIconKind.CELL)
         if (!overlay.start()) {
             firstSkin.restore()
-            secondSkin.restore()
+            secondSkin?.restore()
+            collapse?.restore()
             return
         }
         overlay.render(visual)
+        IosPushHooks.onTint(dataIcon.view, tintCallback)
+        IosPushHooks.onTint(otherIcon.view, tintCallback)
         val params = FrameLayout.LayoutParams(size.first, size.second).apply {
-            leftMargin = union[0]
-            topMargin = union[1]
+            leftMargin = bounds[0]
+            topMargin = bounds[1]
         }
         val added = try {
             layer.addView(overlay, params)
@@ -990,11 +1215,20 @@ internal class IosReplaceHost(
         }
         if (!added) {
             firstSkin.restore()
-            secondSkin.restore()
+            secondSkin?.restore()
+            collapse?.restore()
+            IosPushHooks.offTint(dataIcon.view, tintCallback)
+            IosPushHooks.offTint(otherIcon.view, tintCallback)
             overlay.teardown()
             return
         }
-        if (isMainBar) sizeOwner.pinBlock(union[2], union[3])
+        if (isMainBar) sizeOwner.pinBlock(bounds[2], bounds[3])
+        if (collapse != null) {
+            L.i(
+                "iOS dual: one slot on ${entryName(dataIcon.view) ?: dataIcon.label}, " +
+                    "collapsed ${entryName(otherIcon.view) ?: otherIcon.label}"
+            )
+        }
         val record = Record(
             kind = IosIconKind.CELL,
             outer = dataIcon.view,
@@ -1008,11 +1242,13 @@ internal class IosReplaceHost(
             overlayParams = params,
             siblings = emptyList(),
             visual = visual,
+            oemTint = oemTint,
             cellRole = IosCellRole.BOTH,
             cellSlot = plan.dataSlot,
             subId = plan.dataSubId,
-            clusterSkins = listOf(secondSkin),
-            clusterOuters = listOf(otherIcon.view)
+            collapse = collapse,
+            clusterSkins = if (secondSkin != null) listOf(secondSkin) else emptyList(),
+            clusterOuters = if (secondSkin != null) listOf(otherIcon.view) else emptyList()
         )
         records.add(record)
         addLayoutListener(dataIcon.view)
@@ -1022,16 +1258,19 @@ internal class IosReplaceHost(
     private fun updateCellRecords(plan: IosCellPlan) {
         for (record in records.toList()) {
             if (record.kind != IosIconKind.CELL) continue
-            // Each slot follows its own leaf tint (e.g. the keyguard's ImageTintList) before BarTint.
-            val tint = tintFor(record.leaf ?: record.outer, record.oemTint)
+            // Each record follows its own leaf/outer tint (e.g. the keyguard's ImageTintList).
+            val tint = tintFor(record.leaf, record.outer, record.oemTint)
+            val role = record.cellRole
             val visual = when (plan) {
                 IosCellPlan.None -> null
                 is IosCellPlan.Single -> IosMapping.cellVisual(plan, tint)
-                is IosCellPlan.Dual -> when (record.cellRole) {
-                    IosCellRole.DATA -> dualVisual(plan, IosCellRole.DATA, tint)
-                    IosCellRole.OTHER -> dualVisual(plan, IosCellRole.OTHER, tint)
-                    IosCellRole.BOTH, null -> IosMapping.cellVisual(plan, tint)
-                }
+                is IosCellPlan.Dual ->
+                    if (role == IosCellRole.BOTH || role == null) {
+                        // Item 2: one stacked block, both rows, in the data slot.
+                        IosMapping.cellVisual(plan, tint)
+                    } else {
+                        dualVisual(plan, role, tint)
+                    }
             }
             if (visual == null) {
                 dropRecord(record, restore = true)
@@ -1043,28 +1282,30 @@ internal class IosReplaceHost(
         }
     }
 
-    private fun cellRecordsMatch(plan: IosCellPlan, cellIcons: List<StockIcon>): Boolean =
-        when (plan) {
+    private fun cellRecordsMatch(plan: IosCellPlan, cellIcons: List<StockIcon>): Boolean {
+        return when (plan) {
             IosCellPlan.None -> records.none { it.kind == IosIconKind.CELL }
             is IosCellPlan.Single -> {
                 val target = cellIcons.getOrNull(plan.slot)?.view ?: return false
                 val cellRecords = records.filter { it.kind == IosIconKind.CELL }
-                cellRecords.size == 1 && cellRecords[0].outer === target
+                cellRecords.size == 1 &&
+                    cellRecords[0].outer === target &&
+                    cellRecords[0].cellRole == IosCellRole.DATA &&
+                    cellRecords[0].collapse == null
             }
             is IosCellPlan.Dual -> {
                 val data = cellIcons.getOrNull(plan.dataSlot)?.view ?: return false
                 val other = cellIcons.getOrNull(plan.otherSlot)?.view ?: return false
-                val cellRecords = records.filter { it.kind == IosIconKind.CELL }
-                val overlay = cellRecords.singleOrNull { it.mechanism == IosReplaceMechanism.OVERLAY }
-                if (overlay != null && overlay.clusterOuters.any { it === other } && overlay.outer === data) {
-                    true
-                } else {
-                    cellRecords.size == 2 &&
-                        cellRecords.any { it.outer === data && it.cellRole == IosCellRole.DATA } &&
-                        cellRecords.any { it.outer === other && it.cellRole == IosCellRole.OTHER }
-                }
+                val record = records.filter { it.kind == IosIconKind.CELL }.singleOrNull()
+                    ?: return false
+                if (record.outer !== data || record.cellRole != IosCellRole.BOTH) return false
+                val collapsed = record.collapse?.let { it.isApplied && it.target === other } == true
+                val skinned = record.clusterOuters.any { it === other } &&
+                    record.clusterSkins.isNotEmpty()
+                collapsed || skinned
             }
         }
+    }
 
     private fun dropCellRecords(restore: Boolean) {
         for (record in records.toList()) {
@@ -1083,20 +1324,29 @@ internal class IosReplaceHost(
         cellIcons.map { CellSlot(subId = subIdOf(it.view), visible = cellSlotVisible(it.view)) }
 
     private fun cellSlotVisible(view: View): Boolean {
+        val record = records.firstOrNull {
+            it.kind == IosIconKind.CELL &&
+                (it.outer === view || it.collapse?.target === view ||
+                    it.clusterOuters.any { other -> other === view })
+        }
+        // Our own collapse removes the slot; it is not the ROM hiding the SIM. The plan must keep
+        // seeing the slot as present or dual -> single would oscillate.
+        if (record?.collapse?.target === view) return true
         when (view.visibility) {
             View.VISIBLE -> return contentArea(view) > 0
             View.GONE -> return false
         }
         // INVISIBLE may be our own OVERLAY suppression (single or dual cluster), so the record's
         // active visual is the truth rather than the stock view's current visibility.
-        val record = records.firstOrNull {
-            it.kind == IosIconKind.CELL &&
-                (it.outer === view || it.clusterOuters.any { other -> other === view })
-        }
         if (record != null && record.mechanism == IosReplaceMechanism.OVERLAY) {
             return record.visual?.visible == true
         }
-        return record?.skin?.oemVisible == true
+        val skin = when {
+            record == null -> null
+            record.outer === view -> record.skin
+            else -> record.clusterSkins.getOrNull(record.clusterOuters.indexOfFirst { it === view })
+        }
+        return skin?.oemVisible == true
     }
 
     private fun cellSignals(reading: CellReading): List<SimSignal> =
@@ -1170,9 +1420,16 @@ internal class IosReplaceHost(
         return resolved
     }
 
-    private fun tintFor(leaf: View?, oemTint: Int): Int {
-        val fromLeaf = (leaf as? ImageView)?.imageTintList?.defaultColor ?: 0
-        if (Color.alpha(fromLeaf) != 0) return fromLeaf
+    /**
+     * Item 6: the same colour source the system applies to this very icon, per view and surface.
+     *
+     * Order: leaf `imageTintList`, the leaf's [PorterDuffColorFilter], the outer's
+     * image/background/foreground tint lists, the tint captured at adoption, then the bar colour. A
+     * zero-alpha value is "not a resolved colour" (M17) and the next source wins.
+     */
+    private fun tintFor(leaf: View?, outer: View?, oemTint: Int): Int {
+        val live = oemTintOf(leaf, outer)
+        if (Color.alpha(live) != 0) return live
         if (Color.alpha(oemTint) != 0) return oemTint
         return try {
             BarTint.fgColor(context)
@@ -1181,12 +1438,60 @@ internal class IosReplaceHost(
         }
     }
 
+    /** The live OEM colour of [leaf]/[outer], or 0 when neither carries one. Never throws. */
+    private fun oemTintOf(leaf: View?, outer: View?): Int {
+        try {
+            val image = leaf as? ImageView
+            if (image != null) {
+                val fromList = image.imageTintList?.defaultColor ?: 0
+                if (Color.alpha(fromList) != 0) return fromList
+                // PorterDuffColorFilter.getColor() is public on the device but hidden in the SDK
+                // stubs, so read it reflectively and fail silent when the platform blocks it.
+                val filter = image.colorFilter as? PorterDuffColorFilter
+                val fromFilter = if (filter != null) {
+                    try {
+                        (filter.javaClass.getMethod("getColor").invoke(filter) as? Int) ?: 0
+                    } catch (_: Throwable) {
+                        0
+                    }
+                } else {
+                    0
+                }
+                if (Color.alpha(fromFilter) != 0) return fromFilter
+            }
+            if (outer != null) {
+                val fromImage = (outer as? ImageView)?.imageTintList?.defaultColor ?: 0
+                if (Color.alpha(fromImage) != 0) return fromImage
+                val fromBackground = outer.backgroundTintList?.defaultColor ?: 0
+                if (Color.alpha(fromBackground) != 0) return fromBackground
+                val fromForeground = outer.foregroundTintList?.defaultColor ?: 0
+                if (Color.alpha(fromForeground) != 0) return fromForeground
+            }
+        } catch (_: Throwable) {
+        }
+        return 0
+    }
+
+    /** Recolours a visual, keeping the battery's fixed state fill (low/saver/charging) intact. */
+    private fun IosVisual.withTint(tint: Int): IosVisual = copy(
+        tint = tint,
+        batteryFillColor = if (part == IosPart.BATTERY && batteryState == IosBatteryState.NORMAL) {
+            tint
+        } else {
+            batteryFillColor
+        }
+    )
+
+    private fun userTransformFor(kind: IosIconKind): IosUserTransform =
+        IosUserTransform.IDENTITY // R2C CONTRACT: replace with per-icon dxPx/scale
+
     private fun applyVisual(record: Record, visual: IosVisual) {
-        val changed = record.visual != visual
-        record.visual = visual
+        val transformed = visual.copy(userTransform = userTransformFor(record.kind))
+        val changed = record.visual != transformed
+        record.visual = transformed
         when (record.mechanism) {
             IosReplaceMechanism.IMAGE_DRAWABLE -> {
-                record.swap?.update(visual)
+                record.swap?.update(transformed)
                 record.swap?.reassert()
                 // A detach/reattach replaces the ViewTreeObserver; re-arm every guard.
                 record.swap?.ensureListener()
@@ -1194,10 +1499,10 @@ internal class IosReplaceHost(
             }
             IosReplaceMechanism.OUTER_DRAW,
             IosReplaceMechanism.LEAF_DRAW -> {
-                record.drawable?.update(visual)
+                record.drawable?.update(transformed)
                 if (changed) record.drawTarget?.invalidate()
             }
-            IosReplaceMechanism.OVERLAY -> record.overlay?.render(visual)
+            IosReplaceMechanism.OVERLAY -> record.overlay?.render(transformed)
             IosReplaceMechanism.SKIP -> Unit
         }
     }
@@ -1406,7 +1711,12 @@ internal class IosReplaceHost(
                     record.siblings.forEach { it.ensureListener() }
                     if (record.mechanism == IosReplaceMechanism.OVERLAY) {
                         val layer = layer ?: continue
-                        val bounds = if (record.clusterOuters.isEmpty()) {
+                        // Item 2: a dual BOTH block is anchored to the DATA slot, never the union.
+                        val bounds = if (record.kind == IosIconKind.CELL &&
+                            record.cellRole == IosCellRole.BOTH
+                        ) {
+                            overlayBounds(record.outer, record.leaf, layer)
+                        } else if (record.clusterOuters.isEmpty()) {
                             overlayBounds(record.outer, record.leaf, layer)
                         } else {
                             unionBoundsIn(listOf(record.outer) + record.clusterOuters, layer)
@@ -1497,7 +1807,18 @@ internal class IosReplaceHost(
                 } catch (_: Throwable) {
                 }
             }
+            try {
+                record.collapse?.restore()
+            } catch (_: Throwable) {
+            }
         }
+        // Item 0d/6: every view this record hooked stops routing pushes/tints here.
+        (record.leaf as? ImageView)?.let { IosPushHooks.unwatch(it) }
+        record.leaf?.let { IosPushHooks.offTint(it, tintCallback) }
+        IosPushHooks.offTint(record.outer, tintCallback)
+        record.clusterOuters.forEach { IosPushHooks.offTint(it, tintCallback) }
+        record.collapse?.let { IosPushHooks.offTint(it.target, tintCallback) }
+        record.tintViews.forEach { IosPushHooks.offTint(it, tintCallback) }
         val overlay = record.overlay
         if (overlay != null) {
             try {
@@ -1512,6 +1833,7 @@ internal class IosReplaceHost(
         removeLayoutListener(record.outer)
         record.leaf?.let { removeLayoutListener(it) }
         record.clusterOuters.forEach { removeLayoutListener(it) }
+        record.collapse?.let { removeLayoutListener(it.target) }
         IosDrawHookInstaller.releaseWhenEmpty()
     }
 
@@ -1519,10 +1841,13 @@ internal class IosReplaceHost(
         val wasAttached = isAttached || layer != null || records.isNotEmpty()
         val stripRootView = strip?.rootView
         compositionCleanup()
+        // Always idempotent: a failed attach may have called this already and released.
+        IosSurfaceOwners.release(surface, this)
         attachRetry?.let { handler.removeCallbacks(it) }
         attachRetry = null
         attachAttempts = 0
         handler.removeCallbacks(refreshRunnable)
+        handler.removeCallbacks(tintRefreshRunnable)
         isAttached = false
         if (receiverRegistered) {
             receiverRegistered = false
@@ -1538,6 +1863,12 @@ internal class IosReplaceHost(
             }
         }
         layoutHosts.clear()
+        // Item 8-runtime: put the user-hidden stock views back before dropping records, so a record
+        // that restores a collapsed slot cannot leave a selected icon visible.
+        try {
+            hider.restore()
+        } catch (_: Throwable) {
+        }
         for (record in records.toList()) dropRecord(record, restore = true)
         records.clear()
         deferred.clear()
@@ -1560,7 +1891,7 @@ internal class IosReplaceHost(
         lastWifiValidated = false
         IosDrawHookInstaller.releaseWhenEmpty()
         if (wasAttached) L.i("iOS replace teardown: stock icons restored")
-        if (countLifecycle && wasAttached) noteLifecycle(stripRootView)
+        if (countLifecycle && wasAttached) noteLifecycle(stripRootView, attach = false)
     }
 
     /** Drops the all-overlay delegate's state, restoring its stock icons too. */
@@ -1578,26 +1909,27 @@ internal class IosReplaceHost(
     private fun thrashBlocked(root: View): Boolean {
         if (!thrashTripped) return false
         // A null root is an unknown window, not a new one: keep backing off rather than retrying.
-        val same = thrashRoot == null || root.rootView === thrashRoot
+        val tripRoot = IosSurfaceThrash.rootOf(surface)
+        val same = tripRoot == null || root.rootView === tripRoot
         if (same) return true
         resetThrash()
         return false
     }
 
     private fun resetThrash() {
-        lifecycleThrash.reset()
-        reassertThrash.reset()
-        thrashTripped = false
-        thrashRoot = null
+        IosSurfaceThrash.reset(surface)
     }
 
-    private fun noteLifecycle(root: View?) {
+    private fun noteLifecycle(root: View?, attach: Boolean) {
         if (thrashTripInProgress || thrashTripped) return
-        if (lifecycleThrash.record(SystemClock.uptimeMillis())) {
-            thrashTripped = true
-            thrashRoot = root?.rootView
+        val now = SystemClock.uptimeMillis()
+        // A normal shade open/close is spaced by seconds; only rapid churn reaches the guard.
+        if (!IosSurfaceThrash.lifecycleEvent(surface, attach, now)) return
+        val guard = IosSurfaceThrash.lifecycle(surface)
+        if (guard.record(now)) {
+            IosSurfaceThrash.trip(surface, root?.rootView)
             L.w(
-                "iOS replace anti-thrash: ${lifecycleThrash.describe()} attach/teardown - " +
+                "iOS replace anti-thrash: ${guard.describe()} attach/teardown - " +
                     "restoring stock icons and backing off until a real change"
             )
             thrashTripInProgress = true
@@ -1611,7 +1943,7 @@ internal class IosReplaceHost(
 
     private fun noteReassert() {
         if (thrashTripInProgress || thrashTripped) return
-        if (reassertThrash.record(SystemClock.uptimeMillis())) {
+        if (IosSurfaceThrash.reassert(surface).record(SystemClock.uptimeMillis())) {
             // The callback runs inside a pre-draw; never tear a view down from there.
             handler.post { tripForReassert() }
         }
@@ -1619,10 +1951,9 @@ internal class IosReplaceHost(
 
     private fun tripForReassert() {
         if (thrashTripped) return
-        thrashTripped = true
-        thrashRoot = rootView?.rootView
+        IosSurfaceThrash.trip(surface, rootView?.rootView)
         L.w(
-            "iOS replace anti-thrash: ${reassertThrash.describe()} drawable re-asserts - " +
+            "iOS replace anti-thrash: ${IosSurfaceThrash.reassert(surface).describe()} drawable re-asserts - " +
                 "restoring stock icons and backing off until a real change"
         )
         thrashTripInProgress = true
@@ -1634,6 +1965,44 @@ internal class IosReplaceHost(
     }
 
     // ----------------------------------------------------------------------------- helpers
+
+    /**
+     * Item 8-runtime: hide the stock icons the user selected, plus (with [ModuleSettings.hideOtherIcons])
+     * every non-replaced icon. The replacement candidates the user did *not* select are preserved, so a
+     * selected battery/Wi-Fi/cell icon is hidden and never adopted, while the others can still attach.
+     */
+    private fun applyHiding(targetStrip: ViewGroup) {
+        try {
+            val selected = hiddenStockKeys
+            val inventory = inventoryOf(targetStrip, null)
+            val preserve = inventory.filter { it.key !in selected }.map { it.view }
+            hider.hideForIos(targetStrip, preserve, selected, settings.hideOtherIcons)
+        } catch (t: Throwable) {
+            logOnce.once("hide-ios-fail") {
+                L.w("iOS hide list failed: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /** Drops a record whose stock view the user has just selected hidden (never fights the hider). */
+    private fun dropUserHiddenRecords() {
+        val target = strip ?: return
+        val hidden = try {
+            inventoryOf(target, null)
+                .filter { it.key in hiddenStockKeys }
+                .map { it.view }
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        if (hidden.isEmpty()) return
+        for (record in records.toList()) {
+            val hiddenView = hidden.any {
+                it === record.outer || it === record.leaf ||
+                    it === record.collapse?.target || record.clusterOuters.any { other -> other === it }
+            }
+            if (hiddenView) dropRecord(record, restore = true)
+        }
+    }
 
     private fun failAttach(t: Throwable): Boolean {
         logOnce.once("attach-fail") {
@@ -1654,6 +2023,13 @@ internal class IosReplaceHost(
         lastCellSignature = ""
         logOnce.once("refresh") {
             L.w("iOS replace refresh: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /** A non-fatal adoption failure after some view/hook writes; the caller already restored them. */
+    private fun failAdopt(kind: IosIconKind, t: Throwable) {
+        logOnce.once("adopt-partial:$kind") {
+            L.w("iOS replace adopt $kind: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 

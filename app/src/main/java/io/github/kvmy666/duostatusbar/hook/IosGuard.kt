@@ -21,14 +21,14 @@ import io.github.kvmy666.duostatusbar.L
  * The kill switch stays single: `duo_statusbar_stage 0` is read by [DuoGuard] before anything else and
  * kills both modes. There is deliberately no iOS stage key.
  */
-internal class IosGuard(private val context: Context) : IosRiveBreaker {
+internal class IosGuard(private val context: Context) {
 
     /**
      * False once the iOS Rive view has died often enough that we stop trying. Checked before every
      * iOS Rive creation; the mark is written *before* the crash, so a death count that never gets
      * cleared makes the next boot stop instead of repeating it.
      */
-    override fun riveAllowed(): Boolean {
+    fun riveAllowed(): Boolean {
         // Once this instance has already created an iOS Rive view and is still alive to ask again, the
         // risk has been taken: a native fault would have killed the process with it. The later bars
         // must not be blocked by the first bar's own attempt (M14).
@@ -71,14 +71,14 @@ internal class IosGuard(private val context: Context) : IosRiveBreaker {
      * Counted once per instance, not once per view, for the same reason as [DuoGuard.noteRiveAttempt]:
      * every status bar surface gets its own view, and a crash takes the whole process with it.
      */
-    override fun noteRiveAttempt() {
+    fun noteRiveAttempt() {
         if (!notedThisProcess.compareAndSet(false, true)) return
         put(KEY_ATTEMPTS, attempts() + 1)
         putLong(KEY_ATTEMPT_AT, System.currentTimeMillis())
     }
 
     /** Call once the iOS drawing has survived its first seconds: the counter only ever counts deaths. */
-    override fun clearRiveAttempts() {
+    fun clearRiveAttempts() {
         put(KEY_ATTEMPTS, 0)
         putLong(KEY_ATTEMPT_AT, 0L)
     }

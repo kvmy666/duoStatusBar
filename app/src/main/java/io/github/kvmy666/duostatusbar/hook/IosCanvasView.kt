@@ -5,18 +5,18 @@ import android.graphics.Canvas
 import android.view.View
 
 /**
- * The iOS glyph drawn with the platform `Canvas` — the fail-silent sibling of [IosRiveView].
+ * The iOS glyph drawn with the platform `Canvas` — the only iOS renderer created at runtime.
  *
  * The drawing itself lives in [IosGlyphRenderer], which is shared with [IosDrawables]: this view only
- * supplies the bounds and the snapshot, so the Canvas fallback and a true in-place Drawable replacement
+ * supplies the bounds and the snapshot, so the Canvas element and a true in-place Drawable replacement
  * produce identical pixels (`IosDrawableParityTest`). Every shape comes from [IosGeometry], the same
- * constants the Rive scene repeats, so the fallback draws every occupant the Rive path draws (C9/M13).
+ * constants the design scene repeats, so every occupant is drawn (C9/M13).
  * The stock view owns the slot; this view only fills the bounds it is given and scales the artboard
- * with `min(w/W, h/H)`, centred, exactly like Rive's `Fit.CONTAIN` + `Alignment.CENTER`.
+ * with `min(w/W, h/H)`, centred, exactly like `Fit.CONTAIN` + `Alignment.CENTER`.
  *
  * Dual SIM: one view over both stock slots, stacked block; no per-slot rows. The host suppresses both
  * mobile leaves and draws this view over their union bounds: `BOTH` draws the top bar row and the
- * bottom dot row exactly as the `IosCell` dual block does, while `DATA`/`OTHER` remain supported for a
+ * bottom dot row exactly as the dual block does, while `DATA`/`OTHER` remain supported for a
  * single row (the single-SIM path uses `DATA`).
  */
 internal class IosCanvasView(

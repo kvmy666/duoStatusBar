@@ -13,9 +13,11 @@ import io.github.kvmy666.duostatusbar.L
  * cannot be observed by overriding it. The replacement signal is one per-leaf
  * [ViewTreeObserver.OnPreDrawListener]: it runs only while the view tree draws and writes only when the
  * leaf holds a foreign non-null drawable, then our drawable is back before the frame is drawn (no
- * flash, no global framework hook, no polling). After our write the next pre-draw sees ours and returns
- * false, so the swap itself cannot loop; [onReassert] lets the host's `ThrashGuard` back off if the OEM
- * re-sets its drawable on every frame.
+ * flash, no polling). After our write the next pre-draw sees ours and returns false, so the swap itself
+ * cannot loop. [onForeignPush] is the fast path an OEM push hook calls in the same `setImageDrawable`;
+ * a successful replacement is progress and never counts. Only a write that does not stick (the leaf
+ * still holds a foreign drawable after our `setImageDrawable`) calls [onReassert], so the host's
+ * `ThrashGuard` backs off a true no-progress fight rather than every legitimate level update.
  *
  * Nothing here writes layout params, visibility or size (C2): the stock slot and its `wrap_content`
  * measure stay exactly as the ROM laid them out.
@@ -77,10 +79,22 @@ internal class IosDrawableSwap(
     }
 
     /**
-     * Puts our drawable back after a foreign OEM push. This is exactly what [onPreDraw] runs and is a
-     * test seam. Returns true only when it actually replaced a foreign drawable.
+     * Puts our drawable back after a foreign OEM push. This is the same write [onForeignPush] performs,
+     * but a write that does not stick is counted as no progress. Returns true only when our drawable is
+     * installed afterwards.
      */
-    fun reassert(): Boolean {
+    fun reassert(): Boolean = installForeign(countFailure = true)
+
+    /**
+     * The OEM push fast path: installs our drawable when the leaf holds a foreign non-null drawable.
+     *
+     * This runs inside the OEM's own `setImageDrawable` after-hook, so the replacement lands in the same
+     * call and the frame never shows the stock glyph. A successful push is progress, not a fight: it
+     * never calls [onReassert]. Returns true only when our drawable is installed afterwards.
+     */
+    fun onForeignPush(): Boolean = installForeign(countFailure = false)
+
+    private fun installForeign(countFailure: Boolean): Boolean {
         if (restored || inReassert) return false
         ensureListener()
         return try {
@@ -93,15 +107,14 @@ internal class IosDrawableSwap(
             inReassert = true
             try {
                 leaf.setImageDrawable(drawable)
-                if (leaf.drawable === drawable) {
+                val stuck = leaf.drawable === drawable
+                if (!stuck && countFailure) {
                     try {
                         onReassert()
                     } catch (_: Throwable) {
                     }
-                    true
-                } else {
-                    false
                 }
+                stuck
             } finally {
                 inReassert = false
             }

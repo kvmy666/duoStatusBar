@@ -328,15 +328,18 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 ctx,
                 classLoader = lp.classLoader,
                 sizeOwner = iosSizeOwner,
-                isMainBar = false
+                isMainBar = false,
+                surface = surface
             )
         }
 
     /**
      * The OnePlus vendor QS cluster, handed to the iOS shade-header host.
      *
-     * The mode check uses only the cached settings snapshot and the adb override, and creates no host
-     * when iOS is off, so the Duo path is untouched on every non-iOS boot.
+     * This is the same hand-over Duo uses: [OnePlusShadeHooks] resolves the vendor cluster and passes
+     * it here instead of re-walking the tree, while `attachExtraBars`/`PanelHandoff` stay the generic
+     * trigger/fallback. The mode check uses only the cached settings snapshot and the adb override, and
+     * creates no host when iOS is off, so the Duo path is untouched on every non-iOS boot.
      */
     private fun attachOnePlusIos(cluster: ViewGroup, battery: View?, source: String): Boolean {
         val ctx = app ?: cluster.context
@@ -1153,6 +1156,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val header = shadeHeader
             val headerHost = ensureIosExtra(iosCtx, "shade header")
             val headerAttached = header != null && attachIosShadeHeader(header)
+            // Only fall back to the shade window when the header was not attached. A second host on a
+            // strip the header host already owns would be refused (or fight it), and the QS expanded
+            // panel still routes through the header ids inside attachIosShadeHeader.
             if (!headerAttached && !headerHost.attachedIn(shade)) attachIosShadeWindow(shade)
             return
         }
@@ -1202,8 +1208,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // This header had no attachable strip a moment ago: do not re-resolve it on every pass.
             val now = SystemClock.uptimeMillis()
             if (header === iosHeaderFailed && now - iosHeaderFailedAt < IOS_HEADER_RETRY_MS) return false
-            val ids = listOf("shade_header_system_icons", "system_icons", "quick_qs_status_icons")
-            val id = ids.firstOrNull { host.canAttachSurface(header, it) }
+            val id = IosSurfaceRouting.firstAttachable(host, header, IosSurfaceRouting.HEADER_IDS)
             if (id == null) {
                 // None of the three strips is attachable right now: memoise it so the tree walks are
                 // not repeated on every shade pass; a real attach or a new header clears the memo.
@@ -1235,12 +1240,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         val ctx = app ?: window.context
         if (!iosModeActive(ctx)) return false
         return try {
-            val host = ensureIosExtra(ctx, "shade header")
+            // A separate surface from the notification header: both strips can be live in one shade.
+            val host = ensureIosExtra(ctx, "qs header")
             if (host.attachedIn(window)) {
                 true
             } else {
-                host.attachSurface("shade header", window, "quick_qs_status_icons") ||
-                    host.attachSurface("shade header", window, "system_icons")
+                // QS expanded header first (`quick_qs_status_icons` inside
+                // `qs_status_bar_container_layout`), then the shade header and shared strip.
+                val id = IosSurfaceRouting.firstAttachable(host, window, IosSurfaceRouting.WINDOW_IDS)
+                    ?: return false
+                host.attachSurface("qs header", window, id)
             }
         } catch (t: Throwable) {
             logOnce.once("ios-shade-window-attach") {

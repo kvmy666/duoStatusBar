@@ -4,12 +4,12 @@ import app.rive.runtime.kotlin.core.ViewModelInstance
 import io.github.kvmy666.duostatusbar.L
 
 /**
- * The one place that knows how an [IosVisual] reaches the future `ios.riv`.
+ * The one place that knows how an [IosVisual] reaches the iOS Rive property table.
  *
  * This is the iOS sibling of [DuoBinder], kept separate on purpose: sharing Duo's table would break the
  * frozen 59-property parity and make a wrong name impossible to attribute. The artboard and state
- * machine are both named `Ios`, but this binder only names properties; owning the artboard/state machine
- * is the future `IosRiveView`'s job.
+ * machine are both named `Ios`, but this binder only names properties; the iOS runtime no longer
+ * creates a Rive view inside SystemUI (IOS-R2 0c), so this is authoring/diagnostic surface only.
  *
  * Every write is individually guarded: one renamed or missing property logs a warning naming it and the
  * rest of the snapshot still lands, so a partially-wrong file degrades instead of going blank.

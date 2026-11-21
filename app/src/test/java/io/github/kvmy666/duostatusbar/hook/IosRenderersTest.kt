@@ -1,7 +1,6 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
-import android.view.ViewGroup
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,10 +13,9 @@ import org.robolectric.annotation.Config
 /**
  * The renderer contracts the host depends on.
  *
- * The Canvas renderer is pure platform drawing and is proven pixel-by-pixel in
- * [IosCanvasRasterTest]. The Rive renderer cannot load its native library on the JVM, so here we pin
- * only the safe lifecycle: no native object before [IosRiveView.start], `canDraw` follows the start
- * result, and teardown is idempotent. The Rive scene itself is proven by the offline build + hash gate.
+ * The iOS runtime has exactly one renderer: the platform-Canvas element, proven pixel-by-pixel in
+ * [IosCanvasRasterTest]. There is no Rive view to create inside SystemUI (IOS-R2 0c); the production
+ * source grep for that class name is the second half of the gate and is checked outside this JVM test.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -53,52 +51,18 @@ class IosRenderersTest {
     }
 
     @Test
-    fun `rive creates no child before start and is safe to tear down`() {
-        val element = IosRiveView(context, IosIconKind.BATTERY)
-        assertEquals("Rive", element.rendererName)
-        assertFalse(element.canDraw)
-        assertFalse(element.isReady)
-        assertEquals(0, element.childCount)
-
-        val started = element.start()
-        // On the JVM the native library is normally unavailable: start is false and nothing was
-        // suppressed. On a host where it loads, start is true and the Rive child exists.
-        assertEquals("canDraw must follow the start result", started, element.canDraw)
-        element.render(snapshot)
-        element.setRenderActive(true)
-        element.setRenderActive(false)
-        element.teardown()
-        element.teardown()
-        assertFalse(element.canDraw)
-        assertEquals(0, element.childCount)
-    }
-
-    @Test
-    fun `factory returns one element per renderer and kind`() {
+    fun `factory returns the Canvas element for every kind`() {
         for (kind in IosIconKind.values()) {
-            val rive = IosRenderers.create(context, kind)
+            val created = IosRenderers.create(context, kind)
             val canvas = IosRenderers.canvas(context, kind)
-            assertEquals("Rive", rive.rendererName)
+            assertEquals("Canvas", created.rendererName)
             assertEquals("Canvas", canvas.rendererName)
-            assertEquals(IosRiveView::class.java, rive.javaClass)
+            assertEquals(IosCanvasView::class.java, created.javaClass)
             assertEquals(IosCanvasView::class.java, canvas.javaClass)
-            assertEquals(kind, (rive as IosRiveView).kind)
+            assertEquals(kind, (created as IosCanvasView).kind)
             assertEquals(kind, (canvas as IosCanvasView).kind)
-            rive.teardown()
+            created.teardown()
             canvas.teardown()
         }
-    }
-
-    @Test
-    fun `ios guard is the rive breaker`() {
-        val breaker: IosRiveBreaker = IosGuard(context)
-        assertEquals(IosGuard::class.java, breaker.javaClass)
-        assertTrue(IosRiveBreaker::class.java.isAssignableFrom(IosGuard::class.java))
-    }
-
-    @Test
-    fun `rive is a container so it can host its internal canvas fallback`() {
-        val view = IosRiveView(context, IosIconKind.WIFI)
-        assertTrue(ViewGroup::class.java.isAssignableFrom(view.javaClass))
     }
 }

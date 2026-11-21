@@ -13,11 +13,13 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.test.core.app.ApplicationProvider
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -39,6 +41,18 @@ import java.util.concurrent.atomic.AtomicInteger
 class IosIconHostTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Before
+    fun setUp() {
+        IosSurfaceThrash.clearForTest()
+        IosSurfaceOwners.clearForTest()
+    }
+
+    @After
+    fun tearDown() {
+        IosSurfaceThrash.clearForTest()
+        IosSurfaceOwners.clearForTest()
+    }
 
     // ---- stock views named exactly as the measured families ----
 
@@ -172,31 +186,6 @@ class IosIconHostTest {
         }
     }
 
-    /** The shared Rive breaker, observable so the host's attempt bookkeeping can be pinned. */
-    private class FakeBreaker(
-        var allowed: Boolean = true
-    ) : IosRiveBreaker {
-        val allowedCalls = ArrayList<Boolean>()
-        val events = ArrayList<String>()
-        var notes = 0
-        var clears = 0
-        override fun riveAllowed(): Boolean {
-            allowedCalls.add(allowed)
-            events.add("allowed")
-            return allowed
-        }
-
-        override fun noteRiveAttempt() {
-            notes++
-            events.add("note")
-        }
-
-        override fun clearRiveAttempts() {
-            clears++
-            events.add("clear")
-        }
-    }
-
     // ---- helpers ----
 
     private class BatteryTree(
@@ -274,9 +263,7 @@ class IosIconHostTest {
     )
 
     private fun host(
-        renderers: (Context, IosIconKind) -> IosElement = { c, k -> FakeElement(c, k) },
         canvasRenderers: (Context, IosIconKind) -> IosElement = { c, k -> FakeElement(c, k) },
-        breaker: IosRiveBreaker = FakeBreaker(),
         drawingReady: Boolean = true,
         batterySource: (Context) -> IosBatteryReading? = { IosBatteryReading(50, false, 0) },
         cellSource: (Context) -> CellReading = { noCellReading() },
@@ -284,20 +271,18 @@ class IosIconHostTest {
             { c, level, on, active, validated -> WifiReader.sample(c, level, on, active, validated) },
         isMainBar: Boolean = true,
         sizeOwner: IosSizeOwner = IosSizeOwner(),
-        survivalDelayMs: Long = 5_000L,
+        surface: String = "overlay",
         idleDelayMs: Long = 3_000L
     ): IosIconHost = IosIconHost(
         context = context,
         sizeOwner = sizeOwner,
         isMainBar = isMainBar,
-        renderers = renderers,
         canvasRenderers = canvasRenderers,
-        breaker = breaker,
         drawingReady = drawingReady,
+        surface = surface,
         batterySource = batterySource,
         cellSource = cellSource,
         wifiSource = wifiSource,
-        survivalDelayMs = survivalDelayMs,
         idleDelayMs = idleDelayMs
     )
 
@@ -475,7 +460,6 @@ class IosIconHostTest {
         var built = 0
         val gated = host(
             drawingReady = false,
-            renderers = { c, k -> built++; FakeElement(c, k) },
             canvasRenderers = { c, k -> built++; FakeElement(c, k) }
         )
         assertFalse(gated.attach(root))
@@ -575,7 +559,7 @@ class IosIconHostTest {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             batterySource = { IosBatteryReading(57, false, 0) }
         )
 
@@ -624,7 +608,7 @@ class IosIconHostTest {
     fun `glyph follows the stock visibility without touching the stock layout`() {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()
-        val host = host(renderers = { c, k -> FakeElement(c, k).also { created += it } })
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
         assertTrue(host.attachIn(tree.strip, tree.root))
         val glyph = created[0]
         val stockParams = tree.battery.layoutParams
@@ -653,7 +637,7 @@ class IosIconHostTest {
     fun `screen off pauses every glyph and screen on resumes it`() {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()
-        val host = host(renderers = { c, k -> FakeElement(c, k).also { created += it } })
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
         assertTrue(host.attachIn(tree.strip, tree.root))
 
         context.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF))
@@ -674,11 +658,9 @@ class IosIconHostTest {
     fun `a renderer that cannot start leaves no glyph and no suppression`() {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()
-        // Both paths fail on purpose: the helper's canvas default is a working fake, and this test pins
-        // the "no renderer could draw" case (previously the stub canvas failed implicitly).
+        // The Canvas renderer is the only one; this test pins the "nothing could draw" case.
         val host = host(
-            renderers = { c, k -> FakeElement(c, k, startResult = false).also { created += it } },
-            canvasRenderers = { c, k -> FakeElement(c, k, startResult = false) }
+            canvasRenderers = { c, k -> FakeElement(c, k, startResult = false).also { created += it } }
         )
 
         assertFalse(host.attachIn(tree.strip, tree.root))
@@ -701,7 +683,7 @@ class IosIconHostTest {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             batterySource = { null }
         )
 
@@ -730,7 +712,7 @@ class IosIconHostTest {
         val created = ArrayList<FakeElement>()
         var reading: IosBatteryReading? = IosBatteryReading(57, false, 0)
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             batterySource = { reading }
         )
 
@@ -759,7 +741,7 @@ class IosIconHostTest {
         val created = ArrayList<FakeElement>()
         var reading: IosBatteryReading? = IosBatteryReading(57, false, 0)
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             batterySource = { reading }
         )
 
@@ -789,7 +771,7 @@ class IosIconHostTest {
         val tree = wifiTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             wifiSource = { _, _, _, _, _ -> wifiSample(validated = false) }
         )
 
@@ -816,7 +798,7 @@ class IosIconHostTest {
         val tree = wifiTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             wifiSource = { _, _, _, _, _ -> wifiSample(validated = true, dots = 2) }
         )
 
@@ -851,7 +833,7 @@ class IosIconHostTest {
 
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             batterySource = { null },
             cellSource = { twoSimReading() }
         )
@@ -880,7 +862,7 @@ class IosIconHostTest {
 
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { twoSimReading() }
         )
 
@@ -899,7 +881,7 @@ class IosIconHostTest {
         val tree = cellTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { twoSimReading() }
         )
 
@@ -931,7 +913,7 @@ class IosIconHostTest {
         val created = ArrayList<FakeElement>()
         var reading = oneSimReading()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { reading }
         )
 
@@ -970,7 +952,7 @@ class IosIconHostTest {
         val tree = cellTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { twoSimReading() }
         )
         assertTrue(host.attachIn(tree.strip, tree.root))
@@ -1012,7 +994,7 @@ class IosIconHostTest {
 
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { twoSimReading() }
         )
 
@@ -1031,7 +1013,7 @@ class IosIconHostTest {
         val tree = cellTree(firstSub = 5, secondSub = 5)
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { twoSimReading() }
         )
 
@@ -1048,7 +1030,7 @@ class IosIconHostTest {
         val tree = cellTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { twoSimReading() }
         )
         assertTrue(host.attachIn(tree.strip, tree.root))
@@ -1071,7 +1053,7 @@ class IosIconHostTest {
         val first = batteryTree()
         val second = batteryTree()
         val created = ArrayList<FakeElement>()
-        val host = host(renderers = { c, k -> FakeElement(c, k).also { created += it } })
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
 
         assertTrue(host.attachIn(first.strip, first.root))
         assertEquals(1, created.size)
@@ -1100,7 +1082,7 @@ class IosIconHostTest {
     fun `an attach that sees 0x0 icons retries after layout`() {
         val tree = unlaidBatteryTree()
         val created = ArrayList<FakeElement>()
-        val host = host(renderers = { c, k -> FakeElement(c, k).also { created += it } })
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
 
         assertFalse(host.attachIn(tree.strip, tree.root))
         assertTrue(created.isEmpty())
@@ -1121,7 +1103,7 @@ class IosIconHostTest {
     fun `a failed attach is not retried after teardown`() {
         val tree = unlaidBatteryTree()
         val created = ArrayList<FakeElement>()
-        val host = host(renderers = { c, k -> FakeElement(c, k).also { created += it } })
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
 
         assertFalse(host.attachIn(tree.strip, tree.root))
         host.teardown()
@@ -1141,7 +1123,7 @@ class IosIconHostTest {
         tree.second.visibility = View.INVISIBLE
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { twoSimReading() }
         )
 
@@ -1168,7 +1150,7 @@ class IosIconHostTest {
         val tree = cellTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { twoSimReading() }
         )
 
@@ -1221,7 +1203,7 @@ class IosIconHostTest {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             wifiSource = { _, _, _, _, _ -> wifiSample(validated = true) }
         )
         assertTrue(host.attachIn(tree.strip, tree.root))
@@ -1252,7 +1234,7 @@ class IosIconHostTest {
     fun `a removed icon drops its glyph and restores the stock drawing`() {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()
-        val host = host(renderers = { c, k -> FakeElement(c, k).also { created += it } })
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
         assertTrue(host.attachIn(tree.strip, tree.root))
         assertEquals(1, created.size)
         val glyph = created[0]
@@ -1277,7 +1259,7 @@ class IosIconHostTest {
         val created = ArrayList<FakeElement>()
         var validated = false
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             wifiSource = { _, _, _, _, _ -> wifiSample(validated = validated) }
         )
 
@@ -1307,7 +1289,7 @@ class IosIconHostTest {
         val created = ArrayList<FakeElement>()
         var reading: IosBatteryReading? = null
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             batterySource = { reading }
         )
 
@@ -1335,7 +1317,7 @@ class IosIconHostTest {
         val tree = oplusTree()
         val created = ArrayList<FakeElement>()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             cellSource = { oneSimReading() },
             wifiSource = { _, _, _, _, _ -> wifiSample(validated = true, dots = 2) }
         )
@@ -1471,7 +1453,7 @@ class IosIconHostTest {
     fun `repeated attach on the same strip keeps the same element and one layer`() {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()
-        val host = host(renderers = { c, k -> FakeElement(c, k).also { created += it } })
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
 
         assertFalse("nothing is attached before the first attach", host.attachedAlive(tree.root))
         assertTrue(host.attachIn(tree.strip, tree.root))
@@ -1504,7 +1486,7 @@ class IosIconHostTest {
         val created = ArrayList<FakeElement>()
         var reading = IosBatteryReading(50, false, 0)
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             batterySource = { reading },
             idleDelayMs = 100L
         )
@@ -1522,74 +1504,9 @@ class IosIconHostTest {
     }
 
     @Test
-    fun `Rive is used when the breaker allows it and the attempt clears after survival`() {
-        val tree = batteryTree()
-        val breaker = FakeBreaker()
-        val host = host(
-            renderers = { c, k -> breaker.events.add("construct"); FakeElement(c, k) },
-            breaker = breaker,
-            survivalDelayMs = 50L
-        )
-
-        assertTrue(host.attachIn(tree.strip, tree.root))
-        assertEquals(1, breaker.notes)
-        assertEquals(0, breaker.clears)
-        // The attempt is counted before the native construct, so a crash is already on the record.
-        assertTrue(breaker.events.indexOf("note") in 0 until breaker.events.indexOf("construct"))
-
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(80))
-        assertEquals(1, breaker.clears)
-
-        host.teardown()
-    }
-
-    @Test
-    fun `a refused Rive breaker uses the Canvas renderer`() {
-        val tree = batteryTree()
-        val breaker = FakeBreaker(allowed = false)
-        val created = ArrayList<FakeElement>()
-        val host = host(
-            renderers = { _, _ -> throw AssertionError("Rive must not be built when the breaker refuses") },
-            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
-            breaker = breaker
-        )
-
-        assertTrue(host.attachIn(tree.strip, tree.root))
-        assertEquals(0, breaker.notes)
-        assertEquals(listOf(false), breaker.allowedCalls)
-        assertEquals(1, created.count { it.parent != null })
-        assertNull(tree.battery.icon.drawable)
-
-        host.teardown()
-        assertSame(tree.original, tree.battery.icon.drawable)
-    }
-
-    @Test
-    fun `a Rive that cannot start hands the attempt back and uses Canvas`() {
-        val tree = batteryTree()
-        val breaker = FakeBreaker()
-        val created = ArrayList<FakeElement>()
-        val host = host(
-            renderers = { c, k -> FakeElement(c, k, startResult = false) },
-            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
-            breaker = breaker
-        )
-
-        assertTrue(host.attachIn(tree.strip, tree.root))
-        assertEquals(1, breaker.notes)
-        assertEquals(1, breaker.clears)
-        assertEquals(1, created.count { it.parent != null })
-        assertNull(tree.battery.icon.drawable)
-
-        host.teardown()
-        assertSame(tree.original, tree.battery.icon.drawable)
-    }
-
-    @Test
-    fun `both renderers failing leaves the stock icon untouched`() {
+    fun `canvas failing leaves the stock icon untouched`() {
         val tree = batteryTree()
         val host = host(
-            renderers = { c, k -> FakeElement(c, k, startResult = false) },
             canvasRenderers = { c, k -> FakeElement(c, k, startResult = false) }
         )
 
@@ -1607,7 +1524,7 @@ class IosIconHostTest {
         val created = ArrayList<FakeElement>()
         var reading = IosBatteryReading(50, false, 0)
         val host = host(
-            renderers = { c, k -> FakeElement(c, k).also { created += it } },
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
             batterySource = { reading }
         )
         assertTrue(host.attachIn(tree.strip, tree.root))

@@ -80,21 +80,22 @@ class IosReplaceSkinsTest {
         leaf.setImageDrawable(ColorDrawable(Color.BLACK))
         assertTrue(swap.reassert())
         assertSame(ours, leaf.drawable)
-        assertEquals(1, reasserts)
+        // A successful write is progress, not a failed re-assert: it must not count.
+        assertEquals(0, reasserts)
 
         // Ours is already installed: no write, no callback.
         assertFalse(swap.reassert())
-        assertEquals(1, reasserts)
+        assertEquals(0, reasserts)
 
         // A null drawable is the OEM hiding the icon; never resurrect it.
         leaf.setImageDrawable(null)
         assertFalse(swap.reassert())
         assertNull(leaf.drawable)
-        assertEquals(1, reasserts)
+        assertEquals(0, reasserts)
 
         leaf.setImageDrawable(ours)
         assertFalse(swap.reassert())
-        assertEquals(1, reasserts)
+        assertEquals(0, reasserts)
     }
 
     @Test
@@ -325,7 +326,7 @@ class IosReplaceSkinsTest {
     // ----------------------------------------------------------------------------------- no fight
 
     @Test
-    fun `the swap itself cannot loop and each reassert counts once`() {
+    fun `the pre-draw safety net cannot loop and successful writes do not count`() {
         val original = ColorDrawable(Color.RED)
         val leaf = ImageView(context).apply { setImageDrawable(original) }
         host(leaf)
@@ -341,13 +342,115 @@ class IosReplaceSkinsTest {
             leaf.setImageDrawable(ColorDrawable(Color.RED))
             if (swap.reassert()) swapped++
         }
-        // One OEM push -> one swap. Never a chain inside a single reassert.
+        // One OEM push -> one swap. Never a chain inside a single reassert, and progress is not a fight.
         assertEquals(100, swapped)
-        assertEquals(100, reasserts)
+        assertEquals(0, reasserts)
 
         // The next pre-draw sees ours and does nothing.
         assertFalse(swap.reassert())
-        assertEquals(100, reasserts)
+        assertEquals(0, reasserts)
+    }
+
+    @Test
+    fun `a successful OEM push is adopted without counting a re-assert`() {
+        val original = ColorDrawable(Color.RED)
+        val leaf = ImageView(context).apply { setImageDrawable(original) }
+        host(leaf)
+        leaf.layout(0, 0, 79, 48)
+
+        val ours = batteryDrawable()
+        var reasserts = 0
+        val swap = IosDrawableSwap(leaf, ours, onReassert = { reasserts++ }, restoreDrawable = original)
+        assertTrue(swap.apply())
+
+        var adopted = 0
+        repeat(100) {
+            leaf.setImageDrawable(ColorDrawable(Color.RED))
+            if (swap.onForeignPush()) adopted++
+        }
+        // One OEM push -> one same-call adoption, and none of them is a fight.
+        assertEquals(100, adopted)
+        assertEquals(0, reasserts)
+        assertSame(ours, leaf.drawable)
+
+        // The next pre-draw sees ours and does nothing.
+        assertFalse(swap.reassert())
+        assertEquals(0, reasserts)
+    }
+
+    @Test
+    fun `a write that never sticks counts every reassert as no progress`() {
+        val original = ColorDrawable(Color.RED)
+        val leaf = NoProgressImageView(context, original)
+        host(leaf)
+        leaf.layout(0, 0, 79, 48)
+        leaf.setImageDrawable(original)
+
+        val ours = batteryDrawable()
+        var reasserts = 0
+        val swap = IosDrawableSwap(leaf, ours, onReassert = { reasserts++ }, restoreDrawable = original)
+        assertTrue(swap.apply())
+
+        // The OEM immediately rewrites its own drawable after every set: ours never stays.
+        leaf.swallowOurDrawable = true
+        repeat(8) {
+            leaf.setImageDrawable(ColorDrawable(Color.BLACK))
+            assertFalse(swap.reassert())
+        }
+        assertEquals(8, reasserts)
+        assertSame(original, leaf.drawable)
+
+        // onForeignPush is the push fast path and never counts, even when the write does not stick.
+        repeat(8) {
+            leaf.setImageDrawable(ColorDrawable(Color.BLACK))
+            swap.onForeignPush()
+        }
+        assertEquals(8, reasserts)
+    }
+
+    @Test
+    fun `the push registry adopts in the same call and unregisters exactly`() {
+        val original = ColorDrawable(Color.RED)
+        val leaf = ImageView(context).apply { setImageDrawable(original) }
+        host(leaf)
+        leaf.layout(0, 0, 79, 48)
+
+        val ours = batteryDrawable()
+        var reasserts = 0
+        val swap = IosDrawableSwap(leaf, ours, onReassert = { reasserts++ }, restoreDrawable = original)
+        assertTrue(swap.apply())
+
+        IosPushHooks.clearForTest()
+        try {
+            IosPushHooks.watch(leaf, swap)
+            assertTrue(IosPushHooks.watchedForTest(leaf))
+
+            leaf.setImageDrawable(ColorDrawable(Color.BLACK))
+            IosPushHooks.deliverDrawablePushForTest(leaf)
+            assertSame(ours, leaf.drawable)
+            assertEquals(0, reasserts)
+
+            var tints = 0
+            val callback: () -> Unit = { tints++ }
+            IosPushHooks.onTint(leaf, callback)
+            assertEquals(1, IosPushHooks.tintCountForTest(leaf))
+            IosPushHooks.deliverTintForTest(leaf)
+            assertEquals(1, tints)
+
+            IosPushHooks.offTint(leaf, callback)
+            assertEquals(0, IosPushHooks.tintCountForTest(leaf))
+            IosPushHooks.deliverTintForTest(leaf)
+            assertEquals(1, tints)
+
+            IosPushHooks.unwatch(leaf)
+            assertFalse(IosPushHooks.watchedForTest(leaf))
+            leaf.setImageDrawable(ColorDrawable(Color.BLACK))
+            IosPushHooks.deliverDrawablePushForTest(leaf)
+            assertEquals("an unwatched leaf keeps the OEM drawable", Color.BLACK, (leaf.drawable as ColorDrawable).color)
+        } finally {
+            swap.restore()
+            IosPushHooks.clearForTest()
+        }
     }
 
     // ------------------------------------------------------------------------------------ helpers
@@ -380,6 +483,23 @@ class IosReplaceSkinsTest {
 
         override fun setImageDrawable(drawable: Drawable?) {
             if (failSetImageDrawable) throw IllegalStateException("setImageDrawable failed")
+            super.setImageDrawable(drawable)
+        }
+    }
+
+    /**
+     * A leaf that refuses our drawable: every write of it is replaced by [original], the true
+     * "no progress" fight the anti-thrash guard exists for.
+     */
+    private class NoProgressImageView(context: Context, private val original: Drawable) :
+        ImageView(context) {
+        var swallowOurDrawable = false
+
+        override fun setImageDrawable(drawable: Drawable?) {
+            if (swallowOurDrawable && drawable is IosGlyphDrawable) {
+                super.setImageDrawable(original)
+                return
+            }
             super.setImageDrawable(drawable)
         }
     }

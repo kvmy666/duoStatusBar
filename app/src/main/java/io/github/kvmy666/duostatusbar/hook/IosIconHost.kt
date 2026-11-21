@@ -148,7 +148,8 @@ private class IosGlyphRecord(
  * The stock view stays exactly where the ROM put it: the host reads its bounds and visibility, adds one
  * transparent [FrameLayout] layer over the bar, and draws one [IosElement] glyph over each stock icon.
  * The stock drawing is suppressed leaf-first by [IosSkin]; nothing here resizes, hides or re-binds a
- * stock view (C2). Every failure restores the stock icon and draws nothing (rule 5).
+ * stock view (C2). Every failure restores the stock icon and draws nothing (rule 5). The only renderer
+ * is the platform-Canvas [IosCanvasView]; no Rive view is created inside SystemUI (IOS-R2 0c).
  *
  * ## Drawing gate
  *
@@ -175,28 +176,24 @@ internal class IosIconHost(
     private val context: Context,
     private val sizeOwner: IosSizeOwner = IosSizeOwner(),
     private val isMainBar: Boolean = true,
-    private val renderers: (Context, IosIconKind) -> IosElement = IosRenderers::create,
     private val canvasRenderers: (Context, IosIconKind) -> IosElement = IosRenderers::canvas,
-    private val breaker: IosRiveBreaker = IosGuard(context),
     private val drawingReady: Boolean = IosRenderers.DRAWING_READY,
     /**
-     * Skips the Rive branch in [startElement] and draws with [canvasRenderers] only. Used by the
-     * IOS-REPLACE all-overlay fallback, which must never create a Rive view inside SystemUI.
+     * The surface this host serves, keyed into [IosSurfaceThrash]. The IOS-REPLACE overlay delegate
+     * passes a name derived from its parent so a new delegate instance cannot reset the parent's guard.
      */
-    private val canvasOnly: Boolean = false,
+    private val surface: String = "overlay",
     private val batterySource: (Context) -> IosBatteryReading? = ::readStickyBattery,
     private val cellSource: (Context) -> CellReading = { CellReader.read(it, airplane = false) },
     private val wifiSource: (Context, Int, Boolean, Boolean, Boolean) -> WifiSample =
         { ctx, level, on, active, validated ->
             WifiReader.sample(ctx, level, on, active, validated)
         },
-    private val survivalDelayMs: Long = SURVIVAL_MS,
     private val idleDelayMs: Long = IDLE_MS
 ) {
 
     private companion object {
         const val REFRESH_DEBOUNCE_MS = 120L
-        const val SURVIVAL_MS = 5_000L
         const val IDLE_MS = 3_000L
         const val CLUSTER_RETRY_MS = 400L
         const val CLUSTER_MAX_ATTEMPTS = 5
@@ -227,7 +224,6 @@ internal class IosIconHost(
 
     private var renderersActive = true
     private var screenPaused = false
-    private var survivalElement: IosElement? = null
     private var clusterRetry: Runnable? = null
     private var attachRetry: Runnable? = null
     private var attachAttempts = 0
@@ -244,28 +240,14 @@ internal class IosIconHost(
     private var lastWifiActive = false
     private var lastWifiValidated = false
 
-    /** IOS-LAG: attach/teardown churn backoff. Only a real change clears this (see [resetThrash]). */
-    private val thrash = ThrashGuard()
-    private var thrashTripped = false
-    private var thrashRoot: View? = null
-    private var thrashTripInProgress = false
+    /** IOS-LAG: attach/teardown churn backoff, shared per surface so a new host cannot clear it. */
+    private val thrash: ThrashGuard get() = IosSurfaceThrash.lifecycle(surface)
 
     private val refreshRunnable = Runnable { refresh() }
 
     private val idleRunnable = Runnable {
         renderersActive = false
         setElementsActive(false)
-    }
-
-    private val survivalRunnable = Runnable {
-        val element = survivalElement
-        survivalElement = null
-        try {
-            if (element != null && element.isReady && element.ui.parent != null) {
-                breaker.clearRiveAttempts()
-            }
-        } catch (_: Throwable) {
-        }
     }
 
     private val layoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -353,16 +335,17 @@ internal class IosIconHost(
     fun attachSurface(name: String, root: View, stripId: String = "system_icons"): Boolean {
         // IOS-LAG: a tripped guard backs off until a genuinely different window appears. No lookup,
         // no teardown and no attach while the same root is churning.
-        if (thrashTripped) {
+        if (IosSurfaceThrash.isTripped(surface)) {
             // A null root is an unknown window, not a new one: keep backing off rather than retrying.
-            val same = thrashRoot == null || root.rootView === thrashRoot
+            val tripRoot = IosSurfaceThrash.rootOf(surface)
+            val same = tripRoot == null || root.rootView === tripRoot
             if (same) return false
             resetThrash() // a different window is a real change
         }
         if (isAttached && !reattachNeeded(root, stripId)) return true
         if (isAttached) teardown()
         // The teardown above is itself a lifecycle event and may have tripped the guard.
-        if (thrashTripped) return false
+        if (IosSurfaceThrash.isTripped(surface)) return false
         if (!drawingReady) {
             drawingNotReadyGate()
             return false
@@ -417,7 +400,7 @@ internal class IosIconHost(
     }
 
     /** Test seam: the anti-thrash trip state, so a regression test can prove icon churn did not clear it. */
-    internal fun isThrashTrippedForTest(): Boolean = thrashTripped
+    internal fun isThrashTrippedForTest(): Boolean = IosSurfaceThrash.isTripped(surface)
 
     /**
      * Test seam: attaches into an explicit strip/overlay pair, skipping the ROM-specific strip and
@@ -582,8 +565,6 @@ internal class IosIconHost(
         attachRetry?.let { handler.removeCallbacks(it) }
         attachRetry = null
         attachAttempts = 0
-        handler.removeCallbacks(survivalRunnable)
-        survivalElement = null
         handler.removeCallbacks(idleRunnable)
         if (!isAttached && records.isEmpty() && layer == null && !receiverRegistered && layoutHosts.isEmpty()) {
             unskinnable.clear()
@@ -627,15 +608,13 @@ internal class IosIconHost(
         lastCellVisibleMask = 0
         L.i("iOS host teardown: stock icons restored")
         // Count the teardown as one lifecycle event, but never recurse: the tree is already restored.
-        if (wasAttached) noteLifecycle(stripRootView, restoreIfAttached = false)
+        if (wasAttached) noteLifecycle(stripRootView, attach = false, restoreIfAttached = false)
     }
 
     // ----------------------------------------------------------------------------- anti-thrash
 
     private fun resetThrash() {
-        thrash.reset()
-        thrashTripped = false
-        thrashRoot = null
+        IosSurfaceThrash.reset(surface)
     }
 
     /**
@@ -643,24 +622,21 @@ internal class IosIconHost(
      * surface, and an attachment that is still live is torn down (restoring stock icons) unless the
      * caller is already inside [teardown] (`restoreIfAttached = false`).
      */
-    private fun noteLifecycle(root: View?, restoreIfAttached: Boolean = true) {
-        if (thrashTripInProgress) return
-        if (thrashTripped) return
-        if (thrash.record(SystemClock.uptimeMillis())) {
-            thrashTripped = true
-            thrashRoot = root?.rootView
+    private fun noteLifecycle(root: View?, attach: Boolean, restoreIfAttached: Boolean = true) {
+        if (IosSurfaceThrash.isTripped(surface)) return
+        val now = SystemClock.uptimeMillis()
+        // A normal shade open/close is spaced by seconds; only rapid churn reaches the guard.
+        if (!IosSurfaceThrash.lifecycleEvent(surface, attach, now)) return
+        val guard = thrash
+        if (guard.record(now)) {
+            IosSurfaceThrash.trip(surface, root?.rootView)
             L.w(
-                "iOS anti-thrash: ${thrash.describe()} attach/teardown for " +
-                    "${root?.javaClass?.simpleName ?: "surface"} - restoring stock icons and " +
+                "iOS anti-thrash: ${guard.describe()} attach/teardown for " +
+                    "${root?.javaClass?.simpleName ?: surface} - restoring stock icons and " +
                     "backing off until a real change"
             )
             if (restoreIfAttached && isAttached) {
-                thrashTripInProgress = true
-                try {
-                    teardown()
-                } finally {
-                    thrashTripInProgress = false
-                }
+                teardown()
             }
         }
     }
@@ -751,7 +727,7 @@ internal class IosIconHost(
 
     private fun attachToStrip(name: String?, strip: ViewGroup, root: View): Boolean {
         // A tripped guard must not hide the stock icons again; check before any lookup or attach.
-        if (thrashTripped) return false
+        if (IosSurfaceThrash.isTripped(surface)) return false
         val parent = finder.findOverlayContainer(strip, root)
         if (parent !is FrameLayout) {
             logOnce.once("no-overlay") {
@@ -761,11 +737,11 @@ internal class IosIconHost(
         }
         val attached = attachOverStrip(name, strip, parent)
         if (!attached) return false
-        noteLifecycle(root)
+        noteLifecycle(root, attach = true)
         // If the guard is tripped, its teardown has restored the stock icons: report failure so the
         // caller does not treat a backed-off surface as live. The extra check covers a trip that
         // happened earlier in this same call (noteLifecycle then returns without tearing down).
-        if (thrashTripped) {
+        if (IosSurfaceThrash.isTripped(surface)) {
             if (isAttached) teardown()
             return false
         }
@@ -1185,51 +1161,12 @@ internal class IosIconHost(
     /**
      * Starts the best renderer this build can draw with (B1 §6 M1/M2).
      *
-     * When [drawingReady] the Rive path is attempted first, but only after the shared breaker allows
-     * it and the attempt is recorded before construction (C3). A clean Rive failure hands the attempt
-     * back and falls through to Canvas. The Canvas fallback must itself start and report [IosElement.canDraw]
-     * before the caller suppresses a stock icon (C9/M13). Null means "nothing drew - leave the stock
-     * icon alone" (rule 5).
+     * The production renderer is always the platform-Canvas element (IOS-R2 0c: no Rive view may be
+     * created inside SystemUI). It must start and report [IosElement.canDraw] before the caller
+     * suppresses a stock icon (C9/M13). Null means "nothing drew - leave the stock icon alone"
+     * (rule 5).
      */
     private fun startElement(kind: IosIconKind): IosElement? {
-        if (drawingReady && !canvasOnly) {
-            // RiveAnimationView is a TextureView and needs a hardware-accelerated window. When the bar
-            // is attached but not accelerated, use the Canvas glyph instead of creating a dead surface.
-            // Unattached bars (tests/adoption) are left to the runtime's own check.
-            val hardwareOk = strip?.let { !it.isAttachedToWindow || it.isHardwareAccelerated } ?: true
-            if (!hardwareOk) {
-                logOnce.once("no-hw") {
-                    L.i("iOS Rive skipped - the bar window is not hardware accelerated; using Canvas")
-                }
-            } else if (!breaker.riveAllowed()) {
-                logOnce.once("rive-refused") {
-                    L.i("iOS Rive refused - using the Canvas fallback")
-                }
-            } else {
-                breaker.noteRiveAttempt()
-                val rive = try {
-                    renderers(context, kind)
-                } catch (_: Throwable) {
-                    null
-                }
-                if (rive == null) {
-                    breaker.clearRiveAttempts()
-                } else {
-                    val draws = try {
-                        rive.start() && rive.canDraw
-                    } catch (_: Throwable) {
-                        false
-                    }
-                    if (draws) {
-                        armSurvivalTimer(rive)
-                        return rive
-                    }
-                    // A clean failure, not a death: hand the attempt back (mirror DuoIconHost).
-                    breaker.clearRiveAttempts()
-                    safeTeardown(rive)
-                }
-            }
-        }
         val canvas = try {
             canvasRenderers(context, kind)
         } catch (_: Throwable) {
@@ -1245,13 +1182,6 @@ internal class IosIconHost(
             return null
         }
         return canvas
-    }
-
-    private fun armSurvivalTimer(element: IosElement) {
-        if (survivalElement != null) return
-        survivalElement = element
-        handler.removeCallbacks(survivalRunnable)
-        handler.postDelayed(survivalRunnable, survivalDelayMs)
     }
 
     // ----------------------------------------------------------------------------- state
@@ -1735,8 +1665,8 @@ internal class IosIconHost(
     }
 
     /**
-     * Replaces the glyph for a new size. A live Rive view is never resized (C2); the old element is torn
-     * down and a fresh one is started at the new size. A failure restores this stock icon.
+     * Replaces the glyph for a new size. A live glyph element is never resized (C2); the old element is
+     * torn down and a fresh one is started at the new size. A failure restores this stock icon.
      */
     private fun recreateGlyph(record: IosGlyphRecord, bounds: IntArray, size: Pair<Int, Int>) {
         val layer = layer ?: return
