@@ -30,7 +30,8 @@ private const val SPLIT_SOURCE = "OplusSplitShade"
  */
 internal class OnePlusShadeHooks(
     private val lp: XC_LoadPackage.LoadPackageParam,
-    private val host: () -> DuoIconHost?
+    private val host: () -> DuoIconHost?,
+    private val iosAttach: ((ViewGroup, View?, String) -> Boolean)? = null
 ) {
     private val logOnce = LogOnce()
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
@@ -119,14 +120,22 @@ internal class OnePlusShadeHooks(
     }
 
     private fun attachOnMainThread(cluster: ViewGroup, battery: View?, source: String) {
+        val iosAttached = try {
+            iosAttach?.invoke(cluster, battery, source) == true
+        } catch (t: Throwable) {
+            logOnce.once("ios:$source") {
+                L.w("$source: iOS attach failed (${t.javaClass.simpleName}) - trying the Duo route")
+            }
+            false
+        }
         val target = host()
-        if (target == null) {
-            logOnce.once("host:$source") {
+        when (shadeAttachRoute(iosAttached, target != null)) {
+            ShadeAttachRoute.IOS -> return
+            ShadeAttachRoute.DUO -> target!!.attachShadeCluster(cluster, battery, source)
+            ShadeAttachRoute.NONE -> logOnce.once("host:$source") {
                 L.i("$source: host not ready - waiting for the layout fallback")
             }
-            return
         }
-        target.attachShadeCluster(cluster, battery, source)
     }
 
     /** Resolves a vendor class, or logs once and returns null when this build does not have it. */
@@ -171,3 +180,16 @@ internal class OnePlusShadeHooks(
 
 /** `qsStatusIcon` -> `getQsStatusIcon`; pinned by a unit test because the OEM spelling is unknown. */
 internal fun getterFor(field: String): String = "get" + field.replaceFirstChar { it.uppercaseChar() }
+
+/** Which owner a vendor shade cluster was handed to. */
+internal enum class ShadeAttachRoute { IOS, DUO, NONE }
+
+/**
+ * IOS wins when the iOS attach succeeded, so a null Duo host in iOS mode is not treated as a
+ * failure; otherwise the vendor hook keeps the exact Duo path it had before.
+ */
+internal fun shadeAttachRoute(iosAttached: Boolean, hasDuoHost: Boolean): ShadeAttachRoute = when {
+    iosAttached -> ShadeAttachRoute.IOS
+    hasDuoHost -> ShadeAttachRoute.DUO
+    else -> ShadeAttachRoute.NONE
+}
