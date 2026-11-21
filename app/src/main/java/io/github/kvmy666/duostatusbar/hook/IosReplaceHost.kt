@@ -136,6 +136,13 @@ internal class IosReplaceHost(
         Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
     private val deferredArea = IdentityHashMap<View, Int>()
 
+    /** Collapses whose restore failed, retried on the next refresh/teardown (item 3). */
+    private val pendingCollapses = ArrayList<IosCollapse>()
+
+    /** The slots still collapsed by a deferred restore; the plan must keep seeing them as present. */
+    private val pendingCollapseTargets: MutableSet<View> =
+        Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
+
     private var isAttached = false
     val attached: Boolean get() = isAttached
 
@@ -446,6 +453,8 @@ internal class IosReplaceHost(
         }
         if (!isAttached || thrashTripped) return
         try {
+            // A failed collapse restore is retried before the plan reads the slot visibility again.
+            retryPendingCollapses()
             for (record in records.toList()) {
                 if (record.outer.parent == null) dropRecord(record, restore = true)
             }
@@ -577,7 +586,7 @@ internal class IosReplaceHost(
         overlayParent: FrameLayout?,
         extraBattery: View?
     ): Boolean {
-        if (thrashTripped) return false
+        if (thrashBlocked(root)) return false
         // Rule 7: claim before any view write. A refused claim leaves the tree exactly as stock.
         if (!IosSurfaceOwners.claim(surface, targetStrip, this)) {
             logOnce.once("owner-refused:$surface") {
@@ -1042,56 +1051,84 @@ internal class IosReplaceHost(
 
         val skin = IosSkin()
         if (!skin.suppress(outer)) return null
-        val overlay = IosCanvasView(context, kind)
-        overlay.relativeSize = true
-        if (!overlay.start()) {
-            skin.restore()
-            return null
-        }
-        val oemTint = oemTintOf(leaf, outer)
-        val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
-        val drawnWidth = drawnWidthFor(kind, size.first, size.second, visual)
-        val transformed = tinted.copy(userTransform = userTransformFor(kind, drawnWidth))
-        overlay.render(transformed)
+        var overlay: IosCanvasView? = null
+        var added = false
         // The colour may arrive on the outer (background/foreground tint) or on the leaf.
         val tintViews = listOfNotNull(outer, leaf)
-        for (view in tintViews) IosPushHooks.onTint(view, tintCallback)
-        val params = FrameLayout.LayoutParams(size.first, size.second).apply {
-            leftMargin = bounds[0]
-            topMargin = bounds[1]
-        }
-        val added = try {
-            layer.addView(overlay, params)
-            true
-        } catch (_: Throwable) {
-            false
-        }
-        if (!added) {
-            skin.restore()
+        try {
+            val canvas = IosCanvasView(context, kind)
+            overlay = canvas
+            canvas.relativeSize = true
+            if (!canvas.start()) {
+                skin.restore()
+                return null
+            }
+            val oemTint = oemTintOf(leaf, outer)
+            val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
+            val drawnWidth = drawnWidthFor(kind, size.first, size.second, visual)
+            val transformed = tinted.copy(userTransform = userTransformFor(kind, drawnWidth))
+            canvas.render(transformed)
+            for (view in tintViews) IosPushHooks.onTint(view, tintCallback)
+            val params = FrameLayout.LayoutParams(size.first, size.second).apply {
+                leftMargin = bounds[0]
+                topMargin = bounds[1]
+            }
+            added = try {
+                layer.addView(canvas, params)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+            if (!added) {
+                skin.restore()
+                for (view in tintViews) IosPushHooks.offTint(view, tintCallback)
+                canvas.teardown()
+                return null
+            }
+            if (isMainBar) sizeOwner.pin(kind, bounds[2], bounds[3])
+            val record = Record(
+                kind = kind,
+                outer = outer,
+                leaf = null,
+                mechanism = IosReplaceMechanism.OVERLAY,
+                drawable = null,
+                swap = null,
+                drawSession = false,
+                skin = skin,
+                overlay = canvas,
+                overlayParams = params,
+                siblings = emptyList(),
+                visual = transformed,
+                oemTint = oemTint,
+                tintViews = tintViews
+            )
+            records.add(record)
+            addLayoutListener(outer)
+            return record
+        } catch (t: Throwable) {
+            // Rule 5: the stock view was already suppressed, so a failure here must put every write
+            // back rather than leave it hidden with no record to restore it.
+            val canvas = overlay
+            if (canvas != null) {
+                if (added) {
+                    try {
+                        (canvas.parent as? ViewGroup)?.removeView(canvas)
+                    } catch (_: Throwable) {
+                    }
+                }
+                try {
+                    canvas.teardown()
+                } catch (_: Throwable) {
+                }
+            }
             for (view in tintViews) IosPushHooks.offTint(view, tintCallback)
-            overlay.teardown()
+            try {
+                skin.restore()
+            } catch (_: Throwable) {
+            }
+            failAdopt(kind, t)
             return null
         }
-        if (isMainBar) sizeOwner.pin(kind, bounds[2], bounds[3])
-        val record = Record(
-            kind = kind,
-            outer = outer,
-            leaf = null,
-            mechanism = IosReplaceMechanism.OVERLAY,
-            drawable = null,
-            swap = null,
-            drawSession = false,
-            skin = skin,
-            overlay = overlay,
-            overlayParams = params,
-            siblings = emptyList(),
-            visual = transformed,
-            oemTint = oemTint,
-            tintViews = tintViews
-        )
-        records.add(record)
-        addLayoutListener(outer)
-        return record
     }
 
     // ----------------------------------------------------------------------------- cellular
@@ -1219,67 +1256,103 @@ internal class IosReplaceHost(
         } else {
             null
         }
-        val overlay = IosCanvasView(context, IosIconKind.CELL)
-        overlay.relativeSize = true
-        if (!overlay.start()) {
-            firstSkin.restore()
-            secondSkin?.restore()
-            collapse?.restore()
-            return
-        }
-        overlay.render(visual)
-        IosPushHooks.onTint(dataIcon.view, tintCallback)
-        IosPushHooks.onTint(otherIcon.view, tintCallback)
-        val params = FrameLayout.LayoutParams(size.first, size.second).apply {
-            leftMargin = bounds[0]
-            topMargin = bounds[1]
-        }
-        val added = try {
-            layer.addView(overlay, params)
-            true
-        } catch (_: Throwable) {
-            false
-        }
-        if (!added) {
-            firstSkin.restore()
-            secondSkin?.restore()
-            collapse?.restore()
+        var overlay: IosCanvasView? = null
+        var added = false
+        try {
+            val canvas = IosCanvasView(context, IosIconKind.CELL)
+            overlay = canvas
+            canvas.relativeSize = true
+            if (!canvas.start()) {
+                firstSkin.restore()
+                secondSkin?.restore()
+                collapse?.restore()
+                return
+            }
+            canvas.render(visual)
+            IosPushHooks.onTint(dataIcon.view, tintCallback)
+            IosPushHooks.onTint(otherIcon.view, tintCallback)
+            val params = FrameLayout.LayoutParams(size.first, size.second).apply {
+                leftMargin = bounds[0]
+                topMargin = bounds[1]
+            }
+            added = try {
+                layer.addView(canvas, params)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+            if (!added) {
+                firstSkin.restore()
+                secondSkin?.restore()
+                collapse?.restore()
+                IosPushHooks.offTint(dataIcon.view, tintCallback)
+                IosPushHooks.offTint(otherIcon.view, tintCallback)
+                canvas.teardown()
+                return
+            }
+            if (isMainBar) sizeOwner.pinBlock(bounds[2], bounds[3])
+            if (collapse != null) {
+                L.i(
+                    "iOS dual: one slot on ${entryName(dataIcon.view) ?: dataIcon.label}, " +
+                        "collapsed ${entryName(otherIcon.view) ?: otherIcon.label}"
+                )
+            }
+            val record = Record(
+                kind = IosIconKind.CELL,
+                outer = dataIcon.view,
+                leaf = null,
+                mechanism = IosReplaceMechanism.OVERLAY,
+                drawable = null,
+                swap = null,
+                drawSession = false,
+                skin = firstSkin,
+                overlay = canvas,
+                overlayParams = params,
+                siblings = emptyList(),
+                visual = visual,
+                oemTint = oemTint,
+                cellRole = IosCellRole.BOTH,
+                cellSlot = plan.dataSlot,
+                subId = plan.dataSubId,
+                collapse = collapse,
+                clusterSkins = if (secondSkin != null) listOf(secondSkin) else emptyList(),
+                clusterOuters = if (secondSkin != null) listOf(otherIcon.view) else emptyList()
+            )
+            records.add(record)
+            addLayoutListener(dataIcon.view)
+            addLayoutListener(otherIcon.view)
+        } catch (t: Throwable) {
+            // Rule 5: a failure after either slot was suppressed must put every write back rather than
+            // leave the other SIM GONE/0x0 with no record to restore it.
+            val canvas = overlay
+            if (canvas != null) {
+                if (added) {
+                    try {
+                        (canvas.parent as? ViewGroup)?.removeView(canvas)
+                    } catch (_: Throwable) {
+                    }
+                }
+                try {
+                    canvas.teardown()
+                } catch (_: Throwable) {
+                }
+            }
             IosPushHooks.offTint(dataIcon.view, tintCallback)
             IosPushHooks.offTint(otherIcon.view, tintCallback)
-            overlay.teardown()
-            return
+            try {
+                firstSkin.restore()
+            } catch (_: Throwable) {
+            }
+            try {
+                secondSkin?.restore()
+            } catch (_: Throwable) {
+            }
+            try {
+                collapse?.restore()
+            } catch (_: Throwable) {
+            }
+            failAdopt(IosIconKind.CELL, t)
         }
-        if (isMainBar) sizeOwner.pinBlock(bounds[2], bounds[3])
-        if (collapse != null) {
-            L.i(
-                "iOS dual: one slot on ${entryName(dataIcon.view) ?: dataIcon.label}, " +
-                    "collapsed ${entryName(otherIcon.view) ?: otherIcon.label}"
-            )
-        }
-        val record = Record(
-            kind = IosIconKind.CELL,
-            outer = dataIcon.view,
-            leaf = null,
-            mechanism = IosReplaceMechanism.OVERLAY,
-            drawable = null,
-            swap = null,
-            drawSession = false,
-            skin = firstSkin,
-            overlay = overlay,
-            overlayParams = params,
-            siblings = emptyList(),
-            visual = visual,
-            oemTint = oemTint,
-            cellRole = IosCellRole.BOTH,
-            cellSlot = plan.dataSlot,
-            subId = plan.dataSubId,
-            collapse = collapse,
-            clusterSkins = if (secondSkin != null) listOf(secondSkin) else emptyList(),
-            clusterOuters = if (secondSkin != null) listOf(otherIcon.view) else emptyList()
-        )
-        records.add(record)
-        addLayoutListener(dataIcon.view)
-        addLayoutListener(otherIcon.view)
     }
 
     private fun updateCellRecords(plan: IosCellPlan) {
@@ -1361,6 +1434,9 @@ internal class IosReplaceHost(
         cellIcons.map { CellSlot(subId = subIdOf(it.view), visible = cellSlotVisible(it.view)) }
 
     private fun cellSlotVisible(view: View): Boolean {
+        // A slot whose restore failed is still collapsed and would read GONE; keep the plan seeing it
+        // as present until the retry actually succeeds, or dual -> single would oscillate.
+        if (pendingCollapseTargets.any { it === view }) return true
         val record = records.firstOrNull {
             it.kind == IosIconKind.CELL &&
                 (it.outer === view || it.collapse?.target === view ||
@@ -1896,6 +1972,18 @@ internal class IosReplaceHost(
                 record.collapse?.restore()
             } catch (_: Throwable) {
             }
+            record.collapse?.let { collapse ->
+                if (collapse.isApplied && pendingCollapses.none { it === collapse }) {
+                    pendingCollapses.add(collapse)
+                    pendingCollapseTargets.add(collapse.target)
+                    logOnce.once("collapse-restore-deferred") {
+                        L.w(
+                            "iOS collapse restore deferred: " +
+                                "${collapse.target.javaClass.simpleName}"
+                        )
+                    }
+                }
+            }
         }
         // Item 0d/6: every view this record hooked stops routing pushes/tints here.
         (record.leaf as? ImageView)?.let { IosPushHooks.unwatch(it) }
@@ -1920,6 +2008,23 @@ internal class IosReplaceHost(
         record.clusterOuters.forEach { removeLayoutListener(it) }
         record.collapse?.let { removeLayoutListener(it.target) }
         IosDrawHookInstaller.releaseWhenEmpty()
+    }
+
+    /** Retries collapsed slots whose restore failed; each success releases its pending visibility. */
+    private fun retryPendingCollapses() {
+        if (pendingCollapses.isEmpty()) return
+        val iterator = pendingCollapses.iterator()
+        while (iterator.hasNext()) {
+            val collapse = iterator.next()
+            try {
+                collapse.restore()
+            } catch (_: Throwable) {
+            }
+            if (!collapse.isApplied) {
+                pendingCollapseTargets.remove(collapse.target)
+                iterator.remove()
+            }
+        }
     }
 
     private fun teardownInternal(countLifecycle: Boolean) {
@@ -1955,6 +2060,7 @@ internal class IosReplaceHost(
         } catch (_: Throwable) {
         }
         for (record in records.toList()) dropRecord(record, restore = true)
+        retryPendingCollapses()
         records.clear()
         deferred.clear()
         deferredArea.clear()
@@ -1993,12 +2099,7 @@ internal class IosReplaceHost(
 
     private fun thrashBlocked(root: View): Boolean {
         if (!thrashTripped) return false
-        // A null root is an unknown window, not a new one: keep backing off rather than retrying.
-        val tripRoot = IosSurfaceThrash.rootOf(surface)
-        val same = tripRoot == null || root.rootView === tripRoot
-        if (same) return true
-        resetThrash()
-        return false
+        return IosSurfaceThrash.shouldBlock(surface, root, SystemClock.uptimeMillis())
     }
 
     private fun resetThrash() {

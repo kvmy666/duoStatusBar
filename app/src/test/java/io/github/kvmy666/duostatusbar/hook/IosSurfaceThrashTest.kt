@@ -198,6 +198,40 @@ class IosSurfaceThrashTest {
         assertFalse("another surface has its own state", other.isThrashTrippedForTest())
     }
 
+    @Test
+    fun `a fresh trip blocks the same window immediately and expires after the cooldown`() {
+        val t = tree()
+        val now = 5_000L
+        IosSurfaceThrash.trip("cooldown", t.root, now)
+        assertTrue(IosSurfaceThrash.isTripped("cooldown"))
+
+        assertTrue("the same window is blocked inside the cooldown", IosSurfaceThrash.shouldBlock("cooldown", t.strip, now + 1))
+        assertFalse(
+            "a probe is allowed once the cooldown elapses",
+            IosSurfaceThrash.shouldBlock("cooldown", t.strip, now + 10_000L)
+        )
+        assertFalse("the probe reset the trip", IosSurfaceThrash.isTripped("cooldown"))
+    }
+
+    @Test
+    fun `a trip without a window never blocks`() {
+        val t = tree()
+        val now = 5_000L
+        IosSurfaceThrash.trip("no-root", null, now)
+        assertFalse(IosSurfaceThrash.shouldBlock("no-root", t.strip, now + 1))
+        assertFalse(IosSurfaceThrash.isTripped("no-root"))
+    }
+
+    @Test
+    fun `a different window is allowed immediately`() {
+        val first = tree()
+        val second = tree()
+        val now = 5_000L
+        IosSurfaceThrash.trip("window", first.root, now)
+        assertFalse(IosSurfaceThrash.shouldBlock("window", second.strip, now + 1))
+        assertFalse(IosSurfaceThrash.isTripped("window"))
+    }
+
     private companion object {
         val NEXT_ID = AtomicInteger(0x7f0f1001)
     }
