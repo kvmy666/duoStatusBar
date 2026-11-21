@@ -189,7 +189,14 @@ class DuoSettingsProvider : ContentProvider() {
                 DuoPrefs.parseHiddenStockIcons(settings.hiddenStockIcons)
             ),
             DuoPrefs.normalizeDesignStyle(settings.designStyle),
-            if (settings.iosMode) 1 else 0
+            if (settings.iosMode) 1 else 0,
+            settings.iosBatteryOffset.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+            settings.iosBatteryScale.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+            settings.iosWifiOffset.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+            settings.iosWifiScale.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+            settings.iosCellOffset.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+            settings.iosCellScale.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+            DuoPrefs.normalizeSimDisplay(settings.simDisplay)
         )
     }
 }

@@ -97,9 +97,9 @@
 
     <!-- Status bar icons (issue #4) -->
     <string name="section_surfaces">Surfaces</string>
-    <string name="settings_show_in_qs">Show Duo in Quick Settings</string>
+    <string name="settings_show_in_qs">Show in Quick Settings</string>
     <string name="settings_show_in_qs_detail">Off keeps the Quick Settings header as is.</string>
-    <string name="settings_show_in_shade">Show Duo in the notification panel</string>
+    <string name="settings_show_in_shade">Show in the notification panel</string>
     <string name="settings_show_in_shade_detail">Off keeps the notification panel header as is.</string>
     <string name="section_icons">Status bar icons</string>
     <string name="settings_hide_other_icons">Hide other status icons</string>
@@ -309,6 +309,21 @@
     <!-- iOS 27 status bar -->
     <string name="section_ios">iOS 27 status bar</string>
     <string name="settings_ios_mode">iOS 27 status bar</string>
-    <string name="settings_ios_mode_detail">Reskins the system battery, Wi-Fi and cellular icons. When on, the Duo element is off and the Duo settings below are disabled.</string>
+    <string name="settings_ios_mode_detail">Reskins the system battery, Wi-Fi and cellular icons. When on, the Duo element is off and the Duo-only settings below are disabled.</string>
+    <string name="settings_ios_icons">Icon tuning</string>
+    <string name="settings_ios_icons_detail">Move or resize each icon. The defaults keep today\'s drawing.</string>
+    <string name="settings_ios_offset">Horizontal offset</string>
+    <string name="settings_ios_scale">Scale</string>
+    <string name="ios_icon_battery">Battery</string>
+    <string name="ios_icon_wifi">Wi-Fi</string>
+    <string name="ios_icon_cell">Cellular</string>
+
+    <!-- SIM &amp; signal -->
+    <string name="section_sim">SIM &amp; signal</string>
+    <string name="settings_sim_display">SIM display</string>
+    <string name="settings_sim_display_detail">How many SIMs the iOS icons draw. Automatic follows the phone.</string>
+    <string name="settings_sim_display_auto">Automatic</string>
+    <string name="settings_sim_display_single">Single SIM</string>
+    <string name="settings_sim_display_dual">Dual SIM</string>
 
 </resources>

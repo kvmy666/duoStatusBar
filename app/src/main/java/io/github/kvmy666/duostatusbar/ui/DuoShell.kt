@@ -495,7 +495,7 @@ private fun LensNavigationBar(
 }
 
 /** One card on the Custom tab, in render order. The iOS card is first so the mode is always reachable. */
-internal enum class CustomCard { IOS_MODE, ENGINE, CUSTOMIZE, ANIMATIONS, APPEARANCE, SURFACES, ICONS, ACTIONS, LIVE_EVENTS, DOWNLOAD }
+internal enum class CustomCard { IOS_MODE, ENGINE, CUSTOMIZE, ANIMATIONS, APPEARANCE, SIM, SURFACES, ICONS, ACTIONS, LIVE_EVENTS, DOWNLOAD }
 
 internal val CUSTOM_CARD_ORDER: List<CustomCard> = listOf(
     CustomCard.IOS_MODE,
@@ -503,6 +503,7 @@ internal val CUSTOM_CARD_ORDER: List<CustomCard> = listOf(
     CustomCard.CUSTOMIZE,
     CustomCard.ANIMATIONS,
     CustomCard.APPEARANCE,
+    CustomCard.SIM,
     CustomCard.SURFACES,
     CustomCard.ICONS,
     CustomCard.ACTIONS,
@@ -510,10 +511,17 @@ internal val CUSTOM_CARD_ORDER: List<CustomCard> = listOf(
     CustomCard.DOWNLOAD
 )
 
+/** Controls that keep their meaning whichever drawing owns the bar: usable when Duo is on or iOS owns it. */
+internal fun sharedCardEnabled(
+    settings: DuoSettings,
+    iosAvailable: Boolean = iosModeAvailable()
+): Boolean = duoControlsEnabled(settings, iosAvailable) || iosOwnsBar(settings, iosAvailable)
+
 /**
  * The iOS card is the one control that must stay active so the mode can always be switched off.
  * The engine picker is not a Duo drawing control: it stays usable when the Duo master switch is off
  * (OFF-path identity) and is disabled only while an available iOS mode owns the bar.
+ * SIM, Surfaces and Icons apply to both drawings, so they follow [sharedCardEnabled].
  * Every other card follows duoControlsEnabled (master switch on AND iOS not owning the bar).
  */
 internal fun customCardEnabled(
@@ -523,6 +531,7 @@ internal fun customCardEnabled(
 ): Boolean = when (card) {
     CustomCard.IOS_MODE -> iosCardEnabled(settings, iosAvailable)
     CustomCard.ENGINE -> !iosOwnsBar(settings, iosAvailable)
+    CustomCard.SIM, CustomCard.SURFACES, CustomCard.ICONS -> sharedCardEnabled(settings, iosAvailable)
     else -> duoControlsEnabled(settings, iosAvailable)
 }
 
@@ -557,7 +566,6 @@ fun CustomizationPage() {
     }
 
     val search = SearchGate { true }
-    val iosOwned = iosOwnsBar(settings)
 
     Column(
         modifier = Modifier
@@ -585,7 +593,7 @@ fun CustomizationPage() {
                 CustomCard.ENGINE -> Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .alpha(if (iosOwned) 0.45f else 1f),
+                        .alpha(if (customCardEnabled(CustomCard.ENGINE, settings)) 1f else 0.45f),
                     shape = RoundedCornerShape(DuoRadius.surface),
                     colors = CardDefaults.cardColors(containerColor = DuoColors.Surface.copy(alpha = 0.94f))
                 ) {
@@ -621,7 +629,7 @@ fun CustomizationPage() {
                     }
                 }
 
-                CustomCard.CUSTOMIZE -> DuoCard(iosOwned) {
+                CustomCard.CUSTOMIZE -> DuoCard(greyed = !customCardEnabled(card, settings)) {
                     CustomizeSection(
                         settings = settings,
                         onUpdate = { persist(it) },
@@ -631,7 +639,7 @@ fun CustomizationPage() {
                     )
                 }
 
-                CustomCard.ANIMATIONS -> DuoCard(iosOwned) {
+                CustomCard.ANIMATIONS -> DuoCard(greyed = !customCardEnabled(card, settings)) {
                     AnimationsSection(
                         settings = settings,
                         onUpdate = { persist(it) },
@@ -640,7 +648,7 @@ fun CustomizationPage() {
                     )
                 }
 
-                CustomCard.APPEARANCE -> DuoCard(iosOwned) {
+                CustomCard.APPEARANCE -> DuoCard(greyed = !customCardEnabled(card, settings)) {
                     AppearanceSection(
                         settings = settings,
                         onUpdate = { persist(it) },
@@ -649,7 +657,16 @@ fun CustomizationPage() {
                     )
                 }
 
-                CustomCard.SURFACES -> DuoCard(iosOwned) {
+                CustomCard.SIM -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                    SimSection(
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        matches = search,
+                        enabled = customCardEnabled(card, settings)
+                    )
+                }
+
+                CustomCard.SURFACES -> DuoCard(greyed = !customCardEnabled(card, settings)) {
                     SurfacesSection(
                         settings = settings,
                         onUpdate = { persist(it) },
@@ -658,7 +675,7 @@ fun CustomizationPage() {
                     )
                 }
 
-                CustomCard.ICONS -> DuoCard(iosOwned) {
+                CustomCard.ICONS -> DuoCard(greyed = !customCardEnabled(card, settings)) {
                     IconsSection(
                         settings = settings,
                         onUpdate = { persist(it) },
@@ -667,7 +684,7 @@ fun CustomizationPage() {
                     )
                 }
 
-                CustomCard.ACTIONS -> DuoCard(iosOwned) {
+                CustomCard.ACTIONS -> DuoCard(greyed = !customCardEnabled(card, settings)) {
                     ActionsSection(
                         settings = settings,
                         onUpdate = { persist(it) },
@@ -677,7 +694,7 @@ fun CustomizationPage() {
                     )
                 }
 
-                CustomCard.LIVE_EVENTS -> DuoCard(iosOwned) {
+                CustomCard.LIVE_EVENTS -> DuoCard(greyed = !customCardEnabled(card, settings)) {
                     LiveEventsSection(
                         matches = search,
                         settings = settings,
@@ -686,7 +703,7 @@ fun CustomizationPage() {
                     )
                 }
 
-                CustomCard.DOWNLOAD -> DuoCard(iosOwned) {
+                CustomCard.DOWNLOAD -> DuoCard(greyed = !customCardEnabled(card, settings)) {
                     DownloadSection(
                         settings = settings,
                         onUpdate = { persist(it) },
@@ -700,6 +717,6 @@ fun CustomizationPage() {
 }
 
 @Composable
-private fun DuoCard(iosOwned: Boolean, content: @Composable () -> Unit) {
-    Box(Modifier.alpha(if (iosOwned) 0.45f else 1f)) { content() }
+private fun DuoCard(greyed: Boolean, content: @Composable () -> Unit) {
+    Box(Modifier.alpha(if (greyed) 0.45f else 1f)) { content() }
 }

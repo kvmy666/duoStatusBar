@@ -59,6 +59,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.StockIconInventory
 import io.github.kvmy666.duostatusbar.settings.StockIconSelection
 import io.github.kvmy666.duostatusbar.settings.UpdateInfo
+import kotlin.math.roundToInt
 
 /** True only when an available iOS drawing actually owns the bar; a stale unavailable mode must not disable Duo. */
 internal fun iosOwnsBar(
@@ -83,6 +84,18 @@ internal fun duoControlsEnabled(
     settings: DuoSettings,
     iosAvailable: Boolean = iosModeAvailable()
 ): Boolean = settings.enabled && !iosOwnsBar(settings, iosAvailable)
+
+/** The SIM display choice belongs to the iOS drawing, so it is usable only while iOS owns the bar. */
+internal fun iosSimDisplayEnabled(
+    settings: DuoSettings,
+    iosAvailable: Boolean = iosModeAvailable()
+): Boolean = iosOwnsBar(settings, iosAvailable)
+
+/** The cellular-line picker and the Wi-Fi dots belong to the Duo drawing and follow the master switch. */
+internal fun duoSimRowsEnabled(
+    settings: DuoSettings,
+    iosAvailable: Boolean = iosModeAvailable()
+): Boolean = duoControlsEnabled(settings, iosAvailable)
 
 /**
  * The one constant that makes iOS mode reachable: while the drawing is not ready the switch is shown
@@ -111,7 +124,14 @@ internal fun IosModeSection(
     if (matches(
             stringResource(R.string.section_ios),
             stringResource(R.string.settings_ios_mode),
-            stringResource(R.string.settings_ios_mode_detail)
+            stringResource(R.string.settings_ios_mode_detail),
+            stringResource(R.string.settings_ios_icons),
+            stringResource(R.string.settings_ios_icons_detail),
+            stringResource(R.string.settings_ios_offset),
+            stringResource(R.string.settings_ios_scale),
+            stringResource(R.string.ios_icon_battery),
+            stringResource(R.string.ios_icon_wifi),
+            stringResource(R.string.ios_icon_cell)
         )
     ) GlassCard(
         shape = RoundedCornerShape(22.dp),
@@ -128,10 +148,79 @@ internal fun IosModeSection(
                 checked = settings.iosMode,
                 enabled = iosCardEnabled(settings, available)
             ) { onUpdate(applyIosModeToggle(settings, it, available)) }
-            IosPreviewPane()
+            IosPreviewPane(settings)
+
+            Text(
+                text = stringResource(R.string.settings_ios_icons),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = stringResource(R.string.settings_ios_icons_detail),
+                style = MaterialTheme.typography.bodySmall
+            )
+            val tuningEnabled = settings.iosMode && available
+
+            Text(
+                text = stringResource(R.string.ios_icon_battery),
+                style = MaterialTheme.typography.titleSmall
+            )
+            LabelledSlider(
+                label = "${stringResource(R.string.settings_ios_offset)}: ${signed(settings.iosBatteryOffset)}%",
+                value = settings.iosBatteryOffset.toFloat(),
+                range = DuoPrefs.MIN_ICON_OFFSET.toFloat()..DuoPrefs.MAX_ICON_OFFSET.toFloat(),
+                steps = 49,
+                enabled = tuningEnabled
+            ) { onUpdate(settings.copy(iosBatteryOffset = it.roundToInt())) }
+            LabelledSlider(
+                label = "${stringResource(R.string.settings_ios_scale)}: ${settings.iosBatteryScale}%",
+                value = settings.iosBatteryScale.toFloat(),
+                range = DuoPrefs.MIN_ICON_SCALE.toFloat()..DuoPrefs.MAX_ICON_SCALE.toFloat(),
+                steps = 99,
+                enabled = tuningEnabled
+            ) { onUpdate(settings.copy(iosBatteryScale = it.roundToInt())) }
+
+            Text(
+                text = stringResource(R.string.ios_icon_wifi),
+                style = MaterialTheme.typography.titleSmall
+            )
+            LabelledSlider(
+                label = "${stringResource(R.string.settings_ios_offset)}: ${signed(settings.iosWifiOffset)}%",
+                value = settings.iosWifiOffset.toFloat(),
+                range = DuoPrefs.MIN_ICON_OFFSET.toFloat()..DuoPrefs.MAX_ICON_OFFSET.toFloat(),
+                steps = 49,
+                enabled = tuningEnabled
+            ) { onUpdate(settings.copy(iosWifiOffset = it.roundToInt())) }
+            LabelledSlider(
+                label = "${stringResource(R.string.settings_ios_scale)}: ${settings.iosWifiScale}%",
+                value = settings.iosWifiScale.toFloat(),
+                range = DuoPrefs.MIN_ICON_SCALE.toFloat()..DuoPrefs.MAX_ICON_SCALE.toFloat(),
+                steps = 99,
+                enabled = tuningEnabled
+            ) { onUpdate(settings.copy(iosWifiScale = it.roundToInt())) }
+
+            Text(
+                text = stringResource(R.string.ios_icon_cell),
+                style = MaterialTheme.typography.titleSmall
+            )
+            LabelledSlider(
+                label = "${stringResource(R.string.settings_ios_offset)}: ${signed(settings.iosCellOffset)}%",
+                value = settings.iosCellOffset.toFloat(),
+                range = DuoPrefs.MIN_ICON_OFFSET.toFloat()..DuoPrefs.MAX_ICON_OFFSET.toFloat(),
+                steps = 49,
+                enabled = tuningEnabled
+            ) { onUpdate(settings.copy(iosCellOffset = it.roundToInt())) }
+            LabelledSlider(
+                label = "${stringResource(R.string.settings_ios_scale)}: ${settings.iosCellScale}%",
+                value = settings.iosCellScale.toFloat(),
+                range = DuoPrefs.MIN_ICON_SCALE.toFloat()..DuoPrefs.MAX_ICON_SCALE.toFloat(),
+                steps = 99,
+                enabled = tuningEnabled
+            ) { onUpdate(settings.copy(iosCellScale = it.roundToInt())) }
         }
     }
 }
+
+private fun signed(v: Int): String = if (v > 0) "+$v" else "$v"
 
 // ------------------------------------------------------------------ Battery icon
 @Composable
@@ -456,9 +545,6 @@ internal fun AppearanceSection(
             stringResource(R.string.settings_dnd_off),
             stringResource(R.string.settings_dnd_middle),
             stringResource(R.string.settings_dnd_dots),
-            stringResource(R.string.settings_wifi_dots),
-            stringResource(R.string.settings_wifi_dots_detail),
-            stringResource(R.string.settings_sim),
             stringResource(R.string.settings_burn_in),
             stringResource(R.string.settings_burn_in_detail))
     ) GlassCard(
@@ -480,10 +566,6 @@ internal fun AppearanceSection(
                 selectedKey = settings.iconColor,
                 enabled = enabled
             ) { onUpdate(settings.copy(iconColor = it)) }
-            Text(
-                text = stringResource(R.string.settings_middle_slot),
-                style = MaterialTheme.typography.titleSmall
-            )
             OptionPicker(
                 label = stringResource(R.string.settings_middle_slot),
                 options = listOf(
@@ -550,18 +632,59 @@ internal fun AppearanceSection(
                 }
             }
             SettingSwitch(
-                label = stringResource(R.string.settings_wifi_dots),
-                detail = stringResource(R.string.settings_wifi_dots_detail),
-                checked = settings.wifiDots,
-                enabled = enabled,
-                preview = {
-                    DuoSettingPreview(
-                        off = demo(airplane = true, wifiLevel = 2, wifiOn = true),
-                        on = demo(airplane = true, wifiLevel = 2, wifiOn = true, wifiDots = true),
-                        rawRes = previewRaw
-                    )
-                }
-            ) { onUpdate(settings.copy(wifiDots = it)) }
+                label = stringResource(R.string.settings_burn_in),
+                detail = stringResource(R.string.settings_burn_in_detail),
+                checked = settings.burnInEnabled,
+                enabled = enabled
+            ) { onUpdate(settings.copy(burnInEnabled = it)) }
+        }
+    }
+}
+
+// ------------------------------------------------------------------------- SIM
+@Composable
+internal fun SimSection(
+    settings: DuoSettings,
+    onUpdate: (DuoSettings) -> Unit,
+    matches: SearchGate,
+    enabled: Boolean = customCardEnabled(CustomCard.SIM, settings)
+) {
+    val previewRaw = rawResourceFor(settings.designStyle)
+    if (matches(
+            stringResource(R.string.section_sim),
+            stringResource(R.string.settings_sim_display),
+            stringResource(R.string.settings_sim_display_detail),
+            stringResource(R.string.settings_sim_display_auto),
+            stringResource(R.string.settings_sim_display_single),
+            stringResource(R.string.settings_sim_display_dual),
+            stringResource(R.string.settings_sim),
+            stringResource(R.string.settings_sim_detail),
+            stringResource(R.string.settings_wifi_dots),
+            stringResource(R.string.settings_wifi_dots_detail)
+        )
+    ) GlassCard(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionTitle(stringResource(R.string.section_sim))
+            OptionPicker(
+                label = stringResource(R.string.settings_sim_display),
+                options = listOf(
+                    DuoPrefs.SIM_DISPLAY_AUTO to stringResource(R.string.settings_sim_display_auto),
+                    DuoPrefs.SIM_DISPLAY_SINGLE to stringResource(R.string.settings_sim_display_single),
+                    DuoPrefs.SIM_DISPLAY_DUAL to stringResource(R.string.settings_sim_display_dual)
+                ),
+                selectedKey = settings.simDisplay,
+                enabled = enabled && iosSimDisplayEnabled(settings)
+            ) { onUpdate(settings.copy(simDisplay = it)) }
+            Text(
+                text = stringResource(R.string.settings_sim_display_detail),
+                style = MaterialTheme.typography.bodySmall
+            )
             OptionPicker(
                 label = stringResource(R.string.settings_sim),
                 options = listOf(
@@ -570,18 +693,25 @@ internal fun AppearanceSection(
                     "sim2" to stringResource(R.string.settings_sim_2)
                 ),
                 selectedKey = settings.simChoice,
-                enabled = enabled
+                enabled = enabled && duoSimRowsEnabled(settings)
             ) { onUpdate(settings.copy(simChoice = it)) }
             Text(
                 text = stringResource(R.string.settings_sim_detail),
                 style = MaterialTheme.typography.bodySmall
             )
             SettingSwitch(
-                label = stringResource(R.string.settings_burn_in),
-                detail = stringResource(R.string.settings_burn_in_detail),
-                checked = settings.burnInEnabled,
-                enabled = enabled
-            ) { onUpdate(settings.copy(burnInEnabled = it)) }
+                label = stringResource(R.string.settings_wifi_dots),
+                detail = stringResource(R.string.settings_wifi_dots_detail),
+                checked = settings.wifiDots,
+                enabled = enabled && duoSimRowsEnabled(settings),
+                preview = {
+                    DuoSettingPreview(
+                        off = demo(airplane = true, wifiLevel = 2, wifiOn = true),
+                        on = demo(airplane = true, wifiLevel = 2, wifiOn = true, wifiDots = true),
+                        rawRes = previewRaw
+                    )
+                }
+            ) { onUpdate(settings.copy(wifiDots = it)) }
         }
     }
 }
@@ -639,6 +769,10 @@ internal fun IconsSection(
     // The module owns the live view tree, so the list arrives as JSON on the settings channel. Reading
     // it on composition (a prefs read plus a small decode) keeps the rows in step after every push.
     val inventory = StockIconInventory.decode(DuoPrefs.readStockIcons(context))
+    // The hide list and the Shizuku path apply to both drawings, so they keep the shared `enabled`.
+    // Only the three Duo-only rows stop while an available iOS mode owns the bar.
+    val iosOwns = iosOwnsBar(settings)
+    val duoRowsEnabled = enabled && !iosOwns
     if (matches(stringResource(R.string.section_icons), stringResource(R.string.settings_hide_icons),
             stringResource(R.string.settings_hide_icons_detail),
             stringResource(R.string.settings_hide_other_icons),
@@ -662,7 +796,7 @@ internal fun IconsSection(
                 label = stringResource(R.string.settings_hide_other_icons),
                 detail = stringResource(R.string.settings_hide_other_icons_detail),
                 checked = settings.hideOtherIcons,
-                enabled = enabled
+                enabled = duoRowsEnabled
             ) { onUpdate(settings.copy(hideOtherIcons = it)) }
             if (inventory.isEmpty()) {
                 Text(
@@ -689,13 +823,13 @@ internal fun IconsSection(
                 label = stringResource(R.string.settings_show_wifi_glyph),
                 detail = stringResource(R.string.settings_show_wifi_glyph_detail),
                 checked = settings.showWifiGlyph,
-                enabled = enabled
+                enabled = duoRowsEnabled
             ) { onUpdate(settings.copy(showWifiGlyph = it)) }
             SettingSwitch(
                 label = stringResource(R.string.settings_show_cell_dots),
                 detail = stringResource(R.string.settings_show_cell_dots_detail),
                 checked = settings.showCellDots,
-                enabled = enabled
+                enabled = duoRowsEnabled
             ) { onUpdate(settings.copy(showCellDots = it)) }
             IconHidingSetting(enabled = enabled)
         }

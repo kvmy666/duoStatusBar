@@ -24,6 +24,7 @@ class CustomTabCompositionTest {
             CustomCard.CUSTOMIZE,
             CustomCard.ANIMATIONS,
             CustomCard.APPEARANCE,
+            CustomCard.SIM,
             CustomCard.SURFACES,
             CustomCard.ICONS,
             CustomCard.ACTIONS,
@@ -44,16 +45,34 @@ class CustomTabCompositionTest {
     }
 
     @Test
-    fun `available iOS mode disables every Duo card but keeps its own card enabled`() {
+    fun `available iOS mode keeps the shared cards enabled and disables the Duo-only cards`() {
         val settings = DuoSettings(enabled = true, iosMode = true)
+        val shared = setOf(
+            CustomCard.IOS_MODE,
+            CustomCard.SIM,
+            CustomCard.SURFACES,
+            CustomCard.ICONS
+        )
 
         assertTrue(
             "the iOS card must stay enabled so the mode can always be switched off",
             iosCardEnabled(settings, iosAvailable = true)
         )
-        CUSTOM_CARD_ORDER.filter { it != CustomCard.IOS_MODE }.forEach { card ->
+        assertTrue(
+            "SIM must stay usable so the iOS SIM display can still be chosen",
+            customCardEnabled(CustomCard.SIM, settings, iosAvailable = true)
+        )
+        assertTrue(
+            "Surfaces apply to both drawings, so the card must stay usable",
+            customCardEnabled(CustomCard.SURFACES, settings, iosAvailable = true)
+        )
+        assertTrue(
+            "the icon hide list applies to both drawings, so the card must stay usable",
+            customCardEnabled(CustomCard.ICONS, settings, iosAvailable = true)
+        )
+        CUSTOM_CARD_ORDER.filter { it !in shared }.forEach { card ->
             assertFalse(
-                "card $card must be disabled while an available iOS mode owns the bar",
+                "Duo-only card $card must be disabled while an available iOS mode owns the bar",
                 customCardEnabled(card, settings, iosAvailable = true)
             )
         }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.kvmy666.duostatusbar.hook.IosBatteryState
@@ -31,6 +33,7 @@ import io.github.kvmy666.duostatusbar.hook.IosIconKind
 import io.github.kvmy666.duostatusbar.hook.IosMapping
 import io.github.kvmy666.duostatusbar.hook.IosPart
 import io.github.kvmy666.duostatusbar.hook.IosVisual
+import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import kotlinx.coroutines.delay
 
 /** One frame of the live preview: both bar tints, both SIM layouts and one battery state. */
@@ -110,7 +113,7 @@ internal fun iosPreviewStates(): List<IosPreviewState> {
  * does; the background alternates light/dark and stays readable in both (m7).
  */
 @Composable
-internal fun IosPreviewPane(modifier: Modifier = Modifier) {
+internal fun IosPreviewPane(settings: DuoSettings = DuoSettings(), modifier: Modifier = Modifier) {
     val states = remember { iosPreviewStates() }
     var index by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
@@ -147,30 +150,56 @@ internal fun IosPreviewPane(modifier: Modifier = Modifier) {
                     state.cell,
                     IosGeometry.Cell.ARTBOARD_W,
                     IosGeometry.Cell.ARTBOARD_H,
-                    scale
+                    scale,
+                    settings.iosCellOffset.toFloat(),
+                    settings.iosCellScale.toFloat()
                 )
             }
             Spacer(Modifier.width(((IosGeometry.Strip.CELL_WIFI_GAP - 2f) * scale).dp))
-            glyph(IosIconKind.WIFI, state.wifi, IosGeometry.Wifi.ARTBOARD_W, IosGeometry.Wifi.ARTBOARD_H, scale)
+            glyph(
+                IosIconKind.WIFI,
+                state.wifi,
+                IosGeometry.Wifi.ARTBOARD_W,
+                IosGeometry.Wifi.ARTBOARD_H,
+                scale,
+                settings.iosWifiOffset.toFloat(),
+                settings.iosWifiScale.toFloat()
+            )
             Spacer(Modifier.width(((IosGeometry.Strip.WIFI_BATTERY_GAP - 2f) * scale).dp))
             glyph(
                 IosIconKind.BATTERY,
                 state.battery,
                 IosGeometry.Battery.ARTBOARD_W,
                 IosGeometry.Battery.ARTBOARD_H,
-                scale
+                scale,
+                settings.iosBatteryOffset.toFloat(),
+                settings.iosBatteryScale.toFloat()
             )
         }
     }
 }
 
 @Composable
-private fun glyph(kind: IosIconKind, visual: IosVisual, w: Float, h: Float, scale: Float) {
+private fun glyph(
+    kind: IosIconKind,
+    visual: IosVisual,
+    w: Float,
+    h: Float,
+    scale: Float,
+    offsetPercent: Float,
+    userScale: Float
+) {
     AndroidView(
         factory = { context ->
             IosCanvasView(context, kind).also { it.start() }
         },
         update = { it.render(visual) },
-        modifier = Modifier.size((w * scale).dp, (h * scale).dp)
+        modifier = Modifier
+            .size((w * scale).dp, (h * scale).dp)
+            .offset(x = ((w * scale) * offsetPercent / 100f).dp)
+            .graphicsLayer {
+                scaleX = userScale / 100f
+                scaleY = userScale / 100f
+            }
     )
 }
