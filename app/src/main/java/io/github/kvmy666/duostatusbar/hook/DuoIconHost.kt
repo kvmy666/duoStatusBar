@@ -259,12 +259,17 @@ internal class DuoIconHost(private val context: Context) {
      * Hiding on a layout pass is not enough on the shade header: the ROM repopulates `statusIcons`
      * *after* the pass, so the icons came straight back. This hides each one at the moment it arrives,
      * which is the only moment the ROM cannot undo.
+     *
+     * An add never clears a tripped guard: the ROM repopulates the strip after every hide pass, so
+     * re-adds are part of the loop. While tripped, a newly added icon is left alone.
      */
     fun onStatusIconAdded(view: View) {
         try {
             if (view === element?.ui || view === indicators?.ui ||
                 extras.any { it.element?.ui === view || it.indicators?.ui === view }
             ) return
+            // A tripped host is backed off: never hide a fresh icon from inside the repopulate loop.
+            if (thrashTripped) return
             var parent: View? = view.parent as? View
             while (parent != null) {
                 val extra = extras.firstOrNull { it.container === parent }
@@ -433,6 +438,14 @@ internal class DuoIconHost(private val context: Context) {
 
     /** Hides and restores the stock views (FR-08/21); owns their remembered original state. */
     private val hider = StockIconHider()
+
+    /**
+     * IOS-LAG: backoff for the proven Duo 0x0 suppress/restore loop. The owner's CPH2747 dump has 362
+     * "Duo box: 0x0 on reapply - restoring stock icons" lines from repeated layout passes. Once this
+     * trips, nothing is hidden or restored until a real change resets it ([resetThrash]).
+     */
+    private val thrash = ThrashGuard()
+    private var thrashTripped = false
 
     /** Restyles the status-bar clock and remembers its original so switching off restores it. */
     private val clock = ClockFontController(context, rom)
@@ -1005,7 +1018,7 @@ internal class DuoIconHost(private val context: Context) {
     fun setMainBarVisible(visible: Boolean, immediateReveal: Boolean = false) {
         if (!visible && mainViews().none { hasBox(it) } && mainViews().isNotEmpty()) {
             L.w("setMainBarVisible: main not drawable - restoring stock icons")
-            hider.restore()
+            restoreStockGuarded("main bar not drawable")
             return
         }
         // HUD -> QS/shade: the incoming copy is revealed first. The main copy is only faded out once
@@ -2193,6 +2206,8 @@ internal class DuoIconHost(private val context: Context) {
             }
         }
         if (changed) {
+            // A settings change is a real change: a backed-off host may try again (IOS-LAG).
+            resetThrash()
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
                     "percent=${fresh.showPercent}, percentHeight=${fresh.percentHeight}%, " +
                     "split=${fresh.splitIndicators}, lock=${fresh.lockRing}, icons=${fresh.indicatorsOffsetX}dp, " +
@@ -2925,6 +2940,8 @@ internal class DuoIconHost(private val context: Context) {
                 }
                 return false
             }
+            // A fresh attach is a real change: clear any previous suppress/restore backoff (IOS-LAG).
+            resetThrash()
             var target = finder.findStatusIconsHost(statusBarRoot)
             var composeAnchor: View? = null
             if (target == null) {
@@ -3145,7 +3162,7 @@ internal class DuoIconHost(private val context: Context) {
             }
             element = null
             L.w("Canvas fallback never got a box - restoring stock icons")
-            hider.restore()
+            restoreStockGuarded("Canvas fallback never got a box")
         }
     }
 
@@ -3243,11 +3260,51 @@ internal class DuoIconHost(private val context: Context) {
         survivalRunnable = null
     }
 
+    /** A real change (attach, rotation, settings) earns a fresh suppress/restore budget. */
+    internal fun resetThrash() {
+        thrash.reset()
+        thrashTripped = false
+    }
+
+    /** Puts every stock icon this host hid back, reporting once per failing container. */
+    private fun restoreAllStock() {
+        try {
+            hider.restore()
+        } catch (t: Throwable) {
+            L.w("restore: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        extras.forEach {
+            try {
+                it.stock.restore()
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    /**
+     * The one guarded restore. A normal single restore is passed straight through; a repeat inside the
+     * 10 s window trips [thrash] and backs off completely (no hide, no restore) until a real change.
+     */
+    private fun restoreStockGuarded(reason: String) {
+        if (thrashTripped) return
+        if (thrash.record(SystemClock.uptimeMillis())) {
+            thrashTripped = true
+            L.w(
+                "anti-thrash: $reason - ${thrash.describe()} suppress/restore, restoring stock icons " +
+                    "and backing off until a real change"
+            )
+            restoreAllStock()
+            return
+        }
+        hider.restore()
+    }
+
     /**
      * Re-applies the hiding pass: the ROM re-shows its icon views whenever the icon set changes, so
      * this runs again on layout changes rather than only once.
      */
     fun reapplyHiding() {
+        if (thrashTripped) return
         // FR-03b: the keyguard bar and the shade header are re-shown on every shade/lock transition,
         // so they get the same pass.
         reapplyExtraHiding()
@@ -3257,15 +3314,15 @@ internal class DuoIconHost(private val context: Context) {
         // before Rive has bound its view model, and hiding then would leave a blank stretch of status bar.
         if (!(element?.isReady ?: false)) return
         if (element?.ui?.let { !hasBox(it) } == true) {
-            L.w("Duo box: 0x0 on reapply - restoring stock icons")
-            hider.restore()
+            if (!thrashTripped) L.w("Duo box: 0x0 on reapply - restoring stock icons")
+            restoreStockGuarded("Duo box stayed 0x0 on reapply")
             return
         }
         if (!ensureElementAttached()) {
             // Never leave a hole: if the element cannot live in the rebuilt strip, the stock icons come back
             // rather than an empty stretch of status bar. The next hide pass remembers them again.
             L.w("element could not be re-attached - restoring the stock icons instead of leaving a gap")
-            hider.restore()
+            restoreStockGuarded("Duo element could not be re-attached")
             return
         }
         // Re-read after the re-attach: rotation replaces the strip, so the one captured before it points
@@ -3273,7 +3330,7 @@ internal class DuoIconHost(private val context: Context) {
         val strip = hideStrip ?: host
         if (strip == null) {
             L.w("no icon strip after re-attach - restoring the stock icons instead of leaving a gap")
-            hider.restore()
+            restoreStockGuarded("no icon strip after re-attach")
             return
         }
         try {

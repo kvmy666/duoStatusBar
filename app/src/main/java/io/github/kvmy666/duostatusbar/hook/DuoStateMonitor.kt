@@ -303,6 +303,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
     /** Rotation re-inflates the strip: hide the stock views again. */
     private fun onRotation() {
+        // A rotation replaces the strip: a real change clears the suppress/restore backoff (IOS-LAG).
+        host.resetThrash()
         host.reapplyHiding()
         render()
     }
