@@ -192,7 +192,12 @@ data class DuoSettings(
      * Shift the whole element one physical pixel every hour to spread wear on an OLED panel.
      * Off is the original, fixed seat.
      */
-    val burnInEnabled: Boolean = false
+    val burnInEnabled: Boolean = false,
+    /**
+     * Redraw the system's own battery, Wi-Fi and cellular icons in the iOS 27 style. Off leaves every
+     * Duo path byte-identical; when on, Duo itself is not drawn.
+     */
+    val iosMode: Boolean = false
 ) {
     companion object {
         /** The classic ring drawing (`res/raw/duo_old.riv`), the pre-existing look. */
@@ -375,6 +380,8 @@ object DuoPrefs {
     const val COL_HIDDEN_STOCK_ICONS = "hidden_stock_icons"
     /** The classic/new ring design; appended after the per-icon list, never reordered. */
     const val COL_DESIGN_STYLE = "design_style"
+    /** The iOS 27 status-bar mode; appended after the design style, never reordered. Off by default. */
+    const val COL_IOS_MODE = "ios_mode"
 
     /** The classic drawing, kept on old installs unless the user picks the new ring. */
     const val DESIGN_OLD = DuoSettings.DESIGN_OLD
@@ -402,7 +409,7 @@ object DuoPrefs {
         COL_INDICATORS_TAP, COL_INDICATORS_DOUBLE_TAP, COL_INDICATORS_LONG_PRESS,
         COL_SHOW_IN_QS, COL_SHOW_IN_SHADE, COL_ENGINE_MODE, COL_MIDDLE_SLOT,
         COL_SHOW_WIFI_GLYPH, COL_SHOW_CELL_DOTS, COL_EVENT_MASK, COL_DOWNLOAD_PROGRESS, COL_BURN_IN,
-        COL_HIDDEN_STOCK_ICONS, COL_DESIGN_STYLE
+        COL_HIDDEN_STOCK_ICONS, COL_DESIGN_STYLE, COL_IOS_MODE
     )
 
     /** Landscape columns appended after [PORTRAIT_COLUMNS]. An older module ignores names it does not know. */
@@ -515,7 +522,8 @@ object DuoPrefs {
         showCellDots = p.getBoolean(prefix + COL_SHOW_CELL_DOTS, true),
         eventMask = p.getInt(prefix + COL_EVENT_MASK, EVENT_ALL) and EVENT_ALL,
         downloadProgressEnabled = p.getBoolean(prefix + COL_DOWNLOAD_PROGRESS, true),
-        burnInEnabled = p.getBoolean(prefix + COL_BURN_IN, false)
+        burnInEnabled = p.getBoolean(prefix + COL_BURN_IN, false),
+        iosMode = p.getBoolean(prefix + COL_IOS_MODE, false)
     )
 
     /** Writes the settings for [orientation] and bumps the revision the module compares against. */
@@ -603,6 +611,7 @@ object DuoPrefs {
         putBoolean(prefix + COL_BURN_IN, settings.burnInEnabled)
         putString(prefix + COL_HIDDEN_STOCK_ICONS, settings.hiddenStockIcons)
         putString(prefix + COL_DESIGN_STYLE, normalizeDesignStyle(settings.designStyle))
+        putBoolean(prefix + COL_IOS_MODE, settings.iosMode)
     }
 
     fun revision(context: Context): Long =

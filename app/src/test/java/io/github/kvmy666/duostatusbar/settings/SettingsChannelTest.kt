@@ -217,25 +217,33 @@ class SettingsChannelTest {
     }
 
     @Test
-    fun `design style is appended last without moving hidden stock icons`() {
-        // Append-only: existing installs read the old positions, so the new column may never move.
-        assertEquals(87, DuoPrefs.COLUMNS.size)
-        assertEquals(44, DuoPrefs.PORTRAIT_COLUMNS.size)
-        assertEquals(43, DuoPrefs.LANDSCAPE_COLUMNS.size)
-        assertEquals(DuoPrefs.COL_DESIGN_STYLE, DuoPrefs.PORTRAIT_COLUMNS.last())
+    fun `the iOS columns are appended last without moving design style or hidden stock icons`() {
+        // Append-only: existing installs read the old positions, so the new columns may never move.
+        assertEquals(89, DuoPrefs.COLUMNS.size)
+        assertEquals(45, DuoPrefs.PORTRAIT_COLUMNS.size)
+        assertEquals(44, DuoPrefs.LANDSCAPE_COLUMNS.size)
+        assertEquals(DuoPrefs.COL_IOS_MODE, DuoPrefs.PORTRAIT_COLUMNS.last())
         assertEquals(
-            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.COL_DESIGN_STYLE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 1]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 2]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE,
             DuoPrefs.LANDSCAPE_COLUMNS.last()
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 1]
         )
-        assertEquals(87, DuoSettingsProvider.rowFor(DuoSettings(), 1L).size)
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 2]
+        )
+        assertEquals(89, DuoSettingsProvider.rowFor(DuoSettings(), 1L).size)
 
         val oldOrder = arrayOf(
             DuoPrefs.COL_ENABLED, DuoPrefs.COL_USE_RIVE, DuoPrefs.COL_SHOW_PERCENT,
@@ -323,6 +331,26 @@ class SettingsChannelTest {
         assertFalse(
             DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE).burnInEnabled
         )
+    }
+
+    @Test
+    fun `ios mode round trips through shared preferences`() {
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        DuoPrefs.write(
+            context,
+            DuoSettings(iosMode = true),
+            DuoOrientation.PORTRAIT
+        )
+        val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
+        assertTrue(portrait.iosMode)
+
+        DuoPrefs.write(
+            context,
+            DuoSettings(iosMode = false),
+            DuoOrientation.LANDSCAPE
+        )
+        val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
+        assertFalse(landscape.iosMode)
     }
 
     @Test

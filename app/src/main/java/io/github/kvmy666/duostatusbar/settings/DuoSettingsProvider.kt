@@ -188,7 +188,8 @@ class DuoSettingsProvider : ContentProvider() {
             DuoPrefs.joinHiddenStockIcons(
                 DuoPrefs.parseHiddenStockIcons(settings.hiddenStockIcons)
             ),
-            DuoPrefs.normalizeDesignStyle(settings.designStyle)
+            DuoPrefs.normalizeDesignStyle(settings.designStyle),
+            if (settings.iosMode) 1 else 0
         )
     }
 }

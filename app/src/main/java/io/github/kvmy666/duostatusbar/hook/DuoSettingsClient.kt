@@ -104,7 +104,9 @@ internal data class ModuleSettings(
      */
     val hiddenStockIcons: String = "",
     /** Which ring drawing to load: [DuoPrefs.DESIGN_OLD] or [DuoPrefs.DESIGN_NEW]. */
-    val designStyle: String = DuoPrefs.DESIGN_OLD
+    val designStyle: String = DuoPrefs.DESIGN_OLD,
+    /** Whether the iOS 27 status-bar skin is on. Off leaves every Duo path untouched. */
+    val iosMode: Boolean = false
 ) {
     /** Whether Do Not Disturb may take the middle of the ring. */
     val showDnd: Boolean get() = DuoPrefs.dndInMiddle(dndMode)
@@ -152,7 +154,8 @@ internal data class ModuleSettings(
             downloadProgressEnabled = true,
             burnInEnabled = false,
             hiddenStockIcons = "",
-            designStyle = DuoPrefs.DESIGN_OLD
+            designStyle = DuoPrefs.DESIGN_OLD,
+            iosMode = false
         )
     }
 }
@@ -233,6 +236,14 @@ internal object DuoSettingsClient {
     var servedFromBridge: Boolean = false
         private set
 
+    /**
+     * The settings from the last successful provider or bridge read, exposed through [lastRead] for a
+     * caller that must decide without a Context (the hook-side iOS gate). Never used to pick a value;
+     * it only mirrors what the normal read path already resolved.
+     */
+    @Volatile
+    private var lastReadSettings: ModuleSettings? = null
+
     // ------------------------------------------------------------ provider-independent bridge
     // On a ROM where System UI cannot see the app's provider (One UI 8: "Unknown authority"), settings
     // arrive over a broadcast. The payload is the exact provider row, parsed by the same [fromCursor], so
@@ -260,6 +271,13 @@ internal object DuoSettingsClient {
                 cursor.moveToFirst()
                 bridge = fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
                 bridgeLandscape = fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
+                lastReadSettings = if (c != null &&
+                    effectiveOrientation(c) == Configuration.ORIENTATION_LANDSCAPE
+                ) {
+                    bridgeLandscape
+                } else {
+                    bridge
+                }
                 providerUnreachable = false
                 L.i("settings bridge receive: values=${values.size} columns=${DuoPrefs.COLUMNS.size} using=$count")
             } catch (t: Throwable) {
@@ -333,6 +351,13 @@ internal object DuoSettingsClient {
         return ModuleSettings.DEFAULT
     }
 
+    /**
+     * The settings resolved by the last successful provider or bridge read, or null before the first
+     * one. A caller that must decide before [read] has run treats null as "not known" and keeps the
+     * conservative default.
+     */
+    internal fun lastRead(): ModuleSettings? = lastReadSettings
+
     /** The provider read, or null when the provider could not be reached (as opposed to "off"). */
     private fun readProvider(context: Context, orientation: Int): ModuleSettings? = try {
         val started = android.os.SystemClock.elapsedRealtime()
@@ -350,6 +375,7 @@ internal object DuoSettingsClient {
                     null
                 } else {
                     val result = fromCursor(c, orientation)
+                    lastReadSettings = result
                     // Logged because this is a synchronous binder call from System UI's boot path: if it
                     // is ever slow, it is slow there, and that deserves a number rather than a guess.
                     val which = if (orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
@@ -493,7 +519,9 @@ internal object DuoSettingsClient {
         // Optional: missing or unknown keeps the classic drawing, which is what existing installs draw.
         designStyle = DuoPrefs.normalizeDesignStyle(
             cursor.optionalString(DuoPrefs.COL_DESIGN_STYLE, DuoPrefs.DESIGN_OLD)
-        )
+        ),
+        // Optional: an older settings app has no iOS mode, which is off (rule 6).
+        iosMode = cursor.optionalBool(DuoPrefs.COL_IOS_MODE, false)
         )
     }
 
@@ -580,7 +608,9 @@ internal object DuoSettingsClient {
             hiddenStockIcons = str(DuoPrefs.COL_HIDDEN_STOCK_ICONS, portrait.hiddenStockIcons),
             designStyle = DuoPrefs.normalizeDesignStyle(
                 str(DuoPrefs.COL_DESIGN_STYLE, portrait.designStyle)
-            )
+            ),
+            // Missing landscape columns fall back to the portrait values, as they always have.
+            iosMode = bool(DuoPrefs.COL_IOS_MODE, portrait.iosMode)
         )
     }
 
