@@ -1,0 +1,1002 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iOS 27 STATUS BAR — the three glyphs, authored in the design space of
+  app/src/main/java/io/github/kvmy666/duostatusbar/hook/IosGeometry.kt.
+
+  Design unit: the battery body height is exactly 100, so every number here is the
+  same number that Kotlin and IosCanvasView use.  The artboards are split because the
+  host skins each stock icon in its own slot:
+
+    Ios        battery  217.2 x 102
+    IosWifi    Wi-Fi    129.53 x 96.77
+    IosCell    cellular 150.1 x 105.6
+
+  All three share ONE view model, IosModel (id 0:1000), so the 12 properties named in
+  docs/ios-rive-contract.md are declared once and every artboard binds the same values.
+  Each artboard has a state machine named `Ios`.
+
+  Rive paints front-to-back: the FIRST sibling paints on top.  The battery therefore
+  declares bolt, cap, fill, remainder, clip source in that top-to-bottom order.
+
+  Battery fill technique:
+    A DataConverterRangeMapper (0:1014) maps batteryLevel 0..1 to the fill Rectangle's
+    width 0..192.5.  The fill Shape itself is never scaled, and a ClippingShape masks
+    it against a paintless rounded-rect body (0:1102).  The left rounded corners are
+    therefore the body's, and the split is the Rectangle's straight right edge.  All
+    four fill-rectangle corner radii are 0 so the Rectangle cannot round the split;
+    the body clip owns both rounded ends.
+    The alternative — bind Node.scaleX to batteryLevel and clip a full-width fill —
+    scales the mask as well as the artwork, so the left corner radius may distort.
+    Chosen from the schema; the converter-vs-scaleX pixel A/B is UNVERIFIED.
+-->
+<Rive version="1" kind="fragment">
+
+    <!-- ============================================================ BATTERY -->
+    <Artboard x="0" y="0" width="217.2" height="102" name="Ios" id="0:1100"
+              viewModelId="0:1000" viewModelInstanceId="0:1013" defaultStateMachineId="0:1120">
+        <Node name="batteryRoot" id="0:1101">
+
+            <!-- Bolt: 7 absolute artboard points, filled with the dynamic tint.  Its Shape
+                 opacity is the only property driven by boltOpacity, so the fill colour keeps
+                 the full tint and the host can fade the whole glyph. -->
+            <Shape name="bolt" id="0:1107">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="100.25" y="23.50" />
+                    <StraightVertex x="85.25" y="53.75" />
+                    <StraightVertex x="94.85" y="53.75" />
+                    <StraightVertex x="91.85" y="78.50" />
+                    <StraightVertex x="109.25" y="45.50" />
+                    <StraightVertex x="99.65" y="45.50" />
+                    <StraightVertex x="104.75" y="23.50" />
+                </PointsPath>
+                <Fill name="Fill">
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                    </SolidColor>
+                </Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:1000-0:1007" />
+            </Shape>
+
+            <!-- Cap nub: the owner-annotated right-hand half of a superellipse (n=1.8) as a 25-gon
+                 in absolute artboard coordinates — a chunky rounded-triangular/trapezoid shape,
+                 15.2 x 36.8, with its flat base on the body side.  Annotated cap IoU 0.971 (old
+                 24-gon 0.789); the light PNG is the same shape at a smaller size (0.987).
+                 A foreground shape, so tint. -->
+            <Shape name="cap" id="0:1106">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="201.00" y="32.60" />
+                    <StraightVertex x="206.20" y="34.13" />
+                    <StraightVertex x="208.49" y="35.67" />
+                    <StraightVertex x="210.19" y="37.20" />
+                    <StraightVertex x="211.55" y="38.73" />
+                    <StraightVertex x="212.67" y="40.27" />
+                    <StraightVertex x="213.59" y="41.80" />
+                    <StraightVertex x="214.36" y="43.33" />
+                    <StraightVertex x="214.99" y="44.87" />
+                    <StraightVertex x="215.49" y="46.40" />
+                    <StraightVertex x="215.86" y="47.93" />
+                    <StraightVertex x="216.10" y="49.47" />
+                    <StraightVertex x="216.20" y="51.00" />
+                    <StraightVertex x="216.10" y="52.53" />
+                    <StraightVertex x="215.86" y="54.07" />
+                    <StraightVertex x="215.49" y="55.60" />
+                    <StraightVertex x="214.99" y="57.13" />
+                    <StraightVertex x="214.36" y="58.67" />
+                    <StraightVertex x="213.59" y="60.20" />
+                    <StraightVertex x="212.67" y="61.73" />
+                    <StraightVertex x="211.55" y="63.27" />
+                    <StraightVertex x="210.19" y="64.80" />
+                    <StraightVertex x="208.49" y="66.33" />
+                    <StraightVertex x="206.20" y="67.87" />
+                    <StraightVertex x="201.00" y="69.40" />
+                </PointsPath>
+                <Fill name="Fill">
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                    </SolidColor>
+                </Fill>
+            </Shape>
+
+            <!-- Charged fill: a full-height Rectangle whose width is the level, clipped by the
+                 body.  Rectangle width is ParametricPath key 20; the converter turns the
+                 view model's 0..1 into design units.  Authored width 192.5 is the pre-data
+                 pose (full charge), never 0, so a missing bind cannot look like an empty
+                 battery. -->
+            <Shape x="1" y="1" name="batteryFill" id="0:1104">
+                <!-- The clip supplies the body's rounded left/right edges; the Rectangle
+                     itself must stay square so the level split is a straight vertical edge. -->
+                <Rectangle width="192.5" height="100" originX="0" originY="0"
+                           cornerRadiusTL="0" cornerRadiusTR="0"
+                           cornerRadiusBL="0" cornerRadiusBR="0" name="Path" id="0:1105">
+                    <DataBindContext propertyKey="20" sourcePathIds="0:1000-0:1004"
+                                     converterId="0:1014" />
+                </Rectangle>
+                <Fill name="Fill">
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1006" />
+                    </SolidColor>
+                </Fill>
+                <ClippingShape sourceId="0:1102" name="Clip" />
+            </Shape>
+
+            <!-- Uncharged remainder: the same body shape in batteryFillColor at shape opacity
+                 0.50 (Battery.REMAINDER_ALPHA).  Shape opacity is 18. -->
+            <Shape x="1" y="1" opacity="0.50" name="batteryRemainder" id="0:1103">
+                <Rectangle width="192.5" height="100" originX="0" originY="0"
+                           cornerRadiusTL="33" name="Path" />
+                <Fill name="Fill">
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1006" />
+                    </SolidColor>
+                </Fill>
+            </Shape>
+
+            <!-- Clip source: the same rounded body with no paints.  A hidden shape would
+                 export an empty mask, so this stays shown and simply draws nothing. -->
+            <Shape x="1" y="1" name="bodyClip" id="0:1102">
+                <Rectangle width="192.5" height="100" originX="0" originY="0"
+                           cornerRadiusTL="33" name="Path" />
+            </Shape>
+
+        </Node>
+
+        <StateMachine name="Ios" id="0:1120">
+            <StateMachineLayer name="Visibility" id="0:1121">
+                <AnyState x="200" y="-120" />
+                <ExitState x="400" y="-120" />
+                <EntryState>
+                    <StateTransition stateToId="0:1122" />
+                </EntryState>
+
+                <AnimationState x="0" y="120" animationId="0:1124" id="0:1122">
+                    <StateTransition stateToId="0:1123" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:1000-0:1002" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="false" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="200" y="120" animationId="0:1125" id="0:1123">
+                    <StateTransition stateToId="0:1122" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:1000-0:1002" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+            </StateMachineLayer>
+        </StateMachine>
+
+        <!-- 1-frame holds with loop keep the machine advancing (M1); a one-shot idle would
+             stop drawing after its first frame. -->
+        <LinearAnimation duration="1" name="BatteryShown" id="0:1124" loopValue="loop">
+            <KeyedObject objectId="0:1101">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="BatteryHidden" id="0:1125" loopValue="loop">
+            <KeyedObject objectId="0:1101">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+    </Artboard>
+
+    <!-- ============================================================== WI-FI -->
+    <!-- The iOS Wi-Fi glyph measured from the light single-SIM reference capture (see
+         docs/ios-geometry.md).  Two concentric stroked ellipses with round caps and a 32-vertex dot.
+         Coordinates are artboard-space
+         (the reference glyph bbox origin 243.24,30.56 is the artboard's 1-unit margin, so every
+         viewBox coordinate is +1 here).  Per-shape IoU vs the light reference: outer 0.976,
+         inner 0.982, dot 0.988.  This is no longer Duo's glyph. -->
+    <Artboard x="260" y="0" width="129.53" height="96.77" name="IosWifi" id="0:1200"
+              viewModelId="0:1000" viewModelInstanceId="0:1013" defaultStateMachineId="0:1210">
+        <Node name="wifiRoot" id="0:1201">
+
+            <Shape name="wifiLayer1" id="0:1202">
+                <Ellipse x="64.809" y="93.522" width="167.686" height="167.686"
+                         originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="16.903" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                    </SolidColor>
+                    <TrimPath start="0" end="0.232575" offset="0.884175" name="Trim" id="0:1206" />
+                </Stroke>
+            </Shape>
+
+            <Shape name="wifiLayer2" id="0:1203">
+                <Ellipse x="64.809" y="93.522" width="100.106" height="100.106"
+                         originX="0.5" originY="0.5" name="Path" />
+                <Stroke thickness="17.794" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                    </SolidColor>
+                    <TrimPath start="0" end="0.220078" offset="0.889917" name="Trim" id="0:1207" />
+                </Stroke>
+            </Shape>
+
+            <Shape name="wifiDot" id="0:1204">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="80.91" y="82.43" />
+                    <StraightVertex x="79.08" y="85.27" />
+                    <StraightVertex x="76.87" y="87.42" />
+                    <StraightVertex x="74.81" y="89.10" />
+                    <StraightVertex x="73.28" y="90.89" />
+                    <StraightVertex x="71.49" y="92.41" />
+                    <StraightVertex x="69.60" y="93.96" />
+                    <StraightVertex x="67.35" y="95.15" />
+                    <StraightVertex x="64.82" y="95.77" />
+                    <StraightVertex x="62.29" y="95.15" />
+                    <StraightVertex x="60.04" y="93.96" />
+                    <StraightVertex x="58.15" y="92.41" />
+                    <StraightVertex x="56.36" y="90.89" />
+                    <StraightVertex x="54.83" y="89.10" />
+                    <StraightVertex x="52.77" y="87.42" />
+                    <StraightVertex x="50.56" y="85.27" />
+                    <StraightVertex x="48.73" y="82.43" />
+                    <StraightVertex x="47.50" y="78.98" />
+                    <StraightVertex x="48.56" y="75.69" />
+                    <StraightVertex x="50.79" y="73.05" />
+                    <StraightVertex x="53.94" y="71.54" />
+                    <StraightVertex x="56.53" y="70.03" />
+                    <StraightVertex x="59.44" y="69.45" />
+                    <StraightVertex x="62.19" y="69.20" />
+                    <StraightVertex x="64.82" y="69.09" />
+                    <StraightVertex x="67.45" y="69.20" />
+                    <StraightVertex x="70.20" y="69.45" />
+                    <StraightVertex x="73.11" y="70.03" />
+                    <StraightVertex x="75.70" y="71.54" />
+                    <StraightVertex x="78.85" y="73.05" />
+                    <StraightVertex x="81.08" y="75.69" />
+                    <StraightVertex x="82.14" y="78.98" />
+                </PointsPath>
+                <Fill name="Fill">
+                    <SolidColor colorValue="FFFFFFFF" name="Color">
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                    </SolidColor>
+                </Fill>
+            </Shape>
+
+        </Node>
+
+        <StateMachine name="Ios" id="0:1210">
+            <StateMachineLayer name="Visibility" id="0:1211">
+                <AnyState x="200" y="-120" />
+                <ExitState x="400" y="-120" />
+                <EntryState>
+                    <StateTransition stateToId="0:1212" />
+                </EntryState>
+
+                <AnimationState x="0" y="140" animationId="0:1216" id="0:1212">
+                    <StateTransition stateToId="0:1213" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:1000-0:1002" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="false" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="200" y="140" animationId="0:1217" id="0:1213">
+                    <StateTransition stateToId="0:1212" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:1000-0:1002" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+            </StateMachineLayer>
+
+            <!-- wifiLevel 0..3 is one continuous axis; the four poses are Duo's exact
+                 opacities.  A blend state deliberately has no outgoing transition: leaving
+                 it would stop the layer advancing and therefore stop the drawing (M1). -->
+            <StateMachineLayer name="WifiLevel" id="0:1214">
+                <AnyState x="200" y="-120" />
+                <ExitState x="400" y="-120" />
+                <EntryState>
+                    <StateTransition stateToId="0:1215" />
+                </EntryState>
+                <BlendState1DViewModel x="200" y="0" id="0:1215">
+                    <BindablePropertyNumber>
+                        <DataBindContext sourcePathIds="0:1000-0:1008" propertyKey="636" />
+                    </BindablePropertyNumber>
+                    <BlendAnimation1D animationId="0:1218" value="0" />
+                    <BlendAnimation1D animationId="0:1219" value="1" />
+                    <BlendAnimation1D animationId="0:1220" value="2" />
+                    <BlendAnimation1D animationId="0:1221" value="3" />
+                </BlendState1DViewModel>
+            </StateMachineLayer>
+        </StateMachine>
+
+        <LinearAnimation duration="1" name="WifiShown" id="0:1216" loopValue="loop">
+            <KeyedObject objectId="0:1201">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="WifiHidden" id="0:1217" loopValue="loop">
+            <KeyedObject objectId="0:1201">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- Every blended property is keyed in every pose; the wedge is never keyed and stays 1. -->
+        <LinearAnimation duration="1" name="WifiPose0" id="0:1218" loopValue="loop">
+            <KeyedObject objectId="0:1202">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1203">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="WifiPose1" id="0:1219" loopValue="loop">
+            <KeyedObject objectId="0:1202">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1203">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="WifiPose2" id="0:1220" loopValue="loop">
+            <KeyedObject objectId="0:1202">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1203">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="WifiPose3" id="0:1221" loopValue="loop">
+            <KeyedObject objectId="0:1202">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1203">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+    </Artboard>
+
+    <!-- =========================================================== CELLULAR -->
+    <!-- Single: four bottom-aligned capsules at pitch 41, bottom y 100 (annotated heights
+         .480/.634/.812/.990 H).
+         Dual: one stacked block rendered by ONE view over both stock slots — the data SIM's
+         four bars on top (bottom-aligned at y 63.7), the other SIM's four dots below (centred
+         at y 90.9).  BOTH draws the whole block; DATA and OTHER remain supported artboard
+         values for a single row.  Bars are horizontally centred on the single columns
+         (x = 0.9 + i*41), exactly as IosCanvasView does. -->
+    <Artboard x="440" y="0" width="150.1" height="105.6" name="IosCell" id="0:1300"
+              viewModelId="0:1000" viewModelInstanceId="0:1013" defaultStateMachineId="0:1330">
+        <Node name="cellRoot" id="0:1301">
+
+            <Node name="singleBars" id="0:1302">
+                <Shape x="1" y="52" name="singleBar1" id="0:1310">
+                    <Rectangle width="25.1" height="48" originX="0" originY="0"
+                               cornerRadiusTL="12.55" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="42" y="36.6" name="singleBar2" id="0:1311">
+                    <Rectangle width="25.1" height="63.4" originX="0" originY="0"
+                               cornerRadiusTL="12.55" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="83" y="18.8" name="singleBar3" id="0:1312">
+                    <Rectangle width="25.1" height="81.2" originX="0" originY="0"
+                               cornerRadiusTL="12.55" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="124" y="1" name="singleBar4" id="0:1313">
+                    <Rectangle width="25.1" height="99" originX="0" originY="0"
+                               cornerRadiusTL="12.55" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+            </Node>
+
+            <Node name="dualBars" id="0:1303" opacity="0">
+                <Shape x="0.9" y="33.4" name="dualBar1" id="0:1314">
+                    <Rectangle width="25.3" height="30.3" originX="0" originY="0"
+                               cornerRadiusTL="12.65" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="41.9" y="26.2" name="dualBar2" id="0:1315">
+                    <Rectangle width="25.3" height="37.5" originX="0" originY="0"
+                               cornerRadiusTL="12.65" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="82.9" y="13.8" name="dualBar3" id="0:1316">
+                    <Rectangle width="25.3" height="49.9" originX="0" originY="0"
+                               cornerRadiusTL="12.65" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="123.9" y="1" name="dualBar4" id="0:1317">
+                    <Rectangle width="25.3" height="62.7" originX="0" originY="0"
+                               cornerRadiusTL="12.65" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+            </Node>
+
+            <Node name="dots" id="0:1304" opacity="0">
+                <Shape x="13.55" y="90.9" name="dot1" id="0:1318">
+                    <Ellipse width="26" height="27.4" originX="0.5" originY="0.5" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="54.55" y="90.9" name="dot2" id="0:1319">
+                    <Ellipse width="26" height="27.4" originX="0.5" originY="0.5" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="95.55" y="90.9" name="dot3" id="0:1320">
+                    <Ellipse width="26" height="27.4" originX="0.5" originY="0.5" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+                <Shape x="136.55" y="90.9" name="dot4" id="0:1321">
+                    <Ellipse width="26" height="27.4" originX="0.5" originY="0.5" name="Path" />
+                    <Fill name="Fill">
+                        <SolidColor colorValue="FFFFFFFF" name="Color">
+                            <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
+                        </SolidColor>
+                    </Fill>
+                </Shape>
+            </Node>
+
+        </Node>
+
+        <StateMachine name="Ios" id="0:1330">
+            <StateMachineLayer name="Visibility" id="0:1331">
+                <AnyState x="200" y="-160" />
+                <ExitState x="400" y="-160" />
+                <EntryState>
+                    <StateTransition stateToId="0:1332" />
+                </EntryState>
+
+                <AnimationState x="0" y="-200" animationId="0:1334" id="0:1332">
+                    <StateTransition stateToId="0:1333" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:1000-0:1002" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="false" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="200" y="-200" animationId="0:1335" id="0:1333">
+                    <StateTransition stateToId="0:1332" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyBoolean>
+                                    <DataBindContext sourcePathIds="0:1000-0:1002" propertyKey="634" />
+                                </BindablePropertyBoolean>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueBooleanComparator value="true" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+            </StateMachineLayer>
+
+            <!-- Mode / role.  One layer owns the three group opacities; the entries are
+                 ordered so a return to SINGLE wins if both mode and role change together. -->
+            <StateMachineLayer name="Cell" id="0:1336">
+                <AnyState x="200" y="-120" />
+                <ExitState x="400" y="-120" />
+                <EntryState>
+                    <StateTransition stateToId="0:1337" />
+                </EntryState>
+
+                <AnimationState x="0" y="140" animationId="0:1344" id="0:1337">
+                    <StateTransition stateToId="0:1338" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1009" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="0" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:1339" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1009" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:1347" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1009" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="2" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="200" y="140" animationId="0:1345" id="0:1338">
+                    <StateTransition stateToId="0:1337" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1009" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="0" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:1339" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:1347" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="2" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="400" y="140" animationId="0:1346" id="0:1339">
+                    <StateTransition stateToId="0:1337" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1009" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="0" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:1338" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="0" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:1347" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="2" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+
+                <AnimationState x="600" y="140" animationId="0:1348" id="0:1347">
+                    <StateTransition stateToId="0:1337" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1009" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="0" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:1338" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1009" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="0" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                    <StateTransition stateToId="0:1339" duration="0">
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1009" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                        <TransitionViewModelCondition opValue="equal">
+                            <TransitionPropertyViewModelComparator>
+                                <BindablePropertyNumber>
+                                    <DataBindContext sourcePathIds="0:1000-0:1010" propertyKey="636" />
+                                </BindablePropertyNumber>
+                            </TransitionPropertyViewModelComparator>
+                            <TransitionValueNumberComparator value="1" />
+                        </TransitionViewModelCondition>
+                    </StateTransition>
+                </AnimationState>
+            </StateMachineLayer>
+
+            <!-- cellBars keys the four single and four dual capsules; inactive is 0.25. -->
+            <StateMachineLayer name="CellBars" id="0:1340">
+                <AnyState x="200" y="160" />
+                <ExitState x="400" y="160" />
+                <EntryState>
+                    <StateTransition stateToId="0:1341" />
+                </EntryState>
+                <BlendState1DViewModel x="200" y="200" id="0:1341">
+                    <BindablePropertyNumber>
+                        <DataBindContext sourcePathIds="0:1000-0:1011" propertyKey="636" />
+                    </BindablePropertyNumber>
+                    <BlendAnimation1D animationId="0:1350" value="0" />
+                    <BlendAnimation1D animationId="0:1351" value="1" />
+                    <BlendAnimation1D animationId="0:1352" value="2" />
+                    <BlendAnimation1D animationId="0:1353" value="3" />
+                    <BlendAnimation1D animationId="0:1354" value="4" />
+                </BlendState1DViewModel>
+            </StateMachineLayer>
+
+            <!-- cellDots keys the four dots the same way. -->
+            <StateMachineLayer name="CellDots" id="0:1342">
+                <AnyState x="200" y="320" />
+                <ExitState x="400" y="320" />
+                <EntryState>
+                    <StateTransition stateToId="0:1343" />
+                </EntryState>
+                <BlendState1DViewModel x="200" y="360" id="0:1343">
+                    <BindablePropertyNumber>
+                        <DataBindContext sourcePathIds="0:1000-0:1012" propertyKey="636" />
+                    </BindablePropertyNumber>
+                    <BlendAnimation1D animationId="0:1360" value="0" />
+                    <BlendAnimation1D animationId="0:1361" value="1" />
+                    <BlendAnimation1D animationId="0:1362" value="2" />
+                    <BlendAnimation1D animationId="0:1363" value="3" />
+                    <BlendAnimation1D animationId="0:1364" value="4" />
+                </BlendState1DViewModel>
+            </StateMachineLayer>
+        </StateMachine>
+
+        <LinearAnimation duration="1" name="CellShown" id="0:1334" loopValue="loop">
+            <KeyedObject objectId="0:1301">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellHidden" id="0:1335" loopValue="loop">
+            <KeyedObject objectId="0:1301">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellSingle" id="0:1344" loopValue="loop">
+            <KeyedObject objectId="0:1302">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1303">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1304">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellDualData" id="0:1345" loopValue="loop">
+            <KeyedObject objectId="0:1302">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1303">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1304">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellDualOther" id="0:1346" loopValue="loop">
+            <KeyedObject objectId="0:1302">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1303">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1304">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellDualBoth" id="0:1348" loopValue="loop">
+            <KeyedObject objectId="0:1302">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="0" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1303">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+            <KeyedObject objectId="0:1304">
+                <KeyedProperty propertyKey="18">
+                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
+                </KeyedProperty>
+            </KeyedObject>
+        </LinearAnimation>
+
+        <!-- cellBars poses: i < count active (1), otherwise inactive (0.25). -->
+        <LinearAnimation duration="1" name="CellBarsPose0" id="0:1350" loopValue="loop">
+            <KeyedObject objectId="0:1310"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1311"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1312"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1313"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1314"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1315"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1316"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1317"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellBarsPose1" id="0:1351" loopValue="loop">
+            <KeyedObject objectId="0:1310"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1311"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1312"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1313"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1314"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1315"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1316"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1317"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellBarsPose2" id="0:1352" loopValue="loop">
+            <KeyedObject objectId="0:1310"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1311"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1312"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1313"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1314"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1315"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1316"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1317"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellBarsPose3" id="0:1353" loopValue="loop">
+            <KeyedObject objectId="0:1310"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1311"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1312"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1313"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1314"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1315"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1316"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1317"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellBarsPose4" id="0:1354" loopValue="loop">
+            <KeyedObject objectId="0:1310"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1311"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1312"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1313"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1314"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1315"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1316"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1317"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <!-- cellDots poses: same rule for the four dots. -->
+        <LinearAnimation duration="1" name="CellDotsPose0" id="0:1360" loopValue="loop">
+            <KeyedObject objectId="0:1318"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1319"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1320"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1321"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellDotsPose1" id="0:1361" loopValue="loop">
+            <KeyedObject objectId="0:1318"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1319"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1320"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1321"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellDotsPose2" id="0:1362" loopValue="loop">
+            <KeyedObject objectId="0:1318"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1319"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1320"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1321"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellDotsPose3" id="0:1363" loopValue="loop">
+            <KeyedObject objectId="0:1318"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1319"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1320"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1321"><KeyedProperty propertyKey="18"><KeyFrameDouble value="0.25" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+
+        <LinearAnimation duration="1" name="CellDotsPose4" id="0:1364" loopValue="loop">
+            <KeyedObject objectId="0:1318"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1319"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1320"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+            <KeyedObject objectId="0:1321"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
+        </LinearAnimation>
+    </Artboard>
+
+    <!-- batteryLevel (0..1) -> fill Rectangle width (0..192.5).  Clamped so a bad value can
+         never draw outside the body or a negative-width path. -->
+    <DataConverterRangeMapper minInput="0" maxInput="1" minOutput="0" maxOutput="192.5"
+                              clampLower="true" clampUpper="true"
+                              name="BatteryFillWidth" id="0:1014" />
+
+    <!-- ========================================================== DATA MODEL -->
+    <ViewModel defaultInstanceId="0:1013" name="IosModel" id="0:1000">
+        <ViewModelPropertyNumber name="part" id="0:1001" />
+        <ViewModelPropertyBoolean name="visible" id="0:1002" />
+        <ViewModelPropertyColor name="tint" id="0:1003" />
+        <ViewModelPropertyNumber name="batteryLevel" id="0:1004" />
+        <ViewModelPropertyNumber name="batteryState" id="0:1005" />
+        <ViewModelPropertyColor name="batteryFillColor" id="0:1006" />
+        <ViewModelPropertyNumber name="boltOpacity" id="0:1007" />
+        <ViewModelPropertyNumber name="wifiLevel" id="0:1008" />
+        <ViewModelPropertyNumber name="cellMode" id="0:1009" />
+        <ViewModelPropertyNumber name="cellRole" id="0:1010" />
+        <ViewModelPropertyNumber name="cellBars" id="0:1011" />
+        <ViewModelPropertyNumber name="cellDots" id="0:1012" />
+
+        <ViewModelInstance exports="true" name="Default" id="0:1013">
+            <ViewModelInstanceNumber viewModelPropertyId="0:1001" propertyValue="0" />
+            <ViewModelInstanceBoolean viewModelPropertyId="0:1002" propertyValue="true" />
+            <ViewModelInstanceColor viewModelPropertyId="0:1003" propertyValue="FFFFFFFF" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:1004" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:1005" propertyValue="0" />
+            <ViewModelInstanceColor viewModelPropertyId="0:1006" propertyValue="FFFFFFFF" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:1007" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:1008" propertyValue="3" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:1009" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:1010" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:1011" propertyValue="4" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:1012" propertyValue="0" />
+        </ViewModelInstance>
+    </ViewModel>
+
+</Rive>

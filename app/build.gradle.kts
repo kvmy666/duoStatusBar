@@ -129,6 +129,9 @@ android {
 
 dependencies {
     compileOnly(libs.xposed.api)
+    // The API stays compile-only for the app, but Phase C2's host tests load classes that reference
+    // Xposed types. C1 tests never install a real hook.
+    testImplementation(libs.xposed.api)
 
     implementation(libs.rive.android)
     // Issue #4: optional Shizuku support, used only to hide the stock status-bar icons via the secure
