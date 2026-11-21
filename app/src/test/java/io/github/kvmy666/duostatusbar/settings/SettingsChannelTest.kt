@@ -219,31 +219,104 @@ class SettingsChannelTest {
     @Test
     fun `the iOS columns are appended last without moving design style or hidden stock icons`() {
         // Append-only: existing installs read the old positions, so the new columns may never move.
-        assertEquals(89, DuoPrefs.COLUMNS.size)
-        assertEquals(45, DuoPrefs.PORTRAIT_COLUMNS.size)
-        assertEquals(44, DuoPrefs.LANDSCAPE_COLUMNS.size)
-        assertEquals(DuoPrefs.COL_IOS_MODE, DuoPrefs.PORTRAIT_COLUMNS.last())
+        assertEquals(103, DuoPrefs.COLUMNS.size)
+        assertEquals(52, DuoPrefs.PORTRAIT_COLUMNS.size)
+        assertEquals(51, DuoPrefs.LANDSCAPE_COLUMNS.size)
+        assertEquals(DuoPrefs.COL_SIM_DISPLAY, DuoPrefs.PORTRAIT_COLUMNS.last())
         assertEquals(
-            DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.COL_IOS_CELL_SCALE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 1]
         )
         assertEquals(
-            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.COL_IOS_CELL_OFFSET,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 2]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE,
+            DuoPrefs.COL_IOS_WIFI_SCALE,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 3]
+        )
+        assertEquals(
+            DuoPrefs.COL_IOS_WIFI_OFFSET,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 4]
+        )
+        assertEquals(
+            DuoPrefs.COL_IOS_BATTERY_SCALE,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 5]
+        )
+        assertEquals(
+            DuoPrefs.COL_IOS_BATTERY_OFFSET,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 6]
+        )
+        assertEquals(
+            DuoPrefs.COL_IOS_MODE,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 7]
+        )
+        assertEquals(
+            DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 8]
+        )
+        assertEquals(
+            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 9]
+        )
+        assertArrayEquals(
+            "the six new iOS columns sit between COL_IOS_MODE and COL_SIM_DISPLAY",
+            arrayOf(
+                DuoPrefs.COL_IOS_MODE,
+                DuoPrefs.COL_IOS_BATTERY_OFFSET,
+                DuoPrefs.COL_IOS_BATTERY_SCALE,
+                DuoPrefs.COL_IOS_WIFI_OFFSET,
+                DuoPrefs.COL_IOS_WIFI_SCALE,
+                DuoPrefs.COL_IOS_CELL_OFFSET,
+                DuoPrefs.COL_IOS_CELL_SCALE,
+                DuoPrefs.COL_SIM_DISPLAY
+            ),
+            DuoPrefs.PORTRAIT_COLUMNS.copyOfRange(
+                DuoPrefs.PORTRAIT_COLUMNS.size - 8,
+                DuoPrefs.PORTRAIT_COLUMNS.size
+            )
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIM_DISPLAY,
             DuoPrefs.LANDSCAPE_COLUMNS.last()
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_CELL_SCALE,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 1]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_CELL_OFFSET,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 2]
         )
-        assertEquals(89, DuoSettingsProvider.rowFor(DuoSettings(), 1L).size)
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_WIFI_SCALE,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 3]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_WIFI_OFFSET,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 4]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_BATTERY_SCALE,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 5]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_BATTERY_OFFSET,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 6]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 7]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 8]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 9]
+        )
+        assertEquals(103, DuoSettingsProvider.rowFor(DuoSettings(), 1L).size)
 
         val oldOrder = arrayOf(
             DuoPrefs.COL_ENABLED, DuoPrefs.COL_USE_RIVE, DuoPrefs.COL_SHOW_PERCENT,

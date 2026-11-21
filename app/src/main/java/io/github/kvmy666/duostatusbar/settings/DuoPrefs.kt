@@ -197,7 +197,23 @@ data class DuoSettings(
      * Redraw the system's own battery, Wi-Fi and cellular icons in the iOS 27 style. Off leaves every
      * Duo path byte-identical; when on, Duo itself is not drawn.
      */
-    val iosMode: Boolean = false
+    val iosMode: Boolean = false,
+    /**
+     * iOS icon customisation (issue 7). The offset is a percent of the icon's own drawn width and the
+     * scale is a percent of today's pixels, so 0 / 100 is exactly the current drawing. Appended
+     * columns: an older install reads the defaults and keeps today's pixels.
+     */
+    val iosBatteryOffset: Int = 0,
+    val iosBatteryScale: Int = 100,
+    val iosWifiOffset: Int = 0,
+    val iosWifiScale: Int = 100,
+    val iosCellOffset: Int = 0,
+    val iosCellScale: Int = 100,
+    /**
+     * How the iOS cellular icons treat a dual-SIM phone: `"auto"` follows the device, `"single"`
+     * draws one SIM, `"dual"` draws both. Independent of [simChoice], which picks the line Duo shows.
+     */
+    val simDisplay: String = "auto"
 ) {
     companion object {
         /** The classic ring drawing (`res/raw/duo_old.riv`), the pre-existing look. */
@@ -382,6 +398,33 @@ object DuoPrefs {
     const val COL_DESIGN_STYLE = "design_style"
     /** The iOS 27 status-bar mode; appended after the design style, never reordered. Off by default. */
     const val COL_IOS_MODE = "ios_mode"
+    /** iOS 27 per-icon customisation; appended after the mode so no existing column moves. */
+    const val COL_IOS_BATTERY_OFFSET = "ios_battery_offset"
+    const val COL_IOS_BATTERY_SCALE = "ios_battery_scale"
+    const val COL_IOS_WIFI_OFFSET = "ios_wifi_offset"
+    const val COL_IOS_WIFI_SCALE = "ios_wifi_scale"
+    const val COL_IOS_CELL_OFFSET = "ios_cell_offset"
+    const val COL_IOS_CELL_SCALE = "ios_cell_scale"
+    /** How many SIMs the iOS icons draw; appended last, never reordered. */
+    const val COL_SIM_DISPLAY = "sim_display"
+
+    const val SIM_DISPLAY_AUTO = "auto"
+    const val SIM_DISPLAY_SINGLE = "single"
+    const val SIM_DISPLAY_DUAL = "dual"
+
+    /** A stored SIM display this build understands. Anything else keeps the automatic choice. */
+    fun normalizeSimDisplay(raw: String?): String = when (raw) {
+        SIM_DISPLAY_SINGLE, SIM_DISPLAY_DUAL -> raw
+        else -> SIM_DISPLAY_AUTO
+    }
+
+    /** Horizontal offset range for the iOS icons, as a percent of the icon's drawn width. */
+    const val MIN_ICON_OFFSET = -25
+    const val MAX_ICON_OFFSET = 25
+    /** Scale range for the iOS icons: 50 % smaller, 150 % larger, 100 % is today's drawing. */
+    const val MIN_ICON_SCALE = 50
+    const val MAX_ICON_SCALE = 150
+    const val DEFAULT_ICON_SCALE = 100
 
     /** The classic drawing, kept on old installs unless the user picks the new ring. */
     const val DESIGN_OLD = DuoSettings.DESIGN_OLD
@@ -409,7 +452,10 @@ object DuoPrefs {
         COL_INDICATORS_TAP, COL_INDICATORS_DOUBLE_TAP, COL_INDICATORS_LONG_PRESS,
         COL_SHOW_IN_QS, COL_SHOW_IN_SHADE, COL_ENGINE_MODE, COL_MIDDLE_SLOT,
         COL_SHOW_WIFI_GLYPH, COL_SHOW_CELL_DOTS, COL_EVENT_MASK, COL_DOWNLOAD_PROGRESS, COL_BURN_IN,
-        COL_HIDDEN_STOCK_ICONS, COL_DESIGN_STYLE, COL_IOS_MODE
+        COL_HIDDEN_STOCK_ICONS, COL_DESIGN_STYLE, COL_IOS_MODE,
+        COL_IOS_BATTERY_OFFSET, COL_IOS_BATTERY_SCALE,
+        COL_IOS_WIFI_OFFSET, COL_IOS_WIFI_SCALE,
+        COL_IOS_CELL_OFFSET, COL_IOS_CELL_SCALE, COL_SIM_DISPLAY
     )
 
     /** Landscape columns appended after [PORTRAIT_COLUMNS]. An older module ignores names it does not know. */
@@ -523,7 +569,20 @@ object DuoPrefs {
         eventMask = p.getInt(prefix + COL_EVENT_MASK, EVENT_ALL) and EVENT_ALL,
         downloadProgressEnabled = p.getBoolean(prefix + COL_DOWNLOAD_PROGRESS, true),
         burnInEnabled = p.getBoolean(prefix + COL_BURN_IN, false),
-        iosMode = p.getBoolean(prefix + COL_IOS_MODE, false)
+        iosMode = p.getBoolean(prefix + COL_IOS_MODE, false),
+        iosBatteryOffset = p.getInt(prefix + COL_IOS_BATTERY_OFFSET, 0)
+            .coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
+        iosBatteryScale = p.getInt(prefix + COL_IOS_BATTERY_SCALE, DEFAULT_ICON_SCALE)
+            .coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
+        iosWifiOffset = p.getInt(prefix + COL_IOS_WIFI_OFFSET, 0)
+            .coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
+        iosWifiScale = p.getInt(prefix + COL_IOS_WIFI_SCALE, DEFAULT_ICON_SCALE)
+            .coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
+        iosCellOffset = p.getInt(prefix + COL_IOS_CELL_OFFSET, 0)
+            .coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
+        iosCellScale = p.getInt(prefix + COL_IOS_CELL_SCALE, DEFAULT_ICON_SCALE)
+            .coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
+        simDisplay = normalizeSimDisplay(p.getString(prefix + COL_SIM_DISPLAY, SIM_DISPLAY_AUTO))
     )
 
     /** Writes the settings for [orientation] and bumps the revision the module compares against. */
@@ -556,7 +615,14 @@ object DuoPrefs {
             engineMode = effectiveEngine,
             useRive = effectiveEngine != ENGINE_CANVAS,
             hiddenStockIcons = joinHiddenStockIcons(parseHiddenStockIcons(settings.hiddenStockIcons)),
-            designStyle = normalizeDesignStyle(settings.designStyle)
+            designStyle = normalizeDesignStyle(settings.designStyle),
+            iosBatteryOffset = settings.iosBatteryOffset.coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
+            iosBatteryScale = settings.iosBatteryScale.coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
+            iosWifiOffset = settings.iosWifiOffset.coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
+            iosWifiScale = settings.iosWifiScale.coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
+            iosCellOffset = settings.iosCellOffset.coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
+            iosCellScale = settings.iosCellScale.coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
+            simDisplay = normalizeSimDisplay(settings.simDisplay)
         )
         val editor = p.edit()
         editor.writeFields(prefix(orientation), clamped)
@@ -612,6 +678,13 @@ object DuoPrefs {
         putString(prefix + COL_HIDDEN_STOCK_ICONS, settings.hiddenStockIcons)
         putString(prefix + COL_DESIGN_STYLE, normalizeDesignStyle(settings.designStyle))
         putBoolean(prefix + COL_IOS_MODE, settings.iosMode)
+        putInt(prefix + COL_IOS_BATTERY_OFFSET, settings.iosBatteryOffset)
+        putInt(prefix + COL_IOS_BATTERY_SCALE, settings.iosBatteryScale)
+        putInt(prefix + COL_IOS_WIFI_OFFSET, settings.iosWifiOffset)
+        putInt(prefix + COL_IOS_WIFI_SCALE, settings.iosWifiScale)
+        putInt(prefix + COL_IOS_CELL_OFFSET, settings.iosCellOffset)
+        putInt(prefix + COL_IOS_CELL_SCALE, settings.iosCellScale)
+        putString(prefix + COL_SIM_DISPLAY, normalizeSimDisplay(settings.simDisplay))
     }
 
     fun revision(context: Context): Long =

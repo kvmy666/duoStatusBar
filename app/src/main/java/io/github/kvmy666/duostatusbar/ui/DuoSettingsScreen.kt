@@ -567,16 +567,25 @@ fun DuoSettingsScreen(
                 matches = search
             )
 
+            SimSection(
+                settings = settings,
+                onUpdate = onUpdate,
+                matches = search,
+                enabled = customCardEnabled(CustomCard.SIM, settings)
+            )
+
             SurfacesSection(
                 settings = settings,
                 onUpdate = onUpdate,
-                matches = search
+                matches = search,
+                enabled = customCardEnabled(CustomCard.SURFACES, settings)
             )
 
             IconsSection(
                 settings = settings,
                 onUpdate = onUpdate,
-                matches = search
+                matches = search,
+                enabled = customCardEnabled(CustomCard.ICONS, settings)
             )
 
             val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }

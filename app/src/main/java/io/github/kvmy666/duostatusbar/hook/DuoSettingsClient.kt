@@ -106,10 +106,30 @@ internal data class ModuleSettings(
     /** Which ring drawing to load: [DuoPrefs.DESIGN_OLD] or [DuoPrefs.DESIGN_NEW]. */
     val designStyle: String = DuoPrefs.DESIGN_OLD,
     /** Whether the iOS 27 status-bar skin is on. Off leaves every Duo path untouched. */
-    val iosMode: Boolean = false
+    val iosMode: Boolean = false,
+    /** iOS icon offset as a percent of the icon's drawn width, clamped -25..25. 0 is today's seat. */
+    val iosBatteryOffset: Int = 0,
+    /** iOS icon scale as a percent; 100 is today's drawing, clamped 50..150. */
+    val iosBatteryScale: Int = DuoPrefs.DEFAULT_ICON_SCALE,
+    val iosWifiOffset: Int = 0,
+    val iosWifiScale: Int = DuoPrefs.DEFAULT_ICON_SCALE,
+    val iosCellOffset: Int = 0,
+    val iosCellScale: Int = DuoPrefs.DEFAULT_ICON_SCALE,
+    /** "auto", "single" or "dual"; a missing column is the automatic choice. */
+    val simDisplay: String = DuoPrefs.SIM_DISPLAY_AUTO
 ) {
     /** Whether Do Not Disturb may take the middle of the ring. */
     val showDnd: Boolean get() = DuoPrefs.dndInMiddle(dndMode)
+
+    /**
+     * Issue 7: the user's per-icon transform. [drawnWidthPx] is the width this glyph draws at with a
+     * 100 % scale, so an unchanged setting returns exactly today's pixels.
+     */
+    fun iosTransform(kind: IosIconKind, drawnWidthPx: Float): IosUserTransform = when (kind) {
+        IosIconKind.BATTERY -> iosUserTransform(iosBatteryOffset, iosBatteryScale, drawnWidthPx)
+        IosIconKind.WIFI -> iosUserTransform(iosWifiOffset, iosWifiScale, drawnWidthPx)
+        IosIconKind.CELL -> iosUserTransform(iosCellOffset, iosCellScale, drawnWidthPx)
+    }
 
     companion object {
         val DEFAULT = ModuleSettings(
@@ -155,7 +175,14 @@ internal data class ModuleSettings(
             burnInEnabled = false,
             hiddenStockIcons = "",
             designStyle = DuoPrefs.DESIGN_OLD,
-            iosMode = false
+            iosMode = false,
+            iosBatteryOffset = 0,
+            iosBatteryScale = DuoPrefs.DEFAULT_ICON_SCALE,
+            iosWifiOffset = 0,
+            iosWifiScale = DuoPrefs.DEFAULT_ICON_SCALE,
+            iosCellOffset = 0,
+            iosCellScale = DuoPrefs.DEFAULT_ICON_SCALE,
+            simDisplay = DuoPrefs.SIM_DISPLAY_AUTO
         )
     }
 }
@@ -521,7 +548,29 @@ internal object DuoSettingsClient {
             cursor.optionalString(DuoPrefs.COL_DESIGN_STYLE, DuoPrefs.DESIGN_OLD)
         ),
         // Optional: an older settings app has no iOS mode, which is off (rule 6).
-        iosMode = cursor.optionalBool(DuoPrefs.COL_IOS_MODE, false)
+        iosMode = cursor.optionalBool(DuoPrefs.COL_IOS_MODE, false),
+        // Optional: a missing per-icon column keeps today's pixels (0 offset, 100 % scale).
+        iosBatteryOffset = cursor.optionalInt(DuoPrefs.COL_IOS_BATTERY_OFFSET)
+            .coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+        iosBatteryScale = cursor.optionalInt(
+            DuoPrefs.COL_IOS_BATTERY_SCALE,
+            DuoPrefs.DEFAULT_ICON_SCALE
+        ).coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+        iosWifiOffset = cursor.optionalInt(DuoPrefs.COL_IOS_WIFI_OFFSET)
+            .coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+        iosWifiScale = cursor.optionalInt(
+            DuoPrefs.COL_IOS_WIFI_SCALE,
+            DuoPrefs.DEFAULT_ICON_SCALE
+        ).coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+        iosCellOffset = cursor.optionalInt(DuoPrefs.COL_IOS_CELL_OFFSET)
+            .coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+        iosCellScale = cursor.optionalInt(
+            DuoPrefs.COL_IOS_CELL_SCALE,
+            DuoPrefs.DEFAULT_ICON_SCALE
+        ).coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+        simDisplay = DuoPrefs.normalizeSimDisplay(
+            cursor.optionalString(DuoPrefs.COL_SIM_DISPLAY, DuoPrefs.SIM_DISPLAY_AUTO)
+        )
         )
     }
 
@@ -610,7 +659,22 @@ internal object DuoSettingsClient {
                 str(DuoPrefs.COL_DESIGN_STYLE, portrait.designStyle)
             ),
             // Missing landscape columns fall back to the portrait values, as they always have.
-            iosMode = bool(DuoPrefs.COL_IOS_MODE, portrait.iosMode)
+            iosMode = bool(DuoPrefs.COL_IOS_MODE, portrait.iosMode),
+            iosBatteryOffset = int(DuoPrefs.COL_IOS_BATTERY_OFFSET, portrait.iosBatteryOffset)
+                .coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+            iosBatteryScale = int(DuoPrefs.COL_IOS_BATTERY_SCALE, portrait.iosBatteryScale)
+                .coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+            iosWifiOffset = int(DuoPrefs.COL_IOS_WIFI_OFFSET, portrait.iosWifiOffset)
+                .coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+            iosWifiScale = int(DuoPrefs.COL_IOS_WIFI_SCALE, portrait.iosWifiScale)
+                .coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+            iosCellOffset = int(DuoPrefs.COL_IOS_CELL_OFFSET, portrait.iosCellOffset)
+                .coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
+            iosCellScale = int(DuoPrefs.COL_IOS_CELL_SCALE, portrait.iosCellScale)
+                .coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
+            simDisplay = DuoPrefs.normalizeSimDisplay(
+                str(DuoPrefs.COL_SIM_DISPLAY, portrait.simDisplay)
+            )
         )
     }
 
