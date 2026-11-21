@@ -14,6 +14,7 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 
+
 /**
  * The debug-only evidence collector (issue: support Android 14 / ColorOS / One UI).
  *
@@ -200,6 +201,10 @@ internal object Diag {
             )
             appendLine("  provider=${if (DuoSettingsClient.providerUnreachable) "unreachable" else "ok"}")
             appendLine("  renderer=${element?.rendererName ?: "none"} ready=${element?.isReady ?: false}")
+            // Additive: the iOS skin has its own breaker and its own percentage source. Read from the
+            // dump's settings when present, otherwise the last cached read; never an extra provider read.
+            val iosSettings = settings ?: DuoSettingsClient.lastRead()
+            appendLine("  iosMode=${iosSettings?.iosMode ?: false} iosAttempts=${IosGuard(context).attempts()}")
             settings?.let {
                 appendLine("  settings: enabled=${it.enabled} useRive=${it.useRive} showPercent=${it.showPercent}")
                 appendLine("    size=${it.sizePercent}% offset=${it.offsetX}dp live=${it.liveApply} rev=${it.revision}")
