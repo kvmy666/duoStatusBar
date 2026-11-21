@@ -89,4 +89,38 @@ class DuoGuardTest {
         register(DuoSettings(enabled = true, engineMode = DuoPrefs.ENGINE_RIVE, useRive = true))
         assertEquals(DuoGuard.RIVE, DuoGuard(context).stage())
     }
+
+    /** W1: the extracted pure resolution must match the matrix the stage tests above pin. */
+    @Test
+    fun `stageFor keeps the old matrix when iOS mode is off`() {
+        assertEquals(
+            DuoGuard.ICONS_ONLY,
+            DuoGuard.stageFor(enabled = true, iosMode = false, engineMode = DuoPrefs.ENGINE_CANVAS, useRive = false)
+        )
+        assertEquals(
+            DuoGuard.ICONS_ONLY,
+            DuoGuard.stageFor(enabled = true, iosMode = false, engineMode = DuoPrefs.ENGINE_AUTO, useRive = false)
+        )
+        assertEquals(
+            DuoGuard.RIVE,
+            DuoGuard.stageFor(enabled = true, iosMode = false, engineMode = DuoPrefs.ENGINE_AUTO, useRive = true)
+        )
+        assertEquals(
+            DuoGuard.RIVE,
+            DuoGuard.stageFor(enabled = true, iosMode = false, engineMode = DuoPrefs.ENGINE_RIVE, useRive = true)
+        )
+        assertEquals(
+            DuoGuard.OFF,
+            DuoGuard.stageFor(enabled = false, iosMode = false, engineMode = DuoPrefs.ENGINE_RIVE, useRive = true)
+        )
+    }
+
+    /** W1: iOS mode takes the first branch, so the Duo element resolves off. */
+    @Test
+    fun `stageFor turns Duo off when iOS mode is on`() {
+        assertEquals(
+            DuoGuard.OFF,
+            DuoGuard.stageFor(enabled = true, iosMode = true, engineMode = DuoPrefs.ENGINE_RIVE, useRive = true)
+        )
+    }
 }

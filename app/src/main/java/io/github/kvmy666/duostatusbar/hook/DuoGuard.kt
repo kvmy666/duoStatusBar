@@ -63,12 +63,13 @@ internal class DuoGuard(private val context: Context) {
             return override
         }
         val app = DuoSettingsClient.read(context)
-        val resolved = when {
-            !app.enabled -> OFF
-            app.engineMode == DuoPrefs.ENGINE_CANVAS || !app.useRive -> ICONS_ONLY
-            else -> RIVE
+        val ios = effectiveIosMode(app.iosMode)
+        val resolved = resolvedStage(app.enabled, app.iosMode, app.engineMode, app.useRive)
+        if (ios) {
+            L.i("stage $resolved (iOS mode on - Duo element off)")
+        } else {
+            L.i("stage $resolved (app settings rev ${app.revision}, enabled=${app.enabled}, engine=${app.engineMode})")
         }
-        L.i("stage $resolved (app settings rev ${app.revision}, enabled=${app.enabled}, engine=${app.engineMode})")
         return resolved
     }
 
@@ -221,6 +222,40 @@ internal class DuoGuard(private val context: Context) {
 
         /** Sentinel for "the user never set an override": `getInt` cannot return null, so it needs one. */
         private const val ABSENT = -1
+
+        /**
+         * The iOS mode that may actually run in this build. A saved ON is ignored when the capability
+         * seam says the drawing is unavailable, so it can never switch Duo off for a mode that would
+         * draw nothing (rule 5). This build ships the drawing, so the default resolves ON.
+         */
+        internal fun effectiveIosMode(
+            iosMode: Boolean,
+            drawingReady: Boolean = IosRenderers.DRAWING_READY
+        ): Boolean = iosMode && drawingReady
+
+        /** The stage resolution actually used by [stage]: an unavailable iOS mode falls through to Duo. */
+        internal fun resolvedStage(
+            enabled: Boolean,
+            iosMode: Boolean,
+            engineMode: String,
+            useRive: Boolean,
+            drawingReady: Boolean = IosRenderers.DRAWING_READY
+        ): Int = stageFor(enabled, effectiveIosMode(iosMode, drawingReady), engineMode, useRive)
+
+        /**
+         * The pure resolution behind [stage], so the gate is unit-tested without a settings provider.
+         *
+         * iOS mode is checked first: the two modes are mutually exclusive (rule 7), and turning iOS on
+         * must turn the Duo element off. The adb override is resolved before this function is called,
+         * so an explicit `duo_statusbar_stage` still wins (C10): override 2 with iOS mode on means Duo
+         * draws and iOS is suppressed.
+         */
+        internal fun stageFor(enabled: Boolean, iosMode: Boolean, engineMode: String, useRive: Boolean): Int = when {
+            iosMode -> OFF
+            !enabled -> OFF
+            engineMode == DuoPrefs.ENGINE_CANVAS || !useRive -> ICONS_ONLY
+            else -> RIVE
+        }
 
         /**
          * The pure decision behind [riveAllowed], so the boundary is unit-tested off the phone: Rive is
