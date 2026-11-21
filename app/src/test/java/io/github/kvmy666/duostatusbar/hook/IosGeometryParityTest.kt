@@ -96,6 +96,11 @@ class IosGeometryParityTest {
             0.001f
         )
         assertTrue(body.contains("isClosed=\"true\""))
+        // The cap is the inactive grey: shape opacity 0.50, Fill bound to batteryFillColor (0:1006).
+        val capTag = Regex("<Shape[^>]*name=\"cap\"[^>]*>").find(scene)!!.value
+        assertTrue("cap opacity 0.50", capTag.contains("opacity=\"0.50\""))
+        assertTrue("cap fill is batteryFillColor", body.contains("sourcePathIds=\"0:1000-0:1006\""))
+        assertTrue(!body.contains("sourcePathIds=\"0:1000-0:1003\""))
         assertTrue(scene.contains("sourceId=\"0:1102\""))
     }
 
@@ -114,8 +119,9 @@ class IosGeometryParityTest {
                 scene.contains("width=\"${num(c.DUAL_BAR_W)}\" height=\"${num(height)}\"")
             )
         }
-        // The single capsule row is bottom-aligned at y=100 in the 105.6 artboard, so every bar must
-        // satisfy y + height == 100 (F4). Parse each named single bar rather than a loose substring.
+        // The single capsule row is bottom-aligned at SINGLE_BAR_BOTTOM (96.5), so every bar must
+        // satisfy y + height == 96.5 and bar 4's top must be exactly TOP (1.0). Parse each named
+        // single bar rather than a loose substring.
         for (i in c.SINGLE_BAR_HEIGHTS.indices) {
             val shape = Regex(
                 "<Shape x=\"([-0-9.]+)\" y=\"([-0-9.]+)\" name=\"singleBar${i + 1}\"[^>]*>(.*?)</Shape>",
@@ -135,7 +141,36 @@ class IosGeometryParityTest {
                 height,
                 0.001f
             )
-            assertEquals("single bar ${i + 1} bottom-aligned at 100", 100f, y + height, 0.001f)
+            assertEquals(
+                "single bar ${i + 1} bottom-aligned at 96.5",
+                c.SINGLE_BAR_BOTTOM,
+                y + height,
+                0.001f
+            )
+        }
+        // Bar 4's top is exactly TOP, level with the battery body top.
+        val bar4 = Regex(
+            "<Shape x=\"([-0-9.]+)\" y=\"([-0-9.]+)\" name=\"singleBar4\"[^>]*>"
+        ).find(scene)!!
+        assertEquals(c.TOP, bar4.groupValues[2].toFloat(), 0.001f)
+
+        // Dots are centred at DOT_TOP + DOT_H/2 (90.1), sizes unchanged.
+        for (i in 1..4) {
+            val dot = Regex(
+                "<Shape x=\"([-0-9.]+)\" y=\"([-0-9.]+)\" name=\"dot$i\"[^>]*>(.*?)</Shape>",
+                RegexOption.DOT_MATCHES_ALL
+            ).find(scene)
+            assertNotNull("dot $i shape", dot)
+            assertEquals(
+                "dot $i centre y",
+                c.dotCenterY(),
+                dot!!.groupValues[2].toFloat(),
+                0.01f
+            )
+            val dotRect = Regex("<Ellipse width=\"([0-9.]+)\" height=\"([0-9.]+)\"")
+                .find(dot.groupValues[3])!!
+            assertEquals(c.DOT_W, dotRect.groupValues[1].toFloat(), 0.001f)
+            assertEquals(c.DOT_H, dotRect.groupValues[2].toFloat(), 0.001f)
         }
         val dots = Regex(
             "<Ellipse width=\"${num(c.DOT_W)}\" height=\"${num(c.DOT_H)}\""
