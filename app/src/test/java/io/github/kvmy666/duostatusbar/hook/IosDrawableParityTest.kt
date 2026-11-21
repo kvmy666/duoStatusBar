@@ -82,6 +82,38 @@ class IosDrawableParityTest {
     }
 
     @Test
+    fun `production relative sizing draws identical pixels through canvas and drawable`() {
+        // Production now passes the stock slot plus relativeSize = true on both renderers. The extra
+        // canvas/view translation and the drawable translation must stay pixel-identical (one renderer).
+        val cases = listOf(
+            Triple(
+                IosIconKind.BATTERY,
+                IosMapping.battery(100, 20, false, false, BatteryManager.BATTERY_STATUS_DISCHARGING, Color.BLACK),
+                80 to 38
+            ),
+            Triple(IosIconKind.WIFI, wifiVisual(Color.BLACK, 3), 80 to 50),
+            Triple(
+                IosIconKind.CELL,
+                cellStates(Color.BLACK).first { it.first == "single" }.second,
+                80 to 42
+            ),
+            Triple(
+                IosIconKind.CELL,
+                cellStates(Color.BLACK).first { it.first == "dual-both" }.second,
+                80 to 42
+            )
+        )
+        for ((kind, visual, box) in cases) {
+            val (width, height) = box
+            assertArrayEquals(
+                "${kind.name} relative production drawable != canvas",
+                relativeCanvasPixels(kind, visual, width, height),
+                relativeDrawablePixels(kind, visual, width, height)
+            )
+        }
+    }
+
+    @Test
     fun `reference scale acceptance states match and write drawable evidence`() {
         val states = listOf(
             lightSingle() to "light-single-normal",
@@ -193,6 +225,40 @@ class IosDrawableParityTest {
         view.layout(0, 0, width, height)
         view.draw(Canvas(bitmap))
         view.teardown()
+        return pixels(bitmap).also { bitmap.recycle() }
+    }
+
+    private fun relativeCanvasPixels(
+        kind: IosIconKind,
+        visual: IosVisual,
+        width: Int,
+        height: Int
+    ): IntArray {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val view = IosCanvasView(context, kind)
+        view.relativeSize = true
+        view.start()
+        view.render(visual)
+        view.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+        )
+        view.layout(0, 0, width, height)
+        view.draw(Canvas(bitmap))
+        view.teardown()
+        return pixels(bitmap).also { bitmap.recycle() }
+    }
+
+    private fun relativeDrawablePixels(
+        kind: IosIconKind,
+        visual: IosVisual,
+        width: Int,
+        height: Int
+    ): IntArray {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val drawable = IosDrawables.create(kind, visual, width, height, relativeSize = true)
+        drawable.setBounds(0, 0, width, height)
+        drawable.draw(Canvas(bitmap))
         return pixels(bitmap).also { bitmap.recycle() }
     }
 

@@ -1369,6 +1369,57 @@ class IosReplaceHostTest {
         host.teardown()
     }
 
+    // ------------------------------------------------------- user transform host seam (R2C wire)
+
+    @Test
+    fun `host maps the stored offset and scale at the glyph drawn width`() {
+        val host = host()
+        host.refreshSettings(
+            ModuleSettings.DEFAULT.copy(iosBatteryOffset = 10, iosBatteryScale = 150)
+        )
+        val transformed = host.userTransformFor(IosIconKind.BATTERY, 100f)
+        assertEquals(10f, transformed.dxPx, 0.0001f)
+        assertEquals(1.5f, transformed.scale, 0.0001f)
+
+        host.refreshSettings(ModuleSettings.DEFAULT)
+        assertEquals(IosUserTransform.IDENTITY, host.userTransformFor(IosIconKind.BATTERY, 100f))
+    }
+
+    // ------------------------------------------------------------- sim display: forced single
+
+    @Test
+    fun `forced single collapses the other slot and auto restores it exactly`() {
+        val tree = dualMobileTree(firstSub = 1, secondSub = 2)
+        val otherParams = tree.second.layoutParams
+        val otherWidth = otherParams.width
+        val otherHeight = otherParams.height
+        var reading = twoSimReading(1, 2)
+        val host = host(cellSource = { reading })
+        host.refreshSettings(ModuleSettings.DEFAULT.copy(simDisplay = "single"))
+
+        assertTrue(host.attachIn(tree.strip, null))
+        assertEquals(1, host.recordCountForTest())
+        assertEquals(IosCellRole.DATA, host.cellRoleForTest(tree.first))
+        assertNull(host.cellRoleForTest(tree.second))
+        assertEquals(View.GONE, tree.second.visibility)
+        assertEquals(0, tree.second.layoutParams.width)
+        assertEquals(0, tree.second.layoutParams.height)
+
+        // Back to AUTO: with one active SIM the plan is a plain single row and the hidden slot returns.
+        host.refreshSettings(ModuleSettings.DEFAULT.copy(simDisplay = "auto"))
+        reading = oneSimReading(1, 3)
+        host.refresh()
+        assertEquals(1, host.recordCountForTest())
+        assertEquals(IosCellRole.DATA, host.cellRoleForTest(tree.first))
+        assertNull(host.cellRoleForTest(tree.second))
+        assertEquals(View.VISIBLE, tree.second.visibility)
+        assertEquals(otherWidth, tree.second.layoutParams.width)
+        assertEquals(otherHeight, tree.second.layoutParams.height)
+        assertSame(tree.secondDrawable, tree.secondLeaf.drawable)
+
+        host.teardown()
+    }
+
     private class Snapshot(
         val layoutParams: ViewGroup.LayoutParams?,
         val width: Int,

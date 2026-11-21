@@ -275,8 +275,9 @@ class IosMappingTest {
     private fun plan(
         signals: List<SimSignal>,
         defaultSubId: Int = 0,
-        slots: List<CellSlot>
-    ) = IosMapping.cellPlan(signals, defaultSubId, slots)
+        slots: List<CellSlot>,
+        display: IosSimDisplay = IosSimDisplay.AUTO
+    ) = IosMapping.cellPlan(signals, defaultSubId, slots, display)
 
     private fun single(value: IosCellPlan): IosCellPlan.Single {
         assertTrue("expected Single, was $value", value is IosCellPlan.Single)
@@ -383,6 +384,95 @@ class IosMappingTest {
         assertEquals(22, fallback.otherSubId)
         assertEquals(3f, fallback.bars, 0.0001f)
         assertEquals(1f, fallback.dots, 0.0001f)
+    }
+
+    @Test
+    fun `sim display string is auto for anything but single or dual`() {
+        assertEquals(IosSimDisplay.SINGLE, IosMapping.simDisplay("single"))
+        assertEquals(IosSimDisplay.SINGLE, IosMapping.simDisplay(" SINGLE "))
+        assertEquals(IosSimDisplay.DUAL, IosMapping.simDisplay("dual"))
+        assertEquals(IosSimDisplay.AUTO, IosMapping.simDisplay("auto"))
+        assertEquals(IosSimDisplay.AUTO, IosMapping.simDisplay("bogus"))
+        assertEquals(IosSimDisplay.AUTO, IosMapping.simDisplay(""))
+    }
+
+    @Test
+    fun `auto with two active sims draws the stacked dual block`() {
+        val p = dual(plan(twoSims, defaultSubId = 22, slots = listOf(slot(11), slot(22))))
+        assertEquals(1, p.dataSlot)
+        assertEquals(0, p.otherSlot)
+    }
+
+    @Test
+    fun `forced single with two active sims picks the data slot and hides the other`() {
+        val p = single(
+            plan(
+                twoSims,
+                defaultSubId = 22,
+                slots = listOf(slot(11), slot(22)),
+                display = IosSimDisplay.SINGLE
+            )
+        )
+        assertEquals(1, p.slot)
+        assertEquals(22, p.subId)
+        assertEquals(1f, p.level, 0.0001f)
+        assertEquals(0, p.hiddenSlot)
+    }
+
+    @Test
+    fun `forced single falls back to the first active sim when the default is unknown`() {
+        val p = single(
+            plan(
+                twoSims,
+                defaultSubId = 99,
+                slots = listOf(slot(11), slot(22)),
+                display = IosSimDisplay.SINGLE
+            )
+        )
+        assertEquals(0, p.slot)
+        assertEquals(11, p.subId)
+        assertEquals(1, p.hiddenSlot)
+    }
+
+    @Test
+    fun `forced single with an unmappable data sim is none`() {
+        assertEquals(
+            IosCellPlan.None,
+            plan(
+                twoSims,
+                defaultSubId = 22,
+                slots = listOf(slot(11), slot(33)),
+                display = IosSimDisplay.SINGLE
+            )
+        )
+    }
+
+    @Test
+    fun `forced dual with two active sims keeps the stacked block`() {
+        val p = dual(
+            plan(
+                twoSims,
+                defaultSubId = 11,
+                slots = listOf(slot(11), slot(22)),
+                display = IosSimDisplay.DUAL
+            )
+        )
+        assertEquals(0, p.dataSlot)
+        assertEquals(1, p.otherSlot)
+    }
+
+    @Test
+    fun `forced dual with one active sim falls back to a single row`() {
+        val p = single(
+            plan(
+                listOf(sig(0, 11, 2)),
+                slots = listOf(slot(11), slot(22)),
+                display = IosSimDisplay.DUAL
+            )
+        )
+        assertEquals(0, p.slot)
+        assertEquals(11, p.subId)
+        assertNull(p.hiddenSlot)
     }
 
     @Test

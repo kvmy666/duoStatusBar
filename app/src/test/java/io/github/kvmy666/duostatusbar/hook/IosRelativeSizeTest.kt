@@ -130,15 +130,49 @@ class IosRelativeSizeTest {
         }
     }
 
+    @Test
+    fun `production relative sizing at the full slot matches the target and the direct inset`() {
+        // The "wire" proof: production passes the FULL stock slot plus relativeSize = true, and the
+        // drawable itself computes the per-kind inner box. That must equal the measured target and the
+        // direct draw at sizeFor(...). Only this test proves the production flag, not just the API.
+        for (c in cases()) {
+            val wired = inkHeight(
+                c.kind, c.visual, c.slotWidth, c.slotHeight, relativeSize = true
+            )
+            assertEquals(
+                "${c.label} wired rendered ink / 30 px clock",
+                c.targetClockRatio,
+                wired / clockPx,
+                0.03f
+            )
+            val (w, h) = IosGeometry.Relative.sizeFor(
+                c.kind, c.slotWidth, c.slotHeight, c.dualCell
+            )
+            val direct = inkHeight(c.kind, c.visual, w, h)
+            assertEquals(
+                "${c.label} wired vs direct sizeFor",
+                direct / clockPx,
+                wired / clockPx,
+                0.02f
+            )
+        }
+    }
+
     /**
      * Ink height in low-res pixels, measured at 4x and divided back. A 1:1 integer bbox at 30 px is
      * only 0.033 accurate; supersampling gives the continuous height the measured targets quote.
      */
-    private fun inkHeight(kind: IosIconKind, visual: IosVisual, width: Int, height: Int): Float {
+    private fun inkHeight(
+        kind: IosIconKind,
+        visual: IosVisual,
+        width: Int,
+        height: Int,
+        relativeSize: Boolean = false
+    ): Float {
         val ss = 4
         val bw = width * ss
         val bh = height * ss
-        val drawable = IosDrawables.create(kind, visual, bw, bh)
+        val drawable = IosDrawables.create(kind, visual, bw, bh, relativeSize = relativeSize)
         val bitmap = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
         drawable.setBounds(0, 0, bw, bh)
         drawable.draw(Canvas(bitmap))

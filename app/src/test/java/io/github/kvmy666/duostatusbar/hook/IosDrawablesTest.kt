@@ -254,6 +254,30 @@ class IosDrawablesTest {
         assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
     }
 
+    @Test
+    fun `full battery cap is full ink in the fill colour`() {
+        // PM rule 2026-11-22: at 100 % the cap is full ink, while every partial level stays at the
+        // inactive 0.50 alpha. Render at a 1:1 artboard fit so the cap sample is exact.
+        val visual = batteryVisual(level = 100, tint = Color.BLACK)
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
+
+        val c = render(drawable, BATTERY_W, BATTERY_H).getPixel(206, 51)
+        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 250..255)
+        assertEquals("cap red", Color.red(Color.BLACK), Color.red(c))
+        assertEquals("cap green", Color.green(Color.BLACK), Color.green(c))
+        assertEquals("cap blue", Color.blue(Color.BLACK), Color.blue(c))
+    }
+
+    @Test
+    fun `partial battery cap stays at the inactive half alpha`() {
+        // level 99 is below a full battery, so the cap keeps CAP_ALPHA (0.50), never full ink.
+        val visual = batteryVisual(level = 99, tint = Color.BLACK)
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
+
+        val c = render(drawable, BATTERY_W, BATTERY_H).getPixel(206, 51)
+        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
+    }
+
     // --------------------------------------------------------------------- user transform
 
     @Test
