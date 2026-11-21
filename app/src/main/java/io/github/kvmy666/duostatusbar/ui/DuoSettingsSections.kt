@@ -51,6 +51,7 @@ import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoPart
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
+import io.github.kvmy666.duostatusbar.hook.IosRenderers
 import io.github.kvmy666.duostatusbar.hook.rawResourceFor
 import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
@@ -59,13 +60,87 @@ import io.github.kvmy666.duostatusbar.settings.StockIconInventory
 import io.github.kvmy666.duostatusbar.settings.StockIconSelection
 import io.github.kvmy666.duostatusbar.settings.UpdateInfo
 
+/** True only when an available iOS drawing actually owns the bar; a stale unavailable mode must not disable Duo. */
+internal fun iosOwnsBar(
+    settings: DuoSettings,
+    iosAvailable: Boolean = iosModeAvailable()
+): Boolean = settings.iosMode && iosAvailable
+
+/** The iOS switch: available to turn on, or already on so it can always be turned off. */
+internal fun iosCardEnabled(
+    settings: DuoSettings,
+    iosAvailable: Boolean = iosModeAvailable()
+): Boolean = iosAvailable || settings.iosMode
+
+/** True when Duo (not an available iOS mode) owns the bar; the master switch and external actions follow it. */
+internal fun duoOwnsBar(
+    settings: DuoSettings,
+    iosAvailable: Boolean = iosModeAvailable()
+): Boolean = !iosOwnsBar(settings, iosAvailable)
+
+/** Every Duo control follows the master switch and stops only while an available iOS mode owns the bar. */
+internal fun duoControlsEnabled(
+    settings: DuoSettings,
+    iosAvailable: Boolean = iosModeAvailable()
+): Boolean = settings.enabled && !iosOwnsBar(settings, iosAvailable)
+
+/**
+ * The one constant that makes iOS mode reachable: while the drawing is not ready the switch is shown
+ * disabled. The hook side gates the mode on the same flag separately.
+ */
+internal fun iosModeAvailable(drawingReady: Boolean = IosRenderers.DRAWING_READY): Boolean = drawingReady
+
+/**
+ * While the mode is unavailable only switching it off is possible; a stale "on" click is ignored and
+ * the exact same instance comes back, so no write happens.
+ */
+internal fun applyIosModeToggle(
+    settings: DuoSettings,
+    requested: Boolean,
+    available: Boolean = iosModeAvailable()
+): DuoSettings = if (requested && !available) settings else settings.copy(iosMode = requested)
+
+// --------------------------------------------------------------------- iOS 27 mode
+@Composable
+internal fun IosModeSection(
+    settings: DuoSettings,
+    onUpdate: (DuoSettings) -> Unit,
+    matches: SearchGate
+) {
+    val available = iosModeAvailable()
+    if (matches(
+            stringResource(R.string.section_ios),
+            stringResource(R.string.settings_ios_mode),
+            stringResource(R.string.settings_ios_mode_detail)
+        )
+    ) GlassCard(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionTitle(stringResource(R.string.section_ios))
+            SettingSwitch(
+                label = stringResource(R.string.settings_ios_mode),
+                detail = stringResource(R.string.settings_ios_mode_detail),
+                checked = settings.iosMode,
+                enabled = iosCardEnabled(settings, available)
+            ) { onUpdate(applyIosModeToggle(settings, it, available)) }
+            IosPreviewPane()
+        }
+    }
+}
+
 // ------------------------------------------------------------------ Battery icon
 @Composable
 internal fun CustomizeSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
     matches: SearchGate,
-    onRestart: () -> Unit
+    onRestart: () -> Unit,
+    enabled: Boolean = duoControlsEnabled(settings)
 ) {
     val previewRaw = rawResourceFor(settings.designStyle)
     if (matches(
@@ -104,6 +179,7 @@ internal fun CustomizeSection(
                 label = stringResource(R.string.settings_master),
                 detail = stringResource(R.string.settings_master_detail),
                 checked = settings.enabled,
+                enabled = duoOwnsBar(settings),
                 preview = {
                     // Off is the element *absent*: an empty chip, not a ring reading "0".
                     DuoSettingPreview(
@@ -117,7 +193,7 @@ internal fun CustomizeSection(
                 label = stringResource(R.string.settings_percent),
                 detail = stringResource(R.string.settings_percent_detail),
                 checked = settings.showPercent,
-                enabled = settings.enabled,
+                enabled = enabled,
                 preview = {
                     DuoSettingPreview(off = demo(showPercent = false), on = demo(showPercent = true), rawRes = previewRaw)
                 }
@@ -127,7 +203,7 @@ internal fun CustomizeSection(
                 label = stringResource(R.string.settings_show_charging_bolt),
                 detail = stringResource(R.string.settings_show_charging_bolt_detail),
                 checked = settings.showChargingBolt,
-                enabled = settings.enabled,
+                enabled = enabled,
                 preview = {
                     DuoSettingPreview(
                         off = demo(charging = true, showCharging = false),
@@ -141,7 +217,7 @@ internal fun CustomizeSection(
                 label = "${stringResource(R.string.settings_percent_height)} ${settings.percentHeight}%",
                 value = settings.percentHeight.toFloat(),
                 range = DuoPrefs.MIN_PERCENT_HEIGHT.toFloat()..DuoPrefs.MAX_PERCENT_HEIGHT.toFloat(),
-                enabled = settings.enabled && settings.showPercent,
+                enabled = enabled && settings.showPercent,
                 preview = {
                     DuoSettingPreview(
                         off = demo(percentHeight = DuoPrefs.MIN_PERCENT_HEIGHT),
@@ -159,7 +235,7 @@ internal fun CustomizeSection(
                 label = stringResource(R.string.settings_split),
                 detail = stringResource(R.string.settings_split_detail),
                 checked = settings.splitIndicators,
-                enabled = settings.enabled,
+                enabled = enabled,
                 preview = {
                     DuoSettingPreview(
                         off = demo(),
@@ -173,7 +249,8 @@ internal fun CustomizeSection(
                 settings = settings,
                 onUpdate = onUpdate,
                 onRestart = onRestart,
-                includeEdgePadding = true
+                includeEdgePadding = true,
+                enabled = enabled
             )
         }
     }
@@ -184,7 +261,8 @@ private fun SizeAndPositionControls(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
     onRestart: () -> Unit,
-    includeEdgePadding: Boolean
+    includeEdgePadding: Boolean,
+    enabled: Boolean
 ) {
     val screenWidthDp = LocalConfiguration.current.screenWidthDp.coerceAtLeast(1)
     val previewRaw = rawResourceFor(settings.designStyle)
@@ -194,7 +272,7 @@ private fun SizeAndPositionControls(
         label = "${stringResource(R.string.settings_size)} $logicalSize%",
         value = logicalSize.toFloat(),
         range = DuoPrefs.MIN_LOGICAL_SIZE.toFloat()..DuoPrefs.MAX_LOGICAL_SIZE.toFloat(),
-        enabled = settings.enabled,
+        enabled = enabled,
         preview = {
             DuoSettingPreview(
                 off = demo(),
@@ -210,7 +288,7 @@ private fun SizeAndPositionControls(
     )
     Button(
         onClick = onRestart,
-        enabled = settings.enabled,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth()
     ) { Text(stringResource(R.string.settings_restart)) }
 
@@ -218,7 +296,7 @@ private fun SizeAndPositionControls(
         label = stringResource(R.string.settings_live_apply),
         detail = stringResource(R.string.settings_live_apply_detail),
         checked = settings.liveApply,
-        enabled = settings.enabled
+        enabled = enabled
     ) { onUpdate(settings.copy(liveApply = it)) }
 
     if (settings.splitIndicators) {
@@ -226,7 +304,7 @@ private fun SizeAndPositionControls(
             label = stringResource(R.string.settings_lock_ring),
             detail = stringResource(R.string.settings_lock_ring_detail),
             checked = settings.lockRing,
-            enabled = settings.enabled
+            enabled = enabled
         ) { locked ->
             onUpdate(
                 settings.copy(
@@ -250,7 +328,7 @@ private fun SizeAndPositionControls(
         } else {
             DuoPrefs.MAX_UNLOCKED_RING_OFFSET
         },
-        enabled = settings.enabled,
+        enabled = enabled,
         centered = settings.lockRing,
         label = if (settings.splitIndicators) stringResource(R.string.settings_ring_position) else null,
         hint = when {
@@ -270,7 +348,7 @@ private fun SizeAndPositionControls(
         PositionEditor(
             offsetDp = settings.indicatorsOffsetX,
             maxOffsetDp = DuoPrefs.MAX_INDICATORS_OFFSET,
-            enabled = settings.enabled,
+            enabled = enabled,
             label = stringResource(R.string.settings_indicators_position),
             hint = stringResource(R.string.settings_indicators_position_hint),
             visual = DuoPart.INDICATORS.apply(demo()),
@@ -283,7 +361,7 @@ private fun SizeAndPositionControls(
             label = "${stringResource(R.string.settings_edge_padding)} ${settings.edgePadding}%",
             value = settings.edgePadding.toFloat(),
             range = DuoPrefs.MIN_EDGE_PADDING.toFloat()..DuoPrefs.MAX_EDGE_PADDING.toFloat(),
-            enabled = settings.enabled
+            enabled = enabled
         ) { onUpdate(settings.copy(edgePadding = it.toInt())) }
         Text(
             text = stringResource(R.string.settings_edge_padding_detail),
@@ -297,7 +375,8 @@ private fun SizeAndPositionControls(
 internal fun AnimationsSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
-    matches: SearchGate
+    matches: SearchGate,
+    enabled: Boolean = duoControlsEnabled(settings)
 ) {
     val previewRaw = rawResourceFor(settings.designStyle)
     if (matches(
@@ -318,7 +397,7 @@ internal fun AnimationsSection(
                 label = stringResource(R.string.settings_animations),
                 detail = stringResource(R.string.settings_animations_detail),
                 checked = settings.animationsEnabled,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(animationsEnabled = it)) }
 
             // The arrival is one Rive timeline at five speeds, so this is a choice, not a number.
@@ -329,7 +408,7 @@ internal fun AnimationsSection(
                 value = speedIndex.toFloat(),
                 range = 0f..(DuoPrefs.REVEAL_CHOICES.size - 1).toFloat(),
                 steps = DuoPrefs.REVEAL_CHOICES.size - 2,
-                enabled = settings.enabled && settings.animationsEnabled
+                enabled = enabled && settings.animationsEnabled
             ) { value ->
                 val index = (DuoPrefs.REVEAL_CHOICES.size - 1 - value.toInt())
                     .coerceIn(0, DuoPrefs.REVEAL_CHOICES.size - 1)
@@ -340,7 +419,7 @@ internal fun AnimationsSection(
                 label = stringResource(R.string.settings_anim_arrival),
                 detail = stringResource(R.string.settings_anim_arrival_detail),
                 checked = settings.arrivalEnabled,
-                enabled = settings.enabled && settings.animationsEnabled,
+                enabled = enabled && settings.animationsEnabled,
                 preview = {
                     DuoRivePreview(fireReveal = true, rawRes = previewRaw) { demo() }
                 }
@@ -349,7 +428,7 @@ internal fun AnimationsSection(
                 label = stringResource(R.string.settings_anim_departure),
                 detail = stringResource(R.string.settings_anim_departure_detail),
                 checked = settings.departureEnabled,
-                enabled = settings.enabled && settings.animationsEnabled,
+                enabled = enabled && settings.animationsEnabled,
                 preview = {
                     DuoRivePreview(fireReveal = true, rawRes = previewRaw) { phase ->
                         if (phase < 0.5f) demo() else demo().copy(visible = false)
@@ -365,7 +444,8 @@ internal fun AnimationsSection(
 internal fun AppearanceSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
-    matches: SearchGate
+    matches: SearchGate,
+    enabled: Boolean = duoControlsEnabled(settings)
 ) {
     val previewRaw = rawResourceFor(settings.designStyle)
     if (matches(stringResource(R.string.section_look), stringResource(R.string.settings_icon_color),
@@ -398,7 +478,7 @@ internal fun AppearanceSection(
                     "white" to stringResource(R.string.settings_icon_color_white)
                 ),
                 selectedKey = settings.iconColor,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(iconColor = it)) }
             Text(
                 text = stringResource(R.string.settings_middle_slot),
@@ -414,7 +494,7 @@ internal fun AppearanceSection(
                     DuoPrefs.MIDDLE_SLOT_CLOCK to stringResource(R.string.middle_slot_clock)
                 ),
                 selectedKey = settings.middleSlot,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(middleSlot = it)) }
             Text(
                 text = stringResource(R.string.settings_middle_slot_detail),
@@ -424,7 +504,7 @@ internal fun AppearanceSection(
                 label = stringResource(R.string.settings_show_airplane),
                 detail = null,
                 checked = settings.showAirplane,
-                enabled = settings.enabled,
+                enabled = enabled,
                 preview = {
                     DuoSettingPreview(
                         off = demo(airplane = true, showAirplane = false),
@@ -461,7 +541,7 @@ internal fun AppearanceSection(
                             DuoPrefs.DND_DOTS to stringResource(R.string.settings_dnd_dots)
                         ),
                         selectedKey = settings.dndMode,
-                        enabled = settings.enabled
+                        enabled = enabled
                     ) { onUpdate(settings.copy(dndMode = it)) }
                     Text(
                         text = stringResource(R.string.settings_dnd_detail),
@@ -473,7 +553,7 @@ internal fun AppearanceSection(
                 label = stringResource(R.string.settings_wifi_dots),
                 detail = stringResource(R.string.settings_wifi_dots_detail),
                 checked = settings.wifiDots,
-                enabled = settings.enabled,
+                enabled = enabled,
                 preview = {
                     DuoSettingPreview(
                         off = demo(airplane = true, wifiLevel = 2, wifiOn = true),
@@ -490,7 +570,7 @@ internal fun AppearanceSection(
                     "sim2" to stringResource(R.string.settings_sim_2)
                 ),
                 selectedKey = settings.simChoice,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(simChoice = it)) }
             Text(
                 text = stringResource(R.string.settings_sim_detail),
@@ -500,7 +580,7 @@ internal fun AppearanceSection(
                 label = stringResource(R.string.settings_burn_in),
                 detail = stringResource(R.string.settings_burn_in_detail),
                 checked = settings.burnInEnabled,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(burnInEnabled = it)) }
         }
     }
@@ -511,7 +591,8 @@ internal fun AppearanceSection(
 internal fun SurfacesSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
-    matches: SearchGate
+    matches: SearchGate,
+    enabled: Boolean = duoControlsEnabled(settings)
 ) {
     if (matches(
             stringResource(R.string.section_surfaces),
@@ -532,13 +613,13 @@ internal fun SurfacesSection(
                 label = stringResource(R.string.settings_show_in_qs),
                 detail = stringResource(R.string.settings_show_in_qs_detail),
                 checked = settings.showInQs,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(showInQs = it)) }
             SettingSwitch(
                 label = stringResource(R.string.settings_show_in_shade),
                 detail = stringResource(R.string.settings_show_in_shade_detail),
                 checked = settings.showInShade,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(showInShade = it)) }
         }
     }
@@ -551,7 +632,8 @@ internal fun SurfacesSection(
 internal fun IconsSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
-    matches: SearchGate
+    matches: SearchGate,
+    enabled: Boolean = duoControlsEnabled(settings)
 ) {
     val context = LocalContext.current
     // The module owns the live view tree, so the list arrives as JSON on the settings channel. Reading
@@ -580,7 +662,7 @@ internal fun IconsSection(
                 label = stringResource(R.string.settings_hide_other_icons),
                 detail = stringResource(R.string.settings_hide_other_icons_detail),
                 checked = settings.hideOtherIcons,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(hideOtherIcons = it)) }
             if (inventory.isEmpty()) {
                 Text(
@@ -597,7 +679,7 @@ internal fun IconsSection(
                         label = item.label,
                         detail = null,
                         checked = StockIconSelection.isHidden(settings, item.key),
-                        enabled = settings.enabled
+                        enabled = enabled
                     ) { hidden ->
                         onUpdate(StockIconSelection.toggle(settings, inventory, item.key, hidden))
                     }
@@ -607,15 +689,15 @@ internal fun IconsSection(
                 label = stringResource(R.string.settings_show_wifi_glyph),
                 detail = stringResource(R.string.settings_show_wifi_glyph_detail),
                 checked = settings.showWifiGlyph,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(showWifiGlyph = it)) }
             SettingSwitch(
                 label = stringResource(R.string.settings_show_cell_dots),
                 detail = stringResource(R.string.settings_show_cell_dots_detail),
                 checked = settings.showCellDots,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(showCellDots = it)) }
-            IconHidingSetting(enabled = settings.enabled)
+            IconHidingSetting(enabled = enabled)
         }
     }
 }
@@ -626,7 +708,8 @@ internal fun ActionsSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
     matches: SearchGate,
-    autoExpand: Boolean
+    autoExpand: Boolean,
+    enabled: Boolean = duoControlsEnabled(settings)
 ) {
     if (matches(stringResource(R.string.section_actions), stringResource(R.string.settings_tap),
             stringResource(R.string.settings_double_tap), stringResource(R.string.settings_long_press))
@@ -656,17 +739,17 @@ internal fun ActionsSection(
             ActionPicker(
                 label = stringResource(R.string.settings_tap),
                 selectedKey = settings.tapAction,
-                enabled = autoExpand && settings.enabled
+                enabled = autoExpand && enabled
             ) { onUpdate(settings.copy(tapAction = it)) }
             ActionPicker(
                 label = stringResource(R.string.settings_double_tap),
                 selectedKey = settings.doubleTapAction,
-                enabled = autoExpand && settings.enabled
+                enabled = autoExpand && enabled
             ) { onUpdate(settings.copy(doubleTapAction = it)) }
             ActionPicker(
                 label = stringResource(R.string.settings_long_press),
                 selectedKey = settings.longPressAction,
-                enabled = autoExpand && settings.enabled
+                enabled = autoExpand && enabled
             ) { onUpdate(settings.copy(longPressAction = it)) }
             if (settings.splitIndicators) {
                 Text(
@@ -676,17 +759,17 @@ internal fun ActionsSection(
                 ActionPicker(
                     label = stringResource(R.string.settings_tap),
                     selectedKey = settings.indicatorsTapAction,
-                    enabled = autoExpand && settings.enabled
+                    enabled = autoExpand && enabled
                 ) { onUpdate(settings.copy(indicatorsTapAction = it)) }
                 ActionPicker(
                     label = stringResource(R.string.settings_double_tap),
                     selectedKey = settings.indicatorsDoubleTapAction,
-                    enabled = autoExpand && settings.enabled
+                    enabled = autoExpand && enabled
                 ) { onUpdate(settings.copy(indicatorsDoubleTapAction = it)) }
                 ActionPicker(
                     label = stringResource(R.string.settings_long_press),
                     selectedKey = settings.indicatorsLongPressAction,
-                    enabled = autoExpand && settings.enabled
+                    enabled = autoExpand && enabled
                 ) { onUpdate(settings.copy(indicatorsLongPressAction = it)) }
             }
             Text(
@@ -860,7 +943,8 @@ private fun dndPreview(mode: String) = when (mode) {
 internal fun LiveEventsSection(
     matches: SearchGate,
     settings: DuoSettings,
-    onUpdate: (DuoSettings) -> Unit
+    onUpdate: (DuoSettings) -> Unit,
+    enabled: Boolean = duoControlsEnabled(settings)
 ) {
     if (matches(
             stringResource(R.string.section_live_events),
@@ -891,8 +975,8 @@ internal fun LiveEventsSection(
                 label = stringResource(R.string.settings_event_alarm),
                 detail = stringResource(R.string.settings_event_alarm_detail),
                 checked = DuoPrefs.eventEnabled(settings.eventMask, DuoPrefs.EVENT_ALARM),
-                enabled = settings.enabled,
-                preview = { DuoEventRowPreview(DuoPrefs.EVENT_ALARM, settings.enabled, rawRes = if (settings.designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo, split = settings.splitIndicators) }
+                enabled = enabled,
+                preview = { DuoEventRowPreview(DuoPrefs.EVENT_ALARM, enabled, rawRes = if (settings.designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo, split = settings.splitIndicators) }
             ) { on ->
                 onUpdate(settings.copy(eventMask = if (on) settings.eventMask or DuoPrefs.EVENT_ALARM else settings.eventMask and DuoPrefs.EVENT_ALARM.inv()))
             }
@@ -900,8 +984,8 @@ internal fun LiveEventsSection(
                 label = stringResource(R.string.settings_event_flashlight),
                 detail = stringResource(R.string.settings_event_flashlight_detail),
                 checked = DuoPrefs.eventEnabled(settings.eventMask, DuoPrefs.EVENT_FLASHLIGHT),
-                enabled = settings.enabled,
-                preview = { DuoEventRowPreview(DuoPrefs.EVENT_FLASHLIGHT, settings.enabled, rawRes = if (settings.designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo, split = settings.splitIndicators) }
+                enabled = enabled,
+                preview = { DuoEventRowPreview(DuoPrefs.EVENT_FLASHLIGHT, enabled, rawRes = if (settings.designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo, split = settings.splitIndicators) }
             ) { on ->
                 onUpdate(settings.copy(eventMask = if (on) settings.eventMask or DuoPrefs.EVENT_FLASHLIGHT else settings.eventMask and DuoPrefs.EVENT_FLASHLIGHT.inv()))
             }
@@ -909,8 +993,8 @@ internal fun LiveEventsSection(
                 label = stringResource(R.string.settings_event_screenshot),
                 detail = stringResource(R.string.settings_event_screenshot_detail),
                 checked = DuoPrefs.eventEnabled(settings.eventMask, DuoPrefs.EVENT_SCREENSHOT),
-                enabled = settings.enabled,
-                preview = { DuoEventRowPreview(DuoPrefs.EVENT_SCREENSHOT, settings.enabled, rawRes = if (settings.designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo, split = settings.splitIndicators) }
+                enabled = enabled,
+                preview = { DuoEventRowPreview(DuoPrefs.EVENT_SCREENSHOT, enabled, rawRes = if (settings.designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo, split = settings.splitIndicators) }
             ) { on ->
                 onUpdate(settings.copy(eventMask = if (on) settings.eventMask or DuoPrefs.EVENT_SCREENSHOT else settings.eventMask and DuoPrefs.EVENT_SCREENSHOT.inv()))
             }
@@ -918,8 +1002,8 @@ internal fun LiveEventsSection(
                 label = stringResource(R.string.settings_event_unlock),
                 detail = stringResource(R.string.settings_event_unlock_detail),
                 checked = DuoPrefs.eventEnabled(settings.eventMask, DuoPrefs.EVENT_UNLOCK),
-                enabled = settings.enabled,
-                preview = { DuoEventRowPreview(DuoPrefs.EVENT_UNLOCK, settings.enabled, rawRes = if (settings.designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo, split = settings.splitIndicators) }
+                enabled = enabled,
+                preview = { DuoEventRowPreview(DuoPrefs.EVENT_UNLOCK, enabled, rawRes = if (settings.designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo, split = settings.splitIndicators) }
             ) { on ->
                 onUpdate(settings.copy(eventMask = if (on) settings.eventMask or DuoPrefs.EVENT_UNLOCK else settings.eventMask and DuoPrefs.EVENT_UNLOCK.inv()))
             }
@@ -932,8 +1016,11 @@ internal fun LiveEventsSection(
 internal fun DownloadSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
-    matches: SearchGate
+    matches: SearchGate,
+    enabled: Boolean = duoControlsEnabled(settings)
 ) {
+    // External actions are disabled only while an available iOS mode owns the bar; the Duo master switch never controlled them.
+    val externalEnabled = duoOwnsBar(settings)
     val context = LocalContext.current
     var phdpInstalled by remember { mutableStateOf(isPhdpInstalled(context)) }
     // The user may install PHDP from the release page and come back; re-check on return.
@@ -965,19 +1052,22 @@ internal fun DownloadSection(
                 label = stringResource(R.string.settings_download_progress),
                 detail = stringResource(R.string.settings_download_progress_detail),
                 checked = settings.downloadProgressEnabled,
-                enabled = settings.enabled
+                enabled = enabled
             ) { onUpdate(settings.copy(downloadProgressEnabled = it)) }
             OutlinedButton(
                 onClick = { openPhdpRelease(context) },
+                enabled = externalEnabled,
                 modifier = Modifier.fillMaxWidth()
             ) { Text(stringResource(R.string.settings_download_latest)) }
             if (phdpInstalled) {
                 Button(
                     onClick = { openPhdp(context) },
+                    enabled = externalEnabled,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_download_open_phdp)) }
                 Button(
                     onClick = { openPhdp(context) },
+                    enabled = externalEnabled,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_download_simulate)) }
                 Text(
@@ -987,6 +1077,7 @@ internal fun DownloadSection(
             } else {
                 Button(
                     onClick = { openPhdpRelease(context) },
+                    enabled = externalEnabled,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_download_install_phdp)) }
                 Text(

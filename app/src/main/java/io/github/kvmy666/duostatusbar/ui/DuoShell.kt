@@ -49,6 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -493,6 +494,38 @@ private fun LensNavigationBar(
     }
 }
 
+/** One card on the Custom tab, in render order. The iOS card is first so the mode is always reachable. */
+internal enum class CustomCard { IOS_MODE, ENGINE, CUSTOMIZE, ANIMATIONS, APPEARANCE, SURFACES, ICONS, ACTIONS, LIVE_EVENTS, DOWNLOAD }
+
+internal val CUSTOM_CARD_ORDER: List<CustomCard> = listOf(
+    CustomCard.IOS_MODE,
+    CustomCard.ENGINE,
+    CustomCard.CUSTOMIZE,
+    CustomCard.ANIMATIONS,
+    CustomCard.APPEARANCE,
+    CustomCard.SURFACES,
+    CustomCard.ICONS,
+    CustomCard.ACTIONS,
+    CustomCard.LIVE_EVENTS,
+    CustomCard.DOWNLOAD
+)
+
+/**
+ * The iOS card is the one control that must stay active so the mode can always be switched off.
+ * The engine picker is not a Duo drawing control: it stays usable when the Duo master switch is off
+ * (OFF-path identity) and is disabled only while an available iOS mode owns the bar.
+ * Every other card follows duoControlsEnabled (master switch on AND iOS not owning the bar).
+ */
+internal fun customCardEnabled(
+    card: CustomCard,
+    settings: DuoSettings,
+    iosAvailable: Boolean = iosModeAvailable()
+): Boolean = when (card) {
+    CustomCard.IOS_MODE -> iosCardEnabled(settings, iosAvailable)
+    CustomCard.ENGINE -> !iosOwnsBar(settings, iosAvailable)
+    else -> duoControlsEnabled(settings, iosAvailable)
+}
+
 @Composable
 fun CustomizationPage() {
     val context = LocalContext.current
@@ -524,6 +557,7 @@ fun CustomizationPage() {
     }
 
     val search = SearchGate { true }
+    val iosOwned = iosOwnsBar(settings)
 
     Column(
         modifier = Modifier
@@ -539,52 +573,133 @@ fun CustomizationPage() {
             color = DuoColors.TextPrimary
         )
 
-         // Engine selector card.
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(DuoRadius.surface),
-            colors = CardDefaults.cardColors(containerColor = DuoColors.Surface.copy(alpha = 0.94f))
-        ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = stringResource(R.string.engine_title), style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    text = stringResource(
-                        R.string.engine_current,
-                        when (settings.engineMode) {
-                            DuoPrefs.ENGINE_RIVE -> stringResource(R.string.engine_rive)
-                            DuoPrefs.ENGINE_CANVAS -> stringResource(R.string.engine_canvas)
-                            else -> stringResource(R.string.engine_auto)
-                        }
-                    )
+        CUSTOM_CARD_ORDER.forEach { card ->
+            when (card) {
+                CustomCard.IOS_MODE -> IosModeSection(
+                    settings = settings,
+                    onUpdate = { persist(it) },
+                    matches = search
                 )
-                Text(text = stringResource(R.string.engine_mode_detail), style = MaterialTheme.typography.bodySmall)
-                OptionPicker(
-                    label = stringResource(R.string.engine_mode),
-                    options = listOf(
-                        DuoPrefs.ENGINE_AUTO to stringResource(R.string.engine_auto),
-                        DuoPrefs.ENGINE_RIVE to stringResource(R.string.engine_rive),
-                        DuoPrefs.ENGINE_CANVAS to stringResource(R.string.engine_canvas)
-                    ),
-                    selectedKey = settings.engineMode,
-                    enabled = true
-                ) { key ->
-                    persist(settings.copy(engineMode = key, useRive = key != DuoPrefs.ENGINE_CANVAS))
+
+                // Engine selector card.
+                CustomCard.ENGINE -> Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(if (iosOwned) 0.45f else 1f),
+                    shape = RoundedCornerShape(DuoRadius.surface),
+                    colors = CardDefaults.cardColors(containerColor = DuoColors.Surface.copy(alpha = 0.94f))
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(text = stringResource(R.string.engine_title), style = MaterialTheme.typography.headlineSmall)
+                        Text(
+                            text = stringResource(
+                                R.string.engine_current,
+                                when (settings.engineMode) {
+                                    DuoPrefs.ENGINE_RIVE -> stringResource(R.string.engine_rive)
+                                    DuoPrefs.ENGINE_CANVAS -> stringResource(R.string.engine_canvas)
+                                    else -> stringResource(R.string.engine_auto)
+                                }
+                            )
+                        )
+                        Text(text = stringResource(R.string.engine_mode_detail), style = MaterialTheme.typography.bodySmall)
+                        OptionPicker(
+                            label = stringResource(R.string.engine_mode),
+                            options = listOf(
+                                DuoPrefs.ENGINE_AUTO to stringResource(R.string.engine_auto),
+                                DuoPrefs.ENGINE_RIVE to stringResource(R.string.engine_rive),
+                                DuoPrefs.ENGINE_CANVAS to stringResource(R.string.engine_canvas)
+                            ),
+                            selectedKey = settings.engineMode,
+                            enabled = customCardEnabled(CustomCard.ENGINE, settings)
+                        ) { key ->
+                            persist(settings.copy(engineMode = key, useRive = key != DuoPrefs.ENGINE_CANVAS))
+                        }
+                        Text(text = stringResource(R.string.engine_auto_note), style = MaterialTheme.typography.bodySmall)
+                        if (fallback.isNotEmpty()) {
+                            Text(text = stringResource(R.string.engine_fallback, fallback))
+                        }
+                    }
                 }
-                Text(text = stringResource(R.string.engine_auto_note), style = MaterialTheme.typography.bodySmall)
-                if (fallback.isNotEmpty()) {
-                    Text(text = stringResource(R.string.engine_fallback, fallback))
+
+                CustomCard.CUSTOMIZE -> DuoCard(iosOwned) {
+                    CustomizeSection(
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        matches = search,
+                        onRestart = { restartSystemUi(context) },
+                        enabled = customCardEnabled(card, settings)
+                    )
+                }
+
+                CustomCard.ANIMATIONS -> DuoCard(iosOwned) {
+                    AnimationsSection(
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        matches = search,
+                        enabled = customCardEnabled(card, settings)
+                    )
+                }
+
+                CustomCard.APPEARANCE -> DuoCard(iosOwned) {
+                    AppearanceSection(
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        matches = search,
+                        enabled = customCardEnabled(card, settings)
+                    )
+                }
+
+                CustomCard.SURFACES -> DuoCard(iosOwned) {
+                    SurfacesSection(
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        matches = search,
+                        enabled = customCardEnabled(card, settings)
+                    )
+                }
+
+                CustomCard.ICONS -> DuoCard(iosOwned) {
+                    IconsSection(
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        matches = search,
+                        enabled = customCardEnabled(card, settings)
+                    )
+                }
+
+                CustomCard.ACTIONS -> DuoCard(iosOwned) {
+                    ActionsSection(
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        matches = search,
+                        autoExpand = autoExpand,
+                        enabled = customCardEnabled(card, settings)
+                    )
+                }
+
+                CustomCard.LIVE_EVENTS -> DuoCard(iosOwned) {
+                    LiveEventsSection(
+                        matches = search,
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        enabled = customCardEnabled(card, settings)
+                    )
+                }
+
+                CustomCard.DOWNLOAD -> DuoCard(iosOwned) {
+                    DownloadSection(
+                        settings = settings,
+                        onUpdate = { persist(it) },
+                        matches = search,
+                        enabled = customCardEnabled(card, settings)
+                    )
                 }
             }
         }
-
-        // Seven sections.
-        CustomizeSection(settings = settings, onUpdate = { persist(it) }, matches = search, onRestart = { restartSystemUi(context) })
-        AnimationsSection(settings = settings, onUpdate = { persist(it) }, matches = search)
-        AppearanceSection(settings = settings, onUpdate = { persist(it) }, matches = search)
-        SurfacesSection(settings = settings, onUpdate = { persist(it) }, matches = search)
-        IconsSection(settings = settings, onUpdate = { persist(it) }, matches = search)
-        ActionsSection(settings = settings, onUpdate = { persist(it) }, matches = search, autoExpand = autoExpand)
-        LiveEventsSection(matches = search, settings = settings, onUpdate = { persist(it) })
-        DownloadSection(settings = settings, onUpdate = { persist(it) }, matches = search)
     }
+}
+
+@Composable
+private fun DuoCard(iosOwned: Boolean, content: @Composable () -> Unit) {
+    Box(Modifier.alpha(if (iosOwned) 0.45f else 1f)) { content() }
 }

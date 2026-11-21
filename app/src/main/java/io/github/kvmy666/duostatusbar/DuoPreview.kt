@@ -85,6 +85,8 @@ fun DuoPreview(
     middleSlot: String = DuoPrefs.MIDDLE_SLOT_AUTO,
     /** Called when the user toggles Invert center; Home persists via middle_slot. */
     onInvertChange: (Boolean) -> Unit = {},
+    /** When false the preview controls are read-only (iOS mode owns the bar). */
+    enabled: Boolean = true,
     /** Clock text shown when middleSlot=clock; empty uses the current hour. */
     clockText: String = ""
 ) {
@@ -171,23 +173,27 @@ fun DuoPreview(
             }
         }
 
-        LabelledSlider(stringResource(R.string.preview_battery, level.toInt()), level, 0f..100f, steps = 0) { level = it }
-        Toggle(stringResource(R.string.preview_charging), charging) { charging = it }
-        Toggle(stringResource(R.string.preview_saver), saver) { saver = it }
-        Toggle(stringResource(R.string.home_live_sim_invert), middleSlot == DuoPrefs.MIDDLE_SLOT_PERCENT) { onInvertChange(it) }
-        Toggle(stringResource(R.string.preview_airplane), airplane) { airplane = it }
-        Toggle(stringResource(R.string.preview_dnd), dnd) { dnd = it }
-        Toggle(stringResource(R.string.preview_dnd_dots), dndDots) { dndDots = it }
-        LabelledSlider(stringResource(R.string.preview_wifi, wifi.toInt()), wifi, 0f..3f, steps = 2) { wifi = it }
-        LabelledSlider(stringResource(R.string.preview_cell, cell.toInt()), cell, 0f..4f, steps = 3) { cell = it }
-        Toggle(stringResource(R.string.preview_wifi_off), !wifiOn) { wifiOn = !it }
-        Toggle(stringResource(R.string.preview_wifi_dots), wifiDots) { wifiDots = it }
-        LabelledSlider(
-            stringResource(R.string.preview_network, GENERATIONS[generation]),
-            generation.toFloat(), 0f..3f, steps = 2
-        ) { generation = it.toInt() }
-        Button(onClick = { revealTick++ }) { Text(stringResource(R.string.preview_replay)) }
-
+        Column(
+            modifier = Modifier.alpha(if (enabled) 1f else 0.45f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            LabelledSlider(stringResource(R.string.preview_battery, level.toInt()), level, 0f..100f, steps = 0, enabled = enabled) { level = it }
+            Toggle(stringResource(R.string.preview_charging), charging, enabled = enabled) { charging = it }
+            Toggle(stringResource(R.string.preview_saver), saver, enabled = enabled) { saver = it }
+            Toggle(stringResource(R.string.home_live_sim_invert), middleSlot == DuoPrefs.MIDDLE_SLOT_PERCENT, enabled = enabled) { onInvertChange(it) }
+            Toggle(stringResource(R.string.preview_airplane), airplane, enabled = enabled) { airplane = it }
+            Toggle(stringResource(R.string.preview_dnd), dnd, enabled = enabled) { dnd = it }
+            Toggle(stringResource(R.string.preview_dnd_dots), dndDots, enabled = enabled) { dndDots = it }
+            LabelledSlider(stringResource(R.string.preview_wifi, wifi.toInt()), wifi, 0f..3f, steps = 2, enabled = enabled) { wifi = it }
+            LabelledSlider(stringResource(R.string.preview_cell, cell.toInt()), cell, 0f..4f, steps = 3, enabled = enabled) { cell = it }
+            Toggle(stringResource(R.string.preview_wifi_off), !wifiOn, enabled = enabled) { wifiOn = !it }
+            Toggle(stringResource(R.string.preview_wifi_dots), wifiDots, enabled = enabled) { wifiDots = it }
+            LabelledSlider(
+                stringResource(R.string.preview_network, GENERATIONS[generation]),
+                generation.toFloat(), 0f..3f, steps = 2, enabled = enabled
+            ) { generation = it.toInt() }
+            Button(onClick = { revealTick++ }, enabled = enabled) { Text(stringResource(R.string.preview_replay)) }
+        }
     }
 }
 
@@ -659,23 +665,24 @@ private fun LabelledSlider(
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     steps: Int = 0,
+    enabled: Boolean = true,
     onChange: (Float) -> Unit
 ) {
     Column {
         Text(text = label, style = MaterialTheme.typography.bodySmall)
-        GlassSlider(value = value, onValueChange = onChange, range = range, steps = steps)
+        GlassSlider(value = value, onValueChange = onChange, range = range, steps = steps, enabled = enabled)
     }
 }
 
 @Composable
-private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun Toggle(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = label, style = MaterialTheme.typography.bodySmall)
-        GlassSwitch(checked = checked, onCheckedChange = onChange)
+        GlassSwitch(checked = checked, enabled = enabled, onCheckedChange = onChange)
     }
 }
 

@@ -61,6 +61,8 @@ fun DuoHomeScreen() {
     val health = remember { ModuleHealthCheck.of(context).state }
     var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
     var restartRequired by rememberSaveable { mutableStateOf(false) }
+    val iosEffective = settings.iosMode && iosModeAvailable()
+    val duoEnabled = duoControlsEnabled(settings)
 
     LaunchedEffect(Unit) {
         settings = DuoPrefs.read(context)
@@ -135,13 +137,14 @@ fun DuoHomeScreen() {
         LivePreviewLabCard(
             designStyle = settings.designStyle,
             middleSlot = settings.middleSlot,
+            enabled = !iosEffective,
             onInvertChange = { persistInvert(it) }
         )
 
         Spacer(Modifier.height(DuoSpace.md))
         RingDesignCard(
             selected = settings.designStyle,
-            enabled = settings.enabled,
+            enabled = duoEnabled,
             restartRequired = restartRequired,
             onSelect = { persistDesign(it) },
             onRestart = { restartSystemUi(context) }
@@ -150,7 +153,7 @@ fun DuoHomeScreen() {
         Spacer(Modifier.height(DuoSpace.md))
         CameraCard(
             checked = settings.lockRing,
-            enabled = settings.enabled
+            enabled = duoEnabled
         ) { persistCamera(it) }
 
         Spacer(Modifier.height(120.dp))
@@ -162,6 +165,7 @@ fun DuoHomeScreen() {
  * [DuoSettings.designStyle] untouched.
  */
 internal fun writeCameraMode(context: Context, settings: DuoSettings, on: Boolean): DuoSettings {
+    if (settings.iosMode) return settings
     val updated = settings.copy(lockRing = on)
     DuoPrefs.write(context, updated)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
@@ -174,6 +178,7 @@ internal fun writeCameraMode(context: Context, settings: DuoSettings, on: Boolea
  * [DuoSettings.lockRing] untouched, so the camera choice survives a design change.
  */
 internal fun writeRingDesign(context: Context, settings: DuoSettings, style: String): DuoSettings {
+    if (settings.iosMode) return settings
     val updated = settings.copy(designStyle = DuoPrefs.normalizeDesignStyle(style))
     DuoPrefs.write(context, updated)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
@@ -187,6 +192,7 @@ internal fun writeRingDesign(context: Context, settings: DuoSettings, style: Str
  * non-percent value, which is preserved instead.
  */
 internal fun writeInvertCenter(context: Context, settings: DuoSettings, on: Boolean): DuoSettings {
+    if (settings.iosMode) return settings
     val updated = settings.copy(middleSlot = invertCenterToMiddleSlot(on, settings.middleSlot))
     DuoPrefs.write(context, updated)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
@@ -265,6 +271,7 @@ private fun SetupStepsCard() {
 private fun LivePreviewLabCard(
     designStyle: String,
     middleSlot: String,
+    enabled: Boolean,
     onInvertChange: (Boolean) -> Unit
 ) {
     GlassCard(
@@ -273,7 +280,9 @@ private fun LivePreviewLabCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(DuoSpace.xl),
+            modifier = Modifier
+                .padding(DuoSpace.xl)
+                .alpha(if (enabled) 1f else 0.45f),
             verticalArrangement = Arrangement.spacedBy(DuoSpace.sm)
         ) {
             Text(
@@ -289,7 +298,8 @@ private fun LivePreviewLabCard(
                 pixelSize = 180,
                 rawRes = if (designStyle == DuoPrefs.DESIGN_OLD) R.raw.duo_old else R.raw.duo,
                 middleSlot = middleSlot,
-                onInvertChange = onInvertChange
+                onInvertChange = onInvertChange,
+                enabled = enabled
             )
             Text(
                 text = stringResource(R.string.home_live_preview_note),

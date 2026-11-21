@@ -306,4 +306,9 @@
     <string name="preview_wifi_dots">Dots follow Wi-Fi</string>
     <string name="preview_network">Network %1$s</string>
 
+    <!-- iOS 27 status bar -->
+    <string name="section_ios">iOS 27 status bar</string>
+    <string name="settings_ios_mode">iOS 27 status bar</string>
+    <string name="settings_ios_mode_detail">Reskins the system battery, Wi-Fi and cellular icons. When on, the Duo element is off and the Duo settings below are disabled.</string>
+
 </resources>

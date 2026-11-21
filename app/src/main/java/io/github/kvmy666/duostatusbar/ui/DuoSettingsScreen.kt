@@ -545,6 +545,9 @@ fun DuoSettingsScreen(
         }
 
         if (showCustomization) {
+            // The iOS card lives on the real Custom tab (`CustomizationPage` in DuoShell) and must not
+            // be duplicated here.
+
             CustomizeSection(
                 settings = settings,
                 onUpdate = onUpdate,
