@@ -343,6 +343,145 @@ class SettingsChannelTest {
     }
 
     @Test
+    fun `bridge row keeps the pre-R2 89-value prefix and appends the new tail`() {
+        val portrait = DuoSettings(
+            enabled = true,
+            sizePercent = 130,
+            offsetX = -7,
+            iosBatteryOffset = 11,
+            iosBatteryScale = 120,
+            iosWifiOffset = -9,
+            iosWifiScale = 80,
+            iosCellOffset = 5,
+            iosCellScale = 140,
+            simDisplay = DuoPrefs.SIM_DISPLAY_DUAL
+        )
+        val landscape = DuoSettings(
+            enabled = false,
+            sizePercent = 170,
+            offsetX = -22,
+            iosBatteryOffset = -12,
+            iosBatteryScale = 130,
+            iosWifiOffset = 6,
+            iosWifiScale = 90,
+            iosCellOffset = -4,
+            iosCellScale = 110,
+            simDisplay = DuoPrefs.SIM_DISPLAY_SINGLE
+        )
+
+        val standard = DuoSettingsProvider.rowFor(portrait, 42L, landscape)
+        val bridge = DuoSettingsProvider.bridgeRowFor(portrait, 42L, landscape)
+
+        assertEquals(103, bridge.size)
+        assertEquals(
+            89,
+            DuoPrefs.LEGACY_PORTRAIT_COUNT + DuoPrefs.LEGACY_LANDSCAPE_COUNT
+        )
+        // 0..44 is the pre-R2 portrait prefix; 45..88 is the pre-R2 landscape prefix (standard 52..95).
+        assertArrayEquals(standard.copyOfRange(0, 45), bridge.copyOfRange(0, 45))
+        assertArrayEquals(standard.copyOfRange(52, 96), bridge.copyOfRange(45, 89))
+        // 89..95 is the new portrait tail; 96..102 is the new landscape tail.
+        assertArrayEquals(standard.copyOfRange(45, 52), bridge.copyOfRange(89, 96))
+        assertArrayEquals(standard.copyOfRange(96, 103), bridge.copyOfRange(96, 103))
+        // Distinctive values, so a portrait/landscape swap at either tail cannot pass.
+        assertEquals(11, bridge[89])
+        assertEquals(120, bridge[90])
+        assertEquals(-12, bridge[96])
+        assertEquals(130, bridge[97])
+        assertEquals(DuoPrefs.SIM_DISPLAY_DUAL, bridge[95])
+        assertEquals(DuoPrefs.SIM_DISPLAY_SINGLE, bridge[102])
+    }
+
+    @Test
+    fun `bridge values map by name for a new 103-value push`() {
+        val portrait = DuoSettings(
+            enabled = true,
+            sizePercent = 130,
+            offsetX = -7,
+            iosBatteryOffset = 11,
+            iosBatteryScale = 120,
+            iosWifiOffset = -9,
+            iosWifiScale = 80,
+            iosCellOffset = 5,
+            iosCellScale = 140,
+            simDisplay = DuoPrefs.SIM_DISPLAY_DUAL
+        )
+        val landscape = DuoSettings(
+            enabled = false,
+            sizePercent = 170,
+            offsetX = -22,
+            iosBatteryOffset = -12,
+            iosBatteryScale = 130,
+            iosWifiOffset = 6,
+            iosWifiScale = 90,
+            iosCellOffset = -4,
+            iosCellScale = 110,
+            simDisplay = DuoPrefs.SIM_DISPLAY_SINGLE
+        )
+
+        val bridge = DuoSettingsProvider.bridgeRowFor(portrait, 42L, landscape)
+        val row = DuoSettingsClient.bridgeValuesToRow(bridge.toList())
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row) }
+        cursor.moveToFirst()
+
+        val inPortrait = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        assertEquals(11, inPortrait.iosBatteryOffset)
+        assertEquals(120, inPortrait.iosBatteryScale)
+        assertEquals(-9, inPortrait.iosWifiOffset)
+        assertEquals(80, inPortrait.iosWifiScale)
+        assertEquals(5, inPortrait.iosCellOffset)
+        assertEquals(140, inPortrait.iosCellScale)
+        assertEquals(DuoPrefs.SIM_DISPLAY_DUAL, inPortrait.simDisplay)
+        assertEquals(130, inPortrait.sizePercent)
+        assertEquals(-7, inPortrait.offsetX)
+        assertEquals(42L, inPortrait.revision)
+
+        val inLandscape = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
+        assertEquals(-12, inLandscape.iosBatteryOffset)
+        assertEquals(130, inLandscape.iosBatteryScale)
+        assertEquals(6, inLandscape.iosWifiOffset)
+        assertEquals(90, inLandscape.iosWifiScale)
+        assertEquals(-4, inLandscape.iosCellOffset)
+        assertEquals(110, inLandscape.iosCellScale)
+        assertEquals(DuoPrefs.SIM_DISPLAY_SINGLE, inLandscape.simDisplay)
+        assertEquals(170, inLandscape.sizePercent)
+        assertEquals(-22, inLandscape.offsetX)
+        assertEquals(42L, inLandscape.revision)
+
+        // An older module may still push the pre-R2 89 values; the new tail must read as defaults and
+        // the old fields must stay intact.
+        val full = DuoSettingsProvider.rowFor(portrait, 42L, landscape)
+        val legacy = full.copyOfRange(0, 45).toList() + full.copyOfRange(52, 96).toList()
+        assertEquals(89, legacy.size)
+        val legacyCursor = MatrixCursor(DuoPrefs.COLUMNS).apply {
+            addRow(DuoSettingsClient.bridgeValuesToRow(legacy))
+        }
+        legacyCursor.moveToFirst()
+
+        val oldPortrait =
+            DuoSettingsClient.fromCursor(legacyCursor, Configuration.ORIENTATION_PORTRAIT)
+        assertEquals(0, oldPortrait.iosBatteryOffset)
+        assertEquals(DuoPrefs.DEFAULT_ICON_SCALE, oldPortrait.iosBatteryScale)
+        assertEquals(0, oldPortrait.iosWifiOffset)
+        assertEquals(DuoPrefs.DEFAULT_ICON_SCALE, oldPortrait.iosWifiScale)
+        assertEquals(0, oldPortrait.iosCellOffset)
+        assertEquals(DuoPrefs.DEFAULT_ICON_SCALE, oldPortrait.iosCellScale)
+        assertEquals(DuoPrefs.SIM_DISPLAY_AUTO, oldPortrait.simDisplay)
+        assertEquals(130, oldPortrait.sizePercent)
+        assertEquals(-7, oldPortrait.offsetX)
+        assertEquals(42L, oldPortrait.revision)
+
+        val oldLandscape =
+            DuoSettingsClient.fromCursor(legacyCursor, Configuration.ORIENTATION_LANDSCAPE)
+        assertEquals(0, oldLandscape.iosBatteryOffset)
+        assertEquals(DuoPrefs.DEFAULT_ICON_SCALE, oldLandscape.iosBatteryScale)
+        assertEquals(DuoPrefs.SIM_DISPLAY_AUTO, oldLandscape.simDisplay)
+        assertEquals(170, oldLandscape.sizePercent)
+        assertEquals(-22, oldLandscape.offsetX)
+        assertEquals(42L, oldLandscape.revision)
+    }
+
+    @Test
     fun `download progress still round trips after burn-in is appended`() {
         context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
         DuoPrefs.write(

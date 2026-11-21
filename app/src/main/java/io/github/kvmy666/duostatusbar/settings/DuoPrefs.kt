@@ -467,6 +467,35 @@ object DuoPrefs {
     /** The column set the module expects; kept in one place so both sides cannot drift. */
     val COLUMNS: Array<String> = PORTRAIT_COLUMNS + LANDSCAPE_COLUMNS
 
+    /** The pre-R2 row prefix: 45 portrait columns (including revision) + 44 landscape columns. */
+    const val LEGACY_PORTRAIT_COUNT = 45
+
+    /**
+     * Landscape repeats the portrait columns except the shared [COL_REVISION], so the pre-R2 prefix has
+     * one fewer landscape column than portrait ones.
+     */
+    const val LEGACY_LANDSCAPE_COUNT = LEGACY_PORTRAIT_COUNT - 1
+
+    /** How many columns were appended after the pre-R2 row (seven today, plus any future append). */
+    private val POST_LEGACY_COUNT: Int = PORTRAIT_COLUMNS.size - LEGACY_PORTRAIT_COUNT
+
+    /**
+     * The positional settings-bridge layout: the exact pre-R2 prefix first (so an older module reads it
+     * unchanged), then the R2 portrait tail, then the R2 landscape tail.
+     *
+     * Only [SettingsBridge] uses this order. The provider row keeps [COLUMNS], and rearranging here
+     * means an older module receiving a newer push still finds every old value where it expects it.
+     * The last seven portrait and the last seven landscape columns are the R2 additions (battery,
+     * Wi-Fi and cellular offset+scale, SIM display); grouping them at the end keeps the derivation
+     * working if more columns are appended, because the legacy prefix stays [LEGACY_PORTRAIT_COUNT]
+     * portrait + [LEGACY_LANDSCAPE_COUNT] landscape columns.
+     */
+    val BRIDGE_COLUMNS: Array<String> =
+        (PORTRAIT_COLUMNS.take(LEGACY_PORTRAIT_COUNT) +
+            LANDSCAPE_COLUMNS.take(LEGACY_LANDSCAPE_COUNT) +
+            PORTRAIT_COLUMNS.drop(LEGACY_PORTRAIT_COUNT) +
+            LANDSCAPE_COLUMNS.drop(LANDSCAPE_COLUMNS.size - POST_LEGACY_COUNT)).toTypedArray()
+
     private const val PREFS = "duo_settings"
     private const val KEY_REVISION = "revision"
     private const val KEY_STATUS = "last_status"

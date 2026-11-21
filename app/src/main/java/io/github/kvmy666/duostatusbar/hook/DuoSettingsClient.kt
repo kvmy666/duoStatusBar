@@ -226,19 +226,19 @@ internal object DuoSettingsClient {
      */
     private fun Cursor.optionalInt(column: String, fallback: Int = 0): Int {
         val index = getColumnIndex(column)
-        return if (index < 0) fallback else getInt(index)
+        return if (index < 0 || isNull(index)) fallback else getInt(index)
     }
 
-    /** A column the running settings app may not publish yet. Missing keeps [fallback]. */
+    /** A column the running settings app may not publish yet. Missing or empty keeps [fallback]. */
     private fun Cursor.optionalBool(column: String, fallback: Boolean): Boolean {
         val index = getColumnIndex(column)
-        return if (index < 0) fallback else getInt(index) == 1
+        return if (index < 0 || isNull(index)) fallback else getInt(index) == 1
     }
 
-    /** A string column the running settings app may not publish yet. Missing keeps [fallback]. */
+    /** A string column the running settings app may not publish yet. Missing or empty keeps [fallback]. */
     private fun Cursor.optionalString(column: String, fallback: String): String {
         val index = getColumnIndex(column)
-        if (index < 0) return fallback
+        if (index < 0 || isNull(index)) return fallback
         return getString(index) ?: fallback
     }
 
@@ -273,8 +273,8 @@ internal object DuoSettingsClient {
 
     // ------------------------------------------------------------ provider-independent bridge
     // On a ROM where System UI cannot see the app's provider (One UI 8: "Unknown authority"), settings
-    // arrive over a broadcast. The payload is the exact provider row, parsed by the same [fromCursor], so
-    // the two channels can never drift.
+    // arrive over a broadcast. The payload uses [DuoPrefs.BRIDGE_COLUMNS] (legacy prefix + R2 tail), which
+    // is parsed by name and projected back into [DuoPrefs.COLUMNS]; [fromCursor] itself is unchanged.
 
     @Volatile private var bridgeRegistered = false
     @Volatile private var bridge: ModuleSettings? = null
@@ -289,12 +289,12 @@ internal object DuoSettingsClient {
                 val values = intent.getSerializableExtra(SettingsBridge.EXTRA_VALUES) as? ArrayList<Any?>
                     ?: return
                 if (values.isEmpty()) {
-                    L.i("settings bridge receive: values=${values.size} columns=${DuoPrefs.COLUMNS.size} using=0")
+                    L.i("settings bridge receive: values=${values.size} columns=${DuoPrefs.BRIDGE_COLUMNS.size} using=0")
                     return
                 }
-                val count = bridgeColumnCount(values.size, DuoPrefs.COLUMNS.size)
-                val names = DuoPrefs.COLUMNS.copyOf(count)
-                val cursor = MatrixCursor(names).apply { addRow(values.take(count).toTypedArray()) }
+                val count = bridgeColumnCount(values.size, DuoPrefs.BRIDGE_COLUMNS.size)
+                val row = bridgeValuesToRow(values)
+                val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row) }
                 cursor.moveToFirst()
                 bridge = fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
                 bridgeLandscape = fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
@@ -306,15 +306,28 @@ internal object DuoSettingsClient {
                     bridge
                 }
                 providerUnreachable = false
-                L.i("settings bridge receive: values=${values.size} columns=${DuoPrefs.COLUMNS.size} using=$count")
+                L.i("settings bridge receive: values=${values.size} columns=${DuoPrefs.BRIDGE_COLUMNS.size} using=$count")
             } catch (t: Throwable) {
                 L.w("settings bridge receive: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
 
-    /** Skew-safe column count for a bridge push that may come from a different build. */
+    /** Skew-safe value count for a bridge push that may come from an older or newer build. */
     internal fun bridgeColumnCount(valueCount: Int, columnCount: Int): Int = minOf(valueCount, columnCount)
+
+    /**
+     * Maps a bridge push from [DuoPrefs.BRIDGE_COLUMNS] into [DuoPrefs.COLUMNS] by name, so an older
+     * module reads the pre-R2 prefix unchanged and a newer module finds the R2 tail at the end. Values
+     * the push does not carry are null; the optional readers treat null as "not published" and keep
+     * their defaults.
+     */
+    internal fun bridgeValuesToRow(values: List<Any?>): Array<Any?> {
+        val count = minOf(values.size, DuoPrefs.BRIDGE_COLUMNS.size)
+        val byName = HashMap<String, Any?>(count)
+        for (i in 0 until count) byName[DuoPrefs.BRIDGE_COLUMNS[i]] = values[i]
+        return Array(DuoPrefs.COLUMNS.size) { byName[DuoPrefs.COLUMNS[it]] }
+    }
 
     /** Registers the bridge receiver once. Safe to call from the read path; never throws. */
     private fun ensureBridge(context: Context) {
@@ -580,15 +593,15 @@ internal object DuoSettingsClient {
         fun col(base: String) = DuoPrefs.LAND_PREFIX + base
         fun int(base: String, default: Int): Int {
             val index = getColumnIndex(col(base))
-            return if (index < 0) default else getInt(index)
+            return if (index < 0 || isNull(index)) default else getInt(index)
         }
         fun bool(base: String, default: Boolean): Boolean {
             val index = getColumnIndex(col(base))
-            return if (index < 0) default else getInt(index) == 1
+            return if (index < 0 || isNull(index)) default else getInt(index) == 1
         }
         fun str(base: String, default: String): String {
             val index = getColumnIndex(col(base))
-            return if (index < 0) default else getString(index) ?: default
+            return if (index < 0 || isNull(index)) default else getString(index) ?: default
         }
         // The mode column is newer than the on/off switch. A landscape row that only has the
         // switch keeps that choice; one that has neither keeps the portrait mode.

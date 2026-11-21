@@ -10,7 +10,8 @@ import io.github.kvmy666.duostatusbar.L
  *
  * On most ROMs the module reads settings from the app's provider, which works. On One UI 8 the provider
  * is invisible to System UI (`Unknown authority …`), so the module read nothing and stayed off. This
- * bridge carries the **same row** the provider would return as a broadcast between the two processes:
+ * bridge carries the **same values** the provider would return as a broadcast between the two processes,
+ * in the bridge layout: the legacy prefix first, then the R2 tail (see [DuoPrefs.BRIDGE_COLUMNS]).
  *
  *  - app → System UI: a settings "push" (on every write, on app start, and on request),
  *  - System UI → app: a status/dump/fallback "push", so the app still shows real diagnostics.
@@ -27,7 +28,7 @@ internal object SettingsBridge {
     const val ACTION_FALLBACK_PUSH = "io.github.kvmy666.duostatusbar.action.FALLBACK_PUSH"
     const val ACTION_STOCK_ICONS_PUSH = "io.github.kvmy666.duostatusbar.action.STOCK_ICONS_PUSH"
 
-    /** The provider row, serialized as `ArrayList<Any>` (ints, longs, strings). */
+    /** The bridge row, serialized as `ArrayList<Any>` (ints, longs, strings), in [DuoPrefs.BRIDGE_COLUMNS]. */
     const val EXTRA_VALUES = "values"
     const val EXTRA_STATUS = "status"
     const val EXTRA_DUMP = "dump"
@@ -39,12 +40,12 @@ internal object SettingsBridge {
     const val PERMISSION = "io.github.kvmy666.duostatusbar.permission.SETTINGS"
     const val SYSTEMUI = "com.android.systemui"
 
-    /** Publishes one full settings row to System UI. Never throws. */
+    /** Publishes one full settings row to System UI, in the bridge layout: legacy prefix + R2 tail. Never throws. */
     fun push(context: Context) {
         try {
             val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
             val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
-            val row = DuoSettingsProvider.rowFor(portrait, DuoPrefs.revision(context), landscape)
+            val row = DuoSettingsProvider.bridgeRowFor(portrait, DuoPrefs.revision(context), landscape)
             context.sendBroadcast(
                 Intent(ACTION_SETTINGS_PUSH).setPackage(SYSTEMUI)
                     .putExtra(EXTRA_VALUES, ArrayList<Any>(row.toList()))

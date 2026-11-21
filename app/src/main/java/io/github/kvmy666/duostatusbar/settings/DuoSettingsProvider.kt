@@ -138,6 +138,24 @@ class DuoSettingsProvider : ContentProvider() {
             return (portrait.toList() + tail).toTypedArray()
         }
 
+        /**
+         * The same values as [rowFor], reordered to [DuoPrefs.BRIDGE_COLUMNS] for the settings bridge.
+         *
+         * The bridge is positional and an older loaded module still truncates the push at its own column
+         * count, so a row in the provider's append-only order would make it read the new portrait tail as
+         * landscape values. This layout puts the exact pre-R2 prefix first, so both directions agree.
+         * [rowFor] itself is the provider contract and must not change.
+         */
+        internal fun bridgeRowFor(
+            settings: DuoSettings,
+            revision: Long,
+            landscape: DuoSettings = settings
+        ): Array<Any> {
+            val row = rowFor(settings, revision, landscape)
+            val byName = DuoPrefs.COLUMNS.indices.associate { DuoPrefs.COLUMNS[it] to row[it] }
+            return DuoPrefs.BRIDGE_COLUMNS.map { byName.getValue(it) }.toTypedArray()
+        }
+
         /** One orientation's values, in [DuoPrefs.PORTRAIT_COLUMNS] order. */
         private fun encoded(settings: DuoSettings, revision: Long): Array<Any> = arrayOf(
             if (settings.enabled) 1 else 0,
