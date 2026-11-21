@@ -248,6 +248,32 @@ class IosReplaceSkinsTest {
     }
 
     @Test
+    fun `a sibling swap registers the same-call push repair and unregisters on restore`() {
+        val original = ColorDrawable(Color.BLUE)
+        val sibling = ImageView(context).apply { setImageDrawable(original) }
+        host(sibling)
+        sibling.layout(0, 0, 20, 20)
+
+        val empty = IosDrawables.create(IosIconKind.BATTERY, null, 0, 0)
+        val swap = IosSiblingSwap(sibling, empty)
+        IosPushHooks.clearForTest()
+        try {
+            assertTrue(swap.apply())
+            assertTrue("apply registers the push repair", IosPushHooks.pushWatchedForTest(sibling))
+
+            sibling.setImageDrawable(ColorDrawable(Color.GREEN))
+            IosPushHooks.deliverDrawablePushForTest(sibling)
+            assertSame("the OEM push is repaired in the same call", empty, sibling.drawable)
+
+            swap.restore()
+            assertFalse("restore removes the registration", IosPushHooks.pushWatchedForTest(sibling))
+        } finally {
+            swap.restore()
+            IosPushHooks.clearForTest()
+        }
+    }
+
+    @Test
     fun `a GONE sibling is left completely untouched`() {
         val original = ColorDrawable(Color.BLUE)
         val sibling = ImageView(context).apply {

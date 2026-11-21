@@ -420,15 +420,33 @@ class IosMappingTest {
     }
 
     @Test
-    fun `forced single with two active sims but one visible slot is none`() {
-        // One iOS row beside one stock icon is never acceptable, so a forced single that cannot map both
-        // active SIMs to visible slots leaves the stock icons alone.
+    fun `forced single with one visible slot draws the visible data slot`() {
+        // The other SIM's slot is OEM-hidden, so there is no icon to hide: the cellular glyph must
+        // still draw on the visible data slot instead of disappearing with the stock row.
+        val sims = listOf(sig(slot = 0, sub = 1, level = 3), sig(slot = 1, sub = 2, level = 2))
+        val p = single(
+            plan(
+                sims,
+                defaultSubId = 1,
+                slots = listOf(CellSlot(1, true), CellSlot(2, false)),
+                display = IosSimDisplay.SINGLE
+            )
+        )
+        assertEquals(0, p.slot)
+        assertEquals(1, p.subId)
+        assertEquals(3f, p.level, 0.0001f)
+        assertNull("the hidden slot needs no hide", p.hiddenSlot)
+    }
+
+    @Test
+    fun `forced single with the data slot OEM hidden is none`() {
+        // Drawing nothing is the only safe plan when the data SIM's own slot is invisible.
         val sims = listOf(sig(slot = 0, sub = 1, level = 3), sig(slot = 1, sub = 2, level = 2))
         assertEquals(
             IosCellPlan.None,
             plan(
                 sims,
-                defaultSubId = 1,
+                defaultSubId = 2,
                 slots = listOf(CellSlot(1, true), CellSlot(2, false)),
                 display = IosSimDisplay.SINGLE
             )

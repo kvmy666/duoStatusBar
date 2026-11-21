@@ -122,8 +122,9 @@ internal object IosAttachDecision {
  * One glyph and the stock icon(s) it stands in for.
  *
  * A normal icon has one stock/skin/subId; the two-SIM cluster has two and draws one stacked element
- * over their union bounds. [geometry] holds the measured content views whose bounds position the glyph
- * (the outer itself for unmeasured families, the content group/icon for the measured OPLUS outers).
+ * anchored to the data slot's bounds (the other slot is suppressed). [geometry] holds the measured
+ * content views whose bounds position the glyph (the outer itself for unmeasured families, the content
+ * group/icon for the measured OPLUS outers).
  */
 private class IosGlyphRecord(
     val kind: IosIconKind,
@@ -1045,11 +1046,13 @@ internal class IosIconHost(
     }
 
     /**
-     * Creates the one element that draws the stacked two-SIM block over the union of both slots.
+     * Creates the one element that draws the stacked two-SIM block anchored to the DATA slot.
      *
      * Order matters (rule 5/C9): the element starts and proves drawable before either stock drawing is
      * suppressed. If either suppression fails, the element is removed, the successful skin restored and
      * nothing is left half-attached. The caller marks both views unskinnable so this is not retried.
+     * The block sits on the data slot's own bounds (the second slot is suppressed), matching
+     * [IosReplaceHost]'s one-block overlay.
      */
     private fun createCellCluster(
         plan: IosCellPlan.Dual,
@@ -1079,23 +1082,23 @@ internal class IosIconHost(
         }
 
         // Each half contributes its own plan's content bounds; a 0×0 OPLUS outer must not veto the
-        // cluster, so the outer's own width/height is no longer read here.
+        // cluster. The block and its size are anchored to the DATA slot, never the two-slot union.
         val dataGeometry = glyphBounds(dataView, dataPlan, layer)
         val otherGeometry = glyphBounds(otherView, otherPlan, layer)
-        val union = unionOf(dataGeometry.first, otherGeometry.first)
-        if (union[2] <= 0 || union[3] <= 0) return null
+        val bounds = dataGeometry.first
+        if (bounds[2] <= 0 || bounds[3] <= 0) return null
         val geometry = dataGeometry.second + otherGeometry.second
         val size = if (isMainBar) {
-            Pair(union[2], union[3])
+            Pair(bounds[2], bounds[3])
         } else {
-            sizeOwner.sizeForBlock(union[2], union[3])
+            sizeOwner.sizeForBlock(bounds[2], bounds[3])
         }
         if (size.first <= 0 || size.second <= 0) return null
 
         val element = startElement(IosIconKind.CELL) ?: return null
         val params = FrameLayout.LayoutParams(size.first, size.second).apply {
-            leftMargin = union[0]
-            topMargin = union[1]
+            leftMargin = bounds[0]
+            topMargin = bounds[1]
         }
         val added = try {
             layer.addView(element.ui, params)
@@ -1142,7 +1145,7 @@ internal class IosIconHost(
         )
         record.oemVisibleMask = recordOemMask(record)
         updateGlyphVisibility(record)
-        if (isMainBar) sizeOwner.pinBlock(union[2], union[3])
+        if (isMainBar) sizeOwner.pinBlock(bounds[2], bounds[3])
         return record
     }
 
@@ -1454,15 +1457,6 @@ internal class IosIconHost(
             if (child.visibility == View.VISIBLE && child.width > 0 && child.height > 0) out.add(child)
             collectVisibleSized(child, out)
         }
-    }
-
-    /** The bounding box of two `[left, top, width, height]` measurements. */
-    private fun unionOf(a: IntArray, b: IntArray): IntArray {
-        val left = minOf(a[0], b[0])
-        val top = minOf(a[1], b[1])
-        val right = maxOf(a[0] + a[2], b[0] + b[2])
-        val bottom = maxOf(a[1] + a[3], b[1] + b[3])
-        return intArrayOf(left, top, (right - left).coerceAtLeast(0), (bottom - top).coerceAtLeast(0))
     }
 
     /** True when [view] (or a visible sized descendant) carries drawable content. Read-only. */

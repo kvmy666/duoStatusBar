@@ -198,34 +198,33 @@ internal object IosMapping {
     }
 
     /**
-     * Forced SINGLE with two active SIMs: one row for the data/default SIM, hiding the other visible
-     * slot. The data SIM is the default subscription, or the first active one when the default is not
-     * one of them (the same rule as [dualPlan]). A data SIM that matches zero or several visible slots
-     * rejects the plan instead of guessing.
+     * Forced SINGLE with two active SIMs: one row for the data/default SIM.
+     *
+     * When the other SIM's mapped slot is OEM-visible it is hidden exactly like the dual block's other
+     * row. When that slot is not visible there is no icon to hide, so the row still draws on the data
+     * slot with `hiddenSlot = null` instead of losing the cellular glyph. A data slot that is not
+     * visible, or either SIM matching zero/several slots, rejects the plan instead of guessing.
      */
     private fun forcedSinglePlan(
         active: List<SimSignal>,
         defaultSubId: Int,
         slots: List<CellSlot>
     ): IosCellPlan {
-        if (slots.size != 2 || !slots[0].visible || !slots[1].visible) return IosCellPlan.None
+        if (slots.size != 2) return IosCellPlan.None
         val data = active.firstOrNull { it.subscriptionId == defaultSubId } ?: active.first()
         val other = active.first { it.subscriptionId != data.subscriptionId }
-        val dataMatches = slots.withIndex().filter {
-            it.value.visible && it.value.subId == data.subscriptionId
-        }
-        val otherMatches = slots.withIndex().filter {
-            it.value.visible && it.value.subId == other.subscriptionId
-        }
+        val dataMatches = slots.withIndex().filter { it.value.subId == data.subscriptionId }
+        val otherMatches = slots.withIndex().filter { it.value.subId == other.subscriptionId }
         if (dataMatches.size != 1 || otherMatches.size != 1) return IosCellPlan.None
         val dataSlot = dataMatches[0].index
         val otherSlot = otherMatches[0].index
         if (dataSlot == otherSlot) return IosCellPlan.None
+        if (!dataMatches[0].value.visible) return IosCellPlan.None
         return IosCellPlan.Single(
             dataSlot,
             data.subscriptionId,
             level(data.level),
-            hiddenSlot = otherSlot
+            hiddenSlot = if (otherMatches[0].value.visible) otherSlot else null
         )
     }
 

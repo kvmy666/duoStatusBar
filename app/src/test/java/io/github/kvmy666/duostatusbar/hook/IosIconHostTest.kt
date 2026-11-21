@@ -877,7 +877,7 @@ class IosIconHostTest {
     }
 
     @Test
-    fun `two mobile views draw one stacked cluster over their union`() {
+    fun `two mobile views draw one stacked cluster at the data slot`() {
         val tree = cellTree()
         val created = ArrayList<FakeElement>()
         val host = host(
@@ -898,10 +898,11 @@ class IosIconHostTest {
         assertEquals(3f, visual.cellBars, 0.0001f)
         assertEquals(2f, visual.cellDots, 0.0001f)
 
+        // One block anchored to the DATA slot, not the two-slot union.
         val params = glyph.layoutParams as FrameLayout.LayoutParams
         assertEquals(0, params.leftMargin)
         assertEquals(0, params.topMargin)
-        assertEquals(120, params.width)
+        assertEquals(60, params.width)
         assertEquals(40, params.height)
 
         host.teardown()

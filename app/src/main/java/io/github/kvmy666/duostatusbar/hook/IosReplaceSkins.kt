@@ -246,6 +246,8 @@ internal class IosSiblingSwap(
                 if (image.drawable !== empty) return false
                 addListener()
                 applied = true
+                // Item 0d: the OEM's next push re-blanks this sibling in the same call.
+                IosPushHooks.watchPush(image) { reassert() }
                 true
             } else {
                 if (view.visibility != View.VISIBLE) return true
@@ -302,6 +304,7 @@ internal class IosSiblingSwap(
     fun restore() {
         if (!applied) return
         applied = false
+        (view as? ImageView)?.let { IosPushHooks.unwatchPush(it) }
         removeListener()
         try {
             emptyDrawable?.clearDetachListener()

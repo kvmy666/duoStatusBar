@@ -34,6 +34,9 @@ internal object IosPushHooks {
     /** One swap per leaf instance; the same class is instantiated on home, keyguard and shade. */
     private val swaps = IdentityHashMap<ImageView, IosDrawableSwap>()
 
+    /** One same-call repair action per sibling view (a blanked sibling re-asserts on an OEM push). */
+    private val pushActions = IdentityHashMap<ImageView, () -> Unit>()
+
     /** Tint listeners per view; a host registers the same callback for each record it owns. */
     private val tints = IdentityHashMap<View, MutableList<() -> Unit>>()
 
@@ -51,6 +54,19 @@ internal object IosPushHooks {
     @Synchronized
     fun unwatch(view: ImageView) {
         swaps.remove(view)
+    }
+
+    /** Routes a same-call OEM push on [view] to [action] (a blanked sibling re-asserts). */
+    @Synchronized
+    fun watchPush(view: ImageView, action: () -> Unit) {
+        pushActions[view] = action
+        installOnce()
+    }
+
+    /** Stops running [action] for [view]. Idempotent. */
+    @Synchronized
+    fun unwatchPush(view: ImageView) {
+        pushActions.remove(view)
     }
 
     /** Registers [callback] for the OEM tint writes on [view]. The same instance can be removed later. */
@@ -72,6 +88,10 @@ internal object IosPushHooks {
     /** True when [view] has a drawable swap registered (test seam). */
     internal fun watchedForTest(view: View): Boolean = synchronized(this) { swaps[view] != null }
 
+    /** True when [view] has a same-call push action registered (test seam). */
+    internal fun pushWatchedForTest(view: View): Boolean =
+        synchronized(this) { pushActions[view] != null }
+
     /** Number of tint listeners on [view] (test seam). */
     internal fun tintCountForTest(view: View): Int = synchronized(this) { tints[view]?.size ?: 0 }
 
@@ -87,17 +107,30 @@ internal object IosPushHooks {
     @Synchronized
     internal fun clearForTest() {
         swaps.clear()
+        pushActions.clear()
         tints.clear()
     }
 
     // ----------------------------------------------------------------------------- delivery
 
     private fun deliverForeignPush(view: ImageView) {
-        val swap = synchronized(this) { swaps[view] } ?: return
+        var swap: IosDrawableSwap? = null
+        var action: (() -> Unit)? = null
+        synchronized(this) {
+            swap = swaps[view]
+            action = pushActions[view]
+        }
+        // Each route has its own guard: a failing swap must not stop the sibling's repair, and a
+        // failing repair must not take System UI down.
         try {
-            swap.onForeignPush()
+            swap?.onForeignPush()
         } catch (_: Throwable) {
-            // A push hook must never take System UI down; the pre-draw listener is still armed.
+            // The pre-draw listener is still armed.
+        }
+        try {
+            action?.invoke()
+        } catch (_: Throwable) {
+            // The sibling's pre-draw listener is still armed.
         }
     }
 
