@@ -84,6 +84,28 @@ All source is under `app/src/main/java/io/github/kvmy666/duostatusbar/` unless s
 | Support bot | `report-bot/` | Third-party Telegram support bot (separate from the relay; see §7.6) |
 | Tools | `tools/*.py`, `tools/build-rive-both.sh`, `tools/check-rive-shipped.sh`, `tools/duo-verify.ps1` | Static gates and owner-run device verification |
 
+### 2.1 iOS mode (IOS-B1)
+
+iOS mode is an opt-in replacement for the stock battery/Wi-Fi/cellular icons, built beside Duo rather
+than inside it. The two paths are mutually exclusive: while iOS mode is active, `DuoGuard.stage()`
+resolves `OFF`, `DuoHook` stops and tears down the Duo host, and no Duo element is created. An explicit
+`duo_statusbar_stage` override still wins (override `2` draws Duo and suppresses iOS; `0` kills both).
+When `ios_mode` is `0` (the default) no iOS host exists and the Duo path is unchanged. The iOS surface is
+implemented: `IosRenderers.DRAWING_READY` is `true`, the Rive scene and the Canvas fallback draw the
+same geometry, and a saved ON suppresses a stock drawing only after one renderer has started.
+
+| File | Responsibility |
+|---|---|
+| `hook/IosGuard.kt` | Gate (`active(iosMode, adbOverride)`) and the separate iOS Rive breaker (`duo_statusbar_ios_rive_attempts`, `duo_statusbar_ios_rive_attempt_at`); it reuses `DuoGuard.shouldAllowRive` as pure policy but never shares Duo's counters |
+| `hook/IosIconHost.kt` | Per-surface host (main bar, keyguard bar, shade header), one per bar because the host owns one overlay layer and one attach state; every surface shares one `IosSizeOwner` so extras reuse the home bar's pinned size (M15). Dual SIM is one stacked cluster view over both mobile slots, with a fail-silent restore |
+| `hook/IosSkin.kt` | Leaf-level stock-drawing suppression and exact restore (`ALPHA`, `CLEAR_DRAWABLE`, `INVISIBLE_KEEP_SLOT`); `UNKNOWN` and opaque families use `SKIP` and leave the stock icon untouched |
+| `hook/IosMapping.kt`, `hook/IosVisual.kt` | Pure state mapping (battery/Wi-Fi/cellular, tint, battery state) into one immutable `IosVisual`; no view or resource access |
+| `hook/IosBinder.kt` | The `ios.riv` binding contract: `IOS_PROPERTY_COUNT = 12`; names and table in `docs/ios-rive-contract.md` |
+| `hook/IosRiveView.kt`, `hook/IosCanvasView.kt`, `hook/IosRenderers.kt` | Rive renderer (real `ios.riv`, artboard per kind, internal Canvas fallback) and the Canvas fallback from `IosGeometry`; `DRAWING_READY = true`; the host still leaves a stock icon when neither renderer starts |
+| `ui/IosPreview.kt` | Live 12-frame preview (light/dark, 1/2 SIM, six battery states) using the real `IosCanvasView` and `IosGeometry` |
+| `hook/DuoHook.kt` | Lifecycle integration: creates, refreshes and tears down the iOS hosts, keeps the two modes exclusive, and never routes iOS through the Duo attach path |
+| `hook/Diag.kt` | Additive `module:` line `iosMode=... iosAttempts=...`; existing dump lines are unchanged |
+
 ---
 
 ## 3. Attach sequence (LSPosed load → first pixel)
