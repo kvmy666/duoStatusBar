@@ -501,7 +501,12 @@ internal class IosReplaceHost(
             val plan = if (reading == null) {
                 IosCellPlan.None
             } else {
-                IosMapping.cellPlan(cellSignals(reading), reading.defaultSub, cellSlots(cellIcons))
+                IosMapping.cellPlan(
+                    cellSignals(reading),
+                    reading.defaultSub,
+                    cellSlots(cellIcons),
+                    IosMapping.simDisplay(settings.simDisplay)
+                )
             }
             val signature = cellSignature(plan)
             lastCellPlan = plan
@@ -750,7 +755,8 @@ internal class IosReplaceHost(
     /** Adopts one stock icon with its plan, falling back exactly as the plan says. */
     private fun adoptIcon(kind: IosIconKind, icon: StockIcon, visual: IosVisual): Record? {
         if (icon.view.visibility != View.VISIBLE) return null
-        val transformed = visual.copy(userTransform = userTransformFor(kind))
+        val drawnWidth = drawnWidthFor(kind, icon.view.width, icon.view.height, visual)
+        val transformed = visual.copy(userTransform = userTransformFor(kind, drawnWidth))
         val plan = planForSafe(icon.view)
         return when (plan.mechanism) {
             IosReplaceMechanism.IMAGE_DRAWABLE -> {
@@ -827,7 +833,7 @@ internal class IosReplaceHost(
         // Item 6: capture the colour the system applied to this very icon, then draw with it.
         val oemTint = oemTintOf(image, outer)
         val tinted = visual.withTint(tintFor(image, outer, oemTint))
-        val drawable = IosDrawables.create(kind, tinted, width, height)
+        val drawable = IosDrawables.create(kind, tinted, width, height, relativeSize = true)
         val swap = IosDrawableSwap(
             leaf = image,
             drawable = drawable,
@@ -895,7 +901,7 @@ internal class IosReplaceHost(
 
         val oemTint = oemTintOf(leaf, outer)
         val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
-        val drawable = IosDrawables.create(kind, tinted, width, height)
+        val drawable = IosDrawables.create(kind, tinted, width, height, relativeSize = true)
         // One bounds/offset array per session: the draw hook must not allocate per frame.
         val boundsOut = IntArray(4)
         val offsetOut = IntArray(2)
@@ -966,7 +972,7 @@ internal class IosReplaceHost(
         if (width <= 0 || height <= 0) return null
         val oemTint = oemTintOf(leaf, outer)
         val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
-        val drawable = IosDrawables.create(kind, tinted, width, height)
+        val drawable = IosDrawables.create(kind, tinted, width, height, relativeSize = true)
         val boundsOut = IntArray(4)
         val session = IosDrawSession(
             drawable = drawable,
@@ -1030,13 +1036,16 @@ internal class IosReplaceHost(
         val skin = IosSkin()
         if (!skin.suppress(outer)) return null
         val overlay = IosCanvasView(context, kind)
+        overlay.relativeSize = true
         if (!overlay.start()) {
             skin.restore()
             return null
         }
         val oemTint = oemTintOf(leaf, outer)
         val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
-        overlay.render(tinted)
+        val drawnWidth = drawnWidthFor(kind, size.first, size.second, visual)
+        val transformed = tinted.copy(userTransform = userTransformFor(kind, drawnWidth))
+        overlay.render(transformed)
         // The colour may arrive on the outer (background/foreground tint) or on the leaf.
         val tintViews = listOfNotNull(outer, leaf)
         for (view in tintViews) IosPushHooks.onTint(view, tintCallback)
@@ -1069,7 +1078,7 @@ internal class IosReplaceHost(
             overlay = overlay,
             overlayParams = params,
             siblings = emptyList(),
-            visual = tinted,
+            visual = transformed,
             oemTint = oemTint,
             tintViews = tintViews
         )
@@ -1090,6 +1099,15 @@ internal class IosReplaceHost(
                 record.cellRole = IosCellRole.DATA
                 record.cellSlot = plan.slot
                 record.subId = plan.subId
+                val hiddenSlot = plan.hiddenSlot
+                if (hiddenSlot != null) {
+                    val otherIcon = cellIcons.getOrNull(hiddenSlot)
+                    if (otherIcon == null || !suppressDualOther(record, icon, otherIcon)) {
+                        // Never leave one iOS row beside one stock icon: restore the adopted slot and
+                        // keep BOTH stock icons (rule 5).
+                        dropRecord(record, restore = true)
+                    }
+                }
             }
             is IosCellPlan.Dual -> {
                 val dataIcon = cellIcons.getOrNull(plan.dataSlot) ?: return
@@ -1174,8 +1192,9 @@ internal class IosReplaceHost(
         }
         if (size.first <= 0 || size.second <= 0) return
         val oemTint = oemTintOf(null, dataIcon.view)
-        val visual = (IosMapping.cellVisual(plan, tintFor(null, dataIcon.view, oemTint)) ?: return)
-            .copy(userTransform = userTransformFor(IosIconKind.CELL))
+        val baseVisual = IosMapping.cellVisual(plan, tintFor(null, dataIcon.view, oemTint)) ?: return
+        val drawnWidth = drawnWidthFor(IosIconKind.CELL, size.first, size.second, baseVisual)
+        val visual = baseVisual.copy(userTransform = userTransformFor(IosIconKind.CELL, drawnWidth))
 
         val collapse = collapseSibling(dataIcon.view, otherIcon.view)
         val firstSkin = IosSkin()
@@ -1194,6 +1213,7 @@ internal class IosReplaceHost(
             null
         }
         val overlay = IosCanvasView(context, IosIconKind.CELL)
+        overlay.relativeSize = true
         if (!overlay.start()) {
             firstSkin.restore()
             secondSkin?.restore()
@@ -1288,10 +1308,20 @@ internal class IosReplaceHost(
             is IosCellPlan.Single -> {
                 val target = cellIcons.getOrNull(plan.slot)?.view ?: return false
                 val cellRecords = records.filter { it.kind == IosIconKind.CELL }
-                cellRecords.size == 1 &&
-                    cellRecords[0].outer === target &&
-                    cellRecords[0].cellRole == IosCellRole.DATA &&
-                    cellRecords[0].collapse == null
+                if (cellRecords.size != 1) return false
+                val record = cellRecords[0]
+                if (record.outer !== target || record.cellRole != IosCellRole.DATA) return false
+                val hiddenSlot = plan.hiddenSlot
+                if (hiddenSlot == null) {
+                    record.collapse == null
+                } else {
+                    // A forced single row must still suppress the other mapped slot exactly like Dual.
+                    val other = cellIcons.getOrNull(hiddenSlot)?.view ?: return false
+                    val collapsed = record.collapse?.let { it.isApplied && it.target === other } == true
+                    val skinned = record.clusterOuters.any { it === other } &&
+                        record.clusterSkins.isNotEmpty()
+                    collapsed || skinned
+                }
             }
             is IosCellPlan.Dual -> {
                 val data = cellIcons.getOrNull(plan.dataSlot)?.view ?: return false
@@ -1315,7 +1345,7 @@ internal class IosReplaceHost(
 
     private fun cellSignature(plan: IosCellPlan): String = when (plan) {
         IosCellPlan.None -> "none"
-        is IosCellPlan.Single -> "s:${plan.slot}:${plan.subId}"
+        is IosCellPlan.Single -> "s:${plan.slot}:${plan.subId}:${plan.hiddenSlot ?: "-"}"
         is IosCellPlan.Dual ->
             "d:${plan.dataSlot}:${plan.otherSlot}:${plan.dataSubId}:${plan.otherSubId}"
     }
@@ -1482,11 +1512,59 @@ internal class IosReplaceHost(
         }
     )
 
-    private fun userTransformFor(kind: IosIconKind): IosUserTransform =
-        IosUserTransform.IDENTITY // R2C CONTRACT: replace with per-icon dxPx/scale
+    /**
+     * The user's per-glyph offset/scale at [drawnWidthPx], the glyph's 100 % draw width. Failure is
+     * identity, never a missing glyph. Internal so the settings -> client -> host seam is unit-tested.
+     */
+    internal fun userTransformFor(kind: IosIconKind, drawnWidthPx: Float): IosUserTransform = try {
+        settings.iosTransform(kind, drawnWidthPx)
+    } catch (_: Throwable) {
+        IosUserTransform.IDENTITY
+    }
+
+    /**
+     * The glyph's 100 % width from a stock slot: the [IosGeometry.Relative.sizeFor] inner box of the
+     * slot. A non-positive slot returns 0, so the offset is 0 while a scale still applies.
+     */
+    private fun drawnWidthFor(
+        kind: IosIconKind,
+        width: Int,
+        height: Int,
+        visual: IosVisual
+    ): Float {
+        if (width <= 0 || height <= 0) return 0f
+        return IosGeometry.Relative.sizeFor(
+            kind,
+            width,
+            height,
+            dualCell = visual.cellMode == IosCellMode.DUAL
+        ).first.toFloat()
+    }
+
+    /**
+     * The glyph's 100 % width from a live record. Sources in order: the drawable's stock intrinsic
+     * size, the overlay's pinned layout params, the drawing leaf, the outer. 0 means "unknown", never a
+     * guess and never a layout write (C2).
+     */
+    private fun drawnWidthFor(record: Record, visual: IosVisual): Float {
+        val sources = sequenceOf(
+            record.drawable?.intrinsicWidth to record.drawable?.intrinsicHeight,
+            record.overlay?.layoutParams?.width to record.overlay?.layoutParams?.height,
+            record.leaf?.width to record.leaf?.height,
+            record.outer.width to record.outer.height
+        )
+        for ((width, height) in sources) {
+            if (width != null && height != null && width > 0 && height > 0) {
+                return drawnWidthFor(record.kind, width, height, visual)
+            }
+        }
+        return 0f
+    }
 
     private fun applyVisual(record: Record, visual: IosVisual) {
-        val transformed = visual.copy(userTransform = userTransformFor(record.kind))
+        val transformed = visual.copy(
+            userTransform = userTransformFor(record.kind, drawnWidthFor(record, visual))
+        )
         val changed = record.visual != transformed
         record.visual = transformed
         when (record.mechanism) {

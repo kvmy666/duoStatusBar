@@ -5,6 +5,9 @@ import android.os.BatteryManager
 /** One stock mobile slot in strip order: its readable subscription id and whether it is drawable. */
 internal data class CellSlot(val subId: Int, val visible: Boolean)
 
+/** The user's SIM display choice: automatic, force one row, or force the stacked dual block. */
+internal enum class IosSimDisplay { AUTO, SINGLE, DUAL }
+
 /**
  * The cellular drawing decision for one strip.
  *
@@ -13,7 +16,18 @@ internal data class CellSlot(val subId: Int, val visible: Boolean)
  */
 internal sealed class IosCellPlan {
     object None : IosCellPlan()
-    data class Single(val slot: Int, val subId: Int, val level: Float) : IosCellPlan()
+
+    /**
+     * One SIM row. [hiddenSlot] is set only when a forced-SINGLE display collapses the other stock
+     * slot (the host suppresses it exactly like the dual block's other row).
+     */
+    data class Single(
+        val slot: Int,
+        val subId: Int,
+        val level: Float,
+        val hiddenSlot: Int? = null
+    ) : IosCellPlan()
+
     data class Dual(
         val dataSlot: Int,
         val otherSlot: Int,
@@ -35,6 +49,16 @@ internal sealed class IosCellPlan {
  * Duo's readers (IOS-INV §3.5), so the iOS glyph agrees with the system.
  */
 internal object IosMapping {
+
+    /**
+     * The stored `simDisplay` string; anything unrecognised is [IosSimDisplay.AUTO], so a stale or
+     * missing provider value cannot change the automatic decision.
+     */
+    fun simDisplay(value: String): IosSimDisplay = when (value.trim().lowercase()) {
+        "single" -> IosSimDisplay.SINGLE
+        "dual" -> IosSimDisplay.DUAL
+        else -> IosSimDisplay.AUTO
+    }
 
     /** Apple's published-in-practice low threshold; the fallback when the system value is unreadable. */
     const val FALLBACK_LOW_THRESHOLD = 20
@@ -136,11 +160,17 @@ internal object IosMapping {
      * The stock views expose only their own SIM id, so a plan is only produced when the slots and the
      * active subscriptions agree exactly; any doubt resolves to [IosCellPlan.None] and the host leaves
      * both stock icons in place (rule 5). [slots] is in strip order and [signals] is ordered by slot.
+     *
+     * [display] is the user's SIM choice. [IosSimDisplay.AUTO] is exactly the automatic decision;
+     * [IosSimDisplay.SINGLE] forces one row (and hides the other mapped slot when two SIMs are active);
+     * [IosSimDisplay.DUAL] keeps the stacked block when two signals exist and otherwise falls back to
+     * the one-row plan, because a second SIM cannot be invented.
      */
     fun cellPlan(
         signals: List<SimSignal>,
         defaultSubId: Int,
-        slots: List<CellSlot>
+        slots: List<CellSlot>,
+        display: IosSimDisplay = IosSimDisplay.AUTO
     ): IosCellPlan {
         if (slots.isEmpty()) return IosCellPlan.None
         if (signals.isEmpty()) {
@@ -158,9 +188,45 @@ internal object IosMapping {
 
         return when (active.size) {
             1 -> singlePlan(active[0], slots)
-            2 -> dualPlan(active, defaultSubId, slots)
+            2 -> when (display) {
+                IosSimDisplay.SINGLE -> forcedSinglePlan(active, defaultSubId, slots)
+                IosSimDisplay.AUTO,
+                IosSimDisplay.DUAL -> dualPlan(active, defaultSubId, slots)
+            }
             else -> IosCellPlan.None
         }
+    }
+
+    /**
+     * Forced SINGLE with two active SIMs: one row for the data/default SIM, hiding the other visible
+     * slot. The data SIM is the default subscription, or the first active one when the default is not
+     * one of them (the same rule as [dualPlan]). A data SIM that matches zero or several visible slots
+     * rejects the plan instead of guessing.
+     */
+    private fun forcedSinglePlan(
+        active: List<SimSignal>,
+        defaultSubId: Int,
+        slots: List<CellSlot>
+    ): IosCellPlan {
+        if (slots.size != 2 || !slots[0].visible || !slots[1].visible) return IosCellPlan.None
+        val data = active.firstOrNull { it.subscriptionId == defaultSubId } ?: active.first()
+        val other = active.first { it.subscriptionId != data.subscriptionId }
+        val dataMatches = slots.withIndex().filter {
+            it.value.visible && it.value.subId == data.subscriptionId
+        }
+        val otherMatches = slots.withIndex().filter {
+            it.value.visible && it.value.subId == other.subscriptionId
+        }
+        if (dataMatches.size != 1 || otherMatches.size != 1) return IosCellPlan.None
+        val dataSlot = dataMatches[0].index
+        val otherSlot = otherMatches[0].index
+        if (dataSlot == otherSlot) return IosCellPlan.None
+        return IosCellPlan.Single(
+            dataSlot,
+            data.subscriptionId,
+            level(data.level),
+            hiddenSlot = otherSlot
+        )
     }
 
     private fun singlePlan(only: SimSignal, slots: List<CellSlot>): IosCellPlan {

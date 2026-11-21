@@ -51,6 +51,7 @@ internal object IosGeometry {
          * The cap is the inactive grey, i.e. the same colour as the uncharged remainder. The owner
          * rule is 0.50; confirmed by the partial-charge refs 1/5 and the dual dark capture. The light
          * 100 % reference draws the cap at full ink (UNVERIFIED exception, see `docs/ios-geometry.md`).
+         * The runtime applies full ink at 100% per the PM rule while the design scene stays 0.50.
          */
         const val CAP_ALPHA = 0.50f
 
@@ -320,8 +321,9 @@ internal object IosGeometry {
      * [Cell.DUAL_BLOCK_H] = 102.8 (1.028 of the battery body) because the dual bar heights are
      * unchanged, and the 0.76 scale is calibrated against the ref-7 on-device 1.377 ratio, not this
      * envelope. The cell scales are medium confidence (the logging phone showed the known
-     * side-by-side dual bug). These constants are data only: the host applies them, the renderer and
-     * the drawable do not.
+     * side-by-side dual bug). These constants are the per-kind slot ratios: the host turns the inset on
+     * via `relativeSize`, and the drawable/view applies it inside the stock slot (never a layout
+     * change).
      */
     object Relative {
         /** Clock digit cap / battery body height (ref 6: 30/31 px, +/-3 %). */

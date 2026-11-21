@@ -28,6 +28,13 @@ internal class IosCanvasView(
     private var started = false
     private var renderActive = true
 
+    /**
+     * Inset the glyph to [IosGeometry.Relative.sizeFor] inside this view's bounds. The view's size and
+     * layout never change (C2); only the drawing box shrinks and centres. Off by default so previews and
+     * direct renderers keep the full-slot draw.
+     */
+    var relativeSize: Boolean = false
+
     init {
         setWillNotDraw(false)
         isClickable = false
@@ -68,6 +75,24 @@ internal class IosCanvasView(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val v = visual ?: return
+        if (relativeSize) {
+            val (innerW, innerH) = IosGeometry.Relative.sizeFor(
+                kind,
+                width,
+                height,
+                dualCell = v.cellMode == IosCellMode.DUAL
+            )
+            if (innerW > 0 && innerH > 0) {
+                val saved = canvas.save()
+                try {
+                    canvas.translate((width - innerW) / 2f, (height - innerH) / 2f)
+                    IosGlyphRenderer.draw(canvas, kind, v, innerW, innerH)
+                } finally {
+                    canvas.restoreToCount(saved)
+                }
+                return
+            }
+        }
         IosGlyphRenderer.draw(canvas, kind, v, width, height)
     }
 }

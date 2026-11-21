@@ -160,7 +160,9 @@ internal object IosGlyphRenderer {
             for (i in 2 until points.size step 2) lineTo(points[i], points[i + 1])
             close()
         }
-        fill.color = withAlpha(bodyFill, b.CAP_ALPHA, alpha)
+        // PM rule (2026-11-22): at a full battery the cap is full ink, not the inactive half alpha.
+        val capFactor = if (v.batteryLevel >= 1f) 1f else b.CAP_ALPHA
+        fill.color = withAlpha(bodyFill, capFactor, alpha)
         canvas.drawPath(cap, fill)
 
         if (v.boltOpacity > 0f) {

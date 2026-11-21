@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.PixelFormat
 import android.graphics.PorterDuff
-import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import kotlin.math.roundToInt
 
@@ -27,7 +26,8 @@ internal abstract class IosGlyphDrawable(
     initialVisual: IosVisual?,
     private var stockWidth: Int,
     private var stockHeight: Int,
-    initialUserTransform: IosUserTransform = IosUserTransform()
+    initialUserTransform: IosUserTransform = IosUserTransform(),
+    private val relativeSize: Boolean = false
 ) : Drawable() {
 
     private var visual: IosVisual? = initialVisual
@@ -119,19 +119,34 @@ internal abstract class IosGlyphDrawable(
         val saved = canvas.save()
         try {
             canvas.translate(b.left.toFloat(), b.top.toFloat())
-            renderInto(canvas, v, b)
+            if (relativeSize) {
+                // The per-kind inset is an INSET inside the existing bounds (C2): the intrinsic size,
+                // bounds and layout are untouched; only the canvas origin and the renderer box shrink.
+                val (innerW, innerH) = IosGeometry.Relative.sizeFor(
+                    kind,
+                    b.width(),
+                    b.height(),
+                    dualCell = v.cellMode == IosCellMode.DUAL
+                )
+                if (innerW > 0 && innerH > 0) {
+                    canvas.translate((b.width() - innerW) / 2f, (b.height() - innerH) / 2f)
+                    renderInto(canvas, v, innerW, innerH)
+                    return
+                }
+            }
+            renderInto(canvas, v, b.width(), b.height())
         } finally {
             canvas.restoreToCount(saved)
         }
     }
 
-    private fun renderInto(canvas: Canvas, v: IosVisual, b: Rect) {
+    private fun renderInto(canvas: Canvas, v: IosVisual, width: Int, height: Int) {
         IosGlyphRenderer.draw(
             canvas,
             kind,
             v,
-            b.width(),
-            b.height(),
+            width,
+            height,
             alpha = drawableAlpha / 255f,
             overrideTint = capturedTint
         )
@@ -204,24 +219,33 @@ internal class IosBatteryDrawable(
     initialVisual: IosVisual?,
     intrinsicWidth: Int,
     intrinsicHeight: Int,
-    userTransform: IosUserTransform = IosUserTransform()
-) : IosGlyphDrawable(IosIconKind.BATTERY, initialVisual, intrinsicWidth, intrinsicHeight, userTransform)
+    userTransform: IosUserTransform = IosUserTransform(),
+    relativeSize: Boolean = false
+) : IosGlyphDrawable(
+    IosIconKind.BATTERY, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize
+)
 
 /** The Wi-Fi glyph as a drawable; see [IosGlyphDrawable]. */
 internal class IosWifiDrawable(
     initialVisual: IosVisual?,
     intrinsicWidth: Int,
     intrinsicHeight: Int,
-    userTransform: IosUserTransform = IosUserTransform()
-) : IosGlyphDrawable(IosIconKind.WIFI, initialVisual, intrinsicWidth, intrinsicHeight, userTransform)
+    userTransform: IosUserTransform = IosUserTransform(),
+    relativeSize: Boolean = false
+) : IosGlyphDrawable(
+    IosIconKind.WIFI, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize
+)
 
 /** The cellular glyph as a drawable; see [IosGlyphDrawable]. */
 internal class IosCellDrawable(
     initialVisual: IosVisual?,
     intrinsicWidth: Int,
     intrinsicHeight: Int,
-    userTransform: IosUserTransform = IosUserTransform()
-) : IosGlyphDrawable(IosIconKind.CELL, initialVisual, intrinsicWidth, intrinsicHeight, userTransform)
+    userTransform: IosUserTransform = IosUserTransform(),
+    relativeSize: Boolean = false
+) : IosGlyphDrawable(
+    IosIconKind.CELL, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize
+)
 
 /** Creates the drawable for [kind], from the same renderer the Canvas fallback uses. */
 internal object IosDrawables {
@@ -230,10 +254,14 @@ internal object IosDrawables {
         visual: IosVisual?,
         intrinsicW: Int,
         intrinsicH: Int,
-        userTransform: IosUserTransform = IosUserTransform()
+        userTransform: IosUserTransform = IosUserTransform(),
+        relativeSize: Boolean = false
     ): IosGlyphDrawable = when (kind) {
-        IosIconKind.BATTERY -> IosBatteryDrawable(visual, intrinsicW, intrinsicH, userTransform)
-        IosIconKind.WIFI -> IosWifiDrawable(visual, intrinsicW, intrinsicH, userTransform)
-        IosIconKind.CELL -> IosCellDrawable(visual, intrinsicW, intrinsicH, userTransform)
+        IosIconKind.BATTERY ->
+            IosBatteryDrawable(visual, intrinsicW, intrinsicH, userTransform, relativeSize)
+        IosIconKind.WIFI ->
+            IosWifiDrawable(visual, intrinsicW, intrinsicH, userTransform, relativeSize)
+        IosIconKind.CELL ->
+            IosCellDrawable(visual, intrinsicW, intrinsicH, userTransform, relativeSize)
     }
 }

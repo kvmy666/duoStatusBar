@@ -1181,6 +1181,9 @@ internal class IosIconHost(
             safeTeardown(canvas)
             return null
         }
+        // Production parity with the in-place drawables: every real glyph is inset to the per-kind
+        // stock-slot scale. The element's view/layout is untouched (C2).
+        (canvas as? IosCanvasView)?.relativeSize = true
         return canvas
     }
 
@@ -1293,7 +1296,12 @@ internal class IosIconHost(
         val slots = cellSlots(cellViews)
         lastCellVisibleMask = cellMask(slots)
         if (reading == null) return IosCellPlan.None
-        return IosMapping.cellPlan(cellSignals(reading), reading.defaultSub, slots)
+        return IosMapping.cellPlan(
+            cellSignals(reading),
+            reading.defaultSub,
+            slots,
+            IosMapping.simDisplay(settings.simDisplay)
+        )
     }
 
     private fun cellSignals(reading: CellReading): List<SimSignal> =
@@ -1306,13 +1314,41 @@ internal class IosIconHost(
     }
 
     /**
+     * The per-icon user transform for [record] at its 100 % draw width. The element's own bounds are
+     * preferred; before a layout pass, the first stock view stands in. A missing size is identity.
+     */
+    private fun userTransformFor(record: IosGlyphRecord, visual: IosVisual): IosUserTransform {
+        val ui = record.element.ui
+        var width = ui.width
+        var height = ui.height
+        if (width <= 0 || height <= 0) {
+            val stock = record.stocks.firstOrNull()
+            width = stock?.width ?: 0
+            height = stock?.height ?: 0
+        }
+        if (width <= 0 || height <= 0) return IosUserTransform.IDENTITY
+        val drawnWidth = IosGeometry.Relative.sizeFor(
+            record.kind,
+            width,
+            height,
+            dualCell = visual.cellMode == IosCellMode.DUAL
+        ).first.toFloat()
+        return try {
+            settings.iosTransform(record.kind, drawnWidth)
+        } catch (_: Throwable) {
+            IosUserTransform.IDENTITY
+        }
+    }
+
+    /**
      * Writes one snapshot, waking an idle renderer only when the snapshot actually changed (C8). An
      * identical snapshot is re-asserted only while the renderer is already running, so a paused renderer
      * is never woken for no visual change.
      */
     private fun applyVisual(record: IosGlyphRecord, visual: IosVisual) {
-        val changed = record.lastVisual != visual
-        if (changed) record.lastVisual = visual
+        val transformed = visual.copy(userTransform = userTransformFor(record, visual))
+        val changed = record.lastVisual != transformed
+        if (changed) record.lastVisual = transformed
         // A hidden glyph (keyguard/shade while not visible) stores the snapshot without waking a
         // renderer; updateGlyphVisibility repaints it when the element becomes VISIBLE again.
         if (record.element.ui.visibility == View.GONE) return
@@ -1322,9 +1358,9 @@ internal class IosIconHost(
                 setElementsActive(true)
             }
             if (renderersActive) scheduleIdleStop()
-            record.element.render(visual)
+            record.element.render(transformed)
         } else if (renderersActive) {
-            record.element.render(visual)
+            record.element.render(transformed)
         }
     }
 
