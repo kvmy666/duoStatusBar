@@ -27,10 +27,11 @@ internal abstract class IosGlyphDrawable(
     initialVisual: IosVisual?,
     private var stockWidth: Int,
     private var stockHeight: Int,
-    userTransform: IosUserTransform = IosUserTransform()
+    initialUserTransform: IosUserTransform = IosUserTransform()
 ) : Drawable() {
 
     private var visual: IosVisual? = initialVisual
+    private var fallbackUserTransform: IosUserTransform = initialUserTransform
     private var drawableAlpha = 255
     private var capturedTint: Int? = null
     private var visible = true
@@ -38,13 +39,15 @@ internal abstract class IosGlyphDrawable(
 
     /**
      * The user's per-glyph offset/scale. The identity value draws exactly the default pixels; a real
-     * change redraws. It is applied inside the drawable's bounds and never writes the layout or
-     * intrinsic size (C2).
+     * change redraws. The renderer applies it inside the drawable's bounds and never writes the
+     * layout or intrinsic size (C2). The live value is carried on [IosVisual]; the constructor/setter
+     * value is the fallback for a drawable with no visual snapshot.
      */
-    var userTransform: IosUserTransform = userTransform
+    var userTransform: IosUserTransform
+        get() = visual?.userTransform ?: fallbackUserTransform
         set(value) {
-            if (field == value) return
-            field = value
+            fallbackUserTransform = value
+            visual = visual?.copy(userTransform = value)
             invalidateSelf()
         }
 
@@ -111,31 +114,11 @@ internal abstract class IosGlyphDrawable(
         val b = bounds
         if (b.width() <= 0 || b.height() <= 0) return
 
-        val t = sanitizedTransform()
-        if (t.dxPx == 0f && t.scale == 1f) {
-            // Identity: exactly the default draw path (no extra save/clip), so the pixels are
-            // bit-identical to a drawable without a user transform.
-            val saved = canvas.save()
-            canvas.translate(b.left.toFloat(), b.top.toFloat())
-            try {
-                renderInto(canvas, v, b)
-            } finally {
-                canvas.restoreToCount(saved)
-            }
-            return
-        }
-        if (t.scale <= 0f) return
-
+        // The transform is owned by IosGlyphRenderer (one application, after the CONTAIN fit). The
+        // drawable only moves the canvas to its bounds so the renderer's width/height are this box.
         val saved = canvas.save()
         try {
             canvas.translate(b.left.toFloat(), b.top.toFloat())
-            canvas.clipRect(0f, 0f, b.width().toFloat(), b.height().toFloat())
-            // Canvas pre-concatenates (M' = M * X; see Matrix.preTranslate/preScale), so a
-            // translate(dx) issued BEFORE this pivot scale() is applied in device space and is not
-            // multiplied by the scale: dx stays independent of t.scale. Swapping the two calls makes
-            // the 0.5x shift 3 px instead of 6 px (regression pinned by IosDrawablesTest).
-            canvas.translate(t.dxPx, 0f)
-            canvas.scale(t.scale, t.scale, b.width() / 2f, b.height() / 2f)
             renderInto(canvas, v, b)
         } finally {
             canvas.restoreToCount(saved)
@@ -152,14 +135,6 @@ internal abstract class IosGlyphDrawable(
             alpha = drawableAlpha / 255f,
             overrideTint = capturedTint
         )
-    }
-
-    /** Non-finite values fall back to the identity component; a non-positive scale is kept. */
-    private fun sanitizedTransform(): IosUserTransform {
-        val t = userTransform
-        val dx = if (t.dxPx.isFinite()) t.dxPx else 0f
-        val scale = if (t.scale.isFinite()) t.scale else 1f
-        return IosUserTransform(dx, scale)
     }
 
     override fun getIntrinsicWidth(): Int =

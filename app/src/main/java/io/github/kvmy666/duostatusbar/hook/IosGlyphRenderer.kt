@@ -77,20 +77,34 @@ internal object IosGlyphRenderer {
         val dx = (width - artboardW * scale) / 2f
         val dy = (height - artboardH * scale) / 2f
 
+        // Sanitise here so both consumers are safe: non-finite components fall back to identity, and
+        // a non-positive scale draws nothing. A NaN/infinite visual must never reach Canvas.
+        val rawUser = visual.userTransform
+        val user = IosUserTransform(
+            dxPx = if (rawUser.dxPx.isFinite()) rawUser.dxPx else 0f,
+            scale = if (rawUser.scale.isFinite()) rawUser.scale else 1f
+        )
+        if (user.scale <= 0f) return
+
         val saved = canvas.save()
-        canvas.translate(dx, dy)
-        canvas.scale(scale, scale)
-        // R2C user transform: applied after the CONTAIN fit so identity is byte-for-byte the old draw.
-        // The scale is centred on the artboard; dxPx is a device-pixel shift. The drawing is still in
-        // artboard units, so divide by both the fit scale and the user scale to keep it in device pixels.
-        val user = visual.userTransform
-        if (user.scale != 1f) {
-            canvas.scale(user.scale, user.scale, artboardW / 2f, artboardH / 2f)
-        }
-        if (user.dxPx != 0f) {
-            canvas.translate(user.dxPx / (scale * user.scale), 0f)
-        }
         try {
+            // Only a real transform needs a clip; identity runs exactly the old draw path (no extra
+            // save/clip). The box is this draw call's width x height, i.e. the drawable/view bounds.
+            if (user.dxPx != 0f || user.scale != 1f) {
+                canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
+            }
+            canvas.translate(dx, dy)
+            canvas.scale(scale, scale)
+            // User transform, applied once here after the CONTAIN fit so identity is byte-for-byte
+            // the old draw. The scale is centred on the artboard; dxPx is a device-pixel shift, so
+            // divide by both the fit scale and the user scale to keep the shift in device pixels
+            // (independent of the fit and of the user scale).
+            if (user.scale != 1f) {
+                canvas.scale(user.scale, user.scale, artboardW / 2f, artboardH / 2f)
+            }
+            if (user.dxPx != 0f) {
+                canvas.translate(user.dxPx / (scale * user.scale), 0f)
+            }
             when (kind) {
                 IosIconKind.BATTERY -> drawBattery(canvas, visual, alpha, overrideTint)
                 IosIconKind.WIFI -> drawWifi(canvas, visual, alpha, overrideTint)

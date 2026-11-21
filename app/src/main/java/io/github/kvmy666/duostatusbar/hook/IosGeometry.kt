@@ -369,15 +369,3 @@ internal object IosGeometry {
         }
     }
 }
-
-/**
- * Per-user placement offset and scale for an in-place iOS glyph.
- *
- * [dxPx] is a device-pixel horizontal shift applied after scaling, so it is independent of [scale].
- * [scale] is applied around the drawable's bounds centre. The drawable clips the result to its own
- * bounds and never writes its layout or intrinsic size (C2).
- *
- * R2C declares the same type for its settings model; the PM merge dedupes the two declarations, so
- * keep this exact signature.
- */
-internal data class IosUserTransform(val dxPx: Float = 0f, val scale: Float = 1f)
