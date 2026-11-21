@@ -11,6 +11,7 @@ import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Display
 import android.view.Surface
 import android.view.View
@@ -89,6 +90,29 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private var app: Context? = null
     private var host: DuoIconHost? = null
 
+    /**
+     * The iOS replacement hosts, separate from [host] because the two modes are mutually exclusive
+     * (rule 7): when iOS mode is on, `DuoGuard.stage()` is OFF and no Duo element exists at all.
+     *
+     * The runtime is now the in-place replacement host ([IosReplaceHost]): it draws inside the stock
+     * battery/Wi-Fi/cellular views and creates no Rive layer. The host is single-surface
+     * (`isAttached`/one overlay layer), so the main bar, the keyguard bar and the shade header each get
+     * their own host. All of them share [iosSizeOwner] so every surface draws the home bar's glyph size
+     * (M15).
+     */
+    private var iosMainHost: IosReplaceHost? = null
+    private val iosExtraHosts = HashMap<String, IosReplaceHost>()
+
+    /** One size owner for the main and extra iOS bars, so the keyguard/shade glyph matches the home bar (M15). */
+    private val iosSizeOwner = IosSizeOwner()
+
+    /** IOS-LAG: at most one extra-surface attach attempt per [IOS_EXTRA_ATTACH_MIN_MS]. */
+    private var lastIosExtraAttachAt = 0L
+
+    /** The shade header whose strip was not attachable, and when, so it is retried only after 5 s. */
+    private var iosHeaderFailed: View? = null
+    private var iosHeaderFailedAt = 0L
+
     /** The orientation whose settings are currently applied, so a config change can switch sets. */
     private var appliedOrientation = Configuration.ORIENTATION_UNDEFINED
 
@@ -153,6 +177,31 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val stage = guard.stage()
             // C10: an adb override pinning 0 is a real "off", never an unreachable provider.
             val adbOverride = guard.override() != null
+            // iOS mode owns its own lifecycle: `DuoGuard.stage()` is OFF while it is on, so the normal
+            // OFF/TEARDOWN path would tear the iOS skin down again. The adb override still wins (C10).
+            val ios = IosGuard.active(DuoSettingsClient.lastRead()?.iosMode == true, guard.override())
+            if (ios) {
+                logOnce.once("settings-ios-on") {
+                    L.i("settings apply: iOS mode on - Duo element suppressed")
+                }
+                // Mutual exclusivity (rule 7): no Duo drawing while iOS owns the bar.
+                monitor?.stop()
+                monitor = null
+                host?.teardown()
+                val iosSettings = DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx)
+                val iosMain = ensureIosMain(ctx)
+                iosMain.refreshSettings(iosSettings)
+                installHooksOnce()
+                statusBarRoot?.let { iosMain.attach(it) }
+                shadeRoot?.let { attachExtraBars(it) }
+                iosRefreshAll()
+                settingsRereadAttempt = 0
+                reporter.report(ctx, stage, iosSettings)
+                return@guard
+            }
+            // Leaving iOS mode restores its stock icons before the Duo path runs. When no iOS host was
+            // ever created this is a no-op, so the existing path stays byte-identical.
+            if (iosMainHost != null || iosExtraHosts.isNotEmpty()) iosTeardown()
             val action = settingsApplyAction(
                 stage,
                 adbOverride,
@@ -183,6 +232,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     monitor?.stop()
                     monitor = null
                     host?.teardown()
+                    // An OFF/Duo-disabled state always restores the iOS skin too (idempotent).
+                    iosTeardown()
                 }
                 // Switched on live: install the full boot hook set first, then attach. Attaching only
                 // the main bar left the shade/vendor/tint/orientation hooks missing until a restart.
@@ -256,6 +307,101 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun ensureHost(ctx: Context): DuoIconHost {
         host?.let { return it }
         return DuoIconHost(ctx).also { host = it }
+    }
+
+    /** The main-bar iOS host for this process, created on first use (shares [iosSizeOwner], M15). */
+    private fun ensureIosMain(ctx: Context): IosReplaceHost =
+        iosMainHost ?: IosReplaceHost(
+            ctx,
+            classLoader = lp.classLoader,
+            sizeOwner = iosSizeOwner,
+            isMainBar = true
+        ).also { iosMainHost = it }
+
+    /**
+     * One iOS host per extra surface (keyguard bar, shade header), all sharing [iosSizeOwner]. A separate
+     * host is required because [IosReplaceHost] owns one overlay layer and one `isAttached` state.
+     */
+    private fun ensureIosExtra(ctx: Context, surface: String): IosReplaceHost =
+        iosExtraHosts.getOrPut(surface) {
+            IosReplaceHost(
+                ctx,
+                classLoader = lp.classLoader,
+                sizeOwner = iosSizeOwner,
+                isMainBar = false
+            )
+        }
+
+    /**
+     * The OnePlus vendor QS cluster, handed to the iOS shade-header host.
+     *
+     * The mode check uses only the cached settings snapshot and the adb override, and creates no host
+     * when iOS is off, so the Duo path is untouched on every non-iOS boot.
+     */
+    private fun attachOnePlusIos(cluster: ViewGroup, battery: View?, source: String): Boolean {
+        val ctx = app ?: cluster.context
+        if (DuoSettingsClient.lastRead()?.iosMode != true) return false
+        if (!iosModeActive(ctx)) return false
+        return try {
+            ensureIosExtra(ctx, "oneplus qs").attachCluster("oneplus qs", cluster, battery, source)
+        } catch (t: Throwable) {
+            logOnce.once("ios-oneplus-attach") {
+                L.w("oneplus qs: iOS attach failed (${t.javaClass.simpleName}: ${t.message})")
+            }
+            false
+        }
+    }
+
+    /**
+     * Whether the iOS skin should own the bar right now. Reads only the cached settings snapshot and the
+     * adb override, so the Duo path takes no extra provider read when the mode is off (C10/C11). The
+     * override always wins: override `2` with iOS mode on means Duo draws and iOS stays suppressed.
+     */
+    private fun iosModeActive(ctx: Context): Boolean {
+        if (DuoSettingsClient.lastRead()?.iosMode != true) return false
+        return IosGuard.active(true, DuoGuard(ctx).override())
+    }
+
+    /** Repaints every live iOS host. No-op when the mode is off and no host was ever created. */
+    private fun iosRefreshAll() {
+        iosMainHost?.refresh()
+        iosExtraHosts.values.forEach { it.refresh() }
+    }
+
+    /**
+     * Tears every iOS host down and restores every replaced stock drawing. Idempotent:
+     * `IosReplaceHost.teardown` is itself idempotent and the maps are cleared, so a second call does
+     * nothing.
+     */
+    private fun iosTeardown() {
+        iosMainHost?.teardown()
+        iosMainHost = null
+        iosExtraHosts.values.forEach { it.teardown() }
+        iosExtraHosts.clear()
+    }
+
+    /** Installs the boot hook set once per process. Shared by the Duo and iOS enable paths. */
+    private fun installHooksOnce() {
+        if (!hooksInstalled.compareAndSet(false, true)) return
+        hookShadeHeader()
+        // OnePlus keeps the visible QS cluster outside the generic ShadeHeaderController surface.
+        // These vendor hooks hand that cluster over directly; hookShadeHeader above stays the
+        // fallback for every other ROM and for a build where the vendor classes change.
+        OnePlusShadeHooks(
+            lp,
+            { host },
+            { cluster, battery, source -> attachOnePlusIos(cluster, battery, source) }
+        ).install()
+        hookShadeExpansion()
+        hookStatusIconContainer()
+        hookBarAppearance()
+        hookFlashlight()
+        hookScreenshot()
+        hookKeyguardUnlock()
+        // The settings receiver is already registered in start(), before this gate, so a restart
+        // request still arrives when the module reads as off. Orientation is installed here, once
+        // we know a rotation might need to attach the other set.
+        hookOrientation()
     }
 
     /**
@@ -335,7 +481,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         if (shadeRoot != null) return
         shadeRoot = view
         L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
-        if (monitor != null) {
+        if (monitor != null || iosMainHost != null) {
             attachExtraBars(view)
             addShadeLayoutListener(view)
         }
@@ -381,6 +527,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         L.guard("DuoHook enable #$attempt") {
             val guard = DuoGuard(ctx)
             val stage = guard.stage()
+            // iOS mode is read from the cached snapshot; with the mode off this is false and every
+            // branch below is the untouched Duo path.
+            val ios = iosModeActive(ctx)
             if (attempt == 0) {
                 // Heartbeat before the gate: it is how the app tells "LSPosed never injected the module"
                 // apart from "the module ran but is switched off". Two signals: a Settings.Global stamp,
@@ -392,7 +541,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     DuoSettingsClient.reportFallback(ctx, "")
                 }
             }
-            if (stage == DuoGuard.OFF) {
+            if (stage == DuoGuard.OFF && !ios) {
                 // Retry only while the provider itself was unreachable; a real "off" answer is final.
                 // An unreachable read looks like "off", so it must not be treated as the other
                 // orientation being off too — that would skip the hooks and never retry.
@@ -415,26 +564,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 }
             }
             L.i("application ready: ${ctx.packageName} (stage $stage)")
-            ensureHost(ctx)
-            if (hooksInstalled.compareAndSet(false, true)) {
-                hookShadeHeader()
-                // OnePlus keeps the visible QS cluster outside the generic ShadeHeaderController surface.
-                // These vendor hooks hand that cluster over directly; hookShadeHeader above stays the
-                // fallback for every other ROM and for a build where the vendor classes change.
-                OnePlusShadeHooks(lp) { host }.install()
-                hookShadeExpansion()
-                hookStatusIconContainer()
-                hookBarAppearance()
-                hookFlashlight()
-                hookScreenshot()
-                hookKeyguardUnlock()
-                // The settings receiver is already registered in start(), before this gate, so a restart
-                // request still arrives when the module reads as off. Orientation is installed here, once
-                // we know a rotation might need to attach the other set.
-                hookOrientation()
-            }
+            if (ios) L.i("ios mode on - Duo element suppressed")
+            if (!ios) ensureHost(ctx)
+            installHooksOnce()
             // The window may already have been captured by the early addView hook; attach now.
-            if (stage == DuoGuard.OFF) {
+            if (!ios && stage == DuoGuard.OFF) {
                 L.i("this orientation is off - waiting to apply the other orientation")
             } else {
                 statusBarRoot?.let { scheduleAttach(attempt = 0) }
@@ -665,6 +799,25 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // Prefer the Application, but fall back to the bar window's own context: on a ROM where
                 // the module is injected late the Application may never have been captured.
                 val ctx = app ?: root.context
+                if (iosModeActive(ctx)) {
+                    // iOS has its own lifecycle. If the drawing is unavailable, `attach` returns false
+                    // and touches nothing, so a false result is the expected state - never retry it and
+                    // never report it as a Duo attach failure.
+                    val iosMain = ensureIosMain(ctx)
+                    iosMain.attach(root)
+                    shadeRoot?.let { shade ->
+                        attachExtraBars(shade)
+                        addShadeLayoutListener(shade)
+                    }
+                    iosMain.refreshSettings(
+                        DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx)
+                    )
+                    iosMain.refresh()
+                    logOnce.once("ios-attach") {
+                        L.i("iOS attach attempt $attempt (Duo element suppressed)")
+                    }
+                    return@guard
+                }
                 val attached = ensureHost(ctx).attach(root)
                 if (attached) {
                     if (monitor == null) {
@@ -958,6 +1111,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     L.guard("DuoHook shade settle") {
                         host?.reapplyHiding()
                         shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                        shadeHeader?.let {
+                            if (iosModeActive(app ?: it.context) || iosMainHost != null) {
+                                attachIosShadeHeader(it)
+                            }
+                        }
                         host?.showSurfaceOwner()
                         // Snapshot the header's layout while the shade is open. The app-only dump
                         // happens after the shade closed, by which point these bounds are gone
@@ -981,6 +1139,23 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * why the lock screen and the shade looked untouched until they were handled.
      */
     private fun attachExtraBars(shade: View) {
+        // iOS owns the bar in its own mode; each surface gets its own host, all sharing one size owner.
+        val iosCtx = app ?: shade.context
+        if (iosModeActive(iosCtx)) {
+            // The shade fires a layout pass on every frame. Re-attaching a live host tears it down and
+            // rebuilds its Rive views each pass (global-ref exhaustion -> SIGABRT, iOS-LAG), so only a
+            // dead attachment is replaced. The replacement/rotation path still runs when this is false.
+            val now = SystemClock.uptimeMillis()
+            if (now - lastIosExtraAttachAt < IOS_EXTRA_ATTACH_MIN_MS) return
+            lastIosExtraAttachAt = now
+            val kg = ensureIosExtra(iosCtx, "keyguard bar")
+            if (!kg.attachedIn(shade)) kg.attachSurface("keyguard bar", shade, "system_icons")
+            val header = shadeHeader
+            val headerHost = ensureIosExtra(iosCtx, "shade header")
+            val headerAttached = header != null && attachIosShadeHeader(header)
+            if (!headerAttached && !headerHost.attachedIn(shade)) attachIosShadeWindow(shade)
+            return
+        }
         val host = host
         if (host == null) {
             ShadeProbe.logOnce("shadeProbe:attachExtraBars:noHost", "attachExtraBars host=null (main bar not ready)")
@@ -1007,6 +1182,72 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
         val result = host.attachShadeHeader(header, shade)
         ShadeProbe.logOnce("shadeProbe:attachShadeHeader:$result", "attachShadeHeader result=$result")
+    }
+
+    /**
+     * Attaches iOS replacement to the shade header's own icon strip. The header has its own host
+     * because [IosReplaceHost] is single-surface; it shares [iosSizeOwner] so the glyph keeps the home
+     * bar's size (M15). `shade_header_system_icons` is the measured header strip id; if the ROM does not have it,
+     * fall back to `system_icons`, then to the vendor `quick_qs_status_icons`. Every attempt is fail-silent
+     * (stub wave returns false); the first success is reported.
+     */
+    private fun attachIosShadeHeader(header: View): Boolean {
+        val ctx = app ?: header.context
+        if (!iosModeActive(ctx) && iosMainHost == null) return false
+        return try {
+            val host = ensureIosExtra(ctx, "shade header")
+            // A live host on this window already owns the header surface; attaching again would tear
+            // it down and rebuild it on every shade layout pass (iOS-LAG).
+            if (host.attachedIn(header)) return true
+            // This header had no attachable strip a moment ago: do not re-resolve it on every pass.
+            val now = SystemClock.uptimeMillis()
+            if (header === iosHeaderFailed && now - iosHeaderFailedAt < IOS_HEADER_RETRY_MS) return false
+            val ids = listOf("shade_header_system_icons", "system_icons", "quick_qs_status_icons")
+            val id = ids.firstOrNull { host.canAttachSurface(header, it) }
+            if (id == null) {
+                // None of the three strips is attachable right now: memoise it so the tree walks are
+                // not repeated on every shade pass; a real attach or a new header clears the memo.
+                iosHeaderFailed = header
+                iosHeaderFailedAt = now
+                return false
+            }
+            val attached = host.attachSurface("shade header", header, id)
+            if (attached) {
+                iosHeaderFailed = null
+            } else {
+                iosHeaderFailed = header
+                iosHeaderFailedAt = now
+            }
+            attached
+        } catch (t: Throwable) {
+            logOnce.once("ios-shade-header-attach") {
+                L.w("shade header: iOS attach failed (${t.javaClass.simpleName}: ${t.message})")
+            }
+            false
+        }
+    }
+
+    /**
+     * Last-resort iOS attach from the shade window itself, for a ROM whose header is not handed over (or
+     * whose header carries no resolvable icon strip). Only runs while iOS owns the bar, and never throws.
+     */
+    private fun attachIosShadeWindow(window: View): Boolean {
+        val ctx = app ?: window.context
+        if (!iosModeActive(ctx)) return false
+        return try {
+            val host = ensureIosExtra(ctx, "shade header")
+            if (host.attachedIn(window)) {
+                true
+            } else {
+                host.attachSurface("shade header", window, "quick_qs_status_icons") ||
+                    host.attachSurface("shade header", window, "system_icons")
+            }
+        } catch (t: Throwable) {
+            logOnce.once("ios-shade-window-attach") {
+                L.w("shade window: iOS attach failed (${t.javaClass.simpleName}: ${t.message})")
+            }
+            false
+        }
     }
 
     /**
@@ -1038,6 +1279,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     L.guard("DuoHook icon added") {
                         val child = param.args.firstOrNull() as? View ?: return@guard
                         host?.onStatusIconAdded(child)
+                        iosMainHost?.onStockIconAdded(child)
+                        iosExtraHosts.values.toList().forEach { it.onStockIconAdded(child) }
                     }
                 }
             }
@@ -1074,7 +1317,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // builds pass the intensity as an int too. [BarTint.pickTint] keeps only the
                         // int(s) that can be a resolved colour, so an intensity is never read as one.
                         val color = BarTint.pickTint(param.args)
-                        if (color != 0 && BarTint.update(color)) monitor?.onBarAppearanceChanged()
+                        if (color != 0 && BarTint.update(color)) {
+                            monitor?.onBarAppearanceChanged()
+                            if (iosMainHost != null || iosExtraHosts.isNotEmpty()) iosRefreshAll()
+                        }
                     } catch (t: Throwable) {
                         L.w("bar tint: ${t.javaClass.simpleName}: ${t.message}")
                     }
@@ -1184,7 +1430,14 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             ShadeProbe.tree("header (ctor)", view)
                             L.i("shade header view: ${view.javaClass.name}")
                             shadeHeader = view
-                                view.post { shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) } }
+                                view.post {
+                                    shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                                    shadeHeader?.let {
+                                        if (iosModeActive(app ?: it.context) || iosMainHost != null) {
+                                            attachIosShadeHeader(it)
+                                        }
+                                    }
+                                }
                         }
                     }
                 })
@@ -1213,7 +1466,14 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 ShadeProbe.tree("header (stub)", view)
                                 L.i("shade header inflated from a stub: ${view.javaClass.name}")
                                 shadeHeader = view
-                            view.post { shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) } }
+                            view.post {
+                                shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                                shadeHeader?.let {
+                                    if (iosModeActive(app ?: it.context) || iosMainHost != null) {
+                                        attachIosShadeHeader(it)
+                                    }
+                                }
+                            }
                             }
                         }
                     }
@@ -1243,5 +1503,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         const val SETTINGS_DEBOUNCE_MS = 250L
         const val RETRY_MS = 2_000L
         const val MAX_ATTEMPTS = 6
+
+        /** IOS-LAG: the extra-surface (keyguard/shade) attach is throttled to this cadence. */
+        const val IOS_EXTRA_ATTACH_MIN_MS = 500L
+
+        /** IOS-LAG: a header with no attachable strip is retried only after this long. */
+        const val IOS_HEADER_RETRY_MS = 5_000L
     }
 }
