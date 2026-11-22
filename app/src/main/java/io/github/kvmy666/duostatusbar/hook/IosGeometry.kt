@@ -321,14 +321,23 @@ internal object IosGeometry {
      * The data-type label that occupies the Wi-Fi slot for a measured cellular network
      * ("LTE", "4G", "5G", ...).
      *
-     * **No iOS status-bar capture shows this label.** The reference
-     * `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (an SF-style "LTE E 4G 5G 5G+ 345" strip) is the
-     * authority for the glyph SHAPES, widths and spacing only; its weight is lighter than the shipped
-     * bold digits. The size is the PM fallback: [CAP_HEIGHT] is 0.70 of the tallest measured cellular
-     * bar ([Cell.SINGLE_BAR_HEIGHTS] max 95.5), so the label cap is ~70 % of the Wi-Fi ink height, and
-     * [STROKE] is the in-battery bold digit run-stroke (11.40 at [IosDigits.CAP_HEIGHT] 57) scaled to
-     * that cap. The cap/bar ratio, the vertical placement and the letterforms are **UNVERIFIED /
-     * owner review required** until approved on a device.
+     * **This label is now measured on a real iPhone.** Reference 1
+     * `.pm/ref/r5/1-real-iphone-5g-dual.jpg` (sha256 `0e0096738eb3b246…`, 1272x2772, dark, dual-SIM)
+     * is the first real iOS status-bar capture that shows it, reading "5G". Its 50 %-threshold
+     * measurement (`.pm/ref/out-r5/r5b-measurements.md` / `.json`; battery body H = 42.377 px = 100
+     * units, 1 px = 2.360 units, +/-0.5 px = +/-1.18 units) fixes [CAP_HEIGHT], [TOP] and [STROKE] as
+     * measured values instead of the old bar/weight fallbacks.
+     *
+     * The label is TOP-ANCHORED: the measured cap top sits 14.95 units below the label/Wi-Fi artboard
+     * top and the baseline at 92.63 ([TOP] + [CAP_HEIGHT] = 92.64). The old centre-on-Wi-Fi formula
+     * would put the cap top at 9.54 for this cap, which is **not** what ref 1 shows; [TOP] is pinned
+     * to the measurement. Ref 1's cap centre is 2.79 units below the battery body centre.
+     *
+     * The SF strip `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the authority for the glyph
+     * SHAPES, ink widths and internal spacing. The digits 3/4/5 remain the fixed bold [IosDigits]
+     * battery glyphs (0.20 cap) and are never retyped or thinned, so our "5" is bolder than ref 1's
+     * while the letters and G use the measured 11.1 stroke (0.143 cap). That digit-weight mismatch is
+     * a known limitation. The G ink fraction and every letter width are unchanged.
      *
      * Every letter and the plus are FILLED OUTLINES: one or more closed contours, consistently
      * clockwise, filled with [android.graphics.Path.FillType.WINDING] so overlapping shapes union
@@ -337,20 +346,21 @@ internal object IosGeometry {
      * the measured reference ink widths as fractions of the reference cap. The group is laid out
      * exactly like [IosDigits]: `sum(advances) - firstBearing - lastBearing`. The artboard width is
      * dynamic ([widthOf] + 2 * [Wifi.ARTBOARD_MARGIN]) and its height stays [Wifi.ARTBOARD_H]; the ink
-     * group starts at [Wifi.ARTBOARD_MARGIN] horizontally and the cap box is vertically centred on
-     * the Wi-Fi glyph ([TOP]).
+     * group starts at [Wifi.ARTBOARD_MARGIN] horizontally and at the measured [TOP] vertically.
      *
-     * The measured reference cap is 36 px and the ink widths (px / 36) are L 0.611, T 0.806, E 0.667,
+     * The SF reference cap is 36 px and its ink widths (px / 36) are L 0.611, T 0.806, E 0.667,
      * G 0.944 and plus 0.778 x 0.750. The shipped plus is an equal-arm 0.75-cap square (the measured
      * height; 1 px inside the measured width). Honouring that reference plus makes "5G+" wider than
-     * the 80x50 production slot's height-limited width, so "5G+" is width-limited (~19.4 px cap) while
-     * the five other labels stay height-limited (~21.6 px cap, 0.705 of the Wi-Fi ink). The G is
-     * the v3 measured letterform: a right-shifted bowl (0.612 W centre, 0.612 W x 0.5 C outer radii),
-     * a 318.93..20.66 degree band with the open aperture crossing 3 o'clock, a mid-height bar whose
-     * inner end is at 0.607 W, and a right stem from the bar to a slanted bottom (0.975/0.920 C).
-     * The counter opens through the upper-right aperture, so there is no closed hole and the glyph
-     * reads as G, not a C with a glued corner. All G strokes scale with a single weight from the
-     * measured reference (weight 1) to the digit stroke ([G_PRODUCTION_WEIGHT]).
+     * the 80x50 production slot's height-limited width, so "5G+" is width-limited (~19.4 px cap,
+     * ~0.63 of the Wi-Fi ink); at the measured cap LTE is too wide as well (~22.1 px cap, ~0.72),
+     * while 4G/5G/3G/E stay height-limited (~25.1 px cap, 0.820 of the Wi-Fi ink). The G is the v3
+     * measured letterform: a right-shifted bowl (0.612 W centre,
+     * 0.612 W x 0.5 C outer radii), a 318.93..20.66 degree band with the open aperture crossing
+     * 3 o'clock, a mid-height bar whose inner end is at 0.607 W, and a right stem from the bar to a
+     * slanted bottom (0.975/0.920 C). The counter opens through the upper-right aperture, so there is
+     * no closed hole and the glyph reads as G, not a C with a glued corner. All G strokes scale with a
+     * single weight from the measured reference (weight 1) to the measured label stroke
+     * ([G_PRODUCTION_WEIGHT], now ~1.006).
      */
     object DataLabel {
         /** Supported labels, in reader/reporting order. */
@@ -359,21 +369,21 @@ internal object IosGeometry {
         /** Reference cap (px): the flat-letter height (L/T/E/4) in the SF strip. */
         private const val REF_CAP_PX = 36f
 
-        /**
-         * Cap height = 0.70 of the tallest measured single-SIM bar (95.5). Fallback: no iOS
-         * status-bar capture shows the label, so this is the bar-geometry rule, not a measurement.
-         */
-        val CAP_HEIGHT: Float = 0.70f * Cell.SINGLE_BAR_HEIGHTS.max()
-
-        /** The measured percentage digit run-stroke (11.40 at cap 57), same family/weight. */
-        val STROKE: Float = CAP_HEIGHT * (11.40f / 57f)
+        /** Measured ref-1 label cap: the flat 5 top -> baseline 32.93 px x 2.360 units/px = 77.69. */
+        const val CAP_HEIGHT = 77.69f
 
         /**
-         * Cap-box top: the cap is centred on the Wi-Fi glyph. The Wi-Fi ink height is
-         * [Wifi.ARTBOARD_H] - 2 * [Wifi.ARTBOARD_MARGIN] = 94.77, so the extra space splits evenly.
+         * Measured ref-1 label weight: median of the 5 stem 9.87 and G stem 12.33 = 11.1 units
+         * (0.143 of [CAP_HEIGHT]), applied to every letter, the plus and the G.
          */
-        val TOP: Float = Wifi.ARTBOARD_MARGIN +
-            (Wifi.ARTBOARD_H - 2f * Wifi.ARTBOARD_MARGIN - CAP_HEIGHT) / 2f
+        const val STROKE = 11.1f
+
+        /**
+         * Measured ref-1 cap-box top in the label/Wi-Fi artboard: 14.95 units (the baseline is
+         * [TOP] + [CAP_HEIGHT] = 92.64). The label is TOP-ANCHORED; do not recompute this from the
+         * Wi-Fi centre (that formula would give 9.54 at this cap).
+         */
+        const val TOP = 14.95f
 
         /** [IosDigits] cap 57 scaled to [CAP_HEIGHT]; digits scale through the Canvas, never retyped. */
         val DIGIT_SCALE: Float = CAP_HEIGHT / IosDigits.CAP_HEIGHT
@@ -653,18 +663,66 @@ internal object IosGeometry {
     }
 
     /**
-     * Reference strip composition: cell, Wi-Fi, battery at the measured gaps. Used by the preview and
-     * the PNG evidence compositor; the runtime still gives each glyph its stock slot.
+     * Reference strip composition: cell, Wi-Fi, battery at the measured gaps.
+     *
+     * The two consumers are separate. The Wi-Fi gaps ([CELL_WIFI_GAP], [WIFI_BATTERY_GAP]) drive the
+     * in-app `IosPreview` composition, which uses only those two constants. The label gaps
+     * ([CELL_LABEL_GAP], [LABEL_BATTERY_GAP]) drive the R5B 5G evidence strip
+     * ([labelBatteryX], [LABEL_BATTERY_X_5G], [LABEL_WIDTH_5G], used by `IosR5LabelStripTest`). The
+     * runtime does **not** use [Strip] at all: it gives each glyph its stock icon slot.
+     *
+     * All gaps are INK-to-INK: every artboard carries a 1-unit margin and [Battery.BODY_LEFT] is 1,
+     * so [WIFI_X] / [LABEL_X] / [BATTERY_X] are artboard origins while the constants are the gaps
+     * between the drawn edges. [CELL_WIFI_GAP] and [WIFI_BATTERY_GAP] stay the measured light Wi-Fi
+     * values; ref 1's data-type label has its own measured ink gaps [CELL_LABEL_GAP] and
+     * [LABEL_BATTERY_GAP] (22.06 / 22.90 px x 2.360 units/px = 52.07 / 54.04 units).
      */
     object Strip {
         /** Measured light gaps: 51.14 px (57.5 units) and 53.15 px (59.77 units). */
         const val CELL_WIFI_GAP = 57.5f
         const val WIFI_BATTERY_GAP = 59.77f
 
+        /**
+         * Measured ref-1 label gaps, ink to ink: cell ink right -> label ink left = 22.06 px =
+         * 52.07 units, and label ink right -> battery body left = 22.90 px = 54.04 units.
+         */
+        const val CELL_LABEL_GAP = 52.07f
+        const val LABEL_BATTERY_GAP = 54.04f
+
         const val CELL_X = 0f
         const val WIFI_X = Cell.BLOCK_W + CELL_WIFI_GAP
         const val BATTERY_X = WIFI_X + 127.53f + WIFI_BATTERY_GAP
+
+        /**
+         * Label artboard origin. The label ink starts at `LABEL_X + Wifi.ARTBOARD_MARGIN`; the gap to
+         * the cell ink is then exactly [CELL_LABEL_GAP].
+         */
+        const val LABEL_X = Cell.BLOCK_W + CELL_LABEL_GAP
+
+        /**
+         * Battery artboard origin for a label strip. The dynamic label artboard is
+         * `artboardWidth(label)` and its ink ends one [Wifi.ARTBOARD_MARGIN] before the artboard's
+         * right edge; the battery body starts at `labelBatteryX(label) + Battery.BODY_LEFT`, so the
+         * ink gap is exactly [LABEL_BATTERY_GAP].
+         *
+         * @throws IllegalArgumentException when [label] is not a supported [DataLabel] label; an
+         * unsupported name must not silently collapse the strip.
+         */
+        fun labelBatteryX(label: String): Float {
+            val artboard = requireNotNull(DataLabel.artboardWidth(label)) {
+                "$label is not a supported data label"
+            }
+            return LABEL_X + artboard - Wifi.ARTBOARD_MARGIN + LABEL_BATTERY_GAP - Battery.BODY_LEFT
+        }
+
+        /** The 5G evidence strip's battery artboard origin (ref 1 reads 5G). */
+        val LABEL_BATTERY_X_5G: Float = labelBatteryX("5G")
+
         const val WIDTH = BATTERY_X + Battery.BODY_W + Battery.CAP_GAP + Battery.CAP_W
+
+        /** Full 5G label-strip width (cell artboard origin through the battery cap). */
+        val LABEL_WIDTH_5G: Float =
+            LABEL_BATTERY_X_5G + Battery.BODY_W + Battery.CAP_GAP + Battery.CAP_W
 
         const val HEIGHT = 103f
 

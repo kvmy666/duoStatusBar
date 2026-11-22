@@ -18,13 +18,15 @@ import org.robolectric.annotation.GraphicsMode
 import java.security.MessageDigest
 
 /**
- * R4B data-type label (V2): the contract, the reference-derived metrics, and the rendered ink at the
+ * R5B data-type label: the contract, the measured ref-1 metrics, and the rendered ink at the
  * production Wi-Fi path (`IosDrawables.create(WIFI, ..., 80, 50, relativeSize = true)`, 4x
  * supersample).
  *
- * The glyph shapes/widths/spacing come from `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg`; the size
- * is the PM fallback cap = 0.70 of the tallest cellular bar. No iOS status-bar capture shows this
- * label, so the placement and the fallback cap are UNVERIFIED until owner/device approval.
+ * Ref 1 (`.pm/ref/r5/1-real-iphone-5g-dual.jpg`, sha256 `0e009673…`, dark, dual-SIM) is the first
+ * real iOS capture of the label (5G). It fixes the cap (77.69), the top-anchored [TOP] (14.95), the
+ * baseline (92.64) and the stroke (11.1). The SF strip
+ * `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the shape/width authority; the fixed bold
+ * `IosDigits` 3/4/5 are intentionally not retyped, so our "5" is bolder than ref 1's.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -132,26 +134,36 @@ class IosDataLabelTest {
     }
 
     @Test
-    fun `cap is seventy percent of the tallest measured single bar`() {
+    fun `cap matches the measured real-iPhone label`() {
         val tallest = IosGeometry.Cell.SINGLE_BAR_HEIGHTS.max()
         val d = IosGeometry.DataLabel
-        assertEquals("cap / tallest bar", 0.70f, d.CAP_HEIGHT / tallest, 0.0001f)
-        assertEquals(66.85f, d.CAP_HEIGHT, 0.001f)
+        // ref 1: 5 cap 32.93 px x 2.360 units/px.
+        assertEquals(77.69f, d.CAP_HEIGHT, 0.01f)
+        assertEquals("cap / battery body", 0.7769f, d.CAP_HEIGHT / IosGeometry.Battery.BODY_H, 0.001f)
+        assertEquals("cap / tallest bar", 0.8135f, d.CAP_HEIGHT / tallest, 0.001f)
         assertEquals(95.5f, tallest, 0.0001f)
     }
 
     @Test
-    fun `stroke is the bold digit weight and the cap is centred on the Wi-Fi ink`() {
+    fun `top is pinned to the measured label and not centred on the Wi-Fi ink`() {
         val d = IosGeometry.DataLabel
-        assertEquals("stroke / cap", 11.40f / 57f, d.STROKE / d.CAP_HEIGHT, 0.0001f)
-        assertEquals(13.37f, d.STROKE, 0.001f)
+        // ref 1: cap top 14.95, baseline 92.63 (TOP + CAP = 92.64), cap centre 2.79 below body centre.
+        assertEquals(14.95f, d.TOP, 0.01f)
+        assertEquals("baseline", 92.64f, d.TOP + d.CAP_HEIGHT, 0.02f)
+        val bodyCentre = IosGeometry.Battery.BODY_TOP + IosGeometry.Battery.BODY_H / 2f
+        val capCentre = d.TOP + d.CAP_HEIGHT / 2f
+        assertEquals("cap centre - body centre", 2.79f, capCentre - bodyCentre, 0.05f)
 
+        // The old centre-on-Wi-Fi formula gives 9.54 at this cap; a regression to it must fail here.
         val wifiInkTop = IosGeometry.Wifi.ARTBOARD_MARGIN
         val wifiInkBottom = IosGeometry.Wifi.ARTBOARD_H - IosGeometry.Wifi.ARTBOARD_MARGIN
-        val wifiCentre = (wifiInkTop + wifiInkBottom) / 2f
-        assertEquals("cap centred on Wi-Fi ink", wifiCentre, d.TOP + d.CAP_HEIGHT / 2f, 0.0001f)
-        assertEquals(14.96f, d.TOP, 0.001f)
-        assertEquals("cap / Wi-Fi ink height", 0.705f, d.CAP_HEIGHT / (wifiInkBottom - wifiInkTop), 0.001f)
+        val centringTop = wifiInkTop + (wifiInkBottom - wifiInkTop - d.CAP_HEIGHT) / 2f
+        assertEquals("the centring formula is 9.54", 9.54f, centringTop, 0.05f)
+        assertTrue("TOP must not be the Wi-Fi-centred formula", kotlin.math.abs(d.TOP - centringTop) > 1f)
+
+        // ref 1: median of the 5 stem (9.87) and G stem (12.33); 0.143 cap.
+        assertEquals(11.1f, d.STROKE, 0.01f)
+        assertEquals("stroke / cap", 0.1429f, d.STROKE / d.CAP_HEIGHT, 0.0005f)
     }
 
     @Test
@@ -259,7 +271,7 @@ class IosDataLabelTest {
     // ---------------------------------------------------------------------- production rendered ink
 
     @Test
-    fun `labels fill the production box, five are height-limited and 5G+ is width-limited`() {
+    fun `labels fill the production box at their exact CONTAIN fit`() {
         val wifiInk = inkBox(render(baseWifiVisual()))
         assertTrue("Wi-Fi drew no ink", wifiInk.height > 0f)
 
@@ -290,24 +302,57 @@ class IosDataLabelTest {
                 ink.height,
                 0.7f
             )
-            if (label == "5G+") {
-                // Honouring the reference plus makes "5G+" wider than the height-limited width.
-                assertTrue("5G+ must be width-limited", byWidth < byHeight)
-                assertTrue(
-                    "5G+ ink / Wi-Fi ink $ratioToWifi must be >= 0.63",
-                    ratioToWifi >= 0.63f
-                )
-            } else {
-                assertTrue(
-                    "$label must be height-limited (byWidth $byWidth vs byHeight $byHeight)",
-                    byWidth >= byHeight
-                )
-                assertEquals(
-                    "$label ink / Wi-Fi ink is the 0.705 cap ratio (AA slack)",
-                    0.705f,
-                    ratioToWifi,
-                    0.02f
-                )
+            // At the measured cap the 80x50 inner box (50.25 x 31.25 px at 1x) no longer fits every
+            // label at its height-limited scale: LTE's artboard is 176.28 wide, so it is width-limited
+            // together with 5G+. The ratio follows the actual CONTAIN fit:
+            //   (cap / Wi-Fi ink) * min(byWidth, byHeight) / byHeight.
+            val limitedByWidth = byWidth < byHeight
+            val expectedRatio = 0.8198f * minOf(byWidth, byHeight) / byHeight
+            assertEquals(
+                "$label ink / Wi-Fi ink at the CONTAIN fit",
+                expectedRatio,
+                ratioToWifi,
+                0.02f
+            )
+            when (label) {
+                "5G+" -> {
+                    // Honouring the reference plus makes "5G+" wider than the height-limited width.
+                    assertTrue("5G+ must be width-limited", limitedByWidth)
+                    // Rendered at 4x: ~19.4 px cap, ~0.635 of the measured Wi-Fi ink.
+                    assertEquals(
+                        "5G+ ink / Wi-Fi ink is the measured ~0.63 (AA slack)",
+                        0.635f,
+                        ratioToWifi,
+                        0.02f
+                    )
+                }
+                "LTE" -> {
+                    // Measured-cap consequence: L+T+E ink is 174.28 units wide, so LTE is
+                    // width-limited (~22.1 px cap, ~0.724 of the Wi-Fi ink) in the 80x50 slot.
+                    assertTrue(
+                        "LTE must be width-limited at the measured cap " +
+                            "(byWidth $byWidth vs byHeight $byHeight)",
+                        limitedByWidth
+                    )
+                    assertEquals(
+                        "LTE ink / Wi-Fi ink at the width-limited cap",
+                        0.724f,
+                        ratioToWifi,
+                        0.02f
+                    )
+                }
+                else -> {
+                    assertTrue(
+                        "$label must be height-limited (byWidth $byWidth vs byHeight $byHeight)",
+                        !limitedByWidth
+                    )
+                    assertEquals(
+                        "$label ink / Wi-Fi ink is the measured 0.820 cap ratio (AA slack)",
+                        0.820f,
+                        ratioToWifi,
+                        0.02f
+                    )
+                }
             }
             assertTrue(
                 "$label ink width ${ink.width} bleeds past the ${innerW}px inner box " +
