@@ -530,7 +530,7 @@ class IosDrawablesTest {
     }
 
     @Test
-    fun `non-identity transform draws the whole glyph outside the old drawable bounds`() {
+    fun `non-identity transform is not self-clipped and paints a substantial share outside`() {
         val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
         drawable.setBounds(20, 10, 180, 100)
         drawable.userTransform = IosUserTransform(dxPx = -100f, scale = 1f)
@@ -548,10 +548,15 @@ class IosDrawablesTest {
             }
         }
         // Item 5: the renderer must not self-clip to its draw box; the host is the only owner of the
-        // overflow room (ancestor unclip / enlarged overlay canvas). An offset glyph therefore paints
-        // past the old bounds instead of being cropped to its middle.
-        assertTrue("a shifted glyph must paint outside the old bounds", outside > 0)
+        // overflow room (ancestor unclip / enlarged overlay canvas). With this -100 px shift the
+        // native render produced inside=3037 / outside=1480, so a third of the ink is the safe floor:
+        // one anti-aliased pixel would still pass a "> 0" check and hide a reintroduced clip.
         assertTrue("some ink remains inside the drawable bounds", inside > 0)
+        assertTrue(
+            "a third of the shifted ink must paint outside the old bounds (was 1480/3037)",
+            outside >= inside / 3
+        )
+        assertTrue("the overflow must not collapse to a few pixels (was 1480)", outside >= 1000)
     }
 
     @Test
