@@ -83,6 +83,15 @@ internal fun seatX(seat: Float, burnIn: Float, holdPx: Int, rtl: Boolean): Float
     seat + burnIn + if (rtl) -holdPx else holdPx
 
 /**
+ * The real write seam for [seatX], used by [DuoIconHost.place] and by the position test.
+ *
+ * It always assigns an absolute value, so no caller can accumulate a delta on `translationX`.
+ */
+internal fun applySeat(view: View, seat: Float, burnIn: Float, holdPx: Int, rtl: Boolean) {
+    view.translationX = seatX(seat, burnIn, holdPx, rtl)
+}
+
+/**
  * True only when a cached element is still attached to the same window the new slot was resolved in.
  *
  * [elementRoot] and [windowRoot] are `View.rootView` identities, never parent identities: a shade
@@ -2514,7 +2523,7 @@ internal class DuoIconHost(private val context: Context) {
             // non-main views (indicators/QS/shade extras).
             offsetPx + (if (container is LinearLayout) 0 else edgeInsetPx(side, settings.edgePadding))
         }
-        view.translationX = seatX(seat.toFloat(), burnInShift, holdPx, rtl)
+        applySeat(view, seat.toFloat(), burnInShift, holdPx, rtl)
         // The strip sits low in the window, so centring on it wastes the space above. Centre the
         // ring in the whole status bar instead, which is what lets it grow to the window height.
         // The view is taller than the ring; the extra shift keeps the ring put and leaves the

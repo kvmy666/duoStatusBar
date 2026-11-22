@@ -1,6 +1,5 @@
 package io.github.kvmy666.duostatusbar.hook
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -209,7 +208,7 @@ internal class IosIconHost(
             IosReadings.wifi(ctx, level, on, active, validated)
         },
     private val idleDelayMs: Long = IDLE_MS
-) : IosDiagnosticSource {
+) : IosDiagnosticSource, IosBroadcastTarget {
 
     private companion object {
         const val REFRESH_DEBOUNCE_MS = 120L
@@ -242,7 +241,6 @@ internal class IosIconHost(
     private var settings = ModuleSettings.DEFAULT
     private var strip: ViewGroup? = null
     private var layer: FrameLayout? = null
-    private var receiverRegistered = false
     private var updating = false
 
     /** R3 A1: when the usable-copy re-target happened, so a strip-id oscillation is throttled. */
@@ -295,41 +293,43 @@ internal class IosIconHost(
         onLayoutChanged()
     }
 
-    private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(c: Context?, intent: Intent?) {
-            try {
-                when (intent?.action) {
-                    Intent.ACTION_BATTERY_CHANGED,
-                    PowerManager.ACTION_POWER_SAVE_MODE_CHANGED,
-                    ConnectivityManager.CONNECTIVITY_ACTION,
-                    ACTION_SERVICE_STATE,
-                    ACTION_ANY_DATA_STATE,
-                    ACTION_WIFI_RSSI,
-                    ACTION_WIFI_STATE -> {
-                        IosReadings.invalidate()
+    /**
+     * R4 item 7: the all-overlay delegate shares the process-wide [IosBroadcastHub] instead of
+     * registering its own private copy of the ten-action receiver.
+     *
+     * The hub already calls `IosReadings.invalidate()` exactly once per received event, so this
+     * method only routes the action. Screen-off/on and the time tick keep their exact behaviour.
+     */
+    override fun onIosBroadcast(action: String) {
+        try {
+            when (action) {
+                Intent.ACTION_BATTERY_CHANGED,
+                PowerManager.ACTION_POWER_SAVE_MODE_CHANGED,
+                ConnectivityManager.CONNECTIVITY_ACTION,
+                ACTION_SERVICE_STATE,
+                ACTION_ANY_DATA_STATE,
+                ACTION_WIFI_RSSI,
+                ACTION_WIFI_STATE -> scheduleRefresh()
+
+                Intent.ACTION_SCREEN_OFF -> {
+                    handler.removeCallbacks(refreshRunnable)
+                    pauseRenderers()
+                }
+
+                Intent.ACTION_SCREEN_ON -> {
+                    if (isLayerVisible()) {
+                        activateRenderers()
                         scheduleRefresh()
                     }
-
-                    Intent.ACTION_SCREEN_OFF -> {
-                        handler.removeCallbacks(refreshRunnable)
-                        pauseRenderers()
-                    }
-
-                    Intent.ACTION_SCREEN_ON -> {
-                        if (isLayerVisible()) {
-                            activateRenderers()
-                            scheduleRefresh()
-                        }
-                    }
-
-                    Intent.ACTION_TIME_TICK -> if (isLayerVisible() && !screenPaused) scheduleRefresh()
-
-                    else -> Unit
                 }
-            } catch (t: Throwable) {
-                logOnce.once("receiver") {
-                    L.w("iOS host receiver: ${t.javaClass.simpleName}: ${t.message}")
-                }
+
+                Intent.ACTION_TIME_TICK -> if (isLayerVisible() && !screenPaused) scheduleRefresh()
+
+                else -> Unit
+            }
+        } catch (t: Throwable) {
+            logOnce.once("receiver") {
+                L.w("iOS host receiver: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
@@ -640,9 +640,9 @@ internal class IosIconHost(
     }
 
     /**
-     * Removes every glyph, listener, callback and receiver and restores every suppressed stock drawing
-     * exactly. Idempotent; a second call does nothing. No stock icon is left hidden, transparent or
-     * without its drawable (rule 5).
+     * Removes every glyph, listener, callback and hub subscription and restores every suppressed
+     * stock drawing exactly. Idempotent; a second call does nothing. No stock icon is left hidden,
+     * transparent or without its drawable (rule 5).
      */
     fun teardown(countLifecycle: Boolean = true) {
         val wasAttached = isAttached || layer != null
@@ -655,7 +655,10 @@ internal class IosIconHost(
         attachRetry = null
         attachAttempts = 0
         handler.removeCallbacks(idleRunnable)
-        if (!isAttached && records.isEmpty() && layer == null && !receiverRegistered && layoutHosts.isEmpty()) {
+        // R4 item 7: drop this host from the shared hub even on the pristine early return, so a
+        // subscription can never outlive its host.
+        IosBroadcastHub.unsubscribe(this)
+        if (!isAttached && records.isEmpty() && layer == null && layoutHosts.isEmpty()) {
             unskinnable.clear()
             lastCellPlan = IosCellPlan.None
             lastCellVisibleMask = 0
@@ -663,13 +666,6 @@ internal class IosIconHost(
         }
         isAttached = false
         handler.removeCallbacks(refreshRunnable)
-        if (receiverRegistered) {
-            receiverRegistered = false
-            try {
-                context.unregisterReceiver(receiver)
-            } catch (_: Throwable) {
-            }
-        }
         for (view in layoutHosts.toList()) {
             try {
                 view.removeOnLayoutChangeListener(layoutListener)
@@ -1043,7 +1039,7 @@ internal class IosIconHost(
 
         addLayoutListener(strip)
         for (icon in inventory) addLayoutListener(icon.view)
-        registerReceivers()
+        IosBroadcastHub.subscribe(context, this)
         isAttached = true
         refresh()
         L.i(
@@ -1681,35 +1677,6 @@ internal class IosIconHost(
         }
         cachedLowThreshold = resolved
         return resolved
-    }
-
-    private fun registerReceivers() {
-        if (receiverRegistered) return
-        try {
-            val filter = IntentFilter().apply {
-                addAction(Intent.ACTION_BATTERY_CHANGED)
-                addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(Intent.ACTION_TIME_TICK)
-                addAction(ConnectivityManager.CONNECTIVITY_ACTION)
-                addAction(ACTION_SERVICE_STATE)
-                addAction(ACTION_ANY_DATA_STATE)
-                addAction(ACTION_WIFI_RSSI)
-                addAction(ACTION_WIFI_STATE)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                context.registerReceiver(receiver, filter)
-            }
-            receiverRegistered = true
-        } catch (t: Throwable) {
-            logOnce.once("receiver-register") {
-                L.w("iOS host receiver not registered: ${t.javaClass.simpleName}: ${t.message}")
-            }
-        }
     }
 
     private fun scheduleRefresh() {

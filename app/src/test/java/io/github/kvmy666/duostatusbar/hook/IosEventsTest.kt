@@ -2,6 +2,12 @@ package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
 import androidx.test.core.app.ApplicationProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -141,4 +147,79 @@ class IosEventsTest {
         assertEquals(listOf(Intent.ACTION_SCREEN_OFF), first)
         assertEquals(listOf(Intent.ACTION_SCREEN_OFF), second)
     }
+
+    @Test
+    fun `two all-overlay hosts share one hub receiver and release it on teardown`() {
+        val treeA = batteryTree()
+        val treeB = batteryTree()
+        val hostA = overlayHost("overlay-a")
+        val hostB = overlayHost("overlay-b")
+        try {
+            assertTrue(hostA.attachIn(treeA.strip, treeA.root))
+            assertEquals("one attached delegate registers one hub receiver", 1, IosBroadcastHub.receiverCountForTest())
+
+            assertTrue(hostB.attachIn(treeB.strip, treeB.root))
+            assertEquals(
+                "two attached delegates still share one process-wide receiver",
+                1,
+                IosBroadcastHub.receiverCountForTest()
+            )
+
+            hostA.teardown()
+            assertEquals("one host remains subscribed", 1, IosBroadcastHub.receiverCountForTest())
+            hostB.teardown()
+            assertEquals("the last teardown releases the hub receiver", 0, IosBroadcastHub.receiverCountForTest())
+        } finally {
+            hostA.teardown()
+            hostB.teardown()
+        }
+    }
+
+    // ------------------------------------------------------------------------ all-overlay fixtures
+
+    private class StubElement(context: Context) : IosElement {
+        override val ui = View(context)
+        override val rendererName = "stub"
+        override var isReady = true
+        override val canDraw = true
+
+        override fun start(): Boolean = true
+
+        override fun render(v: IosVisual) = Unit
+
+        override fun setRenderActive(active: Boolean) = Unit
+
+        override fun teardown() = Unit
+    }
+
+    private class BatteryMeterView(context: Context) : FrameLayout(context) {
+        val icon = ImageView(context)
+
+        init {
+            addView(icon)
+        }
+    }
+
+    private class Tree(val root: FrameLayout, val strip: LinearLayout)
+
+    /** A one-battery strip in a plain overlay parent, the all-overlay delegate's attach input. */
+    private fun batteryTree(): Tree {
+        val root = FrameLayout(context)
+        val strip = LinearLayout(context)
+        val battery = BatteryMeterView(context)
+        battery.icon.setImageDrawable(ColorDrawable(Color.RED))
+        strip.addView(battery, LinearLayout.LayoutParams(80, 40))
+        root.addView(strip, FrameLayout.LayoutParams(100, 40))
+        root.layout(0, 0, 1000, 100)
+        strip.layout(900, 0, 1000, 40)
+        battery.layout(0, 5, 80, 45)
+        return Tree(root, strip)
+    }
+
+    private fun overlayHost(surface: String): IosIconHost = IosIconHost(
+        context = context,
+        surface = surface,
+        canvasRenderers = { c, _ -> StubElement(c) },
+        batterySource = { IosBatteryReading(50, false, 0) }
+    )
 }

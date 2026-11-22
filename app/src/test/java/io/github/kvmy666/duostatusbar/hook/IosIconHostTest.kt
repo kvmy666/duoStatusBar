@@ -46,12 +46,14 @@ class IosIconHostTest {
 
     @Before
     fun setUp() {
+        IosBroadcastHub.resetForTest()
         IosSurfaceThrash.clearForTest()
         IosSurfaceOwners.clearForTest()
     }
 
     @After
     fun tearDown() {
+        IosBroadcastHub.resetForTest()
         IosSurfaceThrash.clearForTest()
         IosSurfaceOwners.clearForTest()
     }
