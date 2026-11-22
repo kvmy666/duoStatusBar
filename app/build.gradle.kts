@@ -133,6 +133,9 @@ tasks.withType<Test>().configureEach {
     // 2 workers on a 4-core CI runner, 4 on a 16-core dev machine, never more than 4.
     maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
     maxHeapSize = "1536m"
+    // A restored Test result means the tests did not run in this job. Keep compile/assemble
+    // cacheable, but never let the build cache stand in for executing the suite.
+    outputs.cacheIf { false }
 }
 
 dependencies {
