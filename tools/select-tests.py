@@ -3,7 +3,8 @@
 
 The map is rebuilt from the working tree on every run; no committed JSON can go
 stale.  A changed path is only narrowed when the selector can prove what it
-touches.  Anything unproven -- an unknown path, a deleted/renamed file, a global
+touches.  Anything unproven -- an unknown path, a deleted/renamed/type-changed
+file, a global
 build input, a source file missing from the map, or any parse/read/git error --
 prints ``FULL`` so the whole unit suite runs.
 
@@ -404,13 +405,19 @@ def select(index, changed_paths, statuses=None, explain=False, log=None):
 
     for path in changed:
         status = statuses.get(path)
-        if status and status[:1] in ("D", "R"):
+        if status and status[:1] in ("D", "R", "T"):
+            status_code = status[:1]
+            status_name = {
+                "D": "deleted",
+                "R": "renamed",
+                "T": "type-changed",
+            }[status_code]
             return _result(
                 "full",
                 [],
                 always,
-                "%s has diff status %s; deleted/renamed inputs are unsafe"
-                % (path, status[:1]),
+                "%s has diff status %s (%s); deleted, renamed and type-changed"
+                " inputs are unsafe" % (path, status_code, status_name),
             )
         kind = classify_path(path)
         if kind == "safe":
@@ -509,7 +516,7 @@ def changed_from_git(root, base, head):
         "core.quotepath=false",
         "diff",
         "--name-only",
-        "--diff-filter=ACMRD",
+        "--diff-filter=ACMRDT",
         "%s...%s" % (base, head),
     ]
     status_cmd = [
@@ -519,7 +526,7 @@ def changed_from_git(root, base, head):
         "diff",
         "--name-status",
         "-M",
-        "--diff-filter=ACMRD",
+        "--diff-filter=ACMRDT",
         "%s...%s" % (base, head),
     ]
     try:
@@ -598,6 +605,12 @@ def _selftest_cases(index, root):
     def case_res_full():
         result = select(index, ["app/src/main/res/values/strings.xml"])
         assert result["mode"] == "full", result["mode"]
+
+    def case_type_change_full():
+        path = main_file("DeviceFacts.kt")
+        result = select(index, [path], statuses={path: "T"})
+        assert result["mode"] == "full", result["mode"]
+        assert "T" in result["reason"], result["reason"]
 
     def case_unknown_main_full():
         result = select(
@@ -694,6 +707,7 @@ def _selftest_cases(index, root):
     return [
         ("changed DeviceFacts.kt selects DeviceFactsTest", case_device_facts),
         ("changed res/values/strings.xml forces FULL", case_res_full),
+        ("type-changed (T) main source forces FULL", case_type_change_full),
         ("unknown main source forces FULL", case_unknown_main_full),
         ("docs-only change runs the always set", case_docs_always_only),
         ("changed BarTintTest selects only that test plus always", case_bar_tint_only),
