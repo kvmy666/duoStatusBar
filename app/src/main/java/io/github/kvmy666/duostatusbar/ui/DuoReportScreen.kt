@@ -39,7 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val REPORT_CATEGORIES = listOf("Bug", "Device Support", "Feature Request")
+private val REPORT_CATEGORIES = listOf("Bug", "Device support", "Feature request")
 
 /**
  * In-app report form. The ticket number is created locally and copied into the Telegram log

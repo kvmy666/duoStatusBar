@@ -94,7 +94,7 @@ internal fun openGitHubIssue(context: Context, fallback: String, status: String)
             "device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, " +
                 "Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})"
         )
-        append("Please attach the diagnostics file shared from the app's About section.")
+        append("Attach the diagnostics file from the About section.")
     }
     val url = "$GITHUB_NEW_ISSUE?body=${Uri.encode(body)}"
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -134,7 +134,7 @@ internal fun moduleLoadLine(
         val stamp = "${formatTimestamp(heartbeatAt)} (heartbeat)"
         // An old beat means the module was unscoped and System UI restarted without it.
         if (nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS) {
-            "$stamp — module not running now"
+            "$stamp, module not running now"
         } else {
             stamp
         }
@@ -278,7 +278,7 @@ internal fun shareLog(context: Context, file: Uri) {
     val share = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_STREAM, file)
-        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar log — @kvmy1")
+        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar log, @kvmy1")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(
@@ -387,7 +387,7 @@ internal fun shareReportZip(context: Context, file: Uri) {
     val share = Intent(Intent.ACTION_SEND).apply {
         type = "application/zip"
         putExtra(Intent.EXTRA_STREAM, file)
-        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar report — @kvmy1")
+        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar report, @kvmy1")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(

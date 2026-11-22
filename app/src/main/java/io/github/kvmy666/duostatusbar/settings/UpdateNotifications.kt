@@ -139,13 +139,13 @@ internal object UpdateNotifications {
     /** High importance, so a new release and a ready install pop as heads-up, not only in the shade. */
     internal fun ensureAlertsChannel(context: Context) = channel(
         context, CHANNEL_ALERTS, "Update alerts", NotificationManager.IMPORTANCE_HIGH,
-        "A new Duo Status Bar release or a downloaded update"
+        "Alerts for new releases and downloaded updates."
     )
 
     /** Low importance: the foreground download should not interrupt. Called by the download worker. */
     internal fun ensureProgressChannel(context: Context) = channel(
         context, CHANNEL_PROGRESS, "Update download", NotificationManager.IMPORTANCE_LOW,
-        "Progress of an update download"
+        "Shows progress while an update downloads."
     )
 
     private fun channel(

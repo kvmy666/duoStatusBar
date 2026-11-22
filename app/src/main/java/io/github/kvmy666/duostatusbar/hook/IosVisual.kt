@@ -50,5 +50,7 @@ internal data class IosVisual(
     /** R2C per-icon offset/scale; identity keeps today's pixels. */
     val userTransform: IosUserTransform = IosUserTransform.IDENTITY,
     /** R3B: draw the percentage inside the body, knocked out of the fill/remainder. Off preserves today. */
-    val percentInside: Boolean = false
+    val percentInside: Boolean = false,
+    /** R4: the Wi-Fi slot occupant. Default [IosWifiSlot.Wifi] preserves today's glyph. */
+    val wifiSlot: IosWifiSlot = IosWifiSlot.Wifi
 )

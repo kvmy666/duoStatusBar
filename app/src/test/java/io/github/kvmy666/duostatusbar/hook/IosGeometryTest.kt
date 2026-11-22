@@ -248,31 +248,64 @@ class IosGeometryTest {
         assertEquals(0.095f, r.CAP_W, 0.0001f)
         assertEquals(0.075f, r.CAP_GAP, 0.0001f)
 
-        assertEquals(0.81f, r.BATTERY_DRAW_SCALE, 0.0001f)
-        assertEquals(0.57f, r.WIFI_DRAW_SCALE, 0.0001f)
-        assertEquals(0.75f, r.CELL_DRAW_SCALE, 0.0001f)
-        assertEquals(0.76f, r.CELL_DUAL_DRAW_SCALE, 0.0001f)
-        assertEquals(0.81f, r.drawScale(IosIconKind.BATTERY), 0.0001f)
-        assertEquals(0.57f, r.drawScale(IosIconKind.WIFI), 0.0001f)
-        assertEquals(0.75f, r.drawScale(IosIconKind.CELL), 0.0001f)
-        assertEquals(0.76f, r.drawScale(IosIconKind.CELL, dualCell = true), 0.0001f)
+        assertEquals(0.891f, r.BATTERY_DRAW_SCALE, 0.0001f)
+        assertEquals(0.627f, r.WIFI_DRAW_SCALE, 0.0001f)
+        assertEquals(0.825f, r.CELL_DRAW_SCALE, 0.0001f)
+        assertEquals(0.836f, r.CELL_DUAL_DRAW_SCALE, 0.0001f)
+        assertEquals(0.891f, r.drawScale(IosIconKind.BATTERY), 0.0001f)
+        assertEquals(0.627f, r.drawScale(IosIconKind.WIFI), 0.0001f)
+        assertEquals(0.825f, r.drawScale(IosIconKind.CELL), 0.0001f)
+        assertEquals(0.836f, r.drawScale(IosIconKind.CELL, dualCell = true), 0.0001f)
     }
 
     @Test
     fun `sizeFor scales the slot and is safe for an empty slot`() {
         val r = IosGeometry.Relative
-        // 80*0.81 = 64.8 -> 65, 38*0.81 = 30.78 -> 31
-        assertEquals(65 to 31, r.sizeFor(IosIconKind.BATTERY, 80, 38))
-        // 80*0.57 = 45.6 -> 46, 50*0.57 = 28.5 -> 29
-        assertEquals(46 to 29, r.sizeFor(IosIconKind.WIFI, 80, 50))
-        // 80*0.75 = 60, 40*0.75 = 30
-        assertEquals(60 to 30, r.sizeFor(IosIconKind.CELL, 80, 40))
-        // 80*0.76 = 60.8 -> 61, 40*0.76 = 30.4 -> 30
-        assertEquals(61 to 30, r.sizeFor(IosIconKind.CELL, 80, 40, dualCell = true))
+        // 80*0.891 = 71.28 -> 71, 38*0.891 = 33.858 -> 34
+        assertEquals(71 to 34, r.sizeFor(IosIconKind.BATTERY, 80, 38))
+        // 80*0.627 = 50.16 -> 50, 50*0.627 = 31.35 -> 31
+        assertEquals(50 to 31, r.sizeFor(IosIconKind.WIFI, 80, 50))
+        // 80*0.825 = 66, 40*0.825 = 33
+        assertEquals(66 to 33, r.sizeFor(IosIconKind.CELL, 80, 40))
+        // 80*0.836 = 66.88 -> 67, 40*0.836 = 33.44 -> 33
+        assertEquals(67 to 33, r.sizeFor(IosIconKind.CELL, 80, 40, dualCell = true))
         // Never larger than the slot, and an empty slot is explicit rather than a crash.
         val scaled = r.sizeFor(IosIconKind.CELL, 80, 40)
         assertTrue(scaled.first <= 80 && scaled.second <= 40)
         assertEquals(0 to 0, r.sizeFor(IosIconKind.BATTERY, 0, 38))
         assertEquals(0 to 0, r.sizeFor(IosIconKind.BATTERY, 80, -1))
+    }
+
+    @Test
+    fun `R4 default scales are exactly 1_10x the R3 calibration`() {
+        val r = IosGeometry.Relative
+        // The literal R3 constants, kept here so a future "tidy up" cannot hide a scale change.
+        val r3Battery = 0.81f
+        val r3Wifi = 0.57f
+        val r3Cell = 0.75f
+        val r3CellDual = 0.76f
+        assertEquals(1.10f, r.BATTERY_DRAW_SCALE / r3Battery, 0.0001f)
+        assertEquals(1.10f, r.WIFI_DRAW_SCALE / r3Wifi, 0.0001f)
+        assertEquals(1.10f, r.CELL_DRAW_SCALE / r3Cell, 0.0001f)
+        assertEquals(1.10f, r.CELL_DUAL_DRAW_SCALE / r3CellDual, 0.0001f)
+    }
+
+    @Test
+    fun `identity user transform keeps the new default and 110 percent scales by 1_1`() {
+        val r = IosGeometry.Relative
+        // The default user transform is identity: 0 px offset and scale 1.
+        assertEquals(0f, IosUserTransform.IDENTITY.dxPx, 0.0001f)
+        assertEquals(1f, IosUserTransform.IDENTITY.scale, 0.0001f)
+
+        // 100 % is relative to 100 and therefore equals the new R4 default (not an extra inset).
+        val at100 = iosUserTransform(0, 100, 40f)
+        assertEquals(IosUserTransform.IDENTITY, at100)
+        assertEquals(71 to 34, r.sizeFor(IosIconKind.BATTERY, 80, 38))
+        assertEquals(50 to 31, r.sizeFor(IosIconKind.WIFI, 80, 50))
+        assertEquals(66 to 33, r.sizeFor(IosIconKind.CELL, 80, 40))
+        assertEquals(67 to 33, r.sizeFor(IosIconKind.CELL, 80, 40, dualCell = true))
+
+        // 110 % is 1.1x, applied on top of the new default by the renderer.
+        assertEquals(1.1f, iosUserTransform(0, 110, 40f).scale, 0.0001f)
     }
 }

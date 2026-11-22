@@ -39,7 +39,7 @@ internal fun labelStaleDump(dump: String, appVersion: String): String {
         .firstOrNull()
         ?: return dump
     if (version == appVersion) return dump
-    return "[stale diagnostic dump from $version — app is $appVersion; do not read it as this run]\n$dump"
+    return "[stale diagnostic dump from $version; app is $appVersion; do not read it as this run]\n$dump"
 }
 
 /** The first token after a leading `version:` line of a diagnostic dump. */
