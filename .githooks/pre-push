@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# Local pre-push mirror of CI: every static gate, then :app:testDebugUnitTest :app:assembleDebug
+# under the shared Gradle flock, the 2-worker/1536m/1024m memory budget and the configuration cache.
+# Activate once: git config core.hooksPath .githooks
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+START=$SECONDS
+
+fail() {
+    echo "pre-push: FAILED on $1 after $((SECONDS - START))s" >&2
+    exit 1
+}
+
+gate() {
+    local name="$1"
+    shift
+    echo "-- $name"
+    "$@"
+}
+
+# --- JDK and Gradle banner -------------------------------------------------
+
+JAVA_HOME_CANDIDATE="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}"
+JAVA_HOME_RESOLVED="$JAVA_HOME_CANDIDATE"
+if [ ! -x "$JAVA_HOME_CANDIDATE/bin/java" ]; then
+    echo "warning: JAVA_HOME '$JAVA_HOME_CANDIDATE' has no bin/java; falling back to java on PATH" >&2
+    JAVA_HOME_RESOLVED=""
+fi
+
+if [ -n "$JAVA_HOME_RESOLVED" ]; then
+    JAVA_VERSION_OUT="$("$JAVA_HOME_RESOLVED/bin/java" -version 2>&1)"
+else
+    if ! command -v java >/dev/null 2>&1; then
+        echo "error: no JDK found; set JAVA_HOME or put java on PATH" >&2
+        fail "JDK discovery"
+    fi
+    JAVA_VERSION_OUT="$(java -version 2>&1)"
+fi
+JAVA_VERSION_LINE="${JAVA_VERSION_OUT%%$'\n'*}"
+JAVA_MAJOR="$(sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p' <<< "$JAVA_VERSION_LINE")"
+if [ -n "$JAVA_MAJOR" ]; then
+    if [ "$JAVA_MAJOR" -ge 24 ]; then
+        echo "error: JDK ${JAVA_MAJOR} is unsupported; AGP 8.13/Gradle 8.13 need JDK 17 or 21 (24+ is not supported)." >&2
+        echo "       Point JAVA_HOME at a 17/21 JDK, for example /usr/lib/jvm/java-21-openjdk-amd64." >&2
+        fail "JDK ${JAVA_MAJOR} unsupported"
+    fi
+    if [ "$JAVA_MAJOR" -lt 17 ]; then
+        echo "warning: JDK ${JAVA_MAJOR} is older than 17; AGP 8.13/Gradle 8.13 need JDK 17 or 21." >&2
+    elif [ "$JAVA_MAJOR" -ne 17 ] && [ "$JAVA_MAJOR" -ne 21 ]; then
+        echo "warning: JDK ${JAVA_MAJOR} is untested here; AGP 8.13/Gradle 8.13 are verified on JDK 17 and 21." >&2
+    fi
+fi
+
+GRADLE_VERSION="$(sed -n 's/^distributionUrl=.*gradle-\([0-9][0-9.]*\)-.*/\1/p' gradle/wrapper/gradle-wrapper.properties)"
+[ -n "$GRADLE_VERSION" ] || GRADLE_VERSION="unknown"
+
+echo "pre-push: JDK    ${JAVA_VERSION_LINE}"
+echo "pre-push: Gradle ${GRADLE_VERSION} (wrapper)"
+
+# --- Static gates (same set CI runs) --------------------------------------
+
+gate "private data in tracked docs" python3 tools/check-private-data.py || fail "private data"
+
+gate "module logs route through L" python3 tools/route-module-logs.py --check || fail "route-module-logs"
+
+gate "Rive eases: rive/duo/scene.rml" python3 tools/check-rive-eases.py rive/duo/scene.rml || fail "Rive eases (duo)"
+gate "Rive eases: rive/duo/scene_old.rml" python3 tools/check-rive-eases.py rive/duo/scene_old.rml || fail "Rive eases (duo old)"
+gate "Rive eases: rive/ios/scene.rml" python3 tools/check-rive-eases.py rive/ios/scene.rml || fail "Rive eases (ios)"
+
+gate "provider authority matches in manifest and DuoPrefs" bash -c '
+    set -euo pipefail
+    AUTHORITY="io.github.kvmy666.duostatusbar.settings"
+    grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
+    grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
+    echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
+' || fail "provider authority"
+
+echo "-- no IosRiveView in app/src/main"
+if grep -rn "IosRiveView" app/src/main; then
+    echo "error: IosRiveView must not appear in app/src/main (see IosRiveAbsenceTest)" >&2
+    fail "IosRiveView absence"
+fi
+
+if [ -f tools/select-tests.py ]; then
+    gate "select-tests self-test" python3 tools/select-tests.py --selftest || fail "select-tests --selftest"
+else
+    echo "note: tools/select-tests.py is absent; skipping its self-test (CI will run it once added)."
+fi
+
+# --- Rive shipped gate: find or install the exact 1.9.2 CLI ---------------
+
+RIVE_HOME_LOCAL="${DUO_RIVE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/duo-rive/1.9.2}"
+
+rive_version() {
+    local out
+    out="$("$1" --version 2>/dev/null || true)"
+    awk '{print $2; exit}' <<< "$out"
+}
+
+# Exact second-token compare ("rive 1.9.2" -> 1.9.2); a prefix match would accept 1.9.20.
+RIVE_CMD=""
+for candidate in "$HOME/.rive/bin/rive" "$RIVE_HOME_LOCAL/bin/rive"; do
+    if [ -x "$candidate" ] && [ "$(rive_version "$candidate")" = "1.9.2" ]; then
+        RIVE_CMD="$candidate"
+        break
+    fi
+done
+if [ -z "$RIVE_CMD" ] && command -v rive >/dev/null 2>&1; then
+    RIVE_ON_PATH="$(command -v rive)"
+    if [ "$(rive_version "$RIVE_ON_PATH")" = "1.9.2" ]; then
+        RIVE_CMD="$RIVE_ON_PATH"
+    fi
+fi
+
+# Never skip the gate: install 1.9.2 into the cache prefix once, then fail closed.
+if [ -z "$RIVE_CMD" ]; then
+    echo "-- Rive CLI 1.9.2 not found; installing into $RIVE_HOME_LOCAL (one time)"
+    mkdir -p "$(dirname "$RIVE_HOME_LOCAL")" || fail "Rive install directory"
+    if ! env RIVE_HOME="$RIVE_HOME_LOCAL" RIVE_VERSION=1.9.2 CI=1 RIVE_ANALYTICS=off \
+        sh -c 'curl -fsSL https://releases.rive.app/cli/install.sh | sh'; then
+        echo "error: Rive 1.9.2 install failed; the shipped-.riv gate must not be skipped." >&2
+        fail "Rive 1.9.2 install"
+    fi
+    RIVE_INSTALLED=""
+    if [ -x "$RIVE_HOME_LOCAL/bin/rive" ]; then
+        RIVE_INSTALLED="$(rive_version "$RIVE_HOME_LOCAL/bin/rive")"
+    fi
+    if [ "$RIVE_INSTALLED" = "1.9.2" ]; then
+        RIVE_CMD="$RIVE_HOME_LOCAL/bin/rive"
+    else
+        echo "error: Rive 1.9.2 install finished but reported version '${RIVE_INSTALLED:-unknown}'." >&2
+        fail "Rive 1.9.2 version"
+    fi
+fi
+
+echo "-- Rive scenes verify and match shipped .riv hashes (using $("$RIVE_CMD" --version 2>/dev/null | head -n 1))"
+if ! PATH="$(dirname "$RIVE_CMD"):$PATH" bash tools/check-rive-shipped.sh; then
+    fail "check-rive-shipped.sh"
+fi
+
+# --- Full check -----------------------------------------------------------
+
+echo "-- Gradle: :app:testDebugUnitTest :app:assembleDebug (2 workers, 1536m/1024m, build cache, configuration cache)"
+GRADLE_CMD=(
+    ./gradlew
+    --max-workers=2
+    -Dorg.gradle.jvmargs=-Xmx1536m
+    -Dkotlin.daemon.jvmargs=-Xmx1024m
+    :app:testDebugUnitTest
+    :app:assembleDebug
+    --build-cache
+    --configuration-cache
+    --console=plain
+)
+if [ -n "$JAVA_HOME_RESOLVED" ]; then
+    GRADLE_CMD=(env "JAVA_HOME=$JAVA_HOME_RESOLVED" "${GRADLE_CMD[@]}")
+fi
+
+if command -v flock >/dev/null 2>&1; then
+    if ! flock /tmp/duo-gradle.lock "${GRADLE_CMD[@]}"; then
+        fail "Gradle check"
+    fi
+else
+    echo "warning: flock not found; running without /tmp/duo-gradle.lock (parallel Gradle builds may fight for memory)" >&2
+    if ! "${GRADLE_CMD[@]}"; then
+        fail "Gradle check"
+    fi
+fi
+
+echo "pre-push: OK ($((SECONDS - START))s)"

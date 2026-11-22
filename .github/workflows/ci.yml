@@ -2,15 +2,29 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+
+permissions:
+  contents: read
+
+# A newer commit on the same ref supersedes an in-flight run: PR pushes are the
+# norm here and the queue was the largest part of the measured wait (p95 39.8s).
+concurrency:
+  group: ci-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Measured job p95 196.3s; x1.5 = 294s. Six minutes keeps that budget and
+    # leaves headroom for a cold Gradle start (47.5s config measured).
+    timeout-minutes: 6
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -21,52 +35,165 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: No private evidence or private device data may be tracked
-        run: python3 tools/check-private-data.py
+      # Robolectric downloads this 190 MiB artefact at test runtime; it is not a
+      # Gradle dependency and setup-gradle does not cache it. The exact key pins
+      # the artifact coordinates so a Robolectric/SDK bump misses instead of
+      # restoring a jar the new version will not use.
+      - name: Cache Robolectric SDK 35 runtime jar
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: robolectric-4.14.1-sdk35-android-all-instrumented-15-robolectric-12650502-i7-v1
 
-      - name: Unit tests and debug build
-        run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest :app:assembleDebug --console=plain
-
-      # Every module log line has to go through L, never android.util.Log directly: OxygenOS drops the
-      # latter from inside SystemUI, so a line written that way is invisible on the device that matters
-      # (this is what made a working module look dead; the phase-3 notes are in the private evidence archive).
-      - name: Module logs must go through L
-        run: python3 tools/route-module-logs.py --check
-
-      # `rive --verify` builds a keyframe that says `cubic` with no CubicEaseInterpolator child without a
-      # word, and that keyframe does not ease at all (`rive docs gotchas`). The whole file shipped that way
-      # once — 27 cubic keyframes, zero curves — so the mistake is cheap to make and invisible without this.
-      - name: Rive keyframes must carry the ease they ask for
+      # Fast checks that need no Gradle or network run first, so a broken gate
+      # fails in seconds instead of after the full suite. Nothing here is new
+      # coverage being removed from later steps; the Gradle job follows.
+      - name: Fast static gates
         run: |
+          set -euo pipefail
+
+          python3 tools/check-private-data.py
+          python3 tools/route-module-logs.py --check
+
+          # `rive --verify` builds a keyframe that says `cubic` with no
+          # CubicEaseInterpolator child without a word, and that keyframe does
+          # not ease at all (`rive docs gotchas`). The whole file shipped that
+          # way once — 27 cubic keyframes, zero curves.
           python3 tools/check-rive-eases.py rive/duo/scene.rml
           python3 tools/check-rive-eases.py rive/duo/scene_old.rml
 
-      - name: Install Rive CLI
-        env:
-          CI: '1'
-          RIVE_ANALYTICS: 'off'
-          # Rive's published minimum is 1.9.2; 1.9.1 exits 8 before command dispatch.
-          RIVE_VERSION: '1.9.2'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libegl1 libgles2 libgl1 libxkbcommon0 libwayland-client0 libx11-6
-          curl -fsSL https://releases.rive.app/cli/install.sh | sh
-          echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
-          "$HOME/.rive/bin/rive" --version
+          # The selector is security-relevant: it decides which tests gate a PR.
+          # Its built-in cases must pass before it can narrow anything.
+          python3 tools/select-tests.py --selftest
 
-      # The app preview and the status-bar module must draw the *same* file, for both scenes. The .riv
-      # files are authored in rive/duo and committed into the app, so this catches the failure mode where
-      # one is rebuilt and the other is forgotten — which shows up as "the preview looks right, the phone
-      # does not". The gate verifies both scenes offline and checks the committed .riv hashes.
-      - name: Both Rive scenes must verify and match the shipped .riv files
-        run: bash tools/check-rive-shipped.sh
-
-      # The app↔module channel is addressed by an authority string that exists twice: as a manifest attribute
-      # and as DuoPrefs.AUTHORITY. A unit test cannot compare them (Robolectric does not register manifest
-      # providers), so CI does — a mismatch would silently disable the entire settings channel.
-      - name: The provider authority must match the constant the module asks for
-        run: |
+          # The app↔module channel is addressed by an authority string that
+          # exists twice: as a manifest attribute and as DuoPrefs.AUTHORITY. A
+          # unit test cannot compare them (Robolectric does not register
+          # manifest providers), so CI does.
           AUTHORITY='io.github.kvmy666.duostatusbar.settings'
           grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
           grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
           echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
+
+          # The Rive-based iOS bar owns the icons outright, so there must be no
+          # IosRiveView left in the app sources (IosRiveAbsenceTest asserts the
+          # same invariant from the test side).
+          if grep -rn "IosRiveView" app/src/main; then
+            echo "::error::IosRiveView must not exist in app/src/main; see IosRiveAbsenceTest"
+            exit 1
+          fi
+          echo "IosRiveView absent from app/src/main"
+
+      - name: Unit tests and debug build
+        run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest :app:assembleDebug --build-cache --console=plain
+
+  # The Rive CLI install and scene verification used to sit on the build critical
+  # path (24s measured). They are independent of Gradle, so run them in parallel
+  # here; the gates themselves are unchanged.
+  rive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # The published minimum is 1.9.2; 1.9.1 exits 8 before command dispatch.
+      # Caching an unsigned executable was rejected, and running `--verify`
+      # without the GL libraries was unverified, so the CLI always installs.
+      # The install sits in this parallel `rive` job and is not on the PR
+      # critical path, so paying for it every run is acceptable.
+      - name: Install Rive CLI
+        env:
+          CI: '1'
+          RIVE_ANALYTICS: 'off'
+          RIVE_VERSION: '1.9.2'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgles2 libgl1 libxkbcommon0 libwayland-client0 libx11-6
+          curl -fsSL https://releases.rive.app/cli/install.sh | sh
+
+      - name: Assert Rive CLI is exactly 1.9.2
+        run: |
+          set -euo pipefail
+          echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
+          chmod +x "$HOME/.rive/bin/rive"
+          VERSION="$("$HOME/.rive/bin/rive" --version 2>&1 | grep -oE '1\.[0-9]+\.[0-9]+' | head -n 1)"
+          if [ "$VERSION" != "1.9.2" ]; then
+            echo "::error::expected Rive CLI 1.9.2, got '$VERSION'"
+            exit 1
+          fi
+          echo "Rive CLI version: $VERSION"
+
+      - name: Rive keyframes must carry the ease they ask for
+        run: |
+          set -euo pipefail
+          python3 tools/check-rive-eases.py rive/duo/scene.rml
+          python3 tools/check-rive-eases.py rive/duo/scene_old.rml
+          python3 tools/check-rive-eases.py rive/ios/scene.rml
+
+      # The app preview and the status-bar module must draw the *same* file, for
+      # both Duo scenes and the iOS scene. The .riv files are authored in rive/
+      # and committed into the app, so this catches the failure mode where one
+      # is rebuilt and the other is forgotten — which shows up as "the preview
+      # looks right, the phone does not". Verifies offline and checks hashes.
+      - name: Both Rive scenes must verify and match the shipped .riv files
+        run: bash tools/check-rive-shipped.sh
+
+  # Fast feedback only. Branch protection must require BOTH `build` and `rive`
+  # (the Rive gate is a separate job, so requiring only `build` would let a Rive
+  # regression through); that protection is currently absent. This job narrows
+  # the unit suite to the classes reachable from the PR diff and prints FULL
+  # whenever the selector cannot prove its map; it is advisory — fast feedback
+  # only, never a replacement for the full-suite run.
+  pr-selected:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # Its FULL fail-safe runs the whole suite, and the measured cold full run is
+    # 267s; 8 minutes covers that. The selected path normally finishes in ~1-2 min.
+    timeout-minutes: 8
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The selector diffs the merge base with three-dot syntax, so it needs
+          # the PR history, not just the merge commit.
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Robolectric SDK 35 runtime jar
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: robolectric-4.14.1-sdk35-android-all-instrumented-15-robolectric-12650502-i7-v1
+
+      - name: Select tests reachable from the diff
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          # The PR merge checkout already contains HEAD; fetch BASE if shallow.
+          git fetch --no-tags --depth=1 origin "$BASE" || true
+          python3 tools/select-tests.py --base "$BASE" --head "$HEAD" --format gradle-args > /tmp/test-plan.txt
+          cat /tmp/test-plan.txt
+
+      - name: Run selected tests
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          if [ "$(cat /tmp/test-plan.txt)" = "FULL" ]; then
+            ./gradlew :app:testDebugUnitTest --build-cache --console=plain
+          else
+            mapfile -t TESTS < /tmp/test-plan.txt
+            ./gradlew :app:testDebugUnitTest --build-cache --console=plain "${TESTS[@]}"
+          fi
