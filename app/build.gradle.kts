@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.gradle.api.tasks.testing.Test
 
 plugins {
     alias(libs.plugins.android.application)
@@ -125,6 +126,13 @@ android {
             isReturnDefaultValues = true
         }
     }
+}
+
+tasks.withType<Test>().configureEach {
+    // Unit tests are 99% Robolectric; each worker owns its own JVM/sandbox.
+    // 2 workers on a 4-core CI runner, 4 on a 16-core dev machine, never more than 4.
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+    maxHeapSize = "1536m"
 }
 
 dependencies {
