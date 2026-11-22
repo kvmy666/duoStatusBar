@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -30,7 +28,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,8 +35,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.kvmy666.duostatusbar.DuoPreview
 import io.github.kvmy666.duostatusbar.R
@@ -60,7 +55,6 @@ fun DuoHomeScreen() {
     val context = LocalContext.current
     val health = remember { ModuleHealthCheck.of(context).state }
     var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
-    var restartRequired by rememberSaveable { mutableStateOf(false) }
     val iosEffective = settings.iosMode && iosModeAvailable()
     val duoEnabled = duoControlsEnabled(settings)
 
@@ -70,14 +64,6 @@ fun DuoHomeScreen() {
 
     fun persistCamera(on: Boolean) {
         settings = writeCameraMode(context, settings, on)
-    }
-
-    fun persistDesign(style: String) {
-        if (style == settings.designStyle) return
-        settings = writeRingDesign(context, settings, style)
-        // The running Rive view already loaded its own drawing, so the switch is honest only after
-        // System UI restarts; never pretend the live element changed.
-        restartRequired = true
     }
 
     fun persistInvert(on: Boolean) {
@@ -142,15 +128,6 @@ fun DuoHomeScreen() {
         )
 
         Spacer(Modifier.height(DuoSpace.md))
-        RingDesignCard(
-            selected = settings.designStyle,
-            enabled = duoEnabled,
-            restartRequired = restartRequired,
-            onSelect = { persistDesign(it) },
-            onRestart = { restartSystemUi(context) }
-        )
-
-        Spacer(Modifier.height(DuoSpace.md))
         CameraCard(
             checked = settings.lockRing,
             enabled = duoEnabled
@@ -176,7 +153,11 @@ internal fun writeCameraMode(context: Context, settings: DuoSettings, on: Boolea
 /**
  * Ring design is its own state: it only writes [DuoSettings.designStyle] and leaves
  * [DuoSettings.lockRing] untouched, so the camera choice survives a design change.
+ *
+ * The Customize card writes through the settings `onUpdate` path; this function remains the tested
+ * policy/legacy helper (it is referenced only from tests), not the production write path.
  */
+@Suppress("unused")
 internal fun writeRingDesign(context: Context, settings: DuoSettings, style: String): DuoSettings {
     if (settings.iosMode) return settings
     val updated = settings.copy(designStyle = DuoPrefs.normalizeDesignStyle(style))
@@ -307,114 +288,6 @@ private fun LivePreviewLabCard(
                 color = DuoColors.TextTertiary
             )
         }
-    }
-}
-
-@Composable
-private fun RingDesignCard(
-    selected: String,
-    enabled: Boolean,
-    restartRequired: Boolean,
-    onSelect: (String) -> Unit,
-    onRestart: () -> Unit
-) {
-    GlassCard(
-        shape = RoundedCornerShape(DuoRadius.surface),
-        colors = CardDefaults.cardColors(containerColor = DuoColors.Surface),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(DuoSpace.xl),
-            verticalArrangement = Arrangement.spacedBy(DuoSpace.sm)
-        ) {
-            Text(
-                text = stringResource(R.string.home_ring_design),
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = stringResource(R.string.home_ring_design_detail),
-                style = MaterialTheme.typography.bodySmall,
-                color = DuoColors.TextSecondary
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().selectableGroup(),
-                horizontalArrangement = Arrangement.spacedBy(DuoSpace.sm)
-            ) {
-                RingDesignOption(
-                    label = stringResource(R.string.home_ring_design_classic),
-                    selected = DuoPrefs.normalizeDesignStyle(selected) == DuoPrefs.DESIGN_OLD,
-                    enabled = enabled,
-                    demoRes = R.drawable.classic_demo,
-                    modifier = Modifier.weight(1f)
-                ) { onSelect(DuoPrefs.DESIGN_OLD) }
-                RingDesignOption(
-                    label = stringResource(R.string.home_ring_design_dual),
-                    selected = DuoPrefs.normalizeDesignStyle(selected) == DuoPrefs.DESIGN_NEW,
-                    enabled = enabled,
-                    demoRes = R.drawable.design_dual,
-                    modifier = Modifier.weight(1f)
-                ) { onSelect(DuoPrefs.DESIGN_NEW) }
-            }
-            if (restartRequired) {
-                Text(
-                    text = stringResource(R.string.home_ring_design_restart),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DuoColors.WineMist
-                )
-                OutlinedButton(
-                    onClick = onRestart,
-                    enabled = enabled,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(stringResource(R.string.settings_restart))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RingDesignOption(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean,
-    demoRes: Int,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val shape = RoundedCornerShape(DuoRadius.control)
-    Column(
-        modifier = modifier
-            .clip(shape)
-            .background(if (selected) DuoColors.Wine.copy(alpha = 0.20f) else DuoColors.Surface)
-            .border(
-                width = 1.dp,
-                color = if (selected) DuoColors.WineBright.copy(alpha = 0.72f) else DuoColors.Hairline,
-                shape = shape
-            )
-            .alpha(if (enabled) 1f else 0.45f)
-            .selectable(
-                selected = selected,
-                enabled = enabled,
-                role = Role.RadioButton,
-                onClick = onClick
-            )
-            .padding(DuoSpace.sm),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(DuoSpace.xs)
-    ) {
-        DesignDemo(
-            res = demoRes,
-            modifier = Modifier.size(52.dp),
-            contentDescription = label
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) DuoColors.WineMist else DuoColors.TextSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 

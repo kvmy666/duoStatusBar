@@ -85,66 +85,74 @@ class IosColumnSkewTest {
     fun `the row has the declared columns with the ios columns appended last`() {
         val row = DuoSettingsProvider.rowFor(DuoSettings(), 1L)
         assertEquals(DuoPrefs.COLUMNS.size, row.size)
-        assertEquals(103, DuoPrefs.COLUMNS.size)
-        assertEquals(52, DuoPrefs.PORTRAIT_COLUMNS.size)
-        assertEquals(51, DuoPrefs.LANDSCAPE_COLUMNS.size)
-        // Portrait ends with the plain name; COLUMNS additionally carries its landscape copy.
-        assertEquals(DuoPrefs.COL_SIM_DISPLAY, DuoPrefs.PORTRAIT_COLUMNS.last())
+        assertEquals(105, DuoPrefs.COLUMNS.size)
+        assertEquals(53, DuoPrefs.PORTRAIT_COLUMNS.size)
+        assertEquals(52, DuoPrefs.LANDSCAPE_COLUMNS.size)
+        // Portrait ends with the R3 append; COLUMNS additionally carries its landscape copy.
+        assertEquals(DuoPrefs.COL_IOS_PERCENT_INSIDE, DuoPrefs.PORTRAIT_COLUMNS.last())
         assertEquals(
-            DuoPrefs.COL_IOS_CELL_SCALE,
+            DuoPrefs.COL_SIM_DISPLAY,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 1]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_CELL_OFFSET,
+            DuoPrefs.COL_IOS_CELL_SCALE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 2]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_WIFI_SCALE,
+            DuoPrefs.COL_IOS_CELL_OFFSET,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 3]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_WIFI_OFFSET,
+            DuoPrefs.COL_IOS_WIFI_SCALE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 4]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_BATTERY_SCALE,
+            DuoPrefs.COL_IOS_WIFI_OFFSET,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 5]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_BATTERY_OFFSET,
+            DuoPrefs.COL_IOS_BATTERY_SCALE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 6]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_MODE,
+            DuoPrefs.COL_IOS_BATTERY_OFFSET,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 7]
         )
         assertEquals(
-            DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.COL_IOS_MODE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 8]
         )
         assertEquals(
-            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.COL_DESIGN_STYLE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 9]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIM_DISPLAY,
+            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 10]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_PERCENT_INSIDE,
             DuoPrefs.COLUMNS.last()
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_CELL_SCALE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIM_DISPLAY,
             DuoPrefs.COLUMNS[DuoPrefs.COLUMNS.lastIndex - 1]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE,
-            DuoPrefs.COLUMNS[DuoPrefs.COLUMNS.lastIndex - 7]
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_CELL_SCALE,
+            DuoPrefs.COLUMNS[DuoPrefs.COLUMNS.lastIndex - 2]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE,
             DuoPrefs.COLUMNS[DuoPrefs.COLUMNS.lastIndex - 8]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
             DuoPrefs.COLUMNS[DuoPrefs.COLUMNS.lastIndex - 9]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.COLUMNS[DuoPrefs.COLUMNS.lastIndex - 10]
         )
     }
 }

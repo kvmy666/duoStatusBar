@@ -28,13 +28,50 @@ artboard width from the cap again.
 | Cap gap | 7.5 | measured 7.04-7.87 |
 | Cap lift above body centre | 0.0 | measured cap centre on the body centre |
 | Cap shape | right-hand half-superellipse n=1.8, 25-gon, flat base on the body side | same shape in every reference |
-| Cap colour / alpha | batteryFillColor at 0.50, same as the remainder (not the tint) | refs 1/5/6 partial charge (0.49-0.57); owner rule 0.50 |
-| Uncharged remainder | fill colour at 0.50 alpha | measured 0.496-0.537 |
+| Cap colour / alpha | neutral tint (0:1003) at 0.50, same as the remainder (not batteryFillColor) | refs 1/5/6 partial charge (0.49-0.57); owner rule 0.50 |
+| Uncharged remainder | neutral tint (0:1003) at 0.50 alpha | measured 0.496-0.537 |
 | Fill | left `level * 192.5`, clipped by the body | light solid 1.00; dark split 58.4 % |
-| Bolt | 30 x 55, 7-point path | design invention (no reference image) |
+| Bolt | 61 x 96, 21-point polygon; white fill + 3.0 dark outline (6-unit stroke; ref ring ~4.5, capped to fit); inline 40 x 59, no outline | refs 3 / 1 / 2 / 4 |
 
-The cap is the inactive grey, not the dynamic tint. At 100 % the light reference draws the cap at full
-ink; that one case is **UNVERIFIED** and is not adopted (see the caveats).
+The cap and the uncharged remainder use the neutral tint at 0.50, not `batteryFillColor`. At 100 % the
+light reference draws the cap at full neutral ink; that exception is **runtime-only** and is not
+adopted by the scene (see the caveats).
+
+The old 7-point invented bolt (24 x 55 in the source, 30 x 55 as previously documented here) is
+removed. The scene now repeats `IosGeometry.Battery.BOLT_POINTS`: the 21-point polygon measured from
+ref 3 (and cross-checked against refs 1/2/4), normalised to 61 x 96 at the body centre, filled white,
+and painted with the 3.0-unit dark outline (`BOLT_OUTLINE`, authored as a 6-unit round stroke) before
+the fill. The inline bolt is the same normalised polygon scaled to 40 x 59 and has no outline.
+
+The ref-3 ring measures about 4.5 units, but the white bolt is 96 units tall and the frozen battery
+artboard is 102 units, so only 3 units are available above and below it. A 4.5-unit half-stroke would
+put the stroked extent at -1.5..103.1, outside the artboard; the shipped 3.0-unit outline keeps it at
+0..101.6 and fits exactly (96 + 2 x 3.0 = 102). The same fit guard
+(`2 * BOLT_OUTLINE + 96 <= ARTBOARD_H + 0.01`) is asserted in `IosGeometryParityTest`, so the scene and
+the constant cannot drift apart again. Whether the host view bounds clip the 0/101.6 edges cleanly on a
+real device is still **UNVERIFIED**.
+
+## Percentage inside (R3B)
+
+Runtime toggle `ios_percent_inside` (default **off**). When on, the battery percentage is drawn inside
+the body from `hook/IosDigits.kt` (our own polylines, no font); `IosDigits` is the matching plain Rive
+artboard in `rive/ios/scene.rml` (no state machine, no view model).
+
+| Quantity | Value | Source |
+|---|---:|---|
+| Digit cap height | 57 | measured bold refs 3/6/9 |
+| Stroke | 10.5, round cap / round join | measured bold refs 3/6/9 |
+| Advance | 52 | measured bold refs 3/6/9 |
+| Group gap (digits -> inline bolt) | 5 | measured bold refs 3/6/9 |
+| Digit widths | 0:43, 1:24, 2:41, 3:39.5, 4:44, 5:40, 6:43, 7:38, 8:43, 9:43 | regular ref 4 for 1-9 |
+| Inline bolt | 40 x 59, follows the digits when charging | same 21-point bolt, no outline |
+| Layout | the group is centred on the battery body | owner rule |
+
+Digits **1-9** come from the regular ref 4; the bold battery refs **3/6/9** supply the cap height,
+stroke, advance, group gap and the shared bold contour cross-check. Digit **0 has no reference** and
+remains provisional. This supersedes the PM's earlier flag list: 1-9 are all measured (4 and 7 are in
+ref 4 like the rest), so only 0 is still unmeasured. The scene's `IosDigits` artboard and the runtime
+`IosDigits` object carry the same values; `IosGeometryParityTest` pins every vertex.
 
 ## Cellular (artboard `IosCell`, 150.1 x 105.6, frozen envelope)
 
@@ -154,10 +191,27 @@ The runtime still gives each glyph the stock icon's slot and uses `Fit.CONTAIN`;
 are for the preview and the PNG evidence at the reference scale. The host-applied
 `Relative.sizeFor` inset is not wired in R2B.
 
+## Rive build and verification (R3B)
+
+The scene is built offline with **Rive 1.8.0** (`rive rive/ios --once`). Rive **1.9.2** is used only to
+verify (`rive . --verify`), including `tools/check-rive-shipped.sh`. The brief's 1.9.2 build path is not
+possible here: 1.9.2 removed `--once`, and `--publish` needs a login, so it cannot write an unsigned
+`.riv` offline. Building the same scene twice with 1.8.0 is byte-identical, and the committed
+`app/src/main/res/raw/ios.riv` is that build. If the installed CLI's cached minimum version blocks
+1.8.0, run it with an isolated `RIVE_HOME` whose `update-check` minimum is 1.8.0; the build itself is
+offline.
+
 ## UNVERIFIED / caveats
 
-- **Cap at 100 %:** the light reference draws the cap at full ink (alpha 1.0). The owner rule (and every
-  partial-charge reference, 0.49-0.57) is 0.50; the 100 % case is recorded as an exception, not averaged.
+- **Cap at 100 %:** the light reference draws the cap at full neutral ink (alpha 1.0). The owner rule
+  (and every partial-charge reference, 0.49-0.57) is 0.50; the 100 % case is runtime-only and is not
+  adopted by the scene.
+- **Bolt outline clipping:** the shipped 3.0-unit outline keeps the stroked 96-unit bolt inside the
+  102-high battery artboard (extent 0..101.6, guard-tested). Whether the host view bounds clip the
+  0/101.6 edges cleanly on a real device is UNVERIFIED.
+- **Percentage digit 0:** there is no reference capture for 0, so its contour is provisional and needs
+  an owner measurement; digits 1-9 are measured from ref 4 (with 3/6/9 cross-checked against the bold
+  battery refs).
 - **Cell draw scales:** the ref 7 phone rendered the 4 bars + 4 dots side-by-side (the known dual-SIM
   bug), so the single and stacked-dual blocks are inferred from the measured drawable px/unit. Medium
   confidence; the battery and Wi-Fi scales are direct bbox measurements.

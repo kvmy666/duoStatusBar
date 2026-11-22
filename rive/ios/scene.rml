@@ -36,33 +36,53 @@
               viewModelId="0:1000" viewModelInstanceId="0:1013" defaultStateMachineId="0:1120">
         <Node name="batteryRoot" id="0:1101">
 
-            <!-- Bolt: 7 absolute artboard points, filled with the dynamic tint.  Its Shape
-                 opacity is the only property driven by boltOpacity, so the fill colour keeps
-                 the full tint and the host can fade the whole glyph. -->
+            <!-- Bolt: the 21 absolute artboard points measured from ref 3, scaled from the
+                 normalised source into a 61 x 96 box at the body centre. The dark
+                 outline is a 6-unit round stroke (3.0 visible units, BOLT_OUTLINE) painted before
+                 the static white fill. The ref-3 ring measures about 4.5 units, but the 96-unit
+                 white bolt leaves only 3 units of vertical room in the 102-unit artboard; 3.0 keeps
+                 the stroked extent at 0..101.6. The Shape opacity is still the only property driven
+                 by boltOpacity, so the host can fade the whole glyph. -->
             <Shape name="bolt" id="0:1107">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="100.25" y="23.50" />
-                    <StraightVertex x="85.25" y="53.75" />
-                    <StraightVertex x="94.85" y="53.75" />
-                    <StraightVertex x="91.85" y="78.50" />
-                    <StraightVertex x="109.25" y="45.50" />
-                    <StraightVertex x="99.65" y="45.50" />
-                    <StraightVertex x="104.75" y="23.50" />
+                    <StraightVertex x="110.26" y="3.00" />
+                    <StraightVertex x="110.26" y="12.36" />
+                    <StraightVertex x="101.32" y="31.88" />
+                    <StraightVertex x="99.69" y="40.02" />
+                    <StraightVertex x="100.50" y="43.27" />
+                    <StraightVertex x="103.76" y="45.71" />
+                    <StraightVertex x="126.53" y="44.89" />
+                    <StraightVertex x="127.34" y="47.34" />
+                    <StraightVertex x="126.53" y="49.78" />
+                    <StraightVertex x="107.01" y="70.93" />
+                    <StraightVertex x="94.00" y="88.83" />
+                    <StraightVertex x="84.24" y="98.60" />
+                    <StraightVertex x="84.24" y="90.46" />
+                    <StraightVertex x="93.18" y="70.12" />
+                    <StraightVertex x="94.81" y="61.98" />
+                    <StraightVertex x="91.56" y="57.91" />
+                    <StraightVertex x="68.78" y="57.91" />
+                    <StraightVertex x="67.16" y="55.47" />
+                    <StraightVertex x="77.73" y="40.83" />
+                    <StraightVertex x="83.42" y="35.95" />
+                    <StraightVertex x="94.81" y="20.49" />
                 </PointsPath>
+                <Stroke thickness="6" cap="round" join="round" name="Outline">
+                    <SolidColor colorValue="8C000000" name="Color" />
+                </Stroke>
                 <Fill name="Fill">
-                    <SolidColor colorValue="FFFFFFFF" name="Color">
-                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
-                    </SolidColor>
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
                 </Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:1000-0:1007" />
             </Shape>
 
             <!-- Cap nub: the measured right-hand half of a superellipse (n=1.8) as a 25-gon in
                  absolute artboard coordinates, 9.5 x 26.0, with its flat base on the body side.
-                 It is the inactive grey, the SAME colour as the uncharged remainder, so its Fill is
-                 bound to batteryFillColor (0:1006), not the dynamic tint, at shape opacity 0.50
+                 It is the inactive grey, the SAME neutral ink as the uncharged remainder, so its Fill
+                 is bound to the neutral tint (0:1003), not batteryFillColor, at shape opacity 0.50
                  (Battery.CAP_ALPHA). Owner rule; refs 1/5/6 confirm 0.50 for a partial charge. The
-                 light 100 % reference draws the cap at full ink — UNVERIFIED exception, not adopted. -->
+                 light 100 % reference draws the cap at full neutral ink; that exception is
+                 runtime-only, not this scene. -->
             <Shape name="cap" id="0:1106" opacity="0.50">
                 <PointsPath isClosed="true" name="Path">
                     <StraightVertex x="201.00" y="38.00" />
@@ -93,7 +113,7 @@
                 </PointsPath>
                 <Fill name="Fill">
                     <SolidColor colorValue="FFFFFFFF" name="Color">
-                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1006" />
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
                     </SolidColor>
                 </Fill>
             </Shape>
@@ -120,14 +140,15 @@
                 <ClippingShape sourceId="0:1102" name="Clip" />
             </Shape>
 
-            <!-- Uncharged remainder: the same body shape in batteryFillColor at shape opacity
-                 0.50 (Battery.REMAINDER_ALPHA).  Shape opacity is 18. -->
+            <!-- Uncharged remainder: the same body shape in the neutral tint (0:1003) at shape
+                 opacity 0.50 (Battery.REMAINDER_ALPHA); the full neutral ink at 100 % is a runtime
+                 exception, not this scene.  Shape opacity is 18. -->
             <Shape x="1" y="1" opacity="0.50" name="batteryRemainder" id="0:1103">
                 <Rectangle width="192.5" height="100" originX="0" originY="0"
                            cornerRadiusTL="33" name="Path" />
                 <Fill name="Fill">
                     <SolidColor colorValue="FFFFFFFF" name="Color">
-                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1006" />
+                        <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
                     </SolidColor>
                 </Fill>
             </Shape>
@@ -962,6 +983,503 @@
             <KeyedObject objectId="0:1320"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
             <KeyedObject objectId="0:1321"><KeyedProperty propertyKey="18"><KeyFrameDouble value="1" interpolationType="hold" frame="0" /></KeyedProperty></KeyedObject>
         </LinearAnimation>
+    </Artboard>
+
+    <!-- ========================================================= IOS DIGITS -->
+    <!-- Plain document artboard (no state machine, no view model): the R3B percentage
+         glyphs and the inline charging bolt, generated from
+         .pm/ref/out-r3/digits-final.json by a throwaway script so no point is retyped.
+         Cap 57, stroke 10.5, advance 52, group gap
+         5; every digit sits in its own 62-unit cell. The inline bolt is the
+         same 21-point polygon as the large bolt scaled to 40 x 59 (no outline). -->
+    <Artboard x="0" y="220" width="630" height="160" name="IosDigits" id="0:1500">
+        <Node name="digitsRoot" id="0:1501">
+            <Shape x="10" y="10" name="digit0s0" id="0:1510">
+                <PointsPath name="Path">
+                    <StraightVertex x="37.75" y="28.50" />
+                    <StraightVertex x="37.43" y="33.12" />
+                    <StraightVertex x="36.47" y="37.55" />
+                    <StraightVertex x="34.91" y="41.62" />
+                    <StraightVertex x="33.15" y="44.70" />
+                    <StraightVertex x="30.67" y="47.69" />
+                    <StraightVertex x="29.22" y="48.96" />
+                    <StraightVertex x="27.83" y="49.92" />
+                    <StraightVertex x="26.08" y="50.81" />
+                    <StraightVertex x="24.73" y="51.29" />
+                    <StraightVertex x="23.35" y="51.60" />
+                    <StraightVertex x="21.50" y="51.75" />
+                    <StraightVertex x="19.65" y="51.60" />
+                    <StraightVertex x="18.27" y="51.29" />
+                    <StraightVertex x="15.60" y="50.17" />
+                    <StraightVertex x="13.92" y="49.06" />
+                    <StraightVertex x="12.71" y="48.06" />
+                    <StraightVertex x="10.17" y="45.17" />
+                    <StraightVertex x="8.09" y="41.62" />
+                    <StraightVertex x="6.53" y="37.55" />
+                    <StraightVertex x="5.57" y="33.12" />
+                    <StraightVertex x="5.25" y="28.50" />
+                    <StraightVertex x="5.57" y="23.88" />
+                    <StraightVertex x="6.53" y="19.45" />
+                    <StraightVertex x="8.09" y="15.38" />
+                    <StraightVertex x="10.17" y="11.83" />
+                    <StraightVertex x="12.33" y="9.31" />
+                    <StraightVertex x="13.78" y="8.04" />
+                    <StraightVertex x="15.17" y="7.08" />
+                    <StraightVertex x="16.70" y="6.29" />
+                    <StraightVertex x="18.27" y="5.71" />
+                    <StraightVertex x="20.11" y="5.34" />
+                    <StraightVertex x="21.50" y="5.25" />
+                    <StraightVertex x="23.35" y="5.40" />
+                    <StraightVertex x="24.73" y="5.71" />
+                    <StraightVertex x="27.40" y="6.83" />
+                    <StraightVertex x="28.67" y="7.64" />
+                    <StraightVertex x="30.29" y="8.94" />
+                    <StraightVertex x="32.83" y="11.83" />
+                    <StraightVertex x="34.91" y="15.38" />
+                    <StraightVertex x="36.47" y="19.45" />
+                    <StraightVertex x="37.43" y="23.88" />
+                    <StraightVertex x="37.75" y="28.50" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="72" y="10" name="digit1s0" id="0:1511">
+                <PointsPath name="Path">
+                    <StraightVertex x="18.75" y="5.25" />
+                    <StraightVertex x="18.75" y="51.75" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="72" y="10" name="digit1s1" id="0:1512">
+                <PointsPath name="Path">
+                    <StraightVertex x="5.25" y="17.00" />
+                    <StraightVertex x="18.75" y="5.25" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="134" y="10" name="digit2s0" id="0:1513">
+                <PointsPath name="Path">
+                    <StraightVertex x="5.25" y="16.00" />
+                    <StraightVertex x="5.49" y="14.09" />
+                    <StraightVertex x="6.10" y="12.47" />
+                    <StraightVertex x="7.05" y="10.93" />
+                    <StraightVertex x="8.33" y="9.52" />
+                    <StraightVertex x="10.03" y="8.18" />
+                    <StraightVertex x="12.02" y="7.06" />
+                    <StraightVertex x="14.10" y="6.24" />
+                    <StraightVertex x="16.32" y="5.66" />
+                    <StraightVertex x="18.66" y="5.33" />
+                    <StraightVertex x="21.03" y="5.26" />
+                    <StraightVertex x="23.73" y="5.49" />
+                    <StraightVertex x="26.01" y="5.98" />
+                    <StraightVertex x="28.15" y="6.70" />
+                    <StraightVertex x="30.37" y="7.81" />
+                    <StraightVertex x="32.28" y="9.17" />
+                    <StraightVertex x="33.64" y="10.54" />
+                    <StraightVertex x="34.42" y="11.61" />
+                    <StraightVertex x="35.13" y="12.96" />
+                    <StraightVertex x="35.57" y="14.36" />
+                    <StraightVertex x="35.74" y="15.55" />
+                    <StraightVertex x="35.71" y="16.75" />
+                    <StraightVertex x="35.43" y="18.17" />
+                    <StraightVertex x="34.89" y="19.56" />
+                    <StraightVertex x="34.24" y="20.67" />
+                    <StraightVertex x="32.43" y="22.69" />
+                    <StraightVertex x="30.30" y="24.23" />
+                    <StraightVertex x="5.25" y="51.75" />
+                    <StraightVertex x="35.75" y="51.75" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="196" y="10" name="digit3s0" id="0:1514">
+                <PointsPath name="Path">
+                    <StraightVertex x="5.25" y="11.75" />
+                    <StraightVertex x="5.41" y="10.75" />
+                    <StraightVertex x="5.96" y="9.65" />
+                    <StraightVertex x="6.78" y="8.72" />
+                    <StraightVertex x="8.03" y="7.77" />
+                    <StraightVertex x="9.60" y="6.94" />
+                    <StraightVertex x="11.44" y="6.25" />
+                    <StraightVertex x="15.44" y="5.43" />
+                    <StraightVertex x="19.78" y="5.28" />
+                    <StraightVertex x="23.98" y="5.83" />
+                    <StraightVertex x="25.78" y="6.32" />
+                    <StraightVertex x="27.59" y="7.02" />
+                    <StraightVertex x="29.13" y="7.87" />
+                    <StraightVertex x="30.34" y="8.83" />
+                    <StraightVertex x="31.45" y="10.37" />
+                    <StraightVertex x="31.75" y="11.88" />
+                    <StraightVertex x="31.55" y="12.88" />
+                    <StraightVertex x="30.95" y="13.97" />
+                    <StraightVertex x="30.70" y="16.08" />
+                    <StraightVertex x="29.90" y="18.31" />
+                    <StraightVertex x="28.68" y="20.51" />
+                    <StraightVertex x="26.95" y="22.92" />
+                    <StraightVertex x="20.50" y="30.25" />
+                    <StraightVertex x="23.40" y="30.47" />
+                    <StraightVertex x="25.85" y="31.01" />
+                    <StraightVertex x="28.44" y="32.01" />
+                    <StraightVertex x="30.58" y="33.27" />
+                    <StraightVertex x="32.36" y="34.82" />
+                    <StraightVertex x="33.79" y="36.70" />
+                    <StraightVertex x="34.60" y="38.50" />
+                    <StraightVertex x="34.99" y="40.65" />
+                    <StraightVertex x="34.85" y="42.54" />
+                    <StraightVertex x="34.14" y="44.64" />
+                    <StraightVertex x="33.07" y="46.36" />
+                    <StraightVertex x="31.49" y="48.01" />
+                    <StraightVertex x="29.52" y="49.42" />
+                    <StraightVertex x="27.38" y="50.46" />
+                    <StraightVertex x="24.86" y="51.25" />
+                    <StraightVertex x="22.18" y="51.68" />
+                    <StraightVertex x="19.45" y="51.72" />
+                    <StraightVertex x="16.75" y="51.38" />
+                    <StraightVertex x="14.02" y="50.62" />
+                    <StraightVertex x="11.84" y="49.62" />
+                    <StraightVertex x="9.93" y="48.36" />
+                    <StraightVertex x="8.16" y="46.64" />
+                    <StraightVertex x="6.88" y="44.70" />
+                    <StraightVertex x="6.22" y="42.87" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="258" y="10" name="digit4s0" id="0:1515">
+                <PointsPath name="Path">
+                    <StraightVertex x="38.75" y="5.25" />
+                    <StraightVertex x="38.75" y="51.75" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="258" y="10" name="digit4s1" id="0:1516">
+                <PointsPath name="Path">
+                    <StraightVertex x="32.00" y="5.25" />
+                    <StraightVertex x="5.25" y="39.00" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="258" y="10" name="digit4s2" id="0:1517">
+                <PointsPath name="Path">
+                    <StraightVertex x="5.25" y="39.00" />
+                    <StraightVertex x="38.75" y="39.00" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="320" y="10" name="digit5s0" id="0:1518">
+                <PointsPath name="Path">
+                    <StraightVertex x="34.75" y="5.25" />
+                    <StraightVertex x="5.25" y="5.25" />
+                    <StraightVertex x="5.25" y="28.50" />
+                    <StraightVertex x="20.00" y="27.25" />
+                    <StraightVertex x="23.07" y="27.52" />
+                    <StraightVertex x="26.00" y="28.31" />
+                    <StraightVertex x="27.82" y="29.11" />
+                    <StraightVertex x="29.48" y="30.12" />
+                    <StraightVertex x="30.96" y="31.30" />
+                    <StraightVertex x="32.23" y="32.65" />
+                    <StraightVertex x="33.26" y="34.13" />
+                    <StraightVertex x="34.03" y="35.71" />
+                    <StraightVertex x="34.53" y="37.37" />
+                    <StraightVertex x="34.74" y="39.07" />
+                    <StraightVertex x="34.61" y="41.20" />
+                    <StraightVertex x="34.03" y="43.29" />
+                    <StraightVertex x="33.10" y="45.12" />
+                    <StraightVertex x="31.83" y="46.82" />
+                    <StraightVertex x="30.25" y="48.31" />
+                    <StraightVertex x="28.39" y="49.58" />
+                    <StraightVertex x="26.31" y="50.57" />
+                    <StraightVertex x="24.07" y="51.28" />
+                    <StraightVertex x="21.71" y="51.67" />
+                    <StraightVertex x="19.31" y="51.74" />
+                    <StraightVertex x="16.93" y="51.48" />
+                    <StraightVertex x="14.47" y="50.86" />
+                    <StraightVertex x="12.18" y="49.89" />
+                    <StraightVertex x="10.26" y="48.70" />
+                    <StraightVertex x="8.59" y="47.26" />
+                    <StraightVertex x="7.23" y="45.62" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="382" y="10" name="digit6s0" id="0:1519">
+                <PointsPath name="Path">
+                    <StraightVertex x="35.75" y="10.50" />
+                    <StraightVertex x="35.47" y="9.50" />
+                    <StraightVertex x="34.64" y="8.53" />
+                    <StraightVertex x="33.29" y="7.64" />
+                    <StraightVertex x="31.28" y="6.79" />
+                    <StraightVertex x="29.03" y="6.15" />
+                    <StraightVertex x="26.46" y="5.67" />
+                    <StraightVertex x="23.41" y="5.35" />
+                    <StraightVertex x="20.50" y="5.25" />
+                    <StraightVertex x="14.79" y="5.63" />
+                    <StraightVertex x="12.19" y="6.10" />
+                    <StraightVertex x="9.72" y="6.79" />
+                    <StraightVertex x="7.86" y="7.56" />
+                    <StraightVertex x="6.46" y="8.45" />
+                    <StraightVertex x="5.53" y="9.50" />
+                    <StraightVertex x="5.25" y="10.50" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="382" y="10" name="digit6s1" id="0:1520">
+                <PointsPath name="Path">
+                    <StraightVertex x="5.25" y="10.50" />
+                    <StraightVertex x="5.25" y="38.00" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="382" y="10" name="digit6s2" id="0:1521">
+                <PointsPath name="Path">
+                    <StraightVertex x="37.75" y="38.00" />
+                    <StraightVertex x="37.43" y="40.73" />
+                    <StraightVertex x="36.56" y="43.17" />
+                    <StraightVertex x="35.17" y="45.43" />
+                    <StraightVertex x="33.15" y="47.58" />
+                    <StraightVertex x="30.67" y="49.35" />
+                    <StraightVertex x="27.83" y="50.67" />
+                    <StraightVertex x="24.73" y="51.48" />
+                    <StraightVertex x="21.50" y="51.75" />
+                    <StraightVertex x="18.27" y="51.48" />
+                    <StraightVertex x="15.17" y="50.67" />
+                    <StraightVertex x="12.33" y="49.35" />
+                    <StraightVertex x="10.01" y="47.72" />
+                    <StraightVertex x="8.09" y="45.76" />
+                    <StraightVertex x="6.53" y="43.35" />
+                    <StraightVertex x="5.57" y="40.73" />
+                    <StraightVertex x="5.25" y="38.00" />
+                    <StraightVertex x="5.57" y="35.27" />
+                    <StraightVertex x="6.53" y="32.65" />
+                    <StraightVertex x="8.09" y="30.24" />
+                    <StraightVertex x="10.17" y="28.14" />
+                    <StraightVertex x="12.33" y="26.65" />
+                    <StraightVertex x="15.17" y="25.33" />
+                    <StraightVertex x="18.27" y="24.52" />
+                    <StraightVertex x="21.50" y="24.25" />
+                    <StraightVertex x="24.73" y="24.52" />
+                    <StraightVertex x="27.83" y="25.33" />
+                    <StraightVertex x="30.67" y="26.65" />
+                    <StraightVertex x="32.99" y="28.28" />
+                    <StraightVertex x="34.91" y="30.24" />
+                    <StraightVertex x="36.47" y="32.65" />
+                    <StraightVertex x="37.43" y="35.27" />
+                    <StraightVertex x="37.75" y="38.00" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="444" y="10" name="digit7s0" id="0:1522">
+                <PointsPath name="Path">
+                    <StraightVertex x="5.25" y="5.25" />
+                    <StraightVertex x="32.75" y="5.25" />
+                    <StraightVertex x="12.00" y="51.75" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="506" y="10" name="digit8s0" id="0:1523">
+                <PointsPath name="Path">
+                    <StraightVertex x="35.50" y="15.50" />
+                    <StraightVertex x="35.19" y="17.63" />
+                    <StraightVertex x="34.48" y="19.34" />
+                    <StraightVertex x="33.11" y="21.23" />
+                    <StraightVertex x="31.40" y="22.75" />
+                    <StraightVertex x="29.33" y="24.00" />
+                    <StraightVertex x="26.74" y="25.00" />
+                    <StraightVertex x="23.93" y="25.59" />
+                    <StraightVertex x="21.50" y="25.75" />
+                    <StraightVertex x="19.07" y="25.59" />
+                    <StraightVertex x="16.26" y="25.00" />
+                    <StraightVertex x="13.67" y="24.00" />
+                    <StraightVertex x="11.60" y="22.75" />
+                    <StraightVertex x="9.89" y="21.23" />
+                    <StraightVertex x="8.52" y="19.34" />
+                    <StraightVertex x="7.81" y="17.63" />
+                    <StraightVertex x="7.50" y="15.50" />
+                    <StraightVertex x="7.71" y="13.72" />
+                    <StraightVertex x="8.52" y="11.66" />
+                    <StraightVertex x="9.89" y="9.77" />
+                    <StraightVertex x="11.60" y="8.25" />
+                    <StraightVertex x="13.67" y="7.00" />
+                    <StraightVertex x="16.26" y="6.00" />
+                    <StraightVertex x="18.83" y="5.44" />
+                    <StraightVertex x="21.50" y="5.25" />
+                    <StraightVertex x="23.93" y="5.41" />
+                    <StraightVertex x="26.74" y="6.00" />
+                    <StraightVertex x="29.33" y="7.00" />
+                    <StraightVertex x="31.40" y="8.25" />
+                    <StraightVertex x="33.11" y="9.77" />
+                    <StraightVertex x="34.48" y="11.66" />
+                    <StraightVertex x="35.19" y="13.37" />
+                    <StraightVertex x="35.50" y="15.50" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="506" y="10" name="digit8s1" id="0:1524">
+                <PointsPath name="Path">
+                    <StraightVertex x="37.75" y="40.00" />
+                    <StraightVertex x="37.50" y="42.04" />
+                    <StraightVertex x="36.57" y="44.40" />
+                    <StraightVertex x="34.97" y="46.57" />
+                    <StraightVertex x="33.19" y="48.16" />
+                    <StraightVertex x="30.59" y="49.74" />
+                    <StraightVertex x="27.76" y="50.84" />
+                    <StraightVertex x="24.88" y="51.49" />
+                    <StraightVertex x="21.50" y="51.75" />
+                    <StraightVertex x="18.12" y="51.49" />
+                    <StraightVertex x="15.24" y="50.84" />
+                    <StraightVertex x="12.41" y="49.74" />
+                    <StraightVertex x="9.81" y="48.16" />
+                    <StraightVertex x="7.72" y="46.23" />
+                    <StraightVertex x="6.43" y="44.40" />
+                    <StraightVertex x="5.61" y="42.44" />
+                    <StraightVertex x="5.25" y="40.00" />
+                    <StraightVertex x="5.50" y="37.96" />
+                    <StraightVertex x="6.43" y="35.60" />
+                    <StraightVertex x="8.03" y="33.43" />
+                    <StraightVertex x="10.01" y="31.69" />
+                    <StraightVertex x="12.41" y="30.26" />
+                    <StraightVertex x="15.41" y="29.11" />
+                    <StraightVertex x="18.31" y="28.48" />
+                    <StraightVertex x="21.50" y="28.25" />
+                    <StraightVertex x="24.88" y="28.51" />
+                    <StraightVertex x="28.11" y="29.27" />
+                    <StraightVertex x="30.59" y="30.26" />
+                    <StraightVertex x="33.19" y="31.84" />
+                    <StraightVertex x="34.97" y="33.43" />
+                    <StraightVertex x="36.57" y="35.60" />
+                    <StraightVertex x="37.50" y="37.96" />
+                    <StraightVertex x="37.75" y="40.00" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="568" y="10" name="digit9s0" id="0:1525">
+                <PointsPath name="Path">
+                    <StraightVertex x="7.25" y="46.50" />
+                    <StraightVertex x="7.53" y="47.50" />
+                    <StraightVertex x="8.36" y="48.47" />
+                    <StraightVertex x="9.71" y="49.36" />
+                    <StraightVertex x="11.72" y="50.21" />
+                    <StraightVertex x="13.97" y="50.85" />
+                    <StraightVertex x="16.54" y="51.33" />
+                    <StraightVertex x="19.59" y="51.65" />
+                    <StraightVertex x="22.50" y="51.75" />
+                    <StraightVertex x="25.41" y="51.65" />
+                    <StraightVertex x="28.46" y="51.33" />
+                    <StraightVertex x="31.03" y="50.85" />
+                    <StraightVertex x="33.28" y="50.21" />
+                    <StraightVertex x="35.29" y="49.36" />
+                    <StraightVertex x="36.64" y="48.47" />
+                    <StraightVertex x="37.47" y="47.50" />
+                    <StraightVertex x="37.75" y="46.50" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="568" y="10" name="digit9s1" id="0:1526">
+                <PointsPath name="Path">
+                    <StraightVertex x="37.75" y="46.50" />
+                    <StraightVertex x="37.75" y="19.00" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="568" y="10" name="digit9s2" id="0:1527">
+                <PointsPath name="Path">
+                    <StraightVertex x="5.25" y="19.00" />
+                    <StraightVertex x="5.57" y="16.27" />
+                    <StraightVertex x="6.53" y="13.65" />
+                    <StraightVertex x="8.09" y="11.24" />
+                    <StraightVertex x="9.85" y="9.42" />
+                    <StraightVertex x="12.33" y="7.65" />
+                    <StraightVertex x="15.17" y="6.33" />
+                    <StraightVertex x="18.27" y="5.52" />
+                    <StraightVertex x="21.50" y="5.25" />
+                    <StraightVertex x="24.27" y="5.45" />
+                    <StraightVertex x="27.40" y="6.19" />
+                    <StraightVertex x="30.29" y="7.43" />
+                    <StraightVertex x="32.83" y="9.14" />
+                    <StraightVertex x="34.91" y="11.24" />
+                    <StraightVertex x="36.47" y="13.65" />
+                    <StraightVertex x="37.43" y="16.27" />
+                    <StraightVertex x="37.75" y="19.00" />
+                    <StraightVertex x="37.43" y="21.73" />
+                    <StraightVertex x="36.47" y="24.35" />
+                    <StraightVertex x="34.91" y="26.76" />
+                    <StraightVertex x="32.83" y="28.86" />
+                    <StraightVertex x="30.29" y="30.57" />
+                    <StraightVertex x="27.61" y="31.74" />
+                    <StraightVertex x="24.73" y="32.48" />
+                    <StraightVertex x="21.50" y="32.75" />
+                    <StraightVertex x="18.73" y="32.55" />
+                    <StraightVertex x="15.60" y="31.81" />
+                    <StraightVertex x="12.71" y="30.57" />
+                    <StraightVertex x="10.17" y="28.86" />
+                    <StraightVertex x="8.09" y="26.76" />
+                    <StraightVertex x="6.53" y="24.35" />
+                    <StraightVertex x="5.57" y="21.73" />
+                    <StraightVertex x="5.25" y="19.00" />
+                </PointsPath>
+                <Stroke thickness="10.5" cap="round" join="round" name="Stroke">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Stroke>
+            </Shape>
+            <Shape x="10" y="90" name="inlineBoltSample" id="0:1528">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="28.53" y="0.00" />
+                    <StraightVertex x="28.53" y="5.75" />
+                    <StraightVertex x="22.67" y="17.75" />
+                    <StraightVertex x="21.60" y="22.75" />
+                    <StraightVertex x="22.13" y="24.75" />
+                    <StraightVertex x="24.27" y="26.25" />
+                    <StraightVertex x="39.20" y="25.75" />
+                    <StraightVertex x="39.73" y="27.25" />
+                    <StraightVertex x="39.20" y="28.75" />
+                    <StraightVertex x="26.40" y="41.75" />
+                    <StraightVertex x="17.87" y="52.75" />
+                    <StraightVertex x="11.47" y="58.75" />
+                    <StraightVertex x="11.47" y="53.75" />
+                    <StraightVertex x="17.33" y="41.25" />
+                    <StraightVertex x="18.40" y="36.25" />
+                    <StraightVertex x="16.27" y="33.75" />
+                    <StraightVertex x="1.33" y="33.75" />
+                    <StraightVertex x="0.27" y="32.25" />
+                    <StraightVertex x="7.20" y="23.25" />
+                    <StraightVertex x="10.93" y="20.25" />
+                    <StraightVertex x="18.40" y="10.75" />
+                </PointsPath>
+                <Fill name="Fill">
+                    <SolidColor colorValue="FFFFFFFF" name="Color" />
+                </Fill>
+            </Shape>
+        </Node>
     </Artboard>
 
     <!-- batteryLevel (0..1) -> fill Rectangle width (0..192.5).  Clamped so a bad value can

@@ -6,14 +6,14 @@ set -euo pipefail
 # not rebuild the .riv files; it verifies the scenes and checks the binaries.
 #
 # The committed .riv files were produced offline by Rive 1.8.0 `--once` from
-# these scenes.
+# these scenes and are verified with Rive 1.9.2.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 SHIPPED_NEW_HASH="4c59e9dc0860d9d6a117889499ccb904bc6138078efe709a12d8d539aa55b817"
 SHIPPED_OLD_HASH="464586cad821ce8d8a801822e45adc4f77d7c68169ffecd09c69bcaf01176cf0"
-SHIPPED_IOS_HASH="26c4870d8bbe81997d00737a715775550855b12abb365d1d54f2a2db56da214a"
+SHIPPED_IOS_HASH="ed772ff1e8e76b8ca00131ab1e7b71dc26663181e477088f28d0154160b29f82"
 SHIPPED_NEW="app/src/main/res/raw/duo.riv"
 SHIPPED_OLD="app/src/main/res/raw/duo_old.riv"
 SHIPPED_IOS="app/src/main/res/raw/ios.riv"

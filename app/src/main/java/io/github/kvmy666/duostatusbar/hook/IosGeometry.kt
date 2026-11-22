@@ -114,19 +114,46 @@ internal object IosGeometry {
         const val REMAINDER_ALPHA = 0.50f
 
         /**
-         * A classic lightning bolt, centred in the body. There is no charging reference image, so this
-         * is a design invention; the owner's kit does not publish a status-bar bolt. Points are absolute
-         * artboard coordinates, in order, closed.
+         * The R3B lightning bolt: the measured 21-point polygon from refs 1/2/4, normalised to a
+         * 61 x 96 box at the body centre. Absolute artboard coordinates, in order, closed. The shape
+         * is `66.75 + nx * 61`, `3.0 + ny * 96` from `.pm/ref/out-r3/digits-final.json`; ref 3 draws
+         * it white, so the renderer uses a white fill with a black outline ([BOLT_OUTLINE]).
          */
         val BOLT_POINTS: FloatArray = floatArrayOf(
-            100.25f, 23.50f,
-            85.25f, 53.75f,
-            94.85f, 53.75f,
-            91.85f, 78.50f,
-            109.25f, 45.50f,
-            99.65f, 45.50f,
-            104.75f, 23.50f
+            110.26f, 3.00f,
+            110.26f, 12.36f,
+            101.32f, 31.88f,
+            99.69f, 40.02f,
+            100.50f, 43.27f,
+            103.76f, 45.71f,
+            126.53f, 44.89f,
+            127.34f, 47.34f,
+            126.53f, 49.78f,
+            107.01f, 70.93f,
+            94.00f, 88.83f,
+            84.24f, 98.60f,
+            84.24f, 90.46f,
+            93.18f, 70.12f,
+            94.81f, 61.98f,
+            91.56f, 57.91f,
+            68.78f, 57.91f,
+            67.16f, 55.47f,
+            77.73f, 40.83f,
+            83.42f, 35.95f,
+            94.81f, 20.49f
         )
+
+        /**
+         * Ref 3's ring measures ~4.5 units, but the frozen 102-unit artboard has only 3 units
+         * vertically around the 96-unit white bolt (white y 3..98.6). A [BOLT_OUTLINE] of 3.0 puts
+         * the stroked extent at 0..101.6 and prevents the view-bound clip found in review; the
+         * renderer still draws it as a 2x stroke around the white fill. [BOLT_POINTS]/[BOLT_FILL]
+         * are unchanged.
+         */
+        const val BOLT_OUTLINE = 3.0f
+
+        /** Ref 3 shows a plain white bolt, not a dynamic tint. */
+        const val BOLT_FILL = 0xFFFFFFFF.toInt()
 
         /** Fill width for a 0..1 level, clipped by the body path. */
         fun fillWidth(level: Float): Float = BODY_W * level.coerceIn(0f, 1f)

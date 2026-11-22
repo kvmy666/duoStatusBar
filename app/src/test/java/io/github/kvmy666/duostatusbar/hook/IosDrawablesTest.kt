@@ -227,9 +227,9 @@ class IosDrawablesTest {
     // ------------------------------------------------------------------- cap colour parity
 
     @Test
-    fun `battery cap is the fill colour at half alpha not the tint`() {
-        // A fixed LOW state keeps batteryFillColor while a white system tint is captured; the cap must
-        // follow the fill colour (inactive grey), not the tint.
+    fun `battery cap is neutral bar ink at half alpha not the state colour`() {
+        // A fixed LOW state keeps its red fill, but the cap is NEUTRAL ink: with a white system tint
+        // it is white at half alpha, never COLOR_LOW.
         val visual = batteryVisual(level = 15, tint = Color.BLACK)
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
         drawable.setTint(Color.WHITE)
@@ -239,25 +239,25 @@ class IosDrawablesTest {
         // transparent bitmap round-trips through premultiplication, so allow a few channel units.
         val c = bitmap.getPixel(206, 51)
         assertTrue(
-            "cap red ${Color.red(c)} vs ${Color.red(IosMapping.COLOR_LOW)}",
-            kotlin.math.abs(Color.red(c) - Color.red(IosMapping.COLOR_LOW)) <= 4
+            "cap red ${Color.red(c)} vs white",
+            kotlin.math.abs(Color.red(c) - Color.red(Color.WHITE)) <= 4
         )
         assertTrue(
-            "cap green ${Color.green(c)} vs ${Color.green(IosMapping.COLOR_LOW)}",
-            kotlin.math.abs(Color.green(c) - Color.green(IosMapping.COLOR_LOW)) <= 4
+            "cap green ${Color.green(c)} vs white",
+            kotlin.math.abs(Color.green(c) - Color.green(Color.WHITE)) <= 4
         )
         assertTrue(
-            "cap blue ${Color.blue(c)} vs ${Color.blue(IosMapping.COLOR_LOW)}",
-            kotlin.math.abs(Color.blue(c) - Color.blue(IosMapping.COLOR_LOW)) <= 4
+            "cap blue ${Color.blue(c)} vs white",
+            kotlin.math.abs(Color.blue(c) - Color.blue(Color.WHITE)) <= 4
         )
-        assertTrue("cap colour is not the white tint", c != Color.WHITE)
+        assertTrue("cap is not the red state colour", c != IosMapping.COLOR_LOW)
         assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
     }
 
     @Test
-    fun `full battery cap is full ink in the fill colour`() {
+    fun `full battery cap is full neutral ink`() {
         // PM rule 2026-11-22: at 100 % the cap is full ink, while every partial level stays at the
-        // inactive 0.50 alpha. Render at a 1:1 artboard fit so the cap sample is exact.
+        // inactive 0.50 alpha. The ink is neutral (the black bar tint), not a state colour.
         val visual = batteryVisual(level = 100, tint = Color.BLACK)
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
 
@@ -276,6 +276,112 @@ class IosDrawablesTest {
 
         val c = render(drawable, BATTERY_W, BATTERY_H).getPixel(206, 51)
         assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
+    }
+
+    @Test
+    fun `coloured charging fill still has a neutral cap`() {
+        // Green charging fill, black bar tint: the cap is black at half alpha, so all three channels
+        // agree even though bodyFill is COLOR_CHARGING.
+        val visual = batteryVisual(
+            level = 60,
+            plugged = true,
+            status = BatteryManager.BATTERY_STATUS_CHARGING,
+            tint = Color.BLACK
+        )
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
+
+        val c = render(drawable, BATTERY_W, BATTERY_H).getPixel(206, 51)
+        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
+        val spread = maxOf(Color.red(c), Color.green(c), Color.blue(c)) -
+            minOf(Color.red(c), Color.green(c), Color.blue(c))
+        assertTrue("cap channels differ by $spread", spread <= 3)
+        assertTrue("cap is not the green fill", c != IosMapping.COLOR_CHARGING)
+    }
+
+    // ----------------------------------------------------------------- percentage inside body
+
+    @Test
+    fun `percentInside off leaves the digit seat free of background ink`() {
+        // At 69 % the body centre is inside the charged fill; with the setting off the "69" seat must
+        // contain only fill/remainder, never the knocked-out background colour.
+        val visual = batteryVisual(level = 69, tint = Color.BLACK)
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
+        val bitmap = render(drawable, BATTERY_W, BATTERY_H)
+
+        assertEquals(0, countBackgroundInk(bitmap, 45, 20, 150, 82))
+        val fill = bitmap.getPixel(60, 45)
+        assertEquals("stroke seat alpha", 255, Color.alpha(fill))
+        assertTrue("stroke seat red ${Color.red(fill)}", Color.red(fill) <= 2)
+        assertTrue("stroke seat green ${Color.green(fill)}", Color.green(fill) <= 2)
+        assertTrue("stroke seat blue ${Color.blue(fill)}", Color.blue(fill) <= 2)
+    }
+
+    @Test
+    fun `percentInside draws the digit colour inside the body`() {
+        val visual = batteryVisual(level = 69, tint = Color.BLACK).copy(percentInside = true)
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
+        val bitmap = render(drawable, BATTERY_W, BATTERY_H)
+
+        // Black tint -> white knockout ink. The "69" strokes sit between x 54 and x 145, y 33..61.
+        val knockouts = countBackgroundInk(bitmap, 45, 20, 150, 82)
+        assertTrue("no digit ink inside the body ($knockouts)", knockouts > 100)
+    }
+
+    @Test
+    fun `percentInside at 100 percent keeps every digit inside the body`() {
+        val visual = batteryVisual(level = 100, tint = Color.BLACK).copy(percentInside = true)
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
+        val bitmap = render(drawable, BATTERY_W, BATTERY_H)
+
+        var minX = Int.MAX_VALUE
+        var minY = Int.MAX_VALUE
+        var maxX = -1
+        var maxY = -1
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                val c = bitmap.getPixel(x, y)
+                if (Color.alpha(c) > 200 && Color.red(c) > 245 && Color.green(c) > 245 &&
+                    Color.blue(c) > 245
+                ) {
+                    minX = minOf(minX, x)
+                    minY = minOf(minY, y)
+                    maxX = maxOf(maxX, x)
+                    maxY = maxOf(maxY, y)
+                }
+            }
+        }
+        assertTrue("no digit ink", maxX >= 0 && maxY >= 0)
+        assertTrue("digit ink left $minX", minX > 0)
+        assertTrue("digit ink top $minY", minY > 0)
+        assertTrue(
+            "digit ink right $maxX",
+            maxX <= (IosGeometry.Battery.BODY_LEFT + IosGeometry.Battery.BODY_W).roundToInt()
+        )
+        assertTrue(
+            "digit ink bottom $maxY",
+            maxY <= (IosGeometry.Battery.BODY_TOP + IosGeometry.Battery.BODY_H).roundToInt()
+        )
+    }
+
+    @Test
+    fun `percentInside charging draws an inline bolt and no large bolt`() {
+        val visual = batteryVisual(
+            level = 60,
+            plugged = true,
+            status = BatteryManager.BATTERY_STATUS_CHARGING,
+            tint = Color.BLACK
+        ).copy(percentInside = true)
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
+        val bitmap = render(drawable, BATTERY_W, BATTERY_H)
+
+        // The large bolt (when the setting is off) is white in the top strip; inside mode puts the
+        // small bolt after the digits, so that strip must stay free of white.
+        assertEquals(0, countBackgroundInk(bitmap, 60, 4, 135, 18))
+        // The inline bolt sits at x 127..167, y 22..81; it must actually be drawn.
+        assertTrue(
+            "no inline bolt after the digits",
+            countBackgroundInk(bitmap, 130, 25, 165, 78) > 50
+        )
     }
 
     // --------------------------------------------------------------------- user transform
@@ -565,6 +671,30 @@ class IosDrawablesTest {
             }
         }
         return if (maxY < 0) 0 else maxY - minY + 1
+    }
+
+    /** Counts near-white opaque pixels in an inclusive-exclusive artboard rectangle. */
+    private fun countBackgroundInk(
+        bitmap: Bitmap,
+        x0: Int,
+        y0: Int,
+        x1: Int,
+        y1: Int
+    ): Int {
+        var count = 0
+        for (y in y0 until minOf(y1, bitmap.height)) {
+            for (x in x0 until minOf(x1, bitmap.width)) {
+                val c = bitmap.getPixel(x, y)
+                if (Color.alpha(c) > 200 &&
+                    Color.red(c) > 245 &&
+                    Color.green(c) > 245 &&
+                    Color.blue(c) > 245
+                ) {
+                    count++
+                }
+            }
+        }
+        return count
     }
 
     private companion object {

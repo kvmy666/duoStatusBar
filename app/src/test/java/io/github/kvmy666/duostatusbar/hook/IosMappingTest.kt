@@ -172,6 +172,22 @@ class IosMappingTest {
         assertEquals(tint, v.tint)
         assertEquals(0f, v.boltOpacity, 0.0001f)
         assertTrue(v.visible)
+        assertFalse(v.percentInside)
+    }
+
+    @Test
+    fun `percent inside is copied into the visual`() {
+        val v = IosMapping.battery(
+            level = 69,
+            lowThreshold = 20,
+            saver = false,
+            plugged = false,
+            status = BatteryManager.BATTERY_STATUS_DISCHARGING,
+            tint = tint,
+            percentInside = true
+        )
+        assertTrue(v.percentInside)
+        assertEquals(0.69f, v.batteryLevel, 0.0001f)
     }
 
     @Test

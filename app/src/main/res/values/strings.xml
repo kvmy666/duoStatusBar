@@ -317,6 +317,8 @@
     <string name="ios_icon_battery">Battery</string>
     <string name="ios_icon_wifi">Wi-Fi</string>
     <string name="ios_icon_cell">Cellular</string>
+    <string name="settings_ios_percent_inside">Percentage inside battery</string>
+    <string name="settings_ios_percent_inside_detail">Draw the battery level inside the battery icon. Off keeps today\'s battery.</string>
 
     <!-- SIM &amp; signal -->
     <string name="section_sim">SIM &amp; signal</string>
