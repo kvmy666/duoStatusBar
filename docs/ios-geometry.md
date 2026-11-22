@@ -51,63 +51,70 @@ put the stroked extent at -1.5..103.1, outside the artboard; the shipped 3.0-uni
 the constant cannot drift apart again. Whether the host view bounds clip the 0/101.6 edges cleanly on a
 real device is still **UNVERIFIED**.
 
-## Percentage inside (R3M, digit-v5 filled outlines)
+## Percentage inside (R3D, digit-v6 filled outlines)
 
 Runtime toggle `ios_percent_inside` (default **off**). When on, the battery percentage is drawn inside
 the body from `hook/IosDigits.kt` (our own filled contours, no font); `IosDigits` is the matching plain
 Rive artboard in `rive/ios/scene.rml` (no state machine, no view model).
 
-The shipped design is **digit-v5**: every digit is a filled outline at cap 57, drawn with
+The shipped design is **digit-v6** (R3D.1): every digit is a filled outline at cap 57, drawn with
 `Path.FillType.EVEN_ODD`. The first contour is the outer edge and every further contour is a separate
 counter (hole), so winding order does not matter. There is no runtime stroke and no constant advance:
 each glyph carries its measured ink width, advance and bearing `(advance - width) / 2`; layout is
 `sum(advances) - firstBearing - lastBearing`.
 
-Digits **0/1/2/4/5/7/8** are the digit-v4 data (ref 4/6 + the 0.55-unit regular ink dilation).
-Digits **3/6/9** are the **ref-4 shape** with a Euclidean boundary dilation whose vertical growth is
-clamped to the 57-unit cap; the radius is tuned per digit so the ink area matches the measured bold
-in-battery weight (refs 1/2). This keeps the ref-4 letterform while making the stroke bold; it is one
-filled even-odd construction, not the bold ref traced as a new letterform. The 6/9 counters are kept.
+All ten digits are rebuilt from the regular reference (ref 4 for 1-9, ref 6 for 0) with **one
+homogeneous construction**: a uniform Euclidean boundary dilation `R` (padded, no cap clamp) followed
+by a uniform cap rescale to 57 units. The per-digit `R` is binary-searched so the traced 16 px/unit
+glyph's run-stroke is **11.40** (window 10.83..11.97). That is the measured bold in-battery weight:
+the native bold refs 3b/6B/9B measure **12.27 / 11.40 / 10.69** (median 11.40). The v5 mix
+(0/1/2/4/5/7/8 at the regular weight, 3/6/9 area-tuned to bold) is gone; it made `100` thin and `69`
+bold.
+
+Shape acceptance has two columns:
+
+- **Primary (R3D.1), inverse weight-normalised IoU:** undo the exact construction on the shipped
+  contour set (scale by `(57 + 2R) / 57`, erode by exactly `R` with a padded Euclidean distance
+  transform, crop and cap-match), then compare the recovered glyph to the **unmodified** ref-4/6
+  mask with `L.iou`. `iou_inverse_ref` is **0.974-0.989 at 32 px/unit** (0.977-0.992 at 16) for all
+  ten; the untraced-construction control through the same inverse is **0.980-0.997**, proving the
+  inverse is accurate. This is a real comparison to the ref, not a construction identity.
+- **Secondary/legacy (R3M), equal-area-erosion IoU:** `L.eval_iou(candidate, ref_regular)`. This is
+  **not weight-invariant** for these bold glyphs: the untraced control scores the same **0.657-0.849**
+  (digit 0 = 0.665), because `eval_iou` erodes to the regular ink area and then `resize_cap` inflates
+  the width. It is a normalisation artifact, not a closed-counter effect, and is reported only for
+  continuity.
 
 | Quantity | Value | Source |
-|---|---|---|---|
-| Source data | `.pm/ref/out-r3/digit-v4/digits-v5.json` (cap 57, body 100, 2,008 points) | refs 1/2/4/6 |
+|---|---|---|
+| Source data | `.pm/ref/out-r3/digit-v4/digits-v6.json` (cap 57, body 100, 2,251 points) | refs 1/2/4/6 |
 | Fill rule | even-odd, counters as separate closed contours | filled outline, no font |
 | Cap height | 57 | ref 4 and ref 6; 1/2 for bold weight |
 | Group gap (digits -> inline bolt) | 5 | measured bold refs 3/6/9 |
 | Inline bolt | 40 x 59, follows the digits when charging | same 21-point bolt, no outline |
 | Layout | the group is centred on the battery body | owner rule |
-| Weight | 0/1/2/4/5/7/8 +0.55-unit dilation; 3/6/9 ref-4 shape + clamped dilation to bold area | area 1256/1429/1429 |
+| Construction | ref-4/6 shape + uniform Euclidean dilation `R` = 1.436-2.722 u, no cap clamp, rescale to cap 57 | per-digit, traced run target |
+| Weight | traced run-stroke 11.38-11.44 (window 10.83..11.97); EDT 9.27-11.50 | refs 1/2 |
 
 | Digit | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Width | 37.81 | 20.81 | 38.88 | 40.50 | 42.56 | 37.62 | 42.62 | 34.88 | 37.06 | 43.25 |
+| Width | 39.06 | 23.12 | 39.50 | 38.12 | 43.38 | 39.00 | 38.50 | 35.94 | 38.19 | 39.38 |
 | Advance | 43.81 | 30.91 | 44.81 | 49.47 | 46.54 | 43.71 | 50.59 | 39.34 | 43.55 | 50.59 |
+| R (u) | 2.562 | 2.500 | 1.575 | 2.273 | 2.312 | 2.722 | 1.575 | 1.985 | 2.334 | 1.436 |
 | Contours | 2 | 1 | 1 | 1 | 2 | 1 | 2 | 1 | 3 | 2 |
 
-**Primary acceptance** is shape vs ref 4 (digit 0 uses ref 6), weight-normalised at 16 px/unit:
-**0.913-0.963** for 3/6/9 and 0.921-0.962 for the rest; every digit is >= 0.90. The bold letterform
-is a secondary number only (`iou_bold_ref12`: 3 = 0.816, 6 = 0.659, 9 = 0.641), because the bold
-in-battery refs legitimately draw a different letterform. The per-digit table is
-`.pm/ref/out-r3/iou-r3m.csv`; the build-time table is
-`.pm/ref/out-r3/digit-v4/iou-v5-build.csv`. Overlaps are `r3m-overlay-0..9.png` (shipped Kotlin
-contours against ref 4).
+**Primary acceptance** is the inverse weight-normalised IoU (**0.974-0.989** at 32 px/unit and
+**0.977-0.992** at 16; every digit >= 0.90). The legacy equal-area-erosion number is **0.657-0.844**
+and is reported only as a secondary diagnostic (its untraced control is 0.657-0.849). The per-digit
+tables are `.pm/ref/out-r3/iou-r3d.csv` and `.pm/ref/out-r3/stroke-r3d.csv`; the build-time table is
+`.pm/ref/out-r3/digit-v4/iou-r3d-build.csv`. Overlaps are `.pm/ref/out-r3/r3d-overlay-0..9.png`
+(shipped Kotlin contours' inverse against the unmodified ref-4/6).
 
-| Digit | Area (design u²) | Bold area | Stroke run | Bold run | EDT stroke | Bold EDT |
-|---:|---:|---:|---:|---:|---:|---:|
-| 3 | 1257.8 | 1256.4 | 11.56 | 12.27 | 10.62 | 9.62 |
-| 6 | 1428.1 | 1429.5 | 13.56 | 11.40 | 12.33 | 9.41 |
-| 9 | 1428.7 | 1428.9 | 13.50 | 10.69 | 12.14 | 9.50 |
-
-The bold targets are matched on **ink area**; the ref-4-derived 6/9 have a larger counter than the
-bold refs, so their median cross-stroke run is longer at the same area. That is the shape-vs-weight
-trade-off the PM acceptance asks for, and it is reported rather than hidden.
-
-The v5 layout fits the frozen body: `100` ink is 110.48 (body margin 41.01 per side) and `100` plus
-the inline bolt is 155.48; `69` plus the bolt is 138.53. The scene's `IosDigits` artboard and the
-runtime `IosDigits` object carry the same values; `IosGeometryParityTest` pins every contour vertex
-and the even-odd fill, and `IosDigitsTest` pins the widths, advances, contour/point counts and the
-canonical digest.
+The v6 layout fits the frozen body: `100` ink is 112.3 (body margin 40.1 per side) and `100` plus the
+inline bolt is 157.3 (margin 17.6); `69` plus the bolt is 134.5 (margin 29.0). The scene's `IosDigits`
+artboard and the runtime `IosDigits` object carry the same values; `IosGeometryParityTest` pins every
+contour vertex and the even-odd fill, and `IosDigitsTest` pins the widths, advances, contour/point
+counts and the canonical digest.
 
 ## Cellular (artboard `IosCell`, 150.1 x 105.6, frozen envelope)
 
@@ -227,19 +234,19 @@ The runtime still gives each glyph the stock icon's slot and uses `Fit.CONTAIN`;
 are for the preview and the PNG evidence at the reference scale. The host-applied
 `Relative.sizeFor` inset is not wired in R2B.
 
-## Rive build and verification (R3M)
+## Rive build and verification (R3D)
 
 The scene is built offline with **Rive 1.8.0** (`rive rive/ios --once`). Rive **1.9.2** is used only to
 verify (`rive . --verify`), including `tools/check-rive-shipped.sh`. The brief's 1.9.2 build path is not
 possible here: 1.9.2 removed `--once`, and `--publish` needs a login, so it cannot write an unsigned
 `.riv` offline. Building the same scene twice with 1.8.0 is byte-identical, and the committed
-`app/src/main/res/raw/ios.riv` is that build (37,252 bytes, sha256
-`db457e8d…cf25d49`). The `IosDigits` artboard now carries the v5 filled contours (one closed
-`PointsPath` per contour, one `Fill fillRule="evenOdd"` per digit; 3/6/9 are the ref-4 shape with the
-clamped bold dilation); the runtime `IosDigits` and the scene are pinned together by
-`IosGeometryParityTest`. If the installed CLI's cached
-minimum version blocks 1.8.0, run it with an isolated `RIVE_HOME` whose `update-check` minimum is 1.8.0;
-the build itself is offline.
+`app/src/main/res/raw/ios.riv` is that build (**40,985 bytes**, sha256
+`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`). The `IosDigits` artboard now
+carries the v6 filled contours (one closed `PointsPath` per contour, one `Fill fillRule="evenOdd"` per
+digit; all ten built from ref 4/6 with the uniform bold construction); the runtime `IosDigits` and the
+scene are pinned together by `IosGeometryParityTest`. If the installed CLI's cached minimum version
+blocks 1.8.0, run it with an isolated `RIVE_HOME` whose `update-check` minimum is 1.8.0; the build
+itself is offline.
 
 ## UNVERIFIED / caveats
 
@@ -249,11 +256,14 @@ the build itself is offline.
 - **Bolt outline clipping:** the shipped 3.0-unit outline keeps the stroked 96-unit bolt inside the
   102-high battery artboard (extent 0..101.6, guard-tested). Whether the host view bounds clip the
   0/101.6 edges cleanly on a real device is UNVERIFIED.
-- **Percentage digits:** 0 is measured from the owner's ref 6 (`6-sf-digit-0.jpg`); 1/2/4/5/7/8 use
-  ref 4. 3/6/9 are the ref-4 SHAPE thickened to the bold ink area, so their shape gate is ref 4 and
-  their bold letterform score (0.816/0.659/0.641) is secondary, not the acceptance gate. The cap row
-  traces to 56.94 rather than exactly 57.0 (1/16 = 0.0625 units), a raster artefact, not a short
-  glyph.
+- **Percentage digits:** v6 (R3D.1) rebuilds all ten from the regular reference (ref 4 for 1-9, ref 6
+  for 0) with the same uniform dilation + cap rescale, tuned to the measured bold run-stroke 11.40.
+  The primary shape gate is the **inverse weight-normalised** IoU against the unmodified ref
+  (0.974-0.989 at 32 px per unit, 0.977-0.992 at 16; every digit >= 0.90; untraced-construction
+  control 0.980-0.997).
+  The legacy equal-area-erosion IoU (0.657-0.844) is not weight-invariant; its control is 0.657-0.849,
+  so it is a normalisation artifact, not a closed-counter effect. The cap row traces to 56.94 rather
+  than exactly 57.0 (1/16 = 0.0625 units), a raster artefact, not a short glyph.
 - **Cell draw scales:** the ref 7 phone rendered the 4 bars + 4 dots side-by-side (the known dual-SIM
   bug), so the single and stacked-dual blocks are inferred from the measured drawable px/unit. Medium
   confidence; the battery and Wi-Fi scales are direct bbox measurements.

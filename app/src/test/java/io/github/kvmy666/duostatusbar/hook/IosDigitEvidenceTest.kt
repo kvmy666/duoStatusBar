@@ -14,9 +14,10 @@ import java.io.File
 import java.util.Locale
 
 /**
- * Evidence generator for the v4 digits: renders the REAL [IosGlyphRenderer] (through
+ * Evidence generator for the v6 digits (R3D): renders the REAL [IosGlyphRenderer] (through
  * [IosGlyphDrawable]) on the battery body and, when `IOS_DIGIT_EVIDENCE_OUT` is set, writes the
- * per-state PNGs plus `digits-shipped.json` so the IoU can be recomputed from the shipped contours.
+ * per-state PNGs plus `digits-shipped.json` so the inverse weight-normalised IoU can be recomputed
+ * from the shipped contours.
  *
  * The test itself always checks that every state produced ink, so it is a real guard even when no
  * output directory is requested.
@@ -33,7 +34,7 @@ class IosDigitEvidenceTest {
     }
 
     @Test
-    fun `real renderer draws every v4 digit and the reference strings`() {
+    fun `real renderer draws every v6 digit and the reference strings`() {
         val cases = ArrayList<Triple<String, IosVisual, Int>>()
         for (d in 0..9) {
             cases.add(Triple("digit-$d", battery(d), d))
@@ -49,8 +50,9 @@ class IosDigitEvidenceTest {
                 36
             )
         )
-        cases.add(Triple("69", battery(69), 69))
-        cases.add(Triple("100", battery(100), 100))
+        for (pct in listOf(69, 100, 18, 57, 24)) {
+            cases.add(Triple(pct.toString(), battery(pct), pct))
+        }
 
         val dir = System.getenv("IOS_DIGIT_EVIDENCE_OUT")?.takeIf { it.isNotBlank() }?.let {
             File(it).apply { mkdirs() }
@@ -62,7 +64,7 @@ class IosDigitEvidenceTest {
             bitmap.recycle()
             if (dir != null) {
                 val bitmap2 = render(visual)
-                File(dir, "r3m-real-$name.png").outputStream().use {
+                File(dir, "r3d-real-$name.png").outputStream().use {
                     bitmap2.compress(Bitmap.CompressFormat.PNG, 100, it)
                 }
                 bitmap2.recycle()

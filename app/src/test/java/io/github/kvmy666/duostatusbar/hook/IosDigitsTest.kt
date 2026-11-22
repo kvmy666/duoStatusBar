@@ -15,7 +15,7 @@ import java.security.MessageDigest
 import java.util.Locale
 
 /**
- * Pins the v5 digit source (`.pm/ref/out-r3/digit-v4/digits-v5.json`): the ten glyph widths and
+ * Pins the v6 digit source (`.pm/ref/out-r3/digit-v4/digits-v6.json`): the ten glyph widths and
  * advances, the contour layout (first contour outer, further contours counters), the point counts,
  * the percentage widths that must fit the battery body, the normalised bolt box and the knockout
  * colour rule. The renderer tests cover the pixels.
@@ -26,16 +26,16 @@ import java.util.Locale
 class IosDigitsTest {
 
     private val widths = mapOf(
-        '0' to 37.81f,
-        '1' to 20.81f,
-        '2' to 38.88f,
-        '3' to 40.50f,
-        '4' to 42.56f,
-        '5' to 37.62f,
-        '6' to 42.62f,
-        '7' to 34.88f,
-        '8' to 37.06f,
-        '9' to 43.25f
+        '0' to 39.06f,
+        '1' to 23.12f,
+        '2' to 39.50f,
+        '3' to 38.12f,
+        '4' to 43.38f,
+        '5' to 39.00f,
+        '6' to 38.50f,
+        '7' to 35.94f,
+        '8' to 38.19f,
+        '9' to 39.38f
     )
 
     private val advances = mapOf(
@@ -57,13 +57,13 @@ class IosDigitsTest {
     )
 
     private val pointCounts = mapOf(
-        '0' to 247, '1' to 63, '2' to 200, '3' to 216, '4' to 153,
-        '5' to 268, '6' to 184, '7' to 162, '8' to 315, '9' to 200
+        '0' to 236, '1' to 82, '2' to 194, '3' to 302, '4' to 133,
+        '5' to 291, '6' to 245, '7' to 182, '8' to 311, '9' to 275
     )
 
     /**
-     * The frozen golden digest of the v5 glyph data
-     * (`.pm/ref/out-r3/digit-v4/digits-v5.json`).
+     * The frozen golden digest of the v6 glyph data
+     * (`.pm/ref/out-r3/digit-v4/digits-v6.json`).
      *
      * The canonical form is `ch|advance|width|contours` for '0'..'9', one glyph per line:
      * fields at 2dp, each point `x:y` at 2dp, points joined by `,`, contours joined by `;`.
@@ -71,7 +71,7 @@ class IosDigitsTest {
      * x/y orientation; a transposed point changes the digest.
      */
     private val expectedGlyphDigest =
-        "9ab787bc44b3ca9e4b7b88f0c3487c95f93c32096136b7607aac7e105f1f2113"
+        "576bbc980cb583a1bf11491426ea789c23f4fd707fe2fbe31a62fec0ed300ac5"
 
     private fun canonicalGlyph(ch: Char, transpose: Boolean = false): String {
         val glyph = IosDigits.glyph(ch)
@@ -119,7 +119,7 @@ class IosDigitsTest {
     @Test
     fun `glyph geometry matches the frozen digest`() {
         val canonical = ('0'..'9').joinToString("\n") { canonicalGlyph(it) }
-        assertEquals("v5 glyph digest changed", expectedGlyphDigest, sha256(canonical))
+        assertEquals("v6 glyph digest changed", expectedGlyphDigest, sha256(canonical))
 
         // A transposed (y,x) point is a different glyph, so the golden digest must reject it too.
         val transposed = ('0'..'9').joinToString("\n") { canonicalGlyph(it, transpose = true) }
@@ -144,7 +144,7 @@ class IosDigitsTest {
                 assertTrue("glyph $ch short contour", contour.size >= 6)
             }
         }
-        assertEquals("total point count", 2008, pointCounts.values.sum())
+        assertEquals("total point count", 2251, pointCounts.values.sum())
     }
 
     @Test
@@ -226,25 +226,37 @@ class IosDigitsTest {
     }
 
     @Test
-    fun `percentage groups use the measured v5 advances`() {
+    fun `percentage groups use the measured v6 advances`() {
         val body = IosGeometry.Battery.BODY_W
-        // Advances 30.91 + 43.81 + 43.81 = 118.53, minus the first/last bearings 5.05 + 3.00
-        // = 110.48 ink; plus the 5-unit gap and 40-unit inline bolt = 155.48.
+        // Advances 30.91 + 43.81 + 43.81 = 118.53, minus the first/last bearings 3.895 + 2.375
+        // = 112.26 ink; plus the 5-unit gap and 40-unit inline bolt = 157.26.
         val hundredInk = IosDigits.textInkWidth("100")
         val hundred = IosDigits.groupWidth("100", withBolt = true)
-        // Advances 50.59 + 50.59 = 101.18, minus bearings 3.985 + 3.670 = 93.53 ink;
-        // with the inline bolt 138.53.
+        // Advances 50.59 + 50.59 = 101.18, minus bearings 6.045 + 5.605 = 89.53 ink;
+        // with the inline bolt 134.53.
         val sixtyNineInk = IosDigits.textInkWidth("69")
         val sixtyNine = IosDigits.groupWidth("69", withBolt = true)
 
-        assertEquals(110.48f, hundredInk, 0.01f)
-        assertEquals(155.48f, hundred, 0.01f)
-        assertEquals(93.53f, sixtyNineInk, 0.01f)
-        assertEquals(138.53f, sixtyNine, 0.01f)
+        assertEquals(112.26f, hundredInk, 0.01f)
+        assertEquals(157.26f, hundred, 0.01f)
+        assertEquals(89.53f, sixtyNineInk, 0.01f)
+        assertEquals(134.53f, sixtyNine, 0.01f)
         assertTrue("100 + bolt $hundred < body $body", hundred < body)
         assertTrue("100 + bolt $hundred <= body - 8", hundred <= body - 8f)
         assertTrue("69 + bolt $sixtyNine < body $body", sixtyNine < body)
         assertTrue("69 + bolt $sixtyNine <= body - 8", sixtyNine <= body - 8f)
+    }
+
+    @Test
+    fun `three digits plus the inline bolt fit inside the battery body`() {
+        val group = IosDigits.groupWidth("100", withBolt = true)
+        val margin = (IosGeometry.Battery.BODY_W - group) / 2f
+        assertTrue("100 + bolt group $group with margin $margin", margin >= 10f)
+        assertEquals(
+            IosDigits.textInkWidth("100") + IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W,
+            group,
+            0.0001f
+        )
     }
 
     @Test
