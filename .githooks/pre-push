@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local pre-push mirror of CI: every static gate, then :app:testDebugUnitTest :app:assembleDebug
-# under the shared Gradle flock and the 2-worker/1536m/1024m memory budget.
+# under the shared Gradle flock, the 2-worker/1536m/1024m memory budget and the configuration cache.
 # Activate once: git config core.hooksPath .githooks
 set -euo pipefail
 
@@ -40,10 +40,17 @@ else
 fi
 JAVA_VERSION_LINE="${JAVA_VERSION_OUT%%$'\n'*}"
 JAVA_MAJOR="$(sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p' <<< "$JAVA_VERSION_LINE")"
-if [ -n "$JAVA_MAJOR" ] && [ "$JAVA_MAJOR" -ge 25 ]; then
-    echo "error: JDK ${JAVA_MAJOR} is not supported; AGP 8.13 needs JDK 17 or 21." >&2
-    echo "       Point JAVA_HOME at a 17/21 JDK, for example /usr/lib/jvm/java-21-openjdk-amd64." >&2
-    fail "JDK ${JAVA_MAJOR} unsupported"
+if [ -n "$JAVA_MAJOR" ]; then
+    if [ "$JAVA_MAJOR" -ge 24 ]; then
+        echo "error: JDK ${JAVA_MAJOR} is unsupported; AGP 8.13/Gradle 8.13 need JDK 17 or 21 (24+ is not supported)." >&2
+        echo "       Point JAVA_HOME at a 17/21 JDK, for example /usr/lib/jvm/java-21-openjdk-amd64." >&2
+        fail "JDK ${JAVA_MAJOR} unsupported"
+    fi
+    if [ "$JAVA_MAJOR" -lt 17 ]; then
+        echo "warning: JDK ${JAVA_MAJOR} is older than 17; AGP 8.13/Gradle 8.13 need JDK 17 or 21." >&2
+    elif [ "$JAVA_MAJOR" -ne 17 ] && [ "$JAVA_MAJOR" -ne 21 ]; then
+        echo "warning: JDK ${JAVA_MAJOR} is untested here; AGP 8.13/Gradle 8.13 are verified on JDK 17 and 21." >&2
+    fi
 fi
 
 GRADLE_VERSION="$(sed -n 's/^distributionUrl=.*gradle-\([0-9][0-9.]*\)-.*/\1/p' gradle/wrapper/gradle-wrapper.properties)"
@@ -97,24 +104,24 @@ if [ -n "$RIVE_CMD" ]; then
     RIVE_VERSION="${RIVE_VERSION_OUT%%$'\n'*}"
 fi
 
-case "$RIVE_VERSION" in
-    *1.9.2*)
-        gate "Rive scenes verify and match shipped .riv hashes" bash tools/check-rive-shipped.sh || fail "check-rive-shipped.sh"
-        ;;
-    *)
-        if [ -z "$RIVE_CMD" ]; then
-            echo "WARNING: skipping the Rive shipped-.riv gate locally: the Rive CLI is not installed." >&2
-        else
-            echo "WARNING: skipping the Rive shipped-.riv gate locally: installed Rive is '${RIVE_VERSION:-unknown}', not 1.9.2." >&2
-        fi
-        echo "         CI runs this gate with Rive 1.9.2 because 1.9.2 tightened interpolator validation;" >&2
-        echo "         install that version to reproduce the gate here. It is never skipped silently." >&2
-        ;;
-esac
+# Compare the exact second token ("rive 1.9.2" -> 1.9.2); a prefix match would accept 1.9.20.
+RIVE_VERSION_TOKEN="$(awk '{print $2}' <<< "$RIVE_VERSION" 2>/dev/null || true)"
+
+if [ "$RIVE_VERSION_TOKEN" = "1.9.2" ]; then
+    gate "Rive scenes verify and match shipped .riv hashes" bash tools/check-rive-shipped.sh || fail "check-rive-shipped.sh"
+else
+    if [ -z "$RIVE_CMD" ]; then
+        echo "WARNING: skipping the Rive shipped-.riv gate locally: the Rive CLI is not installed." >&2
+    else
+        echo "WARNING: skipping the Rive shipped-.riv gate locally: installed Rive is '${RIVE_VERSION:-unknown}', not 1.9.2." >&2
+    fi
+    echo "         CI runs this gate with Rive 1.9.2 because 1.9.2 tightened interpolator validation;" >&2
+    echo "         install that version to reproduce the gate here. It is never skipped silently." >&2
+fi
 
 # --- Full check -----------------------------------------------------------
 
-echo "-- Gradle: :app:testDebugUnitTest :app:assembleDebug (2 workers, 1536m/1024m, build cache)"
+echo "-- Gradle: :app:testDebugUnitTest :app:assembleDebug (2 workers, 1536m/1024m, build cache, configuration cache)"
 GRADLE_CMD=(
     ./gradlew
     --max-workers=2
@@ -123,6 +130,7 @@ GRADLE_CMD=(
     :app:testDebugUnitTest
     :app:assembleDebug
     --build-cache
+    --configuration-cache
     --console=plain
 )
 if [ -n "$JAVA_HOME_RESOLVED" ]; then
