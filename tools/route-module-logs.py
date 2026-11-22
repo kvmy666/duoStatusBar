@@ -129,17 +129,30 @@ def code_only(text: str) -> str:
 
 def convert(path: Path) -> bool:
     original = path.read_text(encoding="utf-8")
-    text = CALL.sub(lambda m: f"L.{m.group(1)}(", original)
+    # Rewrite only real code. Find calls in the masked text so a call-shaped comment or string is
+    # never matched, then re-match each start against the original: the masked span's trailing `\s*`
+    # runs into the blanked string body, and using it would eat the `"x"` argument.
+    masked = code_only(original)
+    spans = []
+    for m in CALL.finditer(masked):
+        real = CALL.match(original, m.start())
+        if real:
+            spans.append(real)
+    text = original
+    for m in reversed(spans):
+        start, end = m.span()
+        text = text[:start] + f"L.{m.group(1)}(" + text[end:]
 
-    # The import only goes when nothing in the file still wants android.util.Log.
-    if not LEFT.search(text.replace("L.", "")):
+    # Every import decision comes from code only: a comment or string must not keep a call alive.
+    after_masked = code_only(text)
+    if not LEFT.search(after_masked):
         text = IMPORT.sub("", text)
 
     # `package io.github.kvmy666.duostatusbar` is a *prefix* of the hook package too, so the package
     # comparison has to be exact - a substring test silently skipped every `...hook.*` file.
     pkg = PACKAGE.search(text)
     in_root = bool(pkg) and pkg.group(1) == ROOT_PACKAGE
-    if USES_L.search(text):
+    if USES_L.search(after_masked):
         if not in_root and L_IMPORT not in text:
             text = add_import(text, L_IMPORT)
     elif L_IMPORT in text:
@@ -160,12 +173,13 @@ def main() -> int:
             continue
         if check:
             before = path.read_text(encoding="utf-8")
+            masked = code_only(before)
             pkg = PACKAGE.search(before)
             in_root = bool(pkg) and pkg.group(1) == ROOT_PACKAGE
-            uses_l = bool(USES_L.search(before))
+            uses_l = bool(USES_L.search(masked))
             stale = L_IMPORT in before and not uses_l
             missing = uses_l and not in_root and L_IMPORT not in before
-            if CALL.search(before) or missing or stale:
+            if CALL.search(masked) or missing or stale:
                 changed.append(str(path.relative_to(ROOT)))
             continue
         if convert(path):
