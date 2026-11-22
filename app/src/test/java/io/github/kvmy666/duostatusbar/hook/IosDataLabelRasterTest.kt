@@ -64,6 +64,98 @@ class IosDataLabelRasterTest {
         File(out, "measurements-v2.md").writeText(measurements())
     }
 
+    @Test
+    fun `writes V3 G evidence when IOS_RENDER_OUT is set`() {
+        val dir = System.getenv("IOS_RENDER_OUT")?.takeIf { it.isNotBlank() } ?: return
+        val out = File(dir)
+        out.mkdirs()
+
+        // Per-glyph masks at 10x the reference cap (360 px). The letters use their measured
+        // reference stroke so the comparison is weight-normalised; G weight 1 is the measured
+        // reference letterform and G bold is the shipping digit weight. Digits are fixed-weight.
+        val cap = 360
+        val d = IosGeometry.DataLabel
+        // Per-letter measured reference strokes (px at cap 36): L stem ~6, T/E/+ ~5.
+        val glyphStrokes = mapOf(
+            'L' to 5.8f / 36f * d.CAP_HEIGHT,
+            'T' to 5.0f / 36f * d.CAP_HEIGHT,
+            'E' to 5.0f / 36f * d.CAP_HEIGHT,
+            '+' to 5.0f / 36f * d.CAP_HEIGHT,
+            'G' to d.G_REFERENCE_STEM_STROKE
+        )
+        for (ch in listOf('L', 'T', 'E', 'G', '+', '3', '4', '5')) {
+            val weight = glyphStrokes[ch] ?: d.STROKE
+            val bitmap = glyphBitmap(ch, cap, weight)
+            write(bitmap, File(out, "r4-glyph-${glyphTag(ch)}-refweight-v3.png"))
+            bitmap.recycle()
+        }
+        val boldG = glyphBitmap('G', cap, d.STROKE)
+        write(boldG, File(out, "r4-glyph-g-bold-v3.png"))
+        boldG.recycle()
+
+        // Every label that contains G, at the production 80x50 slot (4x supersample), light + dark.
+        for (label in listOf("4G", "5G", "5G+", "3G")) {
+            val light = renderProduction(labelVisual(label, Color.BLACK), lightBg)
+            write(light, File(out, "r4-label-${fileTag(label)}-light-v3.png"))
+            light.recycle()
+            val dark = renderProduction(labelVisual(label, Color.WHITE), darkBg)
+            write(dark, File(out, "r4-label-${fileTag(label)}-dark-v3.png"))
+            dark.recycle()
+        }
+
+        // A V3 family row in the same order/shape as the V2 one, so the compare strip can be
+        // recomposed without touching the V2 files.
+        val familyLight = familyRow(Color.BLACK, lightBg)
+        write(familyLight, File(out, "r4-label-family-light-v3.png"))
+        familyLight.recycle()
+        val familyDark = familyRow(Color.WHITE, darkBg)
+        write(familyDark, File(out, "r4-label-family-dark-v3.png"))
+        familyDark.recycle()
+    }
+
+    /** One glyph, supersampled at [capPx] with transparent background, in design-unit scaling. */
+    private fun glyphBitmap(ch: Char, capPx: Int, stroke: Float): Bitmap {
+        val d = IosGeometry.DataLabel
+        val scale = capPx / d.CAP_HEIGHT
+        val inkW = if (d.isDigit(ch)) IosDigits.glyph(ch).width * d.DIGIT_SCALE else d.inkWidth(ch)
+        val pad = 8f
+        val bw = ((inkW + 2f * pad) * scale).toInt()
+        val bh = ((d.CAP_HEIGHT + 2f * pad) * scale).toInt()
+        val bitmap = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.BLACK
+        }
+        val saved = canvas.save()
+        try {
+            canvas.scale(scale, scale)
+            if (d.isDigit(ch)) {
+                canvas.translate(pad, pad)
+                canvas.scale(d.DIGIT_SCALE, d.DIGIT_SCALE)
+                canvas.drawPath(IosDigits.buildPath(IosDigits.glyph(ch), 0f, 0f), paint)
+            } else {
+                val path = android.graphics.Path().apply {
+                    fillType = android.graphics.Path.FillType.WINDING
+                    for (contour in d.outlines(ch, stroke)) {
+                        if (contour.size < 6) continue
+                        moveTo(pad + contour[0], pad + contour[1])
+                        var i = 2
+                        while (i < contour.size) {
+                            lineTo(pad + contour[i], pad + contour[i + 1])
+                            i += 2
+                        }
+                        close()
+                    }
+                }
+                canvas.drawPath(path, paint)
+            }
+        } finally {
+            canvas.restoreToCount(saved)
+        }
+        return bitmap
+    }
+
     private fun familyRow(tint: Int, background: Int): Bitmap {
         val cellW = slotWidth * ss
         val cellH = slotHeight * ss
@@ -377,6 +469,11 @@ class IosDataLabelRasterTest {
         "3G" -> "3g"
         "E" -> "e"
         else -> label.lowercase(Locale.US)
+    }
+
+    private fun glyphTag(ch: Char): String = when (ch) {
+        '+' -> "plus"
+        else -> ch.toString().lowercase(Locale.US)
     }
 
     private data class InkBox(

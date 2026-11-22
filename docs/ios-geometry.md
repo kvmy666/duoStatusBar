@@ -190,15 +190,16 @@ weight is the in-battery digit run-stroke.
 | L ink width | 22 px | 0.611 |
 | T ink width | 29 px | 0.806 |
 | E ink width | 24 px | 0.667 |
-| G ink width | 34 px | 0.944 |
+| G ink width | 34 px (33 at 50 % of peak) | 0.944 (0.917) |
 | + ink width x height | 28 x 27 px | 0.778 x 0.750 |
 | Digit 3 ink width | 25 px | 0.694 |
 | Digit 4 ink width | 27 px | 0.750 |
 | Digit 5 ink width | 24 px | 0.667 |
-| G bar y | 44..48 px | 0.444..0.556 |
-| G bar left | x204 (G box 184..217) | 0.588 W |
-| G upper-right terminal | ~y33.5 | ~0.14 |
-| G spur bottom | y59.5 | 0.875 |
+| G bar y (G ink box y27..64) | 44..48 px | 0.447..0.573 of the 38 px G box |
+| G bar left | x204 (G box 184..216) | 0.625 raw, 0.607 after ink-box normalisation |
+| G upper-right terminal | tip ~(214, 34) | ~0.19 of the G box, ~319 deg |
+| G right stem bottom | y60 left / y59 right | 0.975 / 0.920 of the G box |
+| G counter/bar aperture | ~36 deg visible above the bar | band gap 318.93..20.66 deg |
 | Gaps T..E / 4..G / 5..G / G..+ | 3 / 4 / 5 / 6 px | 0.083 / 0.111 / 0.139 / 0.167 |
 | Gaps 3..4 / 4..5 | 4 / 5 px | 0.111 / 0.139 |
 
@@ -227,18 +228,58 @@ seams. L is a stem+foot polygon; T a top-bar+stem polygon; E four overlapping re
 top/middle/bottom arms, middle arm 0.95 of full width). The plus is two equal-arm rectangles forming a
 0.750-cap square centred at C/2.
 
-**G construction (SF-style).** An oval arc band with outer radii `W/2, C/2` and inner radii
-`W/2-STROKE, C/2-STROKE`, sweeping counter-clockwise from the upper-right terminal at 315 deg (the
-measured terminal is ~y33.5 with cap top ~28.5, i.e. ~0.14 C) through the top, left and bottom to the
-spur angle. The geometric arc gap is 93.59 deg (360 - 266.41); the visible open aperture above the stem
-top (0.4 C, ~348.5 deg) is ~34 deg (315..348.5 deg). The spur angle is derived from the measured spur
-bottom: `asin((0.875 - 0.5) / 0.5) = 48.59 deg`, where the outer ellipse reaches the measured y59.5
-(0.875 C). The vertical right stem is `x = W-STROKE..W`, `y = 0.4 C..0.875 C` (the longer measured
-flat-bottom spur), and the horizontal bar `x = 0.588 W..W`, `y = 0.4 C..0.6 C` reaches into the counter
-from the right. The counter stays open through the upper-right ~34 deg visible aperture (0 closed holes:
-the `IosDataLabelTest` flood-fills the raster and requires no enclosed background). The earlier R4B
-stroked arc (which started at 300 deg) with a centre-to-edge bar read as "6" in owner review; the filled
-band + short bar leaves most of the counter open.
+**G construction (v3, measured).** The owner-review defect was that the R4B G read as a C with a
+G-style corner glued on. It was a symmetric `W/2, C/2` oval band with a short stem; the v3 G is rebuilt
+analytically from the 50 % mask of the three Gs in the reference strip (the raw measurement script and
+output are `.pm/ref/out-r4/g-v3/measure_g.py` / `measure_g.json`). Reference G ink box: 33 x 38 px
+(cap 36, so the round bowl overshoots 1 px top and bottom); direct left-band spans are 5-6 px (the
+distance-transform median x2 is 4.0 px, a lower bound).
+
+The shipped shape is a union of three clockwise contours (WINDING):
+
+- **Bowl band:** outer centre `(0.61188 W, 0.5 C)` with radii `(0.61188 W, 0.5 C)`; weight-1 inner
+  radii `(0.43272 W, 0.37898 C)`. The band sweeps counter-clockwise from `318.932 deg` (the measured
+  upper-right terminal, tip ~(214, 34)) through the top, left and bottom to `20.661 deg` at the lower
+  right. The gap crossing 3 o'clock is the open upper aperture; the visible gap above the bar is
+  ~36 deg. Outer x is clamped to the ink-box right edge because the measured bowl ellipse continues
+  under the stem.
+- **Bar:** centre y `0.5102 C`, half thickness `0.06288 C` at weight 1, inner end `0.60653 W`, right
+  edge `W`. This is the measured mid-height bar reaching into the counter (reference rows y44..48).
+- **Stem:** right edge `W`, left edge `0.84951 W` at weight 1 (the measured x212), from the bar down
+  to a slanted bottom `0.97497 C` on the left and `0.92007 C` on the right (the measured y60/y59
+  stem-to-bowl joint). This is the visible right stem the old shape lacked.
+
+`G_REFERENCE_STEM_STROKE = (1 - 0.84951) x 34/36 x cap = 9.50` design units. Production scales every
+G stroke by `G_PRODUCTION_WEIGHT = STROKE / 9.50 = 1.407`, so the stem is exactly the digit `STROKE`
+(13.37) and the band/bar keep the measured proportions. The same builder is exposed at weight 1 for
+the weight-normalised IoU evidence. The counter opens through the upper-right aperture (0 closed
+holes: the `IosDataLabelTest` flood-fill requires no enclosed background), and the right stem is
+inked below the bar, so the glyph is distinguishable from a C.
+
+**Per-glyph IoU (v3).** Reference: the 50 % mask of the same strip. Alignment: ink bbox + a +/-0.6
+reference-pixel translation search. L/T/E/+/G are rebuilt by the shipping code at each glyph's measured
+reference stroke (L 5.8 px, T/E/+ 5.0 px, G weight 1); the digits are the fixed bold `IosDigits` and
+the reference is dilated to that bold weight. The Android renderer writes the masks
+(`r4-glyph-*-refweight-v3.png`); `compare_v3.py` computes the table and `overlay-g.png`. A lightly
+smoothed trace of the same 50 % boundary reaches 0.945, so ~0.91 is the resolution-limited amplitude of
+the reference, not a geometry failure.
+
+| Glyph | IoU | Weight normalisation |
+|---|---:|---|
+| L | 0.939 | rebuilt at 5.8 px |
+| T | 0.920 | rebuilt at 5.0 px |
+| E | 0.914 | rebuilt at 5.0 px |
+| **G** | **0.908** | rebuilt at weight 1 (measured stem) |
+| + | 0.902 | rebuilt at 5.0 px |
+| 3 | 0.723 | IosDigits bold; reference dilated to bold |
+| 4 | 0.788 | IosDigits bold; reference dilated to bold |
+| 5 | 0.735 | IosDigits bold; reference dilated to bold |
+
+Digits are reported, not reworked: they are the measured battery digits (`IosDigits`, never retyped)
+and their widths already match the reference within 4 %; their lower IoU is the bold/thin weight and
+the 5 px reference stroke, not a shape fix in this change. The earlier R4B stroked arc (which started at
+300 deg) with a centre-to-edge bar read as "6" in owner review; the v3 filled band + measured bar leaves
+most of the counter open.
 
 **Spacing and the plus.** The letter side bearing is 0.04 C, which reproduces the measured 0.083 C
 T..E gap. The plus uses the measured 0.750 C height as an equal-arm square with a 0.06 C side bearing,
@@ -252,14 +293,17 @@ deviating from the reference. The runtime renderer is `IosGlyphRenderer.drawData
 machine, and R4B uses the Canvas path only. V2 evidence fixtures are written by
 `IosDataLabelRasterTest` (`r4-label-{lte,4g,5g,5g-plus,3g,e}-{light,dark}-v2.png`,
 `r4-label-family-{light,dark}-v2.png`, `measurements-v2.md`); the first R4B fixtures are not
-overwritten.
+overwritten. The v3 G evidence adds `r4-glyph-*-refweight-v3.png` (weight-normalised glyphs),
+`r4-glyph-g-bold-v3.png`, `r4-label-{4g,5g,5g-plus,3g}-{light,dark}-v3.png` and the v3 family row;
+`r4-label-compare-v3.png` and `overlay-g.png` are the owner-review images. The v2 files are untouched.
 
 **UNVERIFIED.** No iOS status-bar capture shows this label. The cap = 0.70-bar fallback and the
 vertical placement are bar-geometry estimates, not measurements; the reference weight is lighter than
-the shipped bold digits, so only shapes/widths/spacing are matched. Honouring the measured plus makes
-"5G+" width-limited at the 80x50 slot (a slot constraint, not a geometry bug); the alternative is a
-smaller plus (~0.49-0.51 C), closer to the constant cap but deviating from the reference. Owner/device
-review is required before release.
+the shipped bold digits, so only shapes/widths/spacing are matched. The G v3 shape and the per-glyph
+IoU above are measured against the SF strip, but the label's on-device size/placement still need
+owner/device review. Honouring the measured plus makes "5G+" width-limited at the 80x50 slot (a slot
+constraint, not a geometry bug); the alternative is a smaller plus (~0.49-0.51 C), closer to the
+constant cap but deviating from the reference. Owner/device review is required before release.
 
 ## Relative sizes and per-kind draw scale
 

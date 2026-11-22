@@ -181,7 +181,7 @@ class IosDataLabelTest {
     }
 
     @Test
-    fun `G has a measured bar, a short spur and an open upper-right aperture`() {
+    fun `G v3 has the measured bar, right stem and open upper aperture`() {
         val d = IosGeometry.DataLabel
         val c = d.CAP_HEIGHT
         val w = d.inkWidth('G')
@@ -189,25 +189,49 @@ class IosDataLabelTest {
         assertEquals("G = band + stem + bar", 3, outlines.size)
 
         val rects = outlines.drop(1).map { bbox(it) }
-        // Horizontal bar: y 0.4..0.6 C, from 0.588 W to the right ink edge.
+        // Bar at the measured centre (0.5102 C), thickened from the reference band by the
+        // production weight; its inner end reaches into the counter at 0.60653 W.
+        val weight = d.STROKE / d.G_REFERENCE_STEM_STROKE
         val bar = rects.maxByOrNull { it.width }!!
-        assertEquals(0.40f * c, bar.top, 0.01f)
-        assertEquals(0.60f * c, bar.bottom, 0.01f)
-        assertEquals(0.588f * w, bar.left, 0.01f)
-        assertEquals(w, bar.right, 0.01f)
-        // Vertical stem / spur: x W-STROKE..W, from the bar top to the measured 0.875 C spur bottom.
-        val stem = rects.maxByOrNull { it.height }!!
-        assertEquals(w - d.STROKE, stem.left, 0.01f)
-        assertEquals(w, stem.right, 0.01f)
-        assertEquals(0.40f * c, stem.top, 0.01f)
-        assertEquals(0.875f * c, stem.bottom, 0.01f)
+        assertEquals("bar centre", 0.5102f * c, (bar.top + bar.bottom) / 2f, 0.01f)
+        assertEquals("bar thickness", 2f * 0.06288f * c * weight, bar.height, 0.02f)
+        assertEquals("bar inner end", 0.60653f * w, bar.left, 0.02f)
+        assertEquals("bar reaches the right ink edge", w, bar.right, 0.01f)
 
-        // The counter is not closed (no holes), and the upper-right aperture is open.
+        // Right stem: exactly the digit stroke wide, from the bar down to the measured slanted
+        // bottom (0.97497 C on the left, 0.92007 C on the right). This is the stroke a C lacks.
+        val stem = rects.maxByOrNull { it.height }!!
+        assertEquals("stem width is the digit stroke", w - d.STROKE, stem.left, 0.02f)
+        assertEquals("stem right edge", w, stem.right, 0.01f)
+        assertEquals("stem starts at the bar", bar.top, stem.top, 0.01f)
+        assertEquals("stem bottom", 0.97497f * c, stem.bottom, 0.02f)
+
+        // The weight-1 rebuild is the measured reference letterform: bar y 0.4473..0.5731 C,
+        // inner end 0.60653 W, stem left 0.84951 W and bottom 0.97497 C.
+        val reference = d.outlines('G', d.G_REFERENCE_STEM_STROKE).drop(1).map { bbox(it) }
+        val refBar = reference.maxByOrNull { it.width }!!
+        assertEquals(0.5102f * c - 0.06288f * c, refBar.top, 0.01f)
+        assertEquals(0.5102f * c + 0.06288f * c, refBar.bottom, 0.01f)
+        assertEquals(0.60653f * w, refBar.left, 0.01f)
+        val refStem = reference.maxByOrNull { it.height }!!
+        assertEquals(0.84951f * w, refStem.left, 0.01f)
+        assertEquals(0.97497f * c, refStem.bottom, 0.01f)
+
+        // The counter is not closed (no holes), the upper-right aperture is open, and the right
+        // stem is inked below the bar. A C would be transparent at the stem pixel and a "G with a
+        // glued corner" fails the bar/stem geometry above.
         val bitmap = renderGlyph('G')
         assertEquals("G must not have a closed counter", 0, enclosedBackgroundPixels(bitmap))
-        val apertureX = (glyphPad + 0.85f * w).toInt()
-        val apertureY = (glyphPad + 0.25f * c).toInt()
+        val apertureX = (glyphPad + 0.87f * w).toInt()
+        val apertureY = (glyphPad + 0.35f * c).toInt()
         assertEquals("G upper-right aperture is not open", 0, Color.alpha(bitmap.getPixel(apertureX, apertureY)))
+        val stemX = (glyphPad + 0.93f * w).toInt()
+        val stemY = (glyphPad + 0.70f * c).toInt()
+        assertTrue(
+            "G right stem must be inked below the bar (a C is not)",
+            Color.alpha(bitmap.getPixel(stemX, stemY)) > 8
+        )
+
     }
 
     @Test

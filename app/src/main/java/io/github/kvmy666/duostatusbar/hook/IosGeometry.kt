@@ -1,6 +1,5 @@
 package io.github.kvmy666.duostatusbar.hook
 
-import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -345,10 +344,13 @@ internal object IosGeometry {
      * G 0.944 and plus 0.778 x 0.750. The shipped plus is an equal-arm 0.75-cap square (the measured
      * height; 1 px inside the measured width). Honouring that reference plus makes "5G+" wider than
      * the 80x50 production slot's height-limited width, so "5G+" is width-limited (~19.4 px cap) while
-     * the five other labels stay height-limited (~21.6 px cap, 0.705 of the Wi-Fi ink). G uses the
-     * measured 0.944 width, a 315..48.59 degree arc band (the ~0.14-C terminal; the spur angle is
-     * derived from the measured 0.875-C spur bottom), a 0.588-W bar into the counter and the longer
-     * flat-bottom spur, with the counter open through the upper-right aperture (no closed hole).
+     * the five other labels stay height-limited (~21.6 px cap, 0.705 of the Wi-Fi ink). The G is
+     * the v3 measured letterform: a right-shifted bowl (0.612 W centre, 0.612 W x 0.5 C outer radii),
+     * a 318.93..20.66 degree band with the open aperture crossing 3 o'clock, a mid-height bar whose
+     * inner end is at 0.607 W, and a right stem from the bar to a slanted bottom (0.975/0.920 C).
+     * The counter opens through the upper-right aperture, so there is no closed hole and the glyph
+     * reads as G, not a C with a glued corner. All G strokes scale with a single weight from the
+     * measured reference (weight 1) to the digit stroke ([G_PRODUCTION_WEIGHT]).
      */
     object DataLabel {
         /** Supported labels, in reader/reporting order. */
@@ -395,26 +397,49 @@ internal object IosGeometry {
         /** E middle arm is slightly shorter than the full width (reference 23 / 24). */
         private const val E_MID_ARM_FRACTION = 0.95f
 
-        /** G horizontal bar: reference y 0.444..0.556 C, rounded to the stroke-weight band 0.4..0.6 C. */
-        private const val G_BAR_TOP_FRACTION = 0.40f
-        private const val G_BAR_BOTTOM_FRACTION = 0.60f
-        /** G bar enters the counter at 0.588 W (reference bar left x204 of the 184..217 box). */
-        private const val G_BAR_END_FRACTION = 0.588f
-        /** G vertical spur bottom: the measured reference y59.5 at cap 36 = 0.875 C. */
-        private const val G_SPUR_BOTTOM_FRACTION = 0.875f
-        /**
-         * G arc: upper-right terminal at the measured y33.5 (cap top ~28.5) = ~0.14 C = 315 deg,
-         * counter-clockwise to the spur angle. The geometric arc gap is 93.59 deg (360 - 266.41);
-         * the visible open aperture above the stem top (0.4 C, ~348.5 deg) is ~34 deg (315..348.5).
+        /*
+         * G v3: measured from the 50 % mask of the three Gs in
+         * `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (cap 36 px, G ink box 33 x 38 px).
+         *
+         * The old G was a symmetric `W/2, C/2` oval band with a bar ending at 0.588 W and a short
+         * stem; at production size it read as a C with a rectangle glued at the right. The v3 bowl
+         * is shifted right (the G's ink box includes the right stem, so the bowl itself is not
+         * centred), the bar starts further right, and the stem runs from the bar to the bottom of
+         * the bowl as a trapezoid, so the upper-right aperture and the right stem are both visible.
+         *
+         * All numbers below are in the G ink box, x in `0..W`, y in `0..C`; they are the weight-1
+         * (reference-weight) shape. [G_PRODUCTION_WEIGHT] scales every stroke (bowl band, bar,
+         * stem) to the measured digit weight, keeping the outer envelope and stroke proportions.
          */
-        private const val G_ARC_START_DEG = 315f
+        private const val G_OUTER_CX_FRACTION = 0.61188f
+        private const val G_OUTER_CY_FRACTION = 0.5f
+        private const val G_OUTER_RX_FRACTION = 0.61188f
+        private const val G_OUTER_RY_FRACTION = 0.5f
+        /** Reference-weight inner bowl radii (the band thickness is `outer - inner` per axis). */
+        private const val G_INNER_RX_FRACTION = 0.43272f
+        private const val G_INNER_RY_FRACTION = 0.37898f
+        /** Bar centre y and half thickness; measured bar rows y44..48 of the y27..64 G box. */
+        private const val G_BAR_CENTER_FRACTION = 0.5102f
+        private const val G_BAR_HALF_FRACTION = 0.06288f
+        /** Bar inner end: x204 of the 184..217 box (0.607 of the 33 px ink width). */
+        private const val G_BAR_LEFT_FRACTION = 0.60653f
+        /** Stem left edge and its slanted bottom (left y60, right y59 of the measured box). */
+        private const val G_STEM_LEFT_FRACTION = 0.84951f
+        private const val G_STEM_BOTTOM_LEFT_FRACTION = 0.97497f
+        private const val G_STEM_BOTTOM_RIGHT_FRACTION = 0.92007f
         /**
-         * Spur angle derived from [G_SPUR_BOTTOM_FRACTION]: `asin((0.875 - 0.5) / 0.5)` = 48.59 deg,
-         * where the outer ellipse reaches the measured spur bottom (y = 0.875 C).
+         * Open aperture: the band sweeps counter-clockwise from the measured upper-right terminal
+         * (318.93 deg) through the top/left/bottom to the lower-right (20.66 deg). The gap between
+         * those terminals (~62 deg, crossing 3 o'clock) is the aperture; it is not filled by the bar,
+         * which starts below it.
          */
-        private val G_ARC_END_DEG: Float = Math.toDegrees(
-            asin(((G_SPUR_BOTTOM_FRACTION - 0.5f) / 0.5f).toDouble())
-        ).toFloat()
+        private const val G_ARC_START_DEG = 318.932f
+        private const val G_ARC_END_DEG = 20.661f
+        /** Reference-weight stem thickness, the weight baseline: `STROKE / this` is the weight. */
+        internal val G_REFERENCE_STEM_STROKE: Float =
+            (1f - G_STEM_LEFT_FRACTION) * G_INK_FRACTION * CAP_HEIGHT
+        /** Weight that renders the measured G at the digit stroke ([STROKE]). */
+        internal val G_PRODUCTION_WEIGHT: Float = STROKE / G_REFERENCE_STEM_STROKE
 
         /**
          * Letter side bearing: 0.04 C gives a measured 3 px (0.083 C) T..E gap. The plus bearing is
@@ -486,62 +511,77 @@ internal object IosGeometry {
          * with [android.graphics.Path.FillType.WINDING] so overlaps union. Digits return an empty
          * list because the renderer fills them from [IosDigits].
          */
-        fun outlines(ch: Char): List<FloatArray> = when (ch) {
+        fun outlines(ch: Char): List<FloatArray> = outlines(ch, STROKE)
+
+        /**
+         * The same outlines rebuilt at [stroke] design units (the vertical stem/arm thickness).
+         * Production passes [STROKE]; the raster evidence passes the measured reference stroke to
+         * remove the bold/lighter weight difference before comparing IoU. G keeps the measured
+         * reference shape and scales all of its strokes by `stroke / [G_REFERENCE_STEM_STROKE]`.
+         */
+        internal fun outlines(ch: Char, stroke: Float): List<FloatArray> = when (ch) {
             'L' -> listOf(glyphPolygon(
-                0f, 0f, STROKE, 0f, STROKE, CAP_HEIGHT - STROKE, L_WIDTH, CAP_HEIGHT - STROKE,
+                0f, 0f, stroke, 0f, stroke, CAP_HEIGHT - stroke, L_WIDTH, CAP_HEIGHT - stroke,
                 L_WIDTH, CAP_HEIGHT, 0f, CAP_HEIGHT
             ))
             'T' -> listOf(glyphPolygon(
-                0f, 0f, T_WIDTH, 0f, T_WIDTH, STROKE,
-                T_WIDTH / 2f + STROKE / 2f, STROKE,
-                T_WIDTH / 2f + STROKE / 2f, CAP_HEIGHT,
-                T_WIDTH / 2f - STROKE / 2f, CAP_HEIGHT,
-                T_WIDTH / 2f - STROKE / 2f, STROKE,
-                0f, STROKE
+                0f, 0f, T_WIDTH, 0f, T_WIDTH, stroke,
+                T_WIDTH / 2f + stroke / 2f, stroke,
+                T_WIDTH / 2f + stroke / 2f, CAP_HEIGHT,
+                T_WIDTH / 2f - stroke / 2f, CAP_HEIGHT,
+                T_WIDTH / 2f - stroke / 2f, stroke,
+                0f, stroke
             ))
             'E' -> listOf(
-                glyphRect(0f, 0f, STROKE, CAP_HEIGHT),
-                glyphRect(0f, 0f, E_WIDTH, STROKE),
-                glyphRect(0f, CAP_HEIGHT / 2f - STROKE / 2f, E_MID_ARM_FRACTION * E_WIDTH, CAP_HEIGHT / 2f + STROKE / 2f),
-                glyphRect(0f, CAP_HEIGHT - STROKE, E_WIDTH, CAP_HEIGHT)
+                glyphRect(0f, 0f, stroke, CAP_HEIGHT),
+                glyphRect(0f, 0f, E_WIDTH, stroke),
+                glyphRect(0f, CAP_HEIGHT / 2f - stroke / 2f, E_MID_ARM_FRACTION * E_WIDTH, CAP_HEIGHT / 2f + stroke / 2f),
+                glyphRect(0f, CAP_HEIGHT - stroke, E_WIDTH, CAP_HEIGHT)
             )
-            'G' -> gOutlines()
+            'G' -> gOutlines(stroke / G_REFERENCE_STEM_STROKE)
             '+' -> listOf(
                 glyphRect(
-                    0f, CAP_HEIGHT / 2f - STROKE / 2f,
-                    PLUS_WIDTH, CAP_HEIGHT / 2f + STROKE / 2f
+                    0f, CAP_HEIGHT / 2f - stroke / 2f,
+                    PLUS_WIDTH, CAP_HEIGHT / 2f + stroke / 2f
                 ),
                 glyphRect(
-                    PLUS_WIDTH / 2f - STROKE / 2f, CAP_HEIGHT / 2f - PLUS_WIDTH / 2f,
-                    PLUS_WIDTH / 2f + STROKE / 2f, CAP_HEIGHT / 2f + PLUS_WIDTH / 2f
+                    PLUS_WIDTH / 2f - stroke / 2f, CAP_HEIGHT / 2f - PLUS_WIDTH / 2f,
+                    PLUS_WIDTH / 2f + stroke / 2f, CAP_HEIGHT / 2f + PLUS_WIDTH / 2f
                 )
             )
             else -> emptyList()
         }
 
         /**
-         * The SF-style G: an oval arc band, a vertical right stem and a horizontal bar, all filled
-         * and unioned so the bowl stays open.
+         * The SF-style G, rebuilt from the measured 50 % mask (see the `G v3` constants block).
          *
-         * Screen coordinates put 3 o'clock at 0 deg, 6 at +90, 9 at +180 and 12 at +270. The band
-         * sweeps counter-clockwise from the upper-right terminal ([G_ARC_START_DEG] 315, ~0.14 C)
-         * through the top, left and bottom to the spur angle ([G_ARC_END_DEG] 48.59, derived from the
-         * measured 0.875-C spur bottom). The geometric arc gap is 93.59 deg (360 - 266.41); the
-         * visible open aperture above the stem top (0.4 C, ~348.5 deg) is ~34 deg (315..348.5). The
-         * vertical stem
-         * (`x = W-STROKE..W`, `y = barTop..0.875C`) closes the right side and forms the measured
-         * longer flat-bottom spur; the horizontal bar (`x = 0.588W..W`, `y = 0.4C..0.6C`) reaches into
-         * the counter from the right, leaving most of the counter open so the glyph reads as G, not 6.
-         * The counter therefore has no closed hole: it opens through the upper-right aperture.
+         * Screen coordinates put 3 o'clock at 0 deg, 6 at +90, 9 at +180 and 12 at +270. The bowl
+         * band sweeps counter-clockwise from the upper-right terminal ([G_ARC_START_DEG] 318.93)
+         * through the top, left and bottom to the lower-right ([G_ARC_END_DEG] 20.66). The gap
+         * between those ends crosses 3 o'clock and is the open upper aperture; it is not filled.
+         *
+         * Three clockwise contours union under WINDING:
+         *  - the bowl band (outer arc forward, inner arc backward), whose outer x is clamped to the
+         *    ink-box right edge because the measured bowl ellipse extends under the stem;
+         *  - the horizontal bar from [G_BAR_LEFT_FRACTION] W to W at the measured mid height;
+         *  - the right stem from the bar down to a slanted bottom ([G_STEM_BOTTOM_LEFT_FRACTION] on
+         *    the left, [G_STEM_BOTTOM_RIGHT_FRACTION] on the right), which joins the bowl bottom.
+         *
+         * [weight] is 1 at the measured reference stroke and [G_PRODUCTION_WEIGHT] at the digit
+         * stroke; it scales the band thickness, bar thickness and stem width together, so the
+         * glyph keeps one letterform at either weight. The bowl opens to the right above the bar,
+         * so the counter is not an enclosed hole and the glyph is visibly a G, not a C.
          */
-        private fun gOutlines(): List<FloatArray> {
-            val cx = G_WIDTH / 2f
-            val cy = CAP_HEIGHT / 2f
-            val outerRx = G_WIDTH / 2f
-            val outerRy = CAP_HEIGHT / 2f
-            val innerRx = outerRx - STROKE
-            val innerRy = outerRy - STROKE
-            val steps = 72
+        private fun gOutlines(weight: Float = G_PRODUCTION_WEIGHT): List<FloatArray> {
+            val cx = G_OUTER_CX_FRACTION * G_WIDTH
+            val cy = G_OUTER_CY_FRACTION * CAP_HEIGHT
+            val outerRx = G_OUTER_RX_FRACTION * G_WIDTH
+            val outerRy = G_OUTER_RY_FRACTION * CAP_HEIGHT
+            val innerRx =
+                outerRx - (G_OUTER_RX_FRACTION - G_INNER_RX_FRACTION) * G_WIDTH * weight
+            val innerRy =
+                outerRy - (G_OUTER_RY_FRACTION - G_INNER_RY_FRACTION) * CAP_HEIGHT * weight
+            val steps = 160
             val outer = FloatArray((steps + 1) * 2)
             val inner = FloatArray((steps + 1) * 2)
             for (i in 0..steps) {
@@ -549,9 +589,11 @@ internal object IosGeometry {
                 val radians = degrees * (Math.PI / 180.0)
                 val c = cos(radians).toFloat()
                 val s = sin(radians).toFloat()
-                outer[i * 2] = cx + outerRx * c
+                // The measured bowl reaches under the stem; clamp it to the ink box so the glyph
+                // never draws past its own advance.
+                outer[i * 2] = (cx + outerRx * c).coerceAtMost(G_WIDTH)
                 outer[i * 2 + 1] = cy + outerRy * s
-                inner[i * 2] = cx + innerRx * c
+                inner[i * 2] = (cx + innerRx * c).coerceAtMost(G_WIDTH)
                 inner[i * 2 + 1] = cy + innerRy * s
             }
             val n = (steps + 1) * 2
@@ -561,13 +603,23 @@ internal object IosGeometry {
                 band[n + i * 2] = inner[(steps - i) * 2]
                 band[n + i * 2 + 1] = inner[(steps - i) * 2 + 1]
             }
-            val barTop = G_BAR_TOP_FRACTION * CAP_HEIGHT
-            val barBottom = G_BAR_BOTTOM_FRACTION * CAP_HEIGHT
-            val spurBottom = G_SPUR_BOTTOM_FRACTION * CAP_HEIGHT
+            val barCenter = G_BAR_CENTER_FRACTION * CAP_HEIGHT
+            val barHalf = G_BAR_HALF_FRACTION * CAP_HEIGHT * weight
+            val stemLeft = G_WIDTH - G_REFERENCE_STEM_STROKE * weight
+            val stemBottomLeft = G_STEM_BOTTOM_LEFT_FRACTION * CAP_HEIGHT
+            val stemBottomRight = G_STEM_BOTTOM_RIGHT_FRACTION * CAP_HEIGHT
             return listOf(
                 ensureClockwise(band),
-                glyphRect(G_WIDTH - STROKE, barTop, G_WIDTH, spurBottom),
-                glyphRect(G_BAR_END_FRACTION * G_WIDTH, barTop, G_WIDTH, barBottom)
+                glyphRect(
+                    G_BAR_LEFT_FRACTION * G_WIDTH, barCenter - barHalf,
+                    G_WIDTH, barCenter + barHalf
+                ),
+                glyphPolygon(
+                    stemLeft, barCenter - barHalf,
+                    G_WIDTH, barCenter - barHalf,
+                    G_WIDTH, stemBottomRight,
+                    stemLeft, stemBottomLeft
+                )
             )
         }
 
