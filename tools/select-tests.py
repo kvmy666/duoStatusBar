@@ -640,7 +640,26 @@ def _selftest_cases(index, root):
         assert test_fqn("IosGeometryTest") in tests, tests
         assert test_fqn("IosDrawablesTest") in tests, tests
         assert tests == sorted(tests), "output is not deterministic/sorted"
-        assert not any(".settings." in fqn for fqn in tests), tests
+        # R4M: the merged graph gives DuoSettingsClient -> IosElement -> IosVisual -> IosGeometry.
+        # The four settings tests below import DuoSettingsClient (IosColumnSkewTest.kt:6,
+        # IosIconSettingsTest.kt:8, SettingsBridgeSkewTest.kt:5, SettingsChannelTest.kt:11);
+        # DuoSettingsClient uses IosIconKind (IosElement.kt:9), IosElement.render takes IosVisual
+        # (IosElement.kt:42), and IosVisual uses IosWifiSlot.Wifi (IosVisual.kt:48), whose simple
+        # name also matches the same-package IosGeometry.Wifi (IosGeometry.kt:255). That last hop is
+        # the selector's conservative name match, not an under-selection. Pin the exact set: an
+        # unrelated settings test must not be swept in, and none of these four may silently drop out.
+        # Over-selection is acceptable; under-selection is not.
+        expected_settings = {
+            test_fqn("IosColumnSkewTest"),
+            test_fqn("IosIconSettingsTest"),
+            test_fqn("SettingsBridgeSkewTest"),
+            test_fqn("SettingsChannelTest"),
+        }
+        selected_settings = {fqn for fqn in tests if ".settings." in fqn}
+        assert selected_settings == expected_settings, selected_settings
+        # Independent control: DuoPrefsLandscapeTest references only same-package DuoPrefs and its
+        # closure does not reach IosGeometry, so it must stay unselected.
+        assert test_fqn("DuoPrefsLandscapeTest") not in tests, tests
         assert len(tests) > len(always_set()), tests
         assert select(index, [path])["tests"] == tests, "non-deterministic result"
 
@@ -711,7 +730,7 @@ def _selftest_cases(index, root):
         ("unknown main source forces FULL", case_unknown_main_full),
         ("docs-only change runs the always set", case_docs_always_only),
         ("changed BarTintTest selects only that test plus always", case_bar_tint_only),
-        ("IosGeometry.kt selects parity, dependents and no settings tests",
+        ("IosGeometry.kt selects parity, its four settings dependents and not the control",
          case_ios_geometry),
         ("tools/select-tests.py forces FULL", case_tools_full),
         ("empty changed list forces FULL", case_empty_full),
