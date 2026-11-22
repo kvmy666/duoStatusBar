@@ -98,11 +98,9 @@ internal object IosGlyphRenderer {
 
         val saved = canvas.save()
         try {
-            // Only a real transform needs a clip; identity runs exactly the old draw path (no extra
-            // save/clip). The box is this draw call's width x height, i.e. the drawable/view bounds.
-            if (user.dxPx != 0f || user.scale != 1f) {
-                canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
-            }
+            // No self-clip: a user-scaled/offset glyph may legitimately overflow this draw box. The
+            // host owns the room (ancestor unclip + an overlay canvas sized to the transformed box),
+            // so identity still draws exactly the old pixels and non-identity ink is not cropped.
             canvas.translate(dx, dy)
             canvas.scale(scale, scale)
             // User transform, applied once here after the CONTAIN fit so identity is byte-for-byte

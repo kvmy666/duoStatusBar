@@ -530,7 +530,7 @@ class IosDrawablesTest {
     }
 
     @Test
-    fun `non-identity transform clips ink to the drawable bounds`() {
+    fun `non-identity transform draws the whole glyph outside the old drawable bounds`() {
         val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
         drawable.setBounds(20, 10, 180, 100)
         drawable.userTransform = IosUserTransform(dxPx = -100f, scale = 1f)
@@ -547,8 +547,31 @@ class IosDrawablesTest {
                 if (inBounds) inside++ else outside++
             }
         }
-        assertEquals("ink outside the drawable bounds", 0, outside)
+        // Item 5: the renderer must not self-clip to its draw box; the host is the only owner of the
+        // overflow room (ancestor unclip / enlarged overlay canvas). An offset glyph therefore paints
+        // past the old bounds instead of being cropped to its middle.
+        assertTrue("a shifted glyph must paint outside the old bounds", outside > 0)
         assertTrue("some ink remains inside the drawable bounds", inside > 0)
+    }
+
+    @Test
+    fun `identity transform keeps the glyph inside the drawable bounds`() {
+        val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
+        drawable.setBounds(20, 10, 180, 100)
+
+        val bitmap = Bitmap.createBitmap(220, 140, Bitmap.Config.ARGB_8888)
+        drawable.draw(Canvas(bitmap))
+
+        var outside = 0
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                if (Color.alpha(bitmap.getPixel(x, y)) <= 8) continue
+                if (x < 20 || x >= 180 || y < 10 || y >= 100) outside++
+            }
+        }
+        // Removing the transform clip must not change the identity path: the CONTAIN fit already
+        // keeps the glyph within its own bounds.
+        assertEquals("identity ink outside the drawable bounds", 0, outside)
     }
 
     // ------------------------------------------------------------------- CONTAIN, no squash

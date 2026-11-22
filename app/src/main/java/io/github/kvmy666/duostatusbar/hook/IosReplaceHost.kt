@@ -500,6 +500,13 @@ internal class IosReplaceHost(
     internal fun visualForTest(view: View): IosVisual? =
         records.firstOrNull { it.leaf === view || it.outer === view }?.visual
 
+    /** Test seam: the mechanism the current record for [kind] draws with, or null when none. */
+    internal fun mechanismForTest(kind: IosIconKind): IosReplaceMechanism? =
+        recordOf(kind)?.mechanism
+
+    /** Test seam: the overlay canvas the current record for [kind] owns, or null. */
+    internal fun overlayForTest(kind: IosIconKind): IosCanvasView? = recordOf(kind)?.overlay
+
     /** Test seam: how many attach retries have been consumed (never resets on a failed attach). */
     internal fun attachAttemptsForTest(): Int = attachAttempts
 
@@ -660,15 +667,43 @@ internal class IosReplaceHost(
                 adoptOrDefer(IosIconKind.BATTERY, batteryIcon, battery)
             }
 
-            // Wi-Fi: one record. Off/unvalidated restores the stock drawing (M6), never a blank slot.
-            if (wifiRecord != null) {
-                if (wifi == null || !wifi.visible) {
-                    dropRecord(wifiRecord, restore = true)
-                } else {
-                    applyVisual(wifiRecord, wifi)
+            // Wi-Fi slot (item 3): the validated glyph, a data-type label drawn by our own overlay when
+            // Wi-Fi is off, or the stock drawing. One WIFI record at most, shared by every surface.
+            when (val slot = wifiSlotState) {
+                IosWifiSlot.Wifi -> {
+                    if (wifiRecord != null) {
+                        if (wifi == null || !wifi.visible) {
+                            dropRecord(wifiRecord, restore = true)
+                        } else {
+                            ensureWifiSuppression(wifiRecord)
+                            applyVisual(wifiRecord, wifi)
+                        }
+                    } else if (wifiIcon != null && wifi != null && wifi.visible) {
+                        adoptOrDefer(IosIconKind.WIFI, wifiIcon, wifi)
+                    }
                 }
-            } else if (wifiIcon != null && wifi != null && wifi.visible) {
-                adoptOrDefer(IosIconKind.WIFI, wifiIcon, wifi)
+                is IosWifiSlot.DataType -> {
+                    val labelVisual = IosVisual(
+                        part = IosPart.WIFI,
+                        visible = true,
+                        tint = wifiTint,
+                        wifiSlot = slot
+                    )
+                    if (wifiRecord != null && wifiRecord.mechanism == IosReplaceMechanism.OVERLAY) {
+                        ensureWifiSuppression(wifiRecord)
+                        applyVisual(wifiRecord, labelVisual)
+                    } else {
+                        // A normal glyph record cannot paint while the stock leaf is hidden; restore it
+                        // and adopt our overlay at the laid-out Wi-Fi slot. No stock view is resized or
+                        // created (C2), and a slot with no laid-out box keeps the safe stock behaviour.
+                        if (wifiRecord != null) dropRecord(wifiRecord, restore = true)
+                        val stock = selectWifiSlotStock(inventory)
+                        if (stock != null) adoptWifiLabel(stock, labelVisual)
+                    }
+                }
+                IosWifiSlot.None -> {
+                    if (wifiRecord != null) dropRecord(wifiRecord, restore = true)
+                }
             }
 
             // Cellular: the plan signature decides whether records are rebuilt (1->2->1).
@@ -1644,7 +1679,13 @@ internal class IosReplaceHost(
         return record
     }
 
-    private fun adoptOverlay(kind: IosIconKind, outer: View, leaf: View?, visual: IosVisual): Record? {
+    private fun adoptOverlay(
+        kind: IosIconKind,
+        outer: View,
+        leaf: View?,
+        visual: IosVisual,
+        allowHiddenStock: Boolean = false
+    ): Record? {
         val parent = resolveOverlayParent() ?: return null
         val layer = ensureLayer(parent) ?: return null
         val bounds = overlayBounds(outer, leaf, layer)
@@ -1657,7 +1698,10 @@ internal class IosReplaceHost(
         if (size.first <= 0 || size.second <= 0) return null
 
         val skin = IosSkin()
-        if (!skin.suppress(outer)) return null
+        // R4 item 3: a data-type label may take a slot the OEM already hid (Wi-Fi off). There is no
+        // stock ink to suppress and no visibility to change; our own layer draws alone, so skipping
+        // the skin keeps the stock view exactly as the system left it (never re-shown).
+        if (!(allowHiddenStock && outer.visibility != View.VISIBLE) && !skin.suppress(outer)) return null
         var overlay: IosCanvasView? = null
         var added = false
         // The colour may arrive on the outer (background/foreground tint) or on the leaf.
@@ -2527,6 +2571,82 @@ internal class IosReplaceHost(
             }
         }
         return best
+    }
+
+    /**
+     * R4 item 3: the Wi-Fi stock view for the data-type label. Unlike [selectBest] this accepts an
+     * INVISIBLE entry (Wi-Fi off); it still needs a real laid-out box so the overlay can align with
+     * the slot. A GONE/never-laid-out view has no box, so the caller keeps the safe stock behaviour.
+     *
+     * The measured OPLUS composite outer (`OplusModernStatusBarWifiView`) is 0x0 with its content in
+     * `wifi_group`; the box therefore comes from the same geometry child the draw path uses, not from
+     * the outer's own size.
+     */
+    private fun selectWifiSlotStock(inventory: List<StockIcon>): StockIcon? {
+        var best: StockIcon? = null
+        var bestArea = -1L
+        for (icon in inventory) {
+            if (icon.kind != StockIconKind.WIFI) continue
+            val target = wifiLabelBoundsView(icon.view) ?: continue
+            val area = target.width.toLong() * target.height
+            if (area <= 0) continue
+            if (area > bestArea) {
+                bestArea = area
+                best = icon
+            }
+        }
+        return best
+    }
+
+    /**
+     * The view whose laid-out rect defines the label position: the stock outer itself, or one of the
+     * measured geometry children of a 0x0 composite. GONE is excluded: a collapsed slot has no
+     * trustworthy box even when Android still carries the child's last measured size.
+     */
+    private fun wifiLabelBoundsView(outer: View): View? {
+        if (outer.visibility == View.GONE) return null
+        if (outer.width > 0 && outer.height > 0) return outer
+        val plan = try {
+            IosSkinPlanner.planFor(outer)
+        } catch (_: Throwable) {
+            return null
+        }
+        for (id in plan.geometryIds) {
+            val view = findByEntryName(outer, id) ?: continue
+            if (view.visibility != View.GONE && view.width > 0 && view.height > 0) return view
+        }
+        return null
+    }
+
+    /** R4 item 3: draw the data-type label in the Wi-Fi slot with our own overlay layer. */
+    private fun adoptWifiLabel(icon: StockIcon, visual: IosVisual): Boolean {
+        // The outer stays the suppression target; a measured 0x0 composite supplies its content box
+        // as the overlay leaf, so no stock view is created, resized or re-laid out (C2).
+        val boundsView = wifiLabelBoundsView(icon.view) ?: return false
+        val leaf = if (boundsView === icon.view) null else boundsView
+        val record = try {
+            adoptOverlay(IosIconKind.WIFI, icon.view, leaf, visual, allowHiddenStock = true)
+        } catch (t: Throwable) {
+            logOnce.once("wifi-label-adopt") {
+                L.w("iOS replace Wi-Fi label adopt failed: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            null
+        } ?: return false
+        applyVisual(record, visual)
+        return true
+    }
+
+    /**
+     * Keeps the stock Wi-Fi view suppressed on a reused overlay record. The label path may have adopted
+     * over an already-hidden slot without a skin; if the system later shows the stock view, this
+     * suppresses it again before our glyph/label is drawn.
+     */
+    private fun ensureWifiSuppression(record: Record) {
+        if (record.mechanism != IosReplaceMechanism.OVERLAY) return
+        try {
+            record.skin?.suppress(record.outer)
+        } catch (_: Throwable) {
+        }
     }
 
     /** The overlay parent is resolved lazily: only a record that really needs an overlay asks for one. */

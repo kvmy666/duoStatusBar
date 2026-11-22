@@ -837,6 +837,141 @@ class IosReplaceHostTest {
     }
 
     @Test
+    fun `wifi off with a data label keeps one visible WIFI overlay label`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = hyperosSignalTree(subId = 7)
+        // Wi-Fi off: the stock view may be hidden, but it must still be laid out so the overlay has a box.
+        tree.wifiOuter.visibility = View.INVISIBLE
+        val host = host(
+            cellSource = { noCellReading() },
+            wifiSource = { _, _, _, _, _ ->
+                wifiSample(validated = false).copy(on = false, active = false)
+            }
+        )
+
+        assertTrue(host.attachIn(tree.strip, null))
+
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertNotNull("the label needs our own overlay canvas", host.overlayForTest(IosIconKind.WIFI))
+        val visual = host.visualForTest(tree.wifiOuter)
+        assertNotNull(visual)
+        assertTrue("the label visual must be visible", visual!!.visible)
+        assertEquals(IosWifiSlot.DataType("5G"), visual.wifiSlot)
+        // The stock view stays exactly as the system left it; we never re-show it.
+        assertEquals(View.INVISIBLE, tree.wifiOuter.visibility)
+
+        host.teardown()
+    }
+
+    @Test
+    fun `wifi validated keeps the old glyph path instead of a label`() {
+        // A data label is present too: validated Wi-Fi must still win (IosMapping.wifiSlotState).
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = hyperosSignalTree(subId = 7)
+        val host = host(
+            cellSource = { noCellReading() },
+            wifiSource = { _, _, _, _, _ -> wifiSample(validated = true) }
+        )
+
+        assertTrue(host.attachIn(tree.strip, null))
+
+        assertNotEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull(host.overlayForTest(IosIconKind.WIFI))
+        assertTrue(tree.wifiLeaf.drawable is IosWifiDrawable)
+        assertEquals(IosWifiSlot.Wifi, host.visualForTest(tree.wifiOuter)?.wifiSlot)
+
+        host.teardown()
+    }
+
+    @Test
+    fun `wifi off with no data label drops the record and restores the stock drawable`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("", mobileActive = false, source = DataLabelReader.SRC_UNAVAILABLE) }
+        )
+        val tree = hyperosSignalTree(subId = 7)
+        val original = tree.wifiLeaf.drawable
+        var sample = wifiSample(validated = true)
+        val host = host(
+            cellSource = { noCellReading() },
+            wifiSource = { _, _, _, _, _ -> sample }
+        )
+        assertTrue(host.attachIn(tree.strip, null))
+        assertTrue(tree.wifiLeaf.drawable is IosWifiDrawable)
+
+        sample = sample.copy(on = false, active = false, validated = false)
+        IosReadings.invalidate()
+        host.refresh()
+
+        assertNull(host.mechanismForTest(IosIconKind.WIFI))
+        assertFalse(host.recordKindsForTest().contains(IosIconKind.WIFI))
+        assertSame("the stock drawable comes back", original, tree.wifiLeaf.drawable)
+
+        host.teardown()
+    }
+
+    @Test
+    fun `a WIFI label and a CELL record coexist with exactly one label`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("LTE", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = hyperosSignalTree(subId = 7)
+        tree.wifiOuter.visibility = View.INVISIBLE
+        val host = host(
+            cellSource = { oneSimReading(7) },
+            wifiSource = { _, _, _, _, _ ->
+                wifiSample(validated = false).copy(on = false, active = false)
+            }
+        )
+
+        assertTrue(host.attachIn(tree.strip, null))
+
+        val kinds = host.recordKindsForTest()
+        assertEquals("one Wi-Fi record", 1, kinds.count { it == IosIconKind.WIFI })
+        assertEquals("one cell record", 1, kinds.count { it == IosIconKind.CELL })
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertEquals(IosIconKind.WIFI, host.overlayForTest(IosIconKind.WIFI)?.kind)
+        assertEquals(IosPart.CELL, host.visualForTest(tree.mobileOuter)?.part)
+
+        host.teardown()
+    }
+
+    @Test
+    fun `wifi off on a zero-sized oplus outer draws the label from its content box`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("LTE", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        // Measured OPLUS anatomy: the outer is 0x0, the icon content lives in wifi_group (73x63).
+        val tree = oplusSignalTree(subId = 5)
+        tree.wifiOuter.visibility = View.INVISIBLE
+        val host = host(
+            cellSource = { oneSimReading(5) },
+            wifiSource = { _, _, _, _, _ ->
+                wifiSample(validated = false).copy(on = false, active = false)
+            }
+        )
+
+        assertTrue(host.attachIn(tree.strip, null))
+
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        val visual = host.visualForTest(tree.wifiOuter)
+        assertEquals(IosWifiSlot.DataType("LTE"), visual?.wifiSlot)
+        val overlay = host.overlayForTest(IosIconKind.WIFI)
+        assertNotNull("the label needs an overlay canvas", overlay)
+        // The label box comes from wifi_group, not the 0x0 outer, so the canvas is drawable.
+        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.width > 0)
+        assertTrue("the label canvas must have a real box", overlay.layoutParams.height > 0)
+        // C2: no stock view is resized to make room.
+        assertEquals(0, tree.wifiOuter.width)
+        assertEquals(0, tree.wifiOuter.height)
+
+        host.teardown()
+    }
+
+    @Test
     fun `an opaque stat icon never gets an overlay canvas and keeps its stock drawing`() {
         val tree = oplusBatteryTree()
         val opaque = StatIconView(context, "wifi")
