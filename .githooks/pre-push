@@ -89,34 +89,55 @@ else
     echo "note: tools/select-tests.py is absent; skipping its self-test (CI will run it once added)."
 fi
 
-# --- Rive shipped gate: only when the local CLI is exactly 1.9.2 ----------
+# --- Rive shipped gate: find or install the exact 1.9.2 CLI ---------------
 
+RIVE_HOME_LOCAL="${DUO_RIVE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/duo-rive/1.9.2}"
+
+rive_version() {
+    local out
+    out="$("$1" --version 2>/dev/null || true)"
+    awk '{print $2; exit}' <<< "$out"
+}
+
+# Exact second-token compare ("rive 1.9.2" -> 1.9.2); a prefix match would accept 1.9.20.
 RIVE_CMD=""
-if [ -x "$HOME/.rive/bin/rive" ]; then
-    RIVE_CMD="$HOME/.rive/bin/rive"
-elif command -v rive >/dev/null 2>&1; then
-    RIVE_CMD="$(command -v rive)"
-fi
-
-RIVE_VERSION=""
-if [ -n "$RIVE_CMD" ]; then
-    RIVE_VERSION_OUT="$("$RIVE_CMD" --version 2>/dev/null || true)"
-    RIVE_VERSION="${RIVE_VERSION_OUT%%$'\n'*}"
-fi
-
-# Compare the exact second token ("rive 1.9.2" -> 1.9.2); a prefix match would accept 1.9.20.
-RIVE_VERSION_TOKEN="$(awk '{print $2}' <<< "$RIVE_VERSION" 2>/dev/null || true)"
-
-if [ "$RIVE_VERSION_TOKEN" = "1.9.2" ]; then
-    gate "Rive scenes verify and match shipped .riv hashes" bash tools/check-rive-shipped.sh || fail "check-rive-shipped.sh"
-else
-    if [ -z "$RIVE_CMD" ]; then
-        echo "WARNING: skipping the Rive shipped-.riv gate locally: the Rive CLI is not installed." >&2
-    else
-        echo "WARNING: skipping the Rive shipped-.riv gate locally: installed Rive is '${RIVE_VERSION:-unknown}', not 1.9.2." >&2
+for candidate in "$HOME/.rive/bin/rive" "$RIVE_HOME_LOCAL/bin/rive"; do
+    if [ -x "$candidate" ] && [ "$(rive_version "$candidate")" = "1.9.2" ]; then
+        RIVE_CMD="$candidate"
+        break
     fi
-    echo "         CI runs this gate with Rive 1.9.2 because 1.9.2 tightened interpolator validation;" >&2
-    echo "         install that version to reproduce the gate here. It is never skipped silently." >&2
+done
+if [ -z "$RIVE_CMD" ] && command -v rive >/dev/null 2>&1; then
+    RIVE_ON_PATH="$(command -v rive)"
+    if [ "$(rive_version "$RIVE_ON_PATH")" = "1.9.2" ]; then
+        RIVE_CMD="$RIVE_ON_PATH"
+    fi
+fi
+
+# Never skip the gate: install 1.9.2 into the cache prefix once, then fail closed.
+if [ -z "$RIVE_CMD" ]; then
+    echo "-- Rive CLI 1.9.2 not found; installing into $RIVE_HOME_LOCAL (one time)"
+    mkdir -p "$(dirname "$RIVE_HOME_LOCAL")" || fail "Rive install directory"
+    if ! env RIVE_HOME="$RIVE_HOME_LOCAL" RIVE_VERSION=1.9.2 CI=1 RIVE_ANALYTICS=off \
+        sh -c 'curl -fsSL https://releases.rive.app/cli/install.sh | sh'; then
+        echo "error: Rive 1.9.2 install failed; the shipped-.riv gate must not be skipped." >&2
+        fail "Rive 1.9.2 install"
+    fi
+    RIVE_INSTALLED=""
+    if [ -x "$RIVE_HOME_LOCAL/bin/rive" ]; then
+        RIVE_INSTALLED="$(rive_version "$RIVE_HOME_LOCAL/bin/rive")"
+    fi
+    if [ "$RIVE_INSTALLED" = "1.9.2" ]; then
+        RIVE_CMD="$RIVE_HOME_LOCAL/bin/rive"
+    else
+        echo "error: Rive 1.9.2 install finished but reported version '${RIVE_INSTALLED:-unknown}'." >&2
+        fail "Rive 1.9.2 version"
+    fi
+fi
+
+echo "-- Rive scenes verify and match shipped .riv hashes (using $("$RIVE_CMD" --version 2>/dev/null | head -n 1))"
+if ! PATH="$(dirname "$RIVE_CMD"):$PATH" bash tools/check-rive-shipped.sh; then
+    fail "check-rive-shipped.sh"
 fi
 
 # --- Full check -----------------------------------------------------------
