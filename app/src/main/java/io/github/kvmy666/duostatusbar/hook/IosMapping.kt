@@ -112,7 +112,8 @@ internal object IosMapping {
         saver: Boolean,
         plugged: Boolean,
         status: Int,
-        tint: Int
+        tint: Int,
+        percentInside: Boolean = false
     ): IosVisual {
         val state = batteryState(level, lowThreshold, saver, plugged, status)
         val fill = when (state) {
@@ -136,7 +137,8 @@ internal object IosMapping {
             batteryLevel = clampedLevel / 100f,
             batteryState = state,
             batteryFillColor = fill,
-            boltOpacity = bolt
+            boltOpacity = bolt,
+            percentInside = percentInside
         )
     }
 

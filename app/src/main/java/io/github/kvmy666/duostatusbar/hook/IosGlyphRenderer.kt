@@ -54,8 +54,10 @@ internal object IosGlyphRenderer {
      * Draws [kind] into the `width` x `height` box, scaled with `min(w/W, h/H)` and centred.
      *
      * [alpha] multiplies every drawn colour's own alpha. [overrideTint] replaces the dynamic tint for
-     * the battery NORMAL fill/cap/bolt, Wi-Fi and cellular; the fixed battery state colours (LOW red,
-     * SAVER yellow, CHARGING green, PLUGGED_NOT_CHARGING grey) always stay [IosVisual.batteryFillColor].
+     * the battery NORMAL fill, the neutral remainder/cap, the knocked-out percentage, Wi-Fi and
+     * cellular; the fixed battery state colours (LOW red, SAVER yellow, CHARGING green,
+     * PLUGGED_NOT_CHARGING grey) always stay [IosVisual.batteryFillColor]. The charging bolt is white
+     * per ref 3, independent of the tint.
      * A hidden visual, a zero/negative box or a non-positive scale draws nothing.
      */
     fun draw(
@@ -130,11 +132,12 @@ internal object IosGlyphRenderer {
         }
         val tint = overrideTint ?: v.tint
 
-        // Uncharged remainder: one rounded body, same colour at half alpha, no outline.
+        // Uncharged remainder: one rounded body at half alpha. It is NEUTRAL ink (the bar tint), not
+        // the fixed state colour: the charged fill keeps the state colour, the remainder stays grey.
         val remainder = Path().apply {
             addRoundRect(body, b.BODY_RADIUS, b.BODY_RADIUS, Path.Direction.CW)
         }
-        fill.color = withAlpha(bodyFill, b.REMAINDER_ALPHA, alpha)
+        fill.color = withAlpha(tint, b.REMAINDER_ALPHA, alpha)
         canvas.drawPath(remainder, fill)
 
         // Charged part: clipped by the body, so the left corners stay round and the split is straight.
@@ -151,9 +154,8 @@ internal object IosGlyphRenderer {
         canvas.restore()
 
         // Cap nub: the measured right-hand half of a superellipse (n=1.8), 9.5 x 26.0, not a
-        // circle or capsule. It is the inactive grey, i.e. the same colour as the uncharged
-        // remainder (batteryFillColor at CAP_ALPHA), not the dynamic tint. Its flat base sits against
-        // the body.
+        // circle or capsule. It is NEUTRAL ink like the uncharged remainder (the bar tint), not the
+        // dynamic fill nor the fixed state colour. Its flat base sits against the body.
         val cap = Path().apply {
             val points = b.CAP_POINTS
             moveTo(points[0], points[1])
@@ -162,18 +164,77 @@ internal object IosGlyphRenderer {
         }
         // PM rule (2026-11-22): at a full battery the cap is full ink, not the inactive half alpha.
         val capFactor = if (v.batteryLevel >= 1f) 1f else b.CAP_ALPHA
-        fill.color = withAlpha(bodyFill, capFactor, alpha)
+        fill.color = withAlpha(tint, capFactor, alpha)
         canvas.drawPath(cap, fill)
 
-        if (v.boltOpacity > 0f) {
-            val bolt = Path().apply {
-                val points = b.BOLT_POINTS
-                moveTo(points[0], points[1])
-                for (i in 2 until points.size step 2) lineTo(points[i], points[i + 1])
-                close()
+        if (v.percentInside) {
+            // R3B: the percentage is drawn last so it knocks out of both the fill and the remainder.
+            // The ink is the bar background colour, which keeps it readable in light, dark and
+            // coloured bars. No large bolt and no outline in this mode; a charging bolt follows the
+            // digits at the inline size.
+            drawPercentInside(canvas, v, tint, fill, alpha)
+        } else if (v.boltOpacity > 0f) {
+            // Ref 3 shows a plain white bolt. Draw its outline first (2x the measured 4.5 stroke),
+            // then fill white; there is no dynamic tint fill.
+            val bolt = IosDigits.largeBoltPath()
+            val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 2f * b.BOLT_OUTLINE
+                strokeJoin = Paint.Join.ROUND
+                color = withAlpha(Color.BLACK, 0.55f, v.boltOpacity * alpha)
             }
-            fill.color = withAlpha(tint, v.boltOpacity, alpha)
+            canvas.drawPath(bolt, outline)
+            fill.color = withAlpha(b.BOLT_FILL, v.boltOpacity, alpha)
             canvas.drawPath(bolt, fill)
+        }
+    }
+
+    /**
+     * Draws the percentage and the optional inline bolt inside the battery body.
+     *
+     * The digits are centred on the body centre at [IosDigits.CAP_HEIGHT]; the group width includes
+     * the inline bolt only when [IosVisual.boltOpacity] is positive. The stroke paint is reused for
+     * every glyph, and the caller's [fill] is reused for the inline bolt (one paint, not one per
+     * digit). The colour is [IosDigits.backgroundColour] so the ink matches the bar behind the icon.
+     */
+    private fun drawPercentInside(
+        canvas: Canvas,
+        v: IosVisual,
+        tint: Int,
+        fill: Paint,
+        alpha: Float
+    ) {
+        val b = IosGeometry.Battery
+        val pct = (v.batteryLevel * 100f).roundToInt().coerceIn(0, 100)
+        val text = pct.toString()
+        val colour = IosDigits.backgroundColour(tint)
+        val centreX = b.BODY_LEFT + b.BODY_W / 2f
+        val centreY = b.BODY_TOP + b.BODY_H / 2f
+        val textTop = centreY - IosDigits.CAP_HEIGHT / 2f
+        val hasBolt = v.boltOpacity > 0f
+        val textWidth = IosDigits.textInkWidth(text)
+        val group = textWidth + if (hasBolt) IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W else 0f
+        val left = centreX - group / 2f
+
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = IosDigits.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            color = withAlpha(colour, 1f, alpha)
+        }
+        for ((index, ch) in text.withIndex()) {
+            val glyph = IosDigits.glyph(ch)
+            val originX = left + index * IosDigits.ADVANCE + (IosDigits.ADVANCE - glyph.width) / 2f
+            for (path in IosDigits.buildPaths(glyph, originX, textTop)) {
+                canvas.drawPath(path, stroke)
+            }
+        }
+
+        if (hasBolt) {
+            val boltX = left + textWidth + IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W / 2f
+            fill.color = withAlpha(colour, v.boltOpacity, alpha)
+            canvas.drawPath(IosDigits.inlineBoltPath(boltX, centreY), fill)
         }
     }
 

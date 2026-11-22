@@ -48,5 +48,7 @@ internal data class IosVisual(
     /** Dual-SIM other row, 0..4 dots. */
     val cellDots: Float = 0f,
     /** R2C per-icon offset/scale; identity keeps today's pixels. */
-    val userTransform: IosUserTransform = IosUserTransform.IDENTITY
+    val userTransform: IosUserTransform = IosUserTransform.IDENTITY,
+    /** R3B: draw the percentage inside the body, knocked out of the fill/remainder. Off preserves today. */
+    val percentInside: Boolean = false
 )

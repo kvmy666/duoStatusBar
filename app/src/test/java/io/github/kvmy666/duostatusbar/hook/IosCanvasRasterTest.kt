@@ -45,7 +45,8 @@ class IosCanvasRasterTest {
         val batteryLevel: Int,
         val saver: Boolean,
         val plugged: Boolean,
-        val status: Int
+        val status: Int,
+        val percentInside: Boolean = false
     )
 
     private data class Placement(
@@ -85,6 +86,38 @@ class IosCanvasRasterTest {
         }
     }
 
+    @Test
+    fun `percentage inside evidence renders digits on and off`() {
+        for (prog in insideEvidenceStates()) {
+            val bitmap = render(prog, if (prog.dark) darkBg else lightBg)
+            assertInk(bitmap, prog.dark)
+            writeIfRequested(bitmap, insideName(prog))
+        }
+    }
+
+    @Test
+    fun `reference state evidence renders exact levels`() {
+        val states = listOf(
+            Prog(false, false, 36, false, true, 2, true) to
+                "refstate-light-36-charging-inside-on.png",
+            Prog(false, false, 69, false, false, 3, true) to
+                "refstate-light-69-normal-inside-on.png",
+            Prog(true, false, 74, false, true, 2, false) to
+                "refstate-dark-74-charging-inside-off.png",
+            Prog(true, false, 74, false, false, 3, false) to
+                "refstate-dark-74-normal-inside-off.png",
+            Prog(true, false, 74, true, false, 3, false) to
+                "refstate-dark-74-saver-inside-off.png",
+            Prog(true, false, 19, false, false, 3, false) to
+                "refstate-dark-19-low-inside-off.png"
+        )
+        for ((prog, fileName) in states) {
+            val bitmap = render(prog, if (prog.dark) darkBg else lightBg)
+            assertInk(bitmap, prog.dark)
+            writeIfRequested(bitmap, fileName)
+        }
+    }
+
     // ------------------------------------------------------------------------- state builders
 
     private fun tint(dark: Boolean): Int = if (dark) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
@@ -95,7 +128,8 @@ class IosCanvasRasterTest {
         saver = prog.saver,
         plugged = prog.plugged,
         status = prog.status,
-        tint = tint(prog.dark)
+        tint = tint(prog.dark),
+        percentInside = prog.percentInside
     )
 
     private fun cell(prog: Prog): IosVisual = IosVisual(
@@ -148,6 +182,35 @@ class IosCanvasRasterTest {
             else -> "normal"
         }
         return "canvas-$tone-$sim-$state.png"
+    }
+
+    /**
+     * 2 tints x (100 normal, 15 low, 60 charging, 60 saver) x percent-inside on/off = 16 images.
+     * The existing 24-state evidence keeps its names; these add the R3B comparison set.
+     */
+    private fun insideEvidenceStates(): List<Prog> {
+        val out = ArrayList<Prog>(16)
+        for (dark in listOf(false, true)) {
+            for (inside in listOf(false, true)) {
+                out.add(Prog(dark, false, 100, false, false, 3, inside))
+                out.add(Prog(dark, false, 15, false, false, 3, inside))
+                out.add(Prog(dark, false, 60, false, true, 2, inside))
+                out.add(Prog(dark, false, 60, true, false, 3, inside))
+            }
+        }
+        return out
+    }
+
+    private fun insideName(prog: Prog): String {
+        val tone = if (prog.dark) "dark" else "light"
+        val state = when {
+            prog.plugged -> "charging"
+            prog.saver -> "saver"
+            prog.batteryLevel <= 20 -> "low"
+            else -> "normal"
+        }
+        val inside = if (prog.percentInside) "on" else "off"
+        return "canvas-$tone-$state-inside-$inside.png"
     }
 
     // ----------------------------------------------------------------------------- rendering

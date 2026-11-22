@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -33,13 +36,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -131,7 +137,9 @@ internal fun IosModeSection(
             stringResource(R.string.settings_ios_scale),
             stringResource(R.string.ios_icon_battery),
             stringResource(R.string.ios_icon_wifi),
-            stringResource(R.string.ios_icon_cell)
+            stringResource(R.string.ios_icon_cell),
+            stringResource(R.string.settings_ios_percent_inside),
+            stringResource(R.string.settings_ios_percent_inside_detail)
         )
     ) GlassCard(
         shape = RoundedCornerShape(22.dp),
@@ -149,6 +157,12 @@ internal fun IosModeSection(
                 enabled = iosCardEnabled(settings, available)
             ) { onUpdate(applyIosModeToggle(settings, it, available)) }
             IosPreviewPane(settings)
+            SettingSwitch(
+                label = stringResource(R.string.settings_ios_percent_inside),
+                detail = stringResource(R.string.settings_ios_percent_inside_detail),
+                checked = settings.iosPercentInside,
+                enabled = settings.iosMode && available
+            ) { onUpdate(settings.copy(iosPercentInside = it)) }
 
             Text(
                 text = stringResource(R.string.settings_ios_icons),
@@ -232,10 +246,18 @@ internal fun CustomizeSection(
     enabled: Boolean = duoControlsEnabled(settings)
 ) {
     val previewRaw = rawResourceFor(settings.designStyle)
+    // A design change needs a System UI restart, exactly like the size change; the prompt is local.
+    var ringRestart by rememberSaveable { mutableStateOf(false) }
     if (matches(
             stringResource(R.string.section_customize), stringResource(R.string.section_element),
             stringResource(R.string.settings_master),
-            stringResource(R.string.settings_master_detail),             stringResource(R.string.settings_percent),
+            stringResource(R.string.settings_master_detail),
+            stringResource(R.string.home_ring_design),
+            stringResource(R.string.home_ring_design_detail),
+            stringResource(R.string.home_ring_design_classic),
+            stringResource(R.string.home_ring_design_dual),
+            stringResource(R.string.home_ring_design_restart),
+            stringResource(R.string.settings_percent),
             stringResource(R.string.settings_percent_detail),
             stringResource(R.string.settings_percent_height),
             stringResource(R.string.settings_percent_height_detail),
@@ -278,6 +300,21 @@ internal fun CustomizeSection(
                     )
                 }
             ) { onUpdate(settings.copy(enabled = it)) }
+            RingDesignCard(
+                selected = settings.designStyle,
+                enabled = enabled,
+                restartRequired = ringRestart,
+                onSelect = { style ->
+                    val normalized = DuoPrefs.normalizeDesignStyle(style)
+                    if (normalized != settings.designStyle) {
+                        onUpdate(settings.copy(designStyle = normalized))
+                        ringRestart = true
+                    } else {
+                        ringRestart = false
+                    }
+                },
+                onRestart = onRestart
+            )
             SettingSwitch(
                 label = stringResource(R.string.settings_percent),
                 detail = stringResource(R.string.settings_percent_detail),
@@ -342,6 +379,114 @@ internal fun CustomizeSection(
                 enabled = enabled
             )
         }
+    }
+}
+
+@Composable
+private fun RingDesignCard(
+    selected: String,
+    enabled: Boolean,
+    restartRequired: Boolean,
+    onSelect: (String) -> Unit,
+    onRestart: () -> Unit
+) {
+    GlassCard(
+        shape = RoundedCornerShape(DuoRadius.surface),
+        colors = CardDefaults.cardColors(containerColor = DuoColors.Surface),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(DuoSpace.xl),
+            verticalArrangement = Arrangement.spacedBy(DuoSpace.sm)
+        ) {
+            Text(
+                text = stringResource(R.string.home_ring_design),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = stringResource(R.string.home_ring_design_detail),
+                style = MaterialTheme.typography.bodySmall,
+                color = DuoColors.TextSecondary
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(DuoSpace.sm)
+            ) {
+                RingDesignOption(
+                    label = stringResource(R.string.home_ring_design_classic),
+                    selected = DuoPrefs.normalizeDesignStyle(selected) == DuoPrefs.DESIGN_OLD,
+                    enabled = enabled,
+                    demoRes = R.drawable.classic_demo,
+                    modifier = Modifier.weight(1f)
+                ) { onSelect(DuoPrefs.DESIGN_OLD) }
+                RingDesignOption(
+                    label = stringResource(R.string.home_ring_design_dual),
+                    selected = DuoPrefs.normalizeDesignStyle(selected) == DuoPrefs.DESIGN_NEW,
+                    enabled = enabled,
+                    demoRes = R.drawable.design_dual,
+                    modifier = Modifier.weight(1f)
+                ) { onSelect(DuoPrefs.DESIGN_NEW) }
+            }
+            if (restartRequired) {
+                Text(
+                    text = stringResource(R.string.home_ring_design_restart),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DuoColors.WineMist
+                )
+                OutlinedButton(
+                    onClick = onRestart,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.settings_restart))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RingDesignOption(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    demoRes: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(DuoRadius.control)
+    Column(
+        modifier = modifier
+            .clip(shape)
+            .background(if (selected) DuoColors.Wine.copy(alpha = 0.20f) else DuoColors.Surface)
+            .border(
+                width = 1.dp,
+                color = if (selected) DuoColors.WineBright.copy(alpha = 0.72f) else DuoColors.Hairline,
+                shape = shape
+            )
+            .alpha(if (enabled) 1f else 0.45f)
+            .selectable(
+                selected = selected,
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = onClick
+            )
+            .padding(DuoSpace.sm),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(DuoSpace.xs)
+    ) {
+        DesignDemo(
+            res = demoRes,
+            modifier = Modifier.size(52.dp),
+            contentDescription = label
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) DuoColors.WineMist else DuoColors.TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

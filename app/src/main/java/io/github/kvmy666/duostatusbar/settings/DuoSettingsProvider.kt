@@ -214,7 +214,8 @@ class DuoSettingsProvider : ContentProvider() {
             settings.iosWifiScale.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
             settings.iosCellOffset.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
             settings.iosCellScale.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
-            DuoPrefs.normalizeSimDisplay(settings.simDisplay)
+            DuoPrefs.normalizeSimDisplay(settings.simDisplay),
+            if (settings.iosPercentInside) 1 else 0
         )
     }
 }

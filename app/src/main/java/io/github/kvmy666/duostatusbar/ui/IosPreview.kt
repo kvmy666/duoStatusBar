@@ -52,7 +52,7 @@ internal data class IosPreviewState(
  * The 2-SIM state is one `BOTH` cell view with the reference values (data SIM 2/4 bars, other SIM
  * 3/4 dots); the 1-SIM state is one `DATA` cell view with all four bars.
  */
-internal fun iosPreviewStates(): List<IosPreviewState> {
+internal fun iosPreviewStates(percentInside: Boolean = false): List<IosPreviewState> {
     val states = ArrayList<IosPreviewState>(12)
     for (batteryIndex in 0 until 6) {
         for (simIndex in 0 until 2) {
@@ -80,7 +80,7 @@ internal fun iosPreviewStates(): List<IosPreviewState> {
                 plugged = plugged,
                 status = status,
                 tint = tint
-            )
+            ).copy(percentInside = percentInside)
             val dual = simIndex == 1
             val cell = IosVisual(
                 part = IosPart.CELL,
@@ -114,7 +114,9 @@ internal fun iosPreviewStates(): List<IosPreviewState> {
  */
 @Composable
 internal fun IosPreviewPane(settings: DuoSettings = DuoSettings(), modifier: Modifier = Modifier) {
-    val states = remember { iosPreviewStates() }
+    val states = remember(settings.iosPercentInside) {
+        iosPreviewStates(settings.iosPercentInside)
+    }
     var index by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {

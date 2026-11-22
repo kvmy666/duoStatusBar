@@ -116,7 +116,9 @@ internal data class ModuleSettings(
     val iosCellOffset: Int = 0,
     val iosCellScale: Int = DuoPrefs.DEFAULT_ICON_SCALE,
     /** "auto", "single" or "dual"; a missing column is the automatic choice. */
-    val simDisplay: String = DuoPrefs.SIM_DISPLAY_AUTO
+    val simDisplay: String = DuoPrefs.SIM_DISPLAY_AUTO,
+    /** Whether the iOS battery draws the level inside it; missing keeps today's battery. */
+    val iosPercentInside: Boolean = false
 ) {
     /** Whether Do Not Disturb may take the middle of the ring. */
     val showDnd: Boolean get() = DuoPrefs.dndInMiddle(dndMode)
@@ -182,7 +184,8 @@ internal data class ModuleSettings(
             iosWifiScale = DuoPrefs.DEFAULT_ICON_SCALE,
             iosCellOffset = 0,
             iosCellScale = DuoPrefs.DEFAULT_ICON_SCALE,
-            simDisplay = DuoPrefs.SIM_DISPLAY_AUTO
+            simDisplay = DuoPrefs.SIM_DISPLAY_AUTO,
+            iosPercentInside = false
         )
     }
 }
@@ -583,7 +586,9 @@ internal object DuoSettingsClient {
         ).coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
         simDisplay = DuoPrefs.normalizeSimDisplay(
             cursor.optionalString(DuoPrefs.COL_SIM_DISPLAY, DuoPrefs.SIM_DISPLAY_AUTO)
-        )
+        ),
+        // Optional: an older settings app has no percentage-inside column, which keeps today's battery.
+        iosPercentInside = cursor.optionalBool(DuoPrefs.COL_IOS_PERCENT_INSIDE, false)
         )
     }
 
@@ -687,7 +692,8 @@ internal object DuoSettingsClient {
                 .coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
             simDisplay = DuoPrefs.normalizeSimDisplay(
                 str(DuoPrefs.COL_SIM_DISPLAY, portrait.simDisplay)
-            )
+            ),
+            iosPercentInside = bool(DuoPrefs.COL_IOS_PERCENT_INSIDE, portrait.iosPercentInside)
         )
     }
 

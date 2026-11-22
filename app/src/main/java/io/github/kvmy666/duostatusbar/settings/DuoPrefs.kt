@@ -213,7 +213,12 @@ data class DuoSettings(
      * How the iOS cellular icons treat a dual-SIM phone: `"auto"` follows the device, `"single"`
      * draws one SIM, `"dual"` draws both. Independent of [simChoice], which picks the line Duo shows.
      */
-    val simDisplay: String = "auto"
+    val simDisplay: String = "auto",
+    /**
+     * Draw the battery percentage inside the iOS battery icon. Off keeps today's battery drawing, so an
+     * older install reads the default and its pixels do not change. Appended after [simDisplay].
+     */
+    val iosPercentInside: Boolean = false
 ) {
     companion object {
         /** The classic ring drawing (`res/raw/duo_old.riv`), the pre-existing look. */
@@ -407,6 +412,8 @@ object DuoPrefs {
     const val COL_IOS_CELL_SCALE = "ios_cell_scale"
     /** How many SIMs the iOS icons draw; appended last, never reordered. */
     const val COL_SIM_DISPLAY = "sim_display"
+    /** Whether the iOS battery draws the percentage inside it; appended in R3, never reordered. */
+    const val COL_IOS_PERCENT_INSIDE = "ios_percent_inside"
 
     const val SIM_DISPLAY_AUTO = "auto"
     const val SIM_DISPLAY_SINGLE = "single"
@@ -455,7 +462,7 @@ object DuoPrefs {
         COL_HIDDEN_STOCK_ICONS, COL_DESIGN_STYLE, COL_IOS_MODE,
         COL_IOS_BATTERY_OFFSET, COL_IOS_BATTERY_SCALE,
         COL_IOS_WIFI_OFFSET, COL_IOS_WIFI_SCALE,
-        COL_IOS_CELL_OFFSET, COL_IOS_CELL_SCALE, COL_SIM_DISPLAY
+        COL_IOS_CELL_OFFSET, COL_IOS_CELL_SCALE, COL_SIM_DISPLAY, COL_IOS_PERCENT_INSIDE
     )
 
     /** Landscape columns appended after [PORTRAIT_COLUMNS]. An older module ignores names it does not know. */
@@ -476,25 +483,35 @@ object DuoPrefs {
      */
     const val LEGACY_LANDSCAPE_COUNT = LEGACY_PORTRAIT_COUNT - 1
 
-    /** How many columns were appended after the pre-R2 row (seven today, plus any future append). */
-    private val POST_LEGACY_COUNT: Int = PORTRAIT_COLUMNS.size - LEGACY_PORTRAIT_COUNT
+    /** How many columns R2 appended to each orientation after the pre-R2 row (seven each). */
+    const val R2_TAIL_COUNT = 7
+
+    /** First portrait column appended after the R2 tail (52): the append-only R3 additions. */
+    private const val POST_R2_PORTRAIT_START = LEGACY_PORTRAIT_COUNT + R2_TAIL_COUNT
+
+    /** First landscape column appended after the R2 tail (51): its R3 copy. */
+    private const val POST_R2_LANDSCAPE_START = LEGACY_LANDSCAPE_COUNT + R2_TAIL_COUNT
 
     /**
-     * The positional settings-bridge layout: the exact pre-R2 prefix first (so an older module reads it
-     * unchanged), then the R2 portrait tail, then the R2 landscape tail.
+     * The positional settings-bridge layout: the exact pre-R2 prefix first (so a pre-R2 module reads it
+     * unchanged), then the R2 portrait tail, the R2 landscape tail, and only then the post-R2 appends.
+     *
+     * The important property is that the **first 103 values stay byte-layout-compatible with an R2
+     * module**: the pre-R2 prefix is [LEGACY_PORTRAIT_COUNT] portrait + [LEGACY_LANDSCAPE_COUNT]
+     * landscape columns, followed by [R2_TAIL_COUNT] portrait and [R2_TAIL_COUNT] landscape columns
+     * (45 + 44 + 7 + 7). R3's [COL_IOS_PERCENT_INSIDE] pair comes after that, at 103 and 104, so an R2
+     * module that truncates the push at 103 still finds every value it knows where it expects it.
      *
      * Only [SettingsBridge] uses this order. The provider row keeps [COLUMNS], and rearranging here
      * means an older module receiving a newer push still finds every old value where it expects it.
-     * The last seven portrait and the last seven landscape columns are the R2 additions (battery,
-     * Wi-Fi and cellular offset+scale, SIM display); grouping them at the end keeps the derivation
-     * working if more columns are appended, because the legacy prefix stays [LEGACY_PORTRAIT_COUNT]
-     * portrait + [LEGACY_LANDSCAPE_COUNT] landscape columns.
      */
     val BRIDGE_COLUMNS: Array<String> =
         (PORTRAIT_COLUMNS.take(LEGACY_PORTRAIT_COUNT) +
             LANDSCAPE_COLUMNS.take(LEGACY_LANDSCAPE_COUNT) +
-            PORTRAIT_COLUMNS.drop(LEGACY_PORTRAIT_COUNT) +
-            LANDSCAPE_COLUMNS.drop(LANDSCAPE_COLUMNS.size - POST_LEGACY_COUNT)).toTypedArray()
+            PORTRAIT_COLUMNS.slice(LEGACY_PORTRAIT_COUNT until POST_R2_PORTRAIT_START) +
+            LANDSCAPE_COLUMNS.slice(LEGACY_LANDSCAPE_COUNT until POST_R2_LANDSCAPE_START) +
+            PORTRAIT_COLUMNS.drop(POST_R2_PORTRAIT_START) +
+            LANDSCAPE_COLUMNS.drop(POST_R2_LANDSCAPE_START)).toTypedArray()
 
     private const val PREFS = "duo_settings"
     private const val KEY_REVISION = "revision"
@@ -611,7 +628,8 @@ object DuoPrefs {
             .coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
         iosCellScale = p.getInt(prefix + COL_IOS_CELL_SCALE, DEFAULT_ICON_SCALE)
             .coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
-        simDisplay = normalizeSimDisplay(p.getString(prefix + COL_SIM_DISPLAY, SIM_DISPLAY_AUTO))
+        simDisplay = normalizeSimDisplay(p.getString(prefix + COL_SIM_DISPLAY, SIM_DISPLAY_AUTO)),
+        iosPercentInside = p.getBoolean(prefix + COL_IOS_PERCENT_INSIDE, false)
     )
 
     /** Writes the settings for [orientation] and bumps the revision the module compares against. */
@@ -714,6 +732,7 @@ object DuoPrefs {
         putInt(prefix + COL_IOS_CELL_OFFSET, settings.iosCellOffset)
         putInt(prefix + COL_IOS_CELL_SCALE, settings.iosCellScale)
         putString(prefix + COL_SIM_DISPLAY, normalizeSimDisplay(settings.simDisplay))
+        putBoolean(prefix + COL_IOS_PERCENT_INSIDE, settings.iosPercentInside)
     }
 
     fun revision(context: Context): Long =

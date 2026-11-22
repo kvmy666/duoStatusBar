@@ -96,12 +96,143 @@ class IosGeometryParityTest {
             0.001f
         )
         assertTrue(body.contains("isClosed=\"true\""))
-        // The cap is the inactive grey: shape opacity 0.50, Fill bound to batteryFillColor (0:1006).
+        // The cap is the inactive grey: shape opacity 0.50, Fill bound to the neutral tint (0:1003).
         val capTag = Regex("<Shape[^>]*name=\"cap\"[^>]*>").find(scene)!!.value
         assertTrue("cap opacity 0.50", capTag.contains("opacity=\"0.50\""))
-        assertTrue("cap fill is batteryFillColor", body.contains("sourcePathIds=\"0:1000-0:1006\""))
-        assertTrue(!body.contains("sourcePathIds=\"0:1000-0:1003\""))
+        assertTrue("cap fill is the neutral tint", body.contains("sourcePathIds=\"0:1000-0:1003\""))
+        assertTrue(!body.contains("sourcePathIds=\"0:1000-0:1006\""))
         assertTrue(scene.contains("sourceId=\"0:1102\""))
+    }
+
+    @Test
+    fun `uncharged remainder uses the neutral tint at 0 x 50`() {
+        val remainder = Regex(
+            "<Shape[^>]*name=\"batteryRemainder\"[^>]*>(.*?)</Shape>",
+            RegexOption.DOT_MATCHES_ALL
+        ).find(scene)
+        assertNotNull("remainder shape", remainder)
+        val body = remainder!!.groupValues[1]
+        assertTrue("remainder is the neutral tint", body.contains("sourcePathIds=\"0:1000-0:1003\""))
+        assertTrue(
+            "remainder is not the state colour",
+            !body.contains("sourcePathIds=\"0:1000-0:1006\"")
+        )
+        val tag = Regex("<Shape[^>]*name=\"batteryRemainder\"[^>]*>").find(scene)!!.value
+        assertTrue("remainder opacity 0.50", tag.contains("opacity=\"0.50\""))
+    }
+
+    @Test
+    fun `battery bolt is the measured 21-point white glyph with its dark outline`() {
+        val b = IosGeometry.Battery
+        val shape = Regex(
+            "<Shape[^>]*name=\"bolt\"[^>]*>(.*?)</Shape>",
+            RegexOption.DOT_MATCHES_ALL
+        ).find(scene)
+        assertNotNull("bolt shape", shape)
+        val body = shape!!.groupValues[1]
+        val vertices = Regex("<StraightVertex x=\"([-0-9.]+)\" y=\"([-0-9.]+)\"")
+            .findAll(body).toList()
+        assertEquals(21, vertices.size)
+        assertTrue(body.contains("isClosed=\"true\""))
+        for (i in 0 until 21) {
+            assertEquals(
+                "bolt vertex $i x",
+                b.BOLT_POINTS[i * 2],
+                vertices[i].groupValues[1].toFloat(),
+                0.001f
+            )
+            assertEquals(
+                "bolt vertex $i y",
+                b.BOLT_POINTS[i * 2 + 1],
+                vertices[i].groupValues[2].toFloat(),
+                0.001f
+            )
+        }
+        // Ref 3 draws a static white bolt, not the dynamic tint.
+        val fill = Regex("<Fill[^>]*name=\"Fill\"[^>]*>(.*?)</Fill>", RegexOption.DOT_MATCHES_ALL)
+            .find(body)
+        assertNotNull("bolt fill", fill)
+        val fillBody = fill!!.groupValues[1]
+        assertTrue("bolt fill is white", fillBody.contains("colorValue=\"FFFFFFFF\""))
+        assertTrue("bolt fill is static", !fillBody.contains("DataBindContext"))
+        // The ref-3 ring measures ~4.5 units, but the 96-unit white bolt leaves only 3 units of
+        // vertical room in the 102-unit artboard, so the scene ships a 6-unit round stroke
+        // (3.0 visible units either side, BOLT_OUTLINE).
+        val outline = Regex(
+            "<Stroke[^>]*name=\"Outline\"[^>]*>(.*?)</Stroke>",
+            RegexOption.DOT_MATCHES_ALL
+        ).find(body)
+        assertNotNull("bolt outline", outline)
+        assertTrue("outline thickness 6", outline!!.groupValues[0].contains("thickness=\"6\""))
+        assertTrue("outline is round", outline.groupValues[0].contains("cap=\"round\""))
+        assertTrue("outline join is round", outline.groupValues[0].contains("join=\"round\""))
+        assertTrue("outline colour", outline.groupValues[1].contains("colorValue=\"8C000000\""))
+        assertEquals(3.0f, b.BOLT_OUTLINE, 0.001f)
+        // The stroked bolt must fit the frozen artboard: 96 + 2 * 3.0 = 102 exactly, so the
+        // rendered extent is 0..101.6 (the bolt occupies y 3.0..98.6 before the stroke).
+        assertTrue(
+            "stroked bolt fits the 102-unit artboard",
+            2f * b.BOLT_OUTLINE + 96f <= b.ARTBOARD_H + 0.01f
+        )
+        // Shape opacity is still the only property bound to boltOpacity.
+        assertTrue(body.contains("propertyKey=\"18\" sourcePathIds=\"0:1000-0:1007\""))
+    }
+
+    @Test
+    fun `IosDigits artboard repeats every glyph stroke and the inline bolt`() {
+        val artboard = Regex(
+            "<Artboard[^>]*name=\"IosDigits\"[^>]*>(.*?)</Artboard>",
+            RegexOption.DOT_MATCHES_ALL
+        ).find(scene)
+        assertNotNull("IosDigits artboard", artboard)
+        val tag = Regex("<Artboard[^>]*name=\"IosDigits\"[^>]*>").find(scene)!!.value
+        assertTrue(tag.contains("x=\"0\" y=\"220\" width=\"630\" height=\"160\""))
+        val body = artboard!!.groupValues[1]
+        var shapes = 0
+        for (ch in '0'..'9') {
+            val glyph = IosDigits.glyph(ch)
+            for (i in glyph.strokes.indices) {
+                val stroke = glyph.strokes[i]
+                val shape = Regex(
+                    "<Shape[^>]*name=\"digit${ch}s$i\"[^>]*>(.*?)</Shape>",
+                    RegexOption.DOT_MATCHES_ALL
+                ).find(body)
+                assertNotNull("digit$ch stroke $i", shape)
+                val shapeBody = shape!!.groupValues[1]
+                val vertices = Regex("<StraightVertex x=\"([-0-9.]+)\" y=\"([-0-9.]+)\"")
+                    .findAll(shapeBody).toList()
+                assertEquals("digit$ch stroke $i vertex count", stroke.size / 2, vertices.size)
+                for (v in vertices.indices) {
+                    assertEquals(
+                        "digit$ch stroke $i vertex $v x",
+                        stroke[v * 2],
+                        vertices[v].groupValues[1].toFloat(),
+                        0.001f
+                    )
+                    assertEquals(
+                        "digit$ch stroke $i vertex $v y",
+                        stroke[v * 2 + 1],
+                        vertices[v].groupValues[2].toFloat(),
+                        0.001f
+                    )
+                }
+                assertTrue("digit$ch stroke $i is open", !shapeBody.contains("isClosed=\"true\""))
+                val strokeTag = Regex("<Stroke[^>]*name=\"Stroke\"[^>]*>").find(shapeBody)!!.value
+                assertTrue("digit$ch stroke $i thickness", strokeTag.contains("thickness=\"10.5\""))
+                assertTrue("digit$ch stroke $i cap", strokeTag.contains("cap=\"round\""))
+                assertTrue("digit$ch stroke $i join", strokeTag.contains("join=\"round\""))
+                shapes++
+            }
+        }
+        assertEquals(18, shapes)
+        val inline = Regex(
+            "<Shape[^>]*name=\"inlineBoltSample\"[^>]*>(.*?)</Shape>",
+            RegexOption.DOT_MATCHES_ALL
+        ).find(body)
+        assertNotNull("inline bolt sample", inline)
+        val inlineBody = inline!!.groupValues[1]
+        assertEquals(21, Regex("<StraightVertex ").findAll(inlineBody).count())
+        assertTrue("inline bolt is closed", inlineBody.contains("isClosed=\"true\""))
     }
 
     @Test
