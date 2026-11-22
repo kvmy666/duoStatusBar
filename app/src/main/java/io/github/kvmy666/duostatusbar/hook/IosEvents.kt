@@ -178,9 +178,15 @@ internal class IosPowerCounters(
     private val attaches = Series()
     private val refreshes = Series()
     private val invalidates = Series()
+    private var teardowns = 0L
     private var suppressed = 0L
 
     fun onAttach() = record(attaches)
+
+    /** R5A item 3: a permanent count of real teardowns (a failed attach is not one). */
+    fun onTeardown() {
+        teardowns++
+    }
 
     fun onRefresh() = record(refreshes)
 
@@ -204,7 +210,7 @@ internal class IosPowerCounters(
         attaches.prune(now, windowMs)
         refreshes.prune(now, windowMs)
         invalidates.prune(now, windowMs)
-        return "ios surface=$surface power: attaches=${attaches.total} " +
+        return "ios surface=$surface power: attaches=${attaches.total} teardowns=$teardowns " +
             "refreshes=${refreshes.total}/min=${refreshes.inWindow()} " +
             "invalidates=${invalidates.total}/min=${invalidates.inWindow()} " +
             "suppressed=$suppressed receivers=$receivers"

@@ -17,6 +17,7 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -54,12 +55,14 @@ class IosReplaceFixtureMatrixTest {
     @Before
     fun setUp() {
         clearHooks()
+        IosReadings.resetForTest()
     }
 
     @After
     fun tearDown() {
         clearHooks()
         IosDrawHookInstaller.releaseWhenEmpty()
+        IosReadings.resetForTest()
     }
 
     private fun clearHooks() {
@@ -208,7 +211,9 @@ class IosReplaceFixtureMatrixTest {
     private fun host(
         surface: String = "fixture",
         isMainBar: Boolean = true,
-        cellSource: (Context) -> CellReading = { noCellReading() }
+        cellSource: (Context) -> CellReading = { noCellReading() },
+        wifiSource: (Context, Int, Boolean, Boolean, Boolean) -> WifiSample =
+            { _, _, _, _, _ -> wifiSample() }
     ): IosReplaceHost = IosReplaceHost(
         context = context,
         classLoader = null,
@@ -216,7 +221,7 @@ class IosReplaceFixtureMatrixTest {
         surface = surface,
         batterySource = { IosBatteryReading(50, false, 0) },
         cellSource = cellSource,
-        wifiSource = { _, _, _, _, _ -> wifiSample() }
+        wifiSource = wifiSource
     )
 
     private fun wifiSample(): WifiSample = WifiSample(
@@ -229,6 +234,9 @@ class IosReplaceFixtureMatrixTest {
         validated = true,
         source = "active"
     )
+
+    private fun offWifiSample(): WifiSample =
+        wifiSample().copy(on = false, active = false, validated = false)
 
     private fun noCellReading(): CellReading = CellReading(
         samples = emptyList(),
@@ -1332,6 +1340,182 @@ class IosReplaceFixtureMatrixTest {
                 assertEquals(0, countCanvasViews(surface.root))
             }
         )
+    }
+
+    // ------------------------------------------------------- R5A item 1: mobile_type label anchor
+
+    private fun dataLabel() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+    }
+
+    private fun assertMobileTypeLabel(
+        host: IosReplaceHost,
+        mobile: View,
+        type: NamedImageView,
+        typeWidth: Int,
+        typeHeight: Int
+    ) {
+        assertEquals("WIFI records: ${host.diagnosticLines()}",
+            1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
+        assertTrue("the WIFI record is a label", host.labelSlotForTest())
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertSame("anchored to the data SIM's mobile_type", type, host.recordOuterForTest(IosIconKind.WIFI))
+        assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(type)?.wifiSlot)
+        val overlay = host.overlayForTest(IosIconKind.WIFI)
+        assertNotNull("the label needs an overlay canvas", overlay)
+        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.width > 0)
+        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.height > 0)
+        // C2: the stock type keeps its laid-out size/visibility; the CELL sibling swap blanks its ink.
+        assertEquals(typeWidth, type.width)
+        assertEquals(typeHeight, type.height)
+        assertEquals(View.VISIBLE, type.visibility)
+        assertEquals(View.VISIBLE, mobile.visibility)
+    }
+
+    private class LabelTree(
+        val tree: Tree,
+        val mobile: ViewGroup,
+        val type: NamedImageView,
+        val typeDrawable: Drawable
+    )
+
+    /** A measured mobile outer with a real `mobile_type` child; no Wi-Fi view in the strip. */
+    private fun labelTree(
+        mobile: ViewGroup,
+        typeWidth: Int,
+        typeHeight: Int,
+        typeParent: ViewGroup = mobile
+    ): LabelTree {
+        val tree = tree()
+        val type = NamedImageView(context, "mobile_type")
+        val typeDrawable = ColorDrawable(Color.MAGENTA)
+        type.setImageDrawable(typeDrawable)
+        typeParent.addView(type, FrameLayout.LayoutParams(typeWidth, typeHeight))
+        tree.strip.addView(mobile, LinearLayout.LayoutParams(80, 60))
+        tree.layout()
+        mobile.layout(0, 0, 80, 60)
+        type.layout(10, 10, 10 + typeWidth, 10 + typeHeight)
+        return LabelTree(tree, mobile, type, typeDrawable)
+    }
+
+    @Test
+    fun `OPLUS data label anchors to mobile_type inside mobile_group`() {
+        dataLabel()
+        val mobile = OplusModernStatusBarMobileViewWithSub(context, 5)
+        val group = NamedGroup(context, "mobile_group")
+        val leaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        group.addView(leaf, FrameLayout.LayoutParams(60, 51))
+        mobile.addView(group, FrameLayout.LayoutParams(60, 63))
+        val label = labelTree(mobile, 24, 12, typeParent = group)
+        // Parent-first layout, then the type last: group.layout re-lays children from their measured
+        // size (0 here), so the type must be given its real frame after the group.
+        group.layout(0, 0, 60, 63)
+        leaf.layout(0, 0, 60, 51)
+        label.type.layout(10, 10, 34, 22)
+
+        val host = host(cellSource = { oneSimReading(5) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        assertTrue(host.attachIn(label.tree.strip, label.tree.root))
+        assertMobileTypeLabel(host, mobile, label.type, 24, 12)
+        host.teardown()
+        assertSame(label.typeDrawable, label.type.drawable)
+    }
+
+    @Test
+    fun `HyperOS newer data label anchors to mobile_type`() {
+        dataLabel()
+        val mobile = ModernStatusBarMobileViewWithSub(context, 7)
+        val leaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        mobile.addView(leaf, FrameLayout.LayoutParams(20, 20))
+        val label = labelTree(mobile, 20, 10)
+        leaf.layout(0, 0, 20, 20)
+
+        val host = host(cellSource = { oneSimReading(7) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        assertTrue(host.attachIn(label.tree.strip, label.tree.root))
+        assertMobileTypeLabel(host, mobile, label.type, 20, 10)
+        host.teardown()
+        assertSame(label.typeDrawable, label.type.drawable)
+    }
+
+    @Test
+    fun `HyperOS older AOSP data label anchors to mobile_type`() {
+        dataLabel()
+        val mobile = StatusBarMobileView(context, 7)
+        val leaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        mobile.addView(leaf, FrameLayout.LayoutParams(20, 20))
+        val label = labelTree(mobile, 20, 10)
+        leaf.layout(0, 0, 20, 20)
+
+        val host = host(cellSource = { oneSimReading(7) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        assertTrue(host.attachIn(label.tree.strip, label.tree.root))
+        assertMobileTypeLabel(host, mobile, label.type, 20, 10)
+        host.teardown()
+        assertSame(label.typeDrawable, label.type.drawable)
+    }
+
+    @Test
+    fun `Samsung data label anchors to mobile_type`() {
+        dataLabel()
+        val mobile = ModernStatusBarMobileViewWithSub(context, 3)
+        val leaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        mobile.addView(leaf, FrameLayout.LayoutParams(20, 20))
+        val label = labelTree(mobile, 20, 10)
+        leaf.layout(0, 0, 20, 20)
+
+        val host = host(cellSource = { oneSimReading(3) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        assertTrue(host.attachIn(label.tree.strip, label.tree.root))
+        assertMobileTypeLabel(host, mobile, label.type, 20, 10)
+        host.teardown()
+        assertSame(label.typeDrawable, label.type.drawable)
+    }
+
+    @Test
+    fun `vivo data label anchors to mobile_type`() {
+        dataLabel()
+        val mobile = ModernStatusBarMobileViewWithSub(context, 9)
+        val leaf = VivoMobileSignal(context).apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        mobile.addView(leaf, FrameLayout.LayoutParams(20, 20))
+        val label = labelTree(mobile, 20, 10)
+        leaf.layout(0, 0, 20, 20)
+
+        val host = host(cellSource = { oneSimReading(9) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        assertTrue(host.attachIn(label.tree.strip, label.tree.root))
+        assertMobileTypeLabel(host, mobile, label.type, 20, 10)
+        host.teardown()
+        assertSame(label.typeDrawable, label.type.drawable)
+    }
+
+    @Test
+    fun `a mobile_group without mobile_type draws no label`() {
+        dataLabel()
+        val tree = tree()
+        val mobile = ModernStatusBarMobileViewWithSub(context, 1)
+        val group = NamedGroup(context, "mobile_group")
+        mobile.addView(group, FrameLayout.LayoutParams(14, 49))
+        tree.strip.addView(mobile, LinearLayout.LayoutParams(52, 49))
+        tree.layout()
+        mobile.layout(0, 0, 52, 49)
+        group.layout(0, 0, 14, 49)
+
+        val host = host(cellSource = { oneSimReading(1) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        host.attachIn(tree.strip, tree.root)
+
+        assertFalse(host.recordKindsForTest().contains(IosIconKind.WIFI))
+        assertNull("no label is drawn without a mobile_type", host.overlayForTest(IosIconKind.WIFI))
+        // Whatever the host did with the cellular row, it never became a WIFI label.
+        assertEquals(0, host.recordKindsForTest().count { it == IosIconKind.WIFI })
+        host.teardown()
     }
 
     // ------------------------------------------------------------------------------- helpers

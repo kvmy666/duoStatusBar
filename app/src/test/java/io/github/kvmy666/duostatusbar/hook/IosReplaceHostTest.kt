@@ -463,6 +463,65 @@ class IosReplaceHostTest {
         return HyperosSignalTree(root, strip, wifi, wifiLeaf, wifiActivity, mobile, mobileLeaf, mobileType)
     }
 
+    private class BatteryCluster(
+        val cluster: LinearLayout,
+        val outer: StatBatteryMeterView,
+        val leaf: NamedImageView,
+        val original: Drawable
+    )
+
+    /** One measured OPLUS-shaped battery in its own cluster strip (the OnePlus shade handover). */
+    private fun batteryCluster(): BatteryCluster {
+        val cluster = LinearLayout(context)
+        val outer = StatBatteryMeterView(context)
+        val leaf = NamedImageView(context, "battery_icon_view")
+        val original = ColorDrawable(Color.RED)
+        leaf.setImageDrawable(original)
+        outer.addView(leaf, FrameLayout.LayoutParams(79, 48))
+        cluster.addView(outer, LinearLayout.LayoutParams(90, 48))
+        cluster.layout(0, 0, 90, 48)
+        outer.layout(0, 0, 90, 48)
+        leaf.layout(0, 0, 79, 48)
+        return BatteryCluster(cluster, outer, leaf, original)
+    }
+
+    private class MobileOnlyTree(
+        val root: FrameLayout,
+        val strip: LinearLayout,
+        val mobileOuter: ModernStatusBarMobileViewWithSub,
+        val mobileLeaf: NamedImageView,
+        val mobileType: NamedImageView?,
+        val mobileTypeDrawable: Drawable?
+    )
+
+    /** One data SIM with its own `mobile_type`, and deliberately NO Wi-Fi view (the R5A report). */
+    private fun mobileOnlyTree(subId: Int = 7, withType: Boolean = true): MobileOnlyTree {
+        val root = FrameLayout(context)
+        val strip = LinearLayout(context)
+        val mobile = ModernStatusBarMobileViewWithSub(context, subId)
+        val mobileLeaf = NamedImageView(context, "mobile_signal")
+        mobileLeaf.setImageDrawable(ColorDrawable(Color.CYAN))
+        mobile.addView(mobileLeaf, FrameLayout.LayoutParams(20, 20))
+        val mobileType = if (withType) NamedImageView(context, "mobile_type") else null
+        val typeDrawable = mobileType?.let {
+            val drawable = ColorDrawable(Color.MAGENTA)
+            it.setImageDrawable(drawable)
+            mobile.addView(it, FrameLayout.LayoutParams(20, 10))
+            drawable
+        }
+        strip.addView(mobile, LinearLayout.LayoutParams(20, 20))
+        root.addView(strip, FrameLayout.LayoutParams(100, 40))
+        root.layout(0, 0, 1000, 100)
+        strip.layout(0, 0, 100, 40)
+        mobile.layout(0, 0, 20, 20)
+        mobileLeaf.layout(0, 0, 20, 20)
+        mobileType?.layout(0, 10, 20, 20)
+        return MobileOnlyTree(root, strip, mobile, mobileLeaf, mobileType, typeDrawable)
+    }
+
+    private fun offWifiSample(): WifiSample =
+        wifiSample(validated = false).copy(on = false, active = false)
+
     private class DualMobileTree(
         val root: FrameLayout,
         val strip: LinearLayout,
@@ -972,15 +1031,13 @@ class IosReplaceHostTest {
     }
 
     @Test
-    fun `wifi label and validated glyph share one overlay record through both transitions`() {
-        IosReadings.resetForTest(
-            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
-        )
+    fun `a data label is dropped before the validated glyph and returns on the reverse transition`() {
+        var data = DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE)
+        IosReadings.resetForTest(data = { data })
         val tree = hyperosSignalTree(subId = 7)
         // Leave only the Wi-Fi slot in this tree: the transition is about the WIFI record, and a
         // single empty cellular slot would otherwise add an unrelated CELL record.
         tree.strip.removeView(tree.mobileOuter)
-        tree.wifiOuter.visibility = View.INVISIBLE
         var sample = wifiSample(validated = false).copy(on = false, active = false)
         val host = host(
             cellSource = { noCellReading() },
@@ -992,34 +1049,314 @@ class IosReplaceHostTest {
         // 1. Wi-Fi off + cellular data -> one WIFI overlay record drawing the label.
         assertEquals(1, host.recordCountForTest())
         assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
-        val overlay = host.overlayForTest(IosIconKind.WIFI)
-        assertNotNull("the label needs its own overlay canvas", overlay)
+        assertTrue("the first WIFI record is a label", host.labelSlotForTest())
+        assertNotNull("the label needs its own overlay canvas", host.overlayForTest(IosIconKind.WIFI))
         assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
         assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(tree.wifiOuter)?.wifiSlot)
+        assertTrue(
+            host.diagnosticLines().any { it.contains("label state=DataType(5G)") }
+        )
 
-        // 2. Validated Wi-Fi: the SAME record/overlay is reused, now drawing the glyph.
+        // 2. Validated Wi-Fi: the label is dropped and the normal Wi-Fi glyph record replaces it
+        // (it is never reused as a glyph).
         sample = wifiSample(validated = true)
         host.refresh()
 
         assertEquals("no second WIFI record", 1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
-        assertEquals(1, host.recordCountForTest())
-        assertSame("the overlay canvas is reused", overlay, host.overlayForTest(IosIconKind.WIFI))
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertFalse("the glyph record is not a label", host.labelSlotForTest())
+        assertEquals(IosReplaceMechanism.IMAGE_DRAWABLE, host.mechanismForTest(IosIconKind.WIFI))
+        assertTrue(tree.wifiLeaf.drawable is IosWifiDrawable)
+        assertTrue(host.diagnosticLines().any { it.contains("label state=Wifi") })
         val glyph = host.visualForTest(tree.wifiOuter)
         assertNotNull(glyph)
         assertEquals(IosWifiSlot.Wifi, glyph!!.wifiSlot)
         assertTrue("the validated glyph must be visible", glyph.visible)
         assertTrue("the validated glyph must carry a level", glyph.wifiLevel > 0f)
-        assertFalse("no data label may remain", glyph.wifiSlot is IosWifiSlot.DataType)
 
-        // 3. Wi-Fi off again: the same overlay goes back to the label, still one record.
+        // 3. Wi-Fi off again with cellular data: the glyph is dropped and a label record returns.
         sample = wifiSample(validated = false).copy(on = false, active = false)
         host.refresh()
 
         assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
-        assertEquals(1, host.recordCountForTest())
-        assertSame("the overlay canvas is reused for the second label", overlay, host.overlayForTest(IosIconKind.WIFI))
+        assertTrue("the reverse transition restores the label", host.labelSlotForTest())
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
         assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(tree.wifiOuter)?.wifiSlot)
+
+        host.teardown()
+    }
+
+    @Test
+    fun `wifi off with no wifi view anchors one label to the data SIM mobile_type`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = mobileOnlyTree(subId = 7)
+        val mobileParams = tree.mobileOuter.layoutParams
+        val mobileWidth = tree.mobileOuter.width
+        val mobileHeight = tree.mobileOuter.height
+        val type = tree.mobileType!!
+        val typeParams = type.layoutParams
+        val typeWidth = type.width
+        val typeHeight = type.height
+        val host = host(
+            cellSource = { oneSimReading(7) },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        // Exactly one WIFI record, and it is our label overlay, not a Wi-Fi glyph.
+        assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
+        assertTrue("the WIFI record is a label", host.labelSlotForTest())
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertSame("anchored to the data SIM's mobile_type", type, host.recordOuterForTest(IosIconKind.WIFI))
+        assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(type)?.wifiSlot)
+        val overlay = host.overlayForTest(IosIconKind.WIFI)
+        assertNotNull("the label needs an overlay canvas", overlay)
+        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.width > 0)
+        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.height > 0)
+
+        // C2: no stock view was resized or re-laid out; the cell's own sibling swap blanks the type.
+        assertSame(mobileParams, tree.mobileOuter.layoutParams)
+        assertEquals(mobileWidth, tree.mobileOuter.width)
+        assertEquals(mobileHeight, tree.mobileOuter.height)
+        assertSame(typeParams, type.layoutParams)
+        assertEquals(typeWidth, type.width)
+        assertEquals(typeHeight, type.height)
+        assertEquals(View.VISIBLE, type.visibility)
+        // Only the CELL sibling swap blanks the type's drawable; the label must not write the view.
+        assertEquals(1f, type.alpha)
+        assertEquals(0, type.drawable.alpha)
+
+        val labelLine = host.diagnosticLines().first { it.contains(" label ") }
+        assertTrue(labelLine, labelLine.contains("state=DataType(5G)"))
+        assertTrue(labelLine, labelLine.contains("anchor=cell-type:20x10"))
+
+        host.teardown()
+        assertSame(tree.mobileTypeDrawable, type.drawable)
+        assertEquals(1f, type.alpha)
+    }
+
+    @Test
+    fun `a visible stock wifi slot is suppressed under the label and restored on teardown`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = hyperosSignalTree(subId = 7)
+        // The stock Wi-Fi outer is VISIBLE and laid out (the regression case): its ink must be
+        // suppressed by the skin even though the record is a label.
+        val originalWifi = tree.wifiLeaf.drawable
+        val wifiAlpha = tree.wifiLeaf.alpha
+        val typeAlpha = tree.mobileType.alpha
+        val typeVisibility = tree.mobileType.visibility
+        val host = host(
+            cellSource = { oneSimReading(7) },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertTrue(host.labelSlotForTest())
+        // The laid-out Wi-Fi slot wins over the mobile_type, as the existing label path does.
+        assertSame(tree.wifiOuter, host.recordOuterForTest(IosIconKind.WIFI))
+        // The stock Wi-Fi ink is suppressed while our label draws (HYPEROS_WIFI is an alpha skin).
+        assertEquals(0f, tree.wifiLeaf.alpha)
+        // The label did not write the data SIM's inner mobile_type.
+        assertEquals(typeAlpha, tree.mobileType.alpha)
+        assertEquals(typeVisibility, tree.mobileType.visibility)
+
+        host.teardown()
+        assertSame("the stock Wi-Fi drawable is restored", originalWifi, tree.wifiLeaf.drawable)
+        assertEquals("the stock Wi-Fi alpha is restored", wifiAlpha, tree.wifiLeaf.alpha)
+        assertEquals(typeAlpha, tree.mobileType.alpha)
+        assertEquals(typeVisibility, tree.mobileType.visibility)
+    }
+
+    @Test
+    fun `a GONE or absent mobile_type draws no label and leaves the stock type alone`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        for (gone in listOf(true, false)) {
+            // true: the type view exists but is GONE. false: the type view is absent entirely.
+            val tree = mobileOnlyTree(subId = 7, withType = gone)
+            if (gone) tree.mobileType?.visibility = View.GONE
+            val host = host(
+                cellSource = { oneSimReading(7) },
+                wifiSource = { _, _, _, _, _ -> offWifiSample() }
+            )
+
+            assertTrue(host.attachIn(tree.strip, tree.root))
+
+            assertFalse("no WIFI record without a usable mobile_type", host.recordKindsForTest().contains(IosIconKind.WIFI))
+            assertNull(host.overlayForTest(IosIconKind.WIFI))
+            assertFalse("no label canvas is added", containsCanvasView(tree.root))
+            val absent = host.diagnosticLines().first { it.contains(" label ") }
+            assertTrue(absent, absent.contains("anchor=absent"))
+            assertTrue(absent, absent.contains("reason=no-mobile-type"))
+            tree.mobileType?.let {
+                assertEquals(View.GONE, it.visibility)
+                assertEquals(20, it.width)
+                assertEquals(10, it.height)
+                assertSame(tree.mobileTypeDrawable, it.drawable)
+            }
+
+            host.teardown()
+        }
+    }
+
+    @Test
+    fun `a fallback CELL overlay that does not blank mobile_type draws no label`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val root = FrameLayout(context)
+        val strip = LinearLayout(context)
+        val mobile = ModernStatusBarMobileViewWithSub(context, 7)
+        // The measured centre container lets the HYPEROS_MOBILE skin succeed, but the plan's
+        // `mobile_signal` leaf is absent, so the CELL record falls back to OVERLAY and never blanks
+        // the sibling `mobile_type`.
+        val container = NamedGroup(context, "mobile_signal_container")
+        val type = NamedImageView(context, "mobile_type").apply {
+            setImageDrawable(ColorDrawable(Color.MAGENTA))
+        }
+        val typeDrawable = type.drawable
+        mobile.addView(container, FrameLayout.LayoutParams(20, 20))
+        mobile.addView(type, FrameLayout.LayoutParams(20, 10))
+        strip.addView(mobile, LinearLayout.LayoutParams(20, 20))
+        root.addView(strip, FrameLayout.LayoutParams(100, 40))
+        root.layout(0, 0, 1000, 100)
+        strip.layout(0, 0, 100, 40)
+        mobile.layout(0, 0, 20, 20)
+        container.layout(0, 0, 20, 20)
+        type.layout(0, 10, 20, 20)
+
+        val host = host(
+            cellSource = { oneSimReading(7) },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        assertTrue(host.attachIn(strip, root))
+
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.CELL))
+        assertFalse("no label over a stock mobile_type", host.recordKindsForTest().contains(IosIconKind.WIFI))
+        assertNull(host.overlayForTest(IosIconKind.WIFI))
+        assertSame("the stock mobile_type is untouched", typeDrawable, type.drawable)
+        assertEquals(View.VISIBLE, type.visibility)
+        assertEquals(1f, type.alpha)
+        val line = host.diagnosticLines().first { it.contains(" label ") }
+        assertTrue(line, line.contains("reason=cell-type-not-blanked"))
+
+        host.teardown()
+    }
+
+    @Test
+    fun `an OPLUS outer-draw cell lets the label adopt after the cell record exists`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = oplusSignalTree(subId = 5)
+        val type = NamedImageView(context, "mobile_type").apply {
+            setImageDrawable(ColorDrawable(Color.MAGENTA))
+        }
+        tree.mobileOuter.addView(type, FrameLayout.LayoutParams(20, 10))
+        type.layout(0, 0, 20, 10)
+        // No stock Wi-Fi view: the data SIM's mobile_type is the only slot, and it may only be used
+        // after the OPLUS CELL record (OUTER_DRAW / its leaf-swap fallback) has blanked it.
+        tree.strip.removeView(tree.wifiOuter)
+        assertNull("the OPLUS tree must contain no stock Wi-Fi view", tree.wifiOuter.parent)
+        assertFalse(
+            "the label path must be the mobile_type fallback, not a Wi-Fi slot",
+            StockIconKey.inventory(tree.strip).any { it.kind == StockIconKind.WIFI }
+        )
+
+        val host = host(
+            cellSource = { oneSimReading(5) },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        // The CELL record comes from the OPLUS OUTER_DRAW plan. Without Xposed the host applies its
+        // measured leaf-swap fallback (the hooked dispatchDraw cannot be installed in a unit test),
+        // so pin the planned OUTER_DRAW mechanism and prove the applied record is never the OVERLAY
+        // fallback.
+        assertEquals(
+            IosReplaceMechanism.OUTER_DRAW,
+            IosReplacePlanner.planFor(tree.mobileOuter).mechanism
+        )
+        assertNotEquals(
+            "the OPLUS CELL must not be an overlay fallback",
+            IosReplaceMechanism.OVERLAY,
+            host.mechanismForTest(IosIconKind.CELL)
+        )
+        assertTrue("the label is adopted after the CELL record exists", host.labelSlotForTest())
+        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertSame(type, host.recordOuterForTest(IosIconKind.WIFI))
+        assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(type)?.wifiSlot)
+        assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
+
+        host.teardown()
+    }
+
+    @Test
+    fun `data type to None drops the label and restores mobile_type when the cell plan ends`() {
+        var data = DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE)
+        IosReadings.resetForTest(data = { data })
+        val tree = mobileOnlyTree(subId = 7)
+        val type = tree.mobileType!!
+        val host = host(
+            cellSource = { oneSimReading(7) },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        assertTrue(host.attachIn(tree.strip, tree.root))
+        assertTrue(host.labelSlotForTest())
+
+        // The data path is gone: DataType -> None drops the label.
+        data = DataLabelSample("", mobileActive = false, source = DataLabelReader.SRC_UNAVAILABLE)
+        IosReadings.invalidate()
+        host.refresh()
+        assertFalse(host.recordKindsForTest().contains(IosIconKind.WIFI))
+        assertNull(host.overlayForTest(IosIconKind.WIFI))
+
+        // The cell plan ends too (the data slot is GONE): the CELL record releases the mobile_type.
+        tree.mobileOuter.visibility = View.GONE
+        host.refresh()
+        assertFalse(host.recordKindsForTest().contains(IosIconKind.CELL))
+        assertSame("the stock mobile_type comes back", tree.mobileTypeDrawable, type.drawable)
+        assertEquals(1f, type.alpha)
+
+        host.teardown()
+    }
+
+    @Test
+    fun `a label is not anchored while the cell plan is None`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        // Two visible cell slots with no active SIM -> IosCellPlan.None even with a data label.
+        val tree = dualMobileTree(firstSub = 1, secondSub = 2)
+        val type = NamedImageView(context, "mobile_type").apply {
+            setImageDrawable(ColorDrawable(Color.MAGENTA))
+        }
+        val original = type.drawable
+        tree.first.addView(type, FrameLayout.LayoutParams(20, 10))
+        type.layout(0, 10, 20, 20)
+        val host = host(
+            cellSource = { noCellReading() },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        // A strip whose only icons are two unplannable cell slots may not attach at all; the point is
+        // that the data label never invents a WIFI record from the mobile_type.
+        host.attachIn(tree.strip, tree.root)
+
+        assertFalse(host.recordKindsForTest().contains(IosIconKind.WIFI))
+        assertNull(host.overlayForTest(IosIconKind.WIFI))
+        assertSame("the stock type stays untouched", original, type.drawable)
+        assertEquals(View.VISIBLE, type.visibility)
 
         host.teardown()
     }
@@ -1960,6 +2297,86 @@ class IosReplaceHostTest {
             host.attachAttemptsForTest() <= 4
         )
         assertFalse(host.attached)
+    }
+
+    @Test
+    fun `a failed attach with a non-empty inventory counts no teardown`() {
+        // A non-empty inventory (one CELLULAR row) whose only plan fails to adopt: the host marks
+        // itself attached before refresh(), then its empty-record teardown runs. That failure must
+        // not count as a teardown because no attach was ever counted.
+        val root = FrameLayout(context)
+        val strip = LinearLayout(context)
+        val mobile = ModernStatusBarMobileViewWithSub(context, 7)
+        strip.addView(mobile, LinearLayout.LayoutParams(20, 20))
+        root.addView(strip, FrameLayout.LayoutParams(100, 40))
+        root.layout(0, 0, 1000, 100)
+        strip.layout(0, 0, 100, 40)
+        mobile.layout(0, 0, 20, 20)
+
+        val host = host()
+        assertFalse(host.attachIn(strip, root))
+        assertEquals(0, host.recordCountForTest())
+        assertFalse(host.attached)
+
+        val power = host.diagnosticLines().last { it.contains("power:") }
+        assertTrue(power, power.contains("attaches=0"))
+        assertTrue(power, power.contains("teardowns=0"))
+    }
+
+    @Test
+    fun `a failed cluster attach is not counted and a real teardown is`() {
+        val host = host()
+        val empty = LinearLayout(context)
+
+        assertFalse("a strip with no icon must not attach", host.attachCluster("qs", empty, null, "test"))
+        assertFalse(host.attached)
+        val failed = host.diagnosticLines().last { it.contains("power:") }
+        assertTrue(failed, failed.contains("attaches=0"))
+        assertTrue(failed, failed.contains("teardowns=0"))
+
+        val tree = oplusBatteryTree()
+        assertTrue(host.attachCluster("qs", tree.strip, null, "test"))
+        val attached = host.diagnosticLines().last { it.contains("power:") }
+        assertTrue(attached, attached.contains("attaches=1"))
+        assertTrue(attached, attached.contains("teardowns=0"))
+
+        host.teardown()
+        val tornDown = host.diagnosticLines().last { it.contains("power:") }
+        assertTrue(tornDown, tornDown.contains("teardowns=1"))
+    }
+
+    @Test
+    fun `a different cluster in the same root is adopted and the old one is restored`() {
+        val root = FrameLayout(context)
+        val first = batteryCluster()
+        val second = batteryCluster()
+        root.addView(first.cluster, FrameLayout.LayoutParams(90, 48))
+        root.addView(second.cluster, FrameLayout.LayoutParams(90, 48))
+        root.layout(0, 0, 1000, 100)
+        // root.layout lays children out from their measured size (0 here); give both clusters a real
+        // frame before the hand-over.
+        first.cluster.layout(0, 0, 90, 48)
+        first.outer.layout(0, 0, 90, 48)
+        first.leaf.layout(0, 0, 79, 48)
+        second.cluster.layout(200, 0, 290, 48)
+        second.outer.layout(200, 0, 290, 48)
+        second.leaf.layout(200, 0, 279, 48)
+
+        val host = host()
+        val firstAttached = host.attachCluster("qs", first.cluster, null, "test")
+        assertTrue("first cluster attach failed: ${host.diagnosticLines()}", firstAttached)
+        assertTrue(first.leaf.drawable is IosBatteryDrawable)
+
+        // A newly inflated header cluster is handed over while the old strip is still parented in
+        // the same root: B must be adopted, not short-circuited as "already attached".
+        assertTrue(host.attachCluster("qs", second.cluster, null, "test"))
+        assertEquals(1, host.recordCountForTest())
+        assertTrue(second.leaf.drawable is IosBatteryDrawable)
+        assertSame("the old cluster is restored", first.original, first.leaf.drawable)
+
+        host.teardown()
+        assertSame(first.original, first.leaf.drawable)
+        assertSame(second.original, second.leaf.drawable)
     }
 
     @Test

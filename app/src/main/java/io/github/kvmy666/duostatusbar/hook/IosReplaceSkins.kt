@@ -214,6 +214,9 @@ internal class IosSiblingSwap(
     private val originalVisibility: Int = view.visibility
 ) : ViewTreeObserver.OnPreDrawListener {
 
+    /** The stock sibling this swap blanks; read-only, so the host can prove which ids are covered. */
+    internal val target: View get() = view
+
     private val logOnce = LogOnce()
     private var applied = false
     private var listenerAdded = false

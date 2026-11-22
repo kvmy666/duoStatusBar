@@ -492,12 +492,46 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * it here instead of re-walking the tree, while `attachExtraBars`/`PanelHandoff` stay the generic
      * trigger/fallback. The mode check uses only the cached settings snapshot and the adb override, and
      * creates no host when iOS is off, so the Duo path is untouched on every non-iOS boot.
+     *
+     * R5: the cluster is handed over before it has a box, so [IosFirstFrameAttach] runs the attach on
+     * its first laid-out frame instead. Returning true keeps the vendor route on IOS; if the scheduled
+     * attempt later gives up, [onRefused] lets the vendor hook route the cluster to Duo instead.
      */
-    private fun attachOnePlusIos(cluster: ViewGroup, battery: View?, source: String): Boolean {
+    private fun attachOnePlusIos(
+        cluster: ViewGroup,
+        battery: View?,
+        source: String,
+        onRefused: () -> Unit
+    ): Boolean {
         val ctx = app ?: cluster.context
         if (!features.iosRuntime) return false
         return try {
-            ensureIosExtra(ctx, "oneplus qs").attachCluster("oneplus qs", cluster, battery, source)
+            // R5: the vendor hook fires before the cluster has a box. Attaching then tears the host
+            // down and lets stock draw first, so the same attach waits for the first laid-out frame.
+            val laidOut = IosFirstFrameAttach.isLaidOut(cluster)
+            val accepted = IosFirstFrameAttach.whenLaidOut(
+                cluster,
+                attach = {
+                    // The pre-draw runs after this hand-over, so re-check the mode before creating a host.
+                    if (features.iosRuntime) {
+                        ensureIosExtra(ctx, "oneplus qs")
+                            .attachCluster("oneplus qs", cluster, battery, source)
+                    } else {
+                        false
+                    }
+                },
+                onRefused = onRefused
+            )
+            if (accepted) {
+                // Bounded by the two measured vendor sources; no line per layout pass.
+                logOnce.once("ios-oneplus-first-frame:$source") {
+                    L.i(
+                        "iOS oneplus qs: ${if (laidOut) "attached" else "scheduled"} " +
+                            "${cluster.javaClass.name} ($source)"
+                    )
+                }
+            }
+            accepted
         } catch (t: Throwable) {
             logOnce.once("ios-oneplus-attach") {
                 L.w("oneplus qs: iOS attach failed (${t.javaClass.simpleName}: ${t.message})")
@@ -558,7 +592,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         OnePlusShadeHooks(
             lp,
             { host },
-            { cluster, battery, source -> attachOnePlusIos(cluster, battery, source) }
+            { cluster, battery, source, onRefused ->
+                attachOnePlusIos(cluster, battery, source, onRefused)
+            }
         ).install()
         // Flashlight/screenshot/unlock/panel-expansion are Duo-only and installed by the feature diff
         // (A6), never here: an iOS boot must not register them at all.
@@ -1817,14 +1853,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             L.i("shade header view: ${view.javaClass.name}")
                             shadeHeader = view
                             resetIosAttachMemos()
+                            // R5: adopt a new header on its first laid-out frame; a reused header is
+                            // not touched here, so opening a panel neither rebuilds nor re-attaches.
+                            if (features.iosRuntime) {
+                                IosFirstFrameAttach.whenLaidOut(view, attach = { attachIosShadeHeader(view) })
+                            }
+                            if (features.duoRuntime) {
                                 view.post {
-                                    if (features.duoRuntime) {
-                                        shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
-                                    }
-                                    if (features.iosRuntime) {
-                                        shadeHeader?.let { attachIosShadeHeader(it) }
-                                    }
+                                    shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
                                 }
+                            }
                         }
                     }
                 })
@@ -1854,14 +1892,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 L.i("shade header inflated from a stub: ${view.javaClass.name}")
                                 shadeHeader = view
                                 resetIosAttachMemos()
-                            view.post {
-                                if (features.duoRuntime) {
-                                    shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
-                                }
+                                // R5: same first-frame adoption as the controller ctor above.
                                 if (features.iosRuntime) {
-                                    shadeHeader?.let { attachIosShadeHeader(it) }
+                                    IosFirstFrameAttach.whenLaidOut(view, attach = { attachIosShadeHeader(view) })
                                 }
-                            }
+                                if (features.duoRuntime) {
+                                    view.post {
+                                        shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                                    }
+                                }
                             }
                         }
                     }

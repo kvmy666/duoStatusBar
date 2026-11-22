@@ -142,7 +142,13 @@ internal class IosReplaceHost(
          * canvas box is derived from it; it replaces the (already scaled) layout params as the source
          * for the 100 % drawn width, so the percent offset cannot drift on a second refresh.
          */
-        var baseBox: IntArray? = null
+        var baseBox: IntArray? = null,
+        /**
+         * R5A item 1-runtime: this WIFI record draws the cellular data-type label (drawn at the stock
+         * Wi-Fi slot or at the data SIM's own `mobile_type`), never the Wi-Fi glyph. A label is dropped
+         * before the glyph path runs and is never reused as a glyph (and vice versa).
+         */
+        val labelSlot: Boolean = false
     ) {
         val drawTarget: View?
             get() = when (mechanism) {
@@ -222,6 +228,13 @@ internal class IosReplaceHost(
 
     /** R4 item 7: one shared-receiver subscription per host, plus its own power accounting. */
     private val power = IosPowerCounters(clock = { SystemClock.uptimeMillis() })
+
+    /**
+     * R5A item 3: true only after [power.onAttach] counted a successful attach. A failed attach may
+     * still set [isAttached] before its empty-record teardown, so `wasAttached` alone cannot tell a
+     * real lifecycle teardown from that failure.
+     */
+    private var countedAttach = false
     private var lastRefreshAt = 0L
 
     /** A one-per-minute refresh is cheap; screen-off still never reads. */
@@ -246,6 +259,13 @@ internal class IosReplaceHost(
 
     /** R4A item 3: the middle Wi-Fi slot state copied onto every visual (R4B draws the label). */
     private var wifiSlotState: IosWifiSlot = IosWifiSlot.None
+
+    /**
+     * R5A item 1-runtime: one parseable line naming the label decision and its anchor, refreshed with
+     * [wifiSlotState] and emitted by [diagnosticLines]. It is a dump line, not a log line, so a normal
+     * refresh never writes to logcat (m2).
+     */
+    private var labelReport: String = ""
 
     /** R3 A5.3: one entry per battery/Wi-Fi/cellular stock icon, rebuilt on every attach. */
     private val iconReports = ArrayList<IconReport>()
@@ -412,7 +432,10 @@ internal class IosReplaceHost(
     fun attachCluster(surface: String, cluster: ViewGroup, battery: View?, source: String): Boolean {
         composed?.let { return it.attachCluster(surface, cluster, battery, source) }
         if (thrashBlocked(cluster)) return false
-        if (isAttached && attachedAlive(cluster)) return true
+        // R5A item 3: only the strip this host already owns may take the fast path. A different
+        // cluster handed over while the old strip is still parented in the same root (a freshly
+        // inflated QS header) must be adopted, so the old strip is restored once first.
+        if (isAttached && strip === cluster && attachedAlive(cluster)) return true
         if (isAttached) teardown()
         val result = try {
             val root = cluster.rootView ?: cluster
@@ -503,6 +526,13 @@ internal class IosReplaceHost(
     /** Test seam: the mechanism the current record for [kind] draws with, or null when none. */
     internal fun mechanismForTest(kind: IosIconKind): IosReplaceMechanism? =
         recordOf(kind)?.mechanism
+
+    /** Test seam: true when the current WIFI record is a data-type label, not a Wi-Fi glyph. */
+    internal fun labelSlotForTest(): Boolean =
+        records.firstOrNull { it.kind == IosIconKind.WIFI }?.labelSlot == true
+
+    /** Test seam: the view the current record for [kind] is anchored to, if any. */
+    internal fun recordOuterForTest(kind: IosIconKind): View? = recordOf(kind)?.outer
 
     /** Test seam: the overlay canvas the current record for [kind] owns, or null. */
     internal fun overlayForTest(kind: IosIconKind): IosCanvasView? = recordOf(kind)?.overlay
@@ -627,6 +657,26 @@ internal class IosReplaceHost(
             val wifiIcon = selectBest(inventory, StockIconKind.WIFI)
             val cellIcons = mappedCells(inventory)
 
+            // Cellular: the plan is read BEFORE the Wi-Fi slot because a data-type label needs the
+            // data SIM's own slot. Reading it here keeps the one-read-per-refresh rule; the later
+            // cell adoption and report reuse these values instead of reading again.
+            val reading = if (cellIcons.isNotEmpty() || records.any { it.kind == IosIconKind.CELL }) {
+                readCell()
+            } else {
+                null
+            }
+            val plan = if (reading == null) {
+                IosCellPlan.None
+            } else {
+                IosMapping.cellPlan(
+                    cellSignals(reading),
+                    reading.defaultSub,
+                    cellSlots(cellIcons),
+                    IosMapping.simDisplay(settings.simDisplay),
+                    samples = reading.samples
+                )
+            }
+
             val batteryRecord = recordOf(IosIconKind.BATTERY)
             val wifiRecord = recordOf(IosIconKind.WIFI)
 
@@ -671,58 +721,89 @@ internal class IosReplaceHost(
             // Wi-Fi is off, or the stock drawing. One WIFI record at most, shared by every surface.
             when (val slot = wifiSlotState) {
                 IosWifiSlot.Wifi -> {
-                    if (wifiRecord != null) {
+                    // R5A item 1-runtime: a label is not a glyph. Drop it before the glyph path runs so
+                    // the normal Wi-Fi drawing owns the slot again (and no overlay is mistaken for it).
+                    for (record in records.toList()) {
+                        if (record.kind == IosIconKind.WIFI && record.labelSlot) {
+                            dropRecord(record, restore = true)
+                        }
+                    }
+                    val glyph = recordOf(IosIconKind.WIFI)
+                    if (glyph != null) {
                         if (wifi == null || !wifi.visible) {
-                            dropRecord(wifiRecord, restore = true)
+                            dropRecord(glyph, restore = true)
                         } else {
-                            ensureWifiSuppression(wifiRecord)
-                            applyVisual(wifiRecord, wifi)
+                            ensureWifiSuppression(glyph)
+                            applyVisual(glyph, wifi)
                         }
                     } else if (wifiIcon != null && wifi != null && wifi.visible) {
                         adoptOrDefer(IosIconKind.WIFI, wifiIcon, wifi)
                     }
+                    labelReport = "ios surface=$surface label state=Wifi"
                 }
                 is IosWifiSlot.DataType -> {
-                    val labelVisual = IosVisual(
-                        part = IosPart.WIFI,
-                        visible = true,
-                        tint = wifiTint,
-                        wifiSlot = slot
-                    )
-                    if (wifiRecord != null && wifiRecord.mechanism == IosReplaceMechanism.OVERLAY) {
-                        ensureWifiSuppression(wifiRecord)
-                        applyVisual(wifiRecord, labelVisual)
+                    val labelVisual = labelVisualFor(slot, wifiTint)
+                    // Only the stock Wi-Fi slot is adopted here. A `mobile_type` label belongs to the
+                    // post-cell reconcile (it is only safe once the CELL record actually blanks that
+                    // view), so it is neither created nor reused in this pre-cell block.
+                    val existing = records.firstOrNull {
+                        it.kind == IosIconKind.WIFI && it.labelSlot && !isMobileType(it.outer)
+                    }
+                    if (existing != null && existing.outer.parent != null && hasRealBox(existing)) {
+                        // Exactly one WIFI record: anything else (including a stale type label) is
+                        // restored.
+                        for (record in records.toList()) {
+                            if (record.kind == IosIconKind.WIFI && record !== existing) {
+                                dropRecord(record, restore = true)
+                            }
+                        }
+                        ensureWifiSuppression(existing)
+                        applyVisual(existing, labelVisual)
+                        labelReport = labelLine(slot, existing)
                     } else {
-                        // A normal glyph record cannot paint while the stock leaf is hidden; restore it
-                        // and adopt our overlay at the laid-out Wi-Fi slot. No stock view is resized or
-                        // created (C2), and a slot with no laid-out box keeps the safe stock behaviour.
-                        if (wifiRecord != null) dropRecord(wifiRecord, restore = true)
+                        // Drop any non-type WIFI record (glyph or stale Wi-Fi-slot label). A live
+                        // `mobile_type` label is left for the reconcile to keep or drop.
+                        for (record in records.toList()) {
+                            if (record.kind == IosIconKind.WIFI && !isMobileType(record.outer)) {
+                                dropRecord(record, restore = true)
+                            }
+                        }
                         val stock = selectWifiSlotStock(inventory)
-                        if (stock != null) adoptWifiLabel(stock, labelVisual)
+                        if (stock != null) {
+                            // The Wi-Fi slot owns the label; a mobile_type label must not coexist.
+                            for (record in records.toList()) {
+                                if (record.kind == IosIconKind.WIFI) dropRecord(record, restore = true)
+                            }
+                            val adopted = adoptWifiLabel(stock, labelVisual)
+                            val record = if (adopted) {
+                                records.firstOrNull {
+                                    it.kind == IosIconKind.WIFI && it.labelSlot
+                                }
+                            } else {
+                                null
+                            }
+                            labelReport = if (record != null) {
+                                labelLine(slot, record)
+                            } else {
+                                labelAbsentLine(slot, "no-wifi-slot")
+                            }
+                        } else {
+                            // No laid-out stock Wi-Fi view (Wi-Fi off on this ROM): the reconcile below
+                            // is the single owner of the data SIM's `mobile_type` anchor, after the
+                            // CELL record exists and only if that record really blanks the type.
+                            labelReport = labelAbsentLine(slot, "deferred-cell")
+                        }
                     }
                 }
                 IosWifiSlot.None -> {
-                    if (wifiRecord != null) dropRecord(wifiRecord, restore = true)
+                    // R5A item 1-runtime: the empty slot keeps no label (and no glyph) either.
+                    for (record in records.toList()) {
+                        if (record.kind == IosIconKind.WIFI) dropRecord(record, restore = true)
+                    }
+                    labelReport = "ios surface=$surface label state=None"
                 }
             }
 
-            // Cellular: the plan signature decides whether records are rebuilt (1->2->1).
-            val reading = if (cellIcons.isNotEmpty() || records.any { it.kind == IosIconKind.CELL }) {
-                readCell()
-            } else {
-                null
-            }
-            val plan = if (reading == null) {
-                IosCellPlan.None
-            } else {
-                IosMapping.cellPlan(
-                    cellSignals(reading),
-                    reading.defaultSub,
-                    cellSlots(cellIcons),
-                    IosMapping.simDisplay(settings.simDisplay),
-                    samples = reading.samples
-                )
-            }
             // R3 A5.3: an icon added later (or a live 1→2 SIM transition) must gain its own line.
             // The signature check runs off the tree read above, so an unchanged refresh does nothing.
             maybeRebuildIconReports(inventory, plan)
@@ -739,6 +820,10 @@ internal class IosReplaceHost(
             } else {
                 updateCellRecords(plan)
             }
+            // R5A item 1-runtime: the cell plan may have replaced the data outer (1→2 SIM, plan
+            // change). A `mobile_type` label must follow the current CELL record, never stay over an
+            // old slot; a plan that became None leaves no label (the stock type stays visible).
+            reconcileWifiLabel(plan, cellIcons, wifiTint)
             updateStockReasons(battery, wifi)
             logStockReasons()
         } catch (t: Throwable) {
@@ -826,6 +911,7 @@ internal class IosReplaceHost(
             attachRetry?.let { handler.removeCallbacks(it) }
             attachRetry = null
             power.onAttach()
+            countedAttach = true
             return true
         }
         scheduleAttachRetry(retry)
@@ -1207,11 +1293,15 @@ internal class IosReplaceHost(
         }
     }
 
-    /** One compact, parseable line per stock icon, plus one power/watchdog line (R4 item 7). */
+    /**
+     * One compact, parseable line per stock icon, one label-decision line (R5A item 1-runtime) and one
+     * power/watchdog line (R4 item 7).
+     */
     override fun diagnosticLines(): List<String> {
         val receivers = IosBroadcastHub.receiverCountForTest()
         composed?.let { return it.diagnosticLines() + power.line(surface, receivers) }
-        if (iconReports.isEmpty()) return listOf(power.line(surface, receivers))
+        val label = if (labelReport.isEmpty()) emptyList() else listOf(labelReport)
+        if (iconReports.isEmpty()) return label + power.line(surface, receivers)
         val ordered = iconReports.withIndex().sortedWith(
             compareBy({ kindOrder(it.value.kind) }, { it.index })
         )
@@ -1252,7 +1342,7 @@ internal class IosReplaceHost(
                 }
             }
         }
-        return lines + power.line(surface, receivers)
+        return lines + label + power.line(surface, receivers)
     }
 
     private fun kindOrder(kind: IosIconKind): Int = when (kind) {
@@ -1684,7 +1774,8 @@ internal class IosReplaceHost(
         outer: View,
         leaf: View?,
         visual: IosVisual,
-        allowHiddenStock: Boolean = false
+        allowHiddenStock: Boolean = false,
+        labelSlot: Boolean = false
     ): Record? {
         val parent = resolveOverlayParent() ?: return null
         val layer = ensureLayer(parent) ?: return null
@@ -1698,10 +1789,19 @@ internal class IosReplaceHost(
         if (size.first <= 0 || size.second <= 0) return null
 
         val skin = IosSkin()
-        // R4 item 3: a data-type label may take a slot the OEM already hid (Wi-Fi off). There is no
-        // stock ink to suppress and no visibility to change; our own layer draws alone, so skipping
-        // the skin keeps the stock view exactly as the system left it (never re-shown).
-        if (!(allowHiddenStock && outer.visibility != View.VISIBLE) && !skin.suppress(outer)) return null
+        // A label anchored to the data SIM's `mobile_type` is the only label that skips the skin: that
+        // inner id has no measured skin plan, and the CELL record's own sibling swap blanks its ink in
+        // the same refresh. Every other label (above all the stock Wi-Fi slot) still runs the normal
+        // suppression below, so a VISIBLE laid-out Wi-Fi outer cannot draw its stock ink under ours.
+        // A label may also take a slot the OEM already hid (Wi-Fi off): there is no stock ink and no
+        // visibility to change, so the skin is skipped and the view is never re-shown.
+        val labelOnMobileType = labelSlot && isMobileType(outer)
+        if (!labelOnMobileType &&
+            !(allowHiddenStock && outer.visibility != View.VISIBLE) &&
+            !skin.suppress(outer)
+        ) {
+            return null
+        }
         var overlay: IosCanvasView? = null
         var added = false
         // The colour may arrive on the outer (background/foreground tint) or on the leaf.
@@ -1764,7 +1864,8 @@ internal class IosReplaceHost(
                 visual = rendered,
                 oemTint = oemTint,
                 tintViews = tintViews,
-                baseBox = baseBox
+                baseBox = baseBox,
+                labelSlot = labelSlot
             )
             records.add(record)
             addLayoutListener(outer)
@@ -2625,7 +2726,14 @@ internal class IosReplaceHost(
         val boundsView = wifiLabelBoundsView(icon.view) ?: return false
         val leaf = if (boundsView === icon.view) null else boundsView
         val record = try {
-            adoptOverlay(IosIconKind.WIFI, icon.view, leaf, visual, allowHiddenStock = true)
+            adoptOverlay(
+                kind = IosIconKind.WIFI,
+                outer = icon.view,
+                leaf = leaf,
+                visual = visual,
+                allowHiddenStock = true,
+                labelSlot = true
+            )
         } catch (t: Throwable) {
             logOnce.once("wifi-label-adopt") {
                 L.w("iOS replace Wi-Fi label adopt failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -2636,13 +2744,158 @@ internal class IosReplaceHost(
         return true
     }
 
+    /** R5A item 1-runtime: the WIFI label visual for a data-type slot. */
+    private fun labelVisualFor(slot: IosWifiSlot.DataType, tint: Int): IosVisual = IosVisual(
+        part = IosPart.WIFI,
+        visible = true,
+        tint = tint,
+        wifiSlot = slot
+    )
+
+    /**
+     * The stock outer of the SIM the plan draws as the data row: [IosCellPlan.Single.slot] or
+     * [IosCellPlan.Dual.dataSlot]. [cellIcons] is the same mapped list the plan was built from.
+     */
+    private fun dataCellOuter(plan: IosCellPlan, cellIcons: List<StockIcon>): View? = when (plan) {
+        is IosCellPlan.Single -> cellIcons.getOrNull(plan.slot)?.view
+        is IosCellPlan.Dual -> cellIcons.getOrNull(plan.dataSlot)?.view
+        IosCellPlan.None -> null
+    }
+
+    /**
+     * The data SIM's own `mobile_type` view, or null when it is absent/GONE/never laid out. Measured as
+     * a real, visible-or-hidden but sized descendant of the data outer (evidence:
+     * `.pm/evidence/r5/report/diagnostics.txt:154-178`, 66×51 `ImageView id=mobile_type`).
+     */
+    private fun mobileTypeView(cellOuter: View?): View? {
+        val outer = cellOuter ?: return null
+        val type = findByEntryName(outer, "mobile_type") ?: return null
+        if (type.visibility == View.GONE) return null
+        if (type.width <= 0 || type.height <= 0) return null
+        return type
+    }
+
+    private fun isMobileType(view: View): Boolean = entryName(view) == "mobile_type"
+
+    /**
+     * Anchors the data-type label to the data SIM's `mobile_type`.
+     *
+     * `labelSlot` keeps this record out of the glyph path. The stock `mobile_type` is blanked by the
+     * CELL record's own sibling swap in the same refresh, so the label normally draws alone; when the
+     * view is already hidden there is no stock ink and no skin is created. No stock view is resized or
+     * created (C2); only our canvas is added to the overlay layer.
+     */
+    private fun adoptMobileTypeLabel(typeView: View, visual: IosVisual): Boolean {
+        val record = try {
+            adoptOverlay(
+                kind = IosIconKind.WIFI,
+                outer = typeView,
+                leaf = null,
+                visual = visual,
+                allowHiddenStock = typeView.visibility != View.VISIBLE,
+                labelSlot = true
+            )
+        } catch (t: Throwable) {
+            logOnce.once("mobile-type-label-adopt") {
+                L.w("iOS replace mobile-type label adopt failed: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            null
+        } ?: return false
+        applyVisual(record, visual)
+        return true
+    }
+
+    /** A live label record has a real unscaled slot box (its canvas has something to draw into). */
+    private fun hasRealBox(record: Record): Boolean {
+        val (width, height) = labelBoxSize(record)
+        return width > 0 && height > 0
+    }
+
+    private fun labelBoxSize(record: Record): Pair<Int, Int> {
+        val base = record.baseBox
+        if (base != null && base[2] > 0 && base[3] > 0) return base[2] to base[3]
+        val params = record.overlayParams
+        if (params != null) return params.width to params.height
+        return record.outer.width to record.outer.height
+    }
+
+    private fun labelLine(slot: IosWifiSlot.DataType, record: Record): String {
+        val (width, height) = labelBoxSize(record)
+        val anchor = if (isMobileType(record.outer)) "cell-type" else "wifi-slot"
+        return "ios surface=$surface label state=DataType(${slot.label}) " +
+            "anchor=$anchor:${width}x$height"
+    }
+
+    private fun labelAbsentLine(slot: IosWifiSlot.DataType, reason: String): String =
+        "ios surface=$surface label state=DataType(${slot.label}) anchor=absent reason=$reason"
+
+    /**
+     * R5A item 1-runtime: the single owner of the `mobile_type` label, run only after the CELL plan is
+     * adopted. A label is safe only when the current CELL record actually blanks the type view:
+     * [IosReplaceMechanism.OUTER_DRAW] draws over the outer, or the record's sibling swap includes
+     * `mobile_type`. A fallback OVERLAY CELL record (e.g. HYPEROS_MOBILE with no `mobile_signal`)
+     * alphas only the signal container, so the stock type stays visible and no label may be drawn.
+     *
+     * The stock Wi-Fi-slot label has no CELL owner and is left to that slot's own path.
+     */
+    private fun reconcileWifiLabel(plan: IosCellPlan, cellIcons: List<StockIcon>, tint: Int) {
+        val slot = wifiSlotState
+        if (slot !is IosWifiSlot.DataType) return
+        val label = records.firstOrNull { it.kind == IosIconKind.WIFI && it.labelSlot }
+        if (label != null && !isMobileType(label.outer)) return
+        val cellOuter = dataCellOuter(plan, cellIcons)
+        val cellRecord = cellOuter?.let { data ->
+            records.firstOrNull { it.kind == IosIconKind.CELL && it.outer === data }
+        }
+        val type = mobileTypeView(cellRecord?.outer)
+        if (type == null) {
+            label?.let { dropRecord(it, restore = true) }
+            labelReport = labelAbsentLine(slot, "no-mobile-type")
+            return
+        }
+        // Fail closed: the label skips its own skin, so it may only draw where the CELL record has
+        // already blanked the stock type. Never draw a second type over the stock one.
+        val blanked = cellRecord != null &&
+            (cellRecord.mechanism == IosReplaceMechanism.OUTER_DRAW ||
+                cellRecord.siblings.any { entryName(it.target) == "mobile_type" })
+        if (!blanked) {
+            label?.let { dropRecord(it, restore = true) }
+            labelReport = labelAbsentLine(slot, "cell-type-not-blanked")
+            return
+        }
+        if (label != null && cellRecord != null &&
+            isUnder(label.outer, cellRecord.outer) && hasRealBox(label)
+        ) {
+            applyVisual(label, labelVisualFor(slot, tint))
+            labelReport = labelLine(slot, label)
+            return
+        }
+        label?.let { dropRecord(it, restore = true) }
+        val adopted = adoptMobileTypeLabel(type, labelVisualFor(slot, tint))
+        val moved = if (adopted) {
+            records.firstOrNull { it.kind == IosIconKind.WIFI && it.labelSlot }
+        } else {
+            null
+        }
+        labelReport = if (moved != null) {
+            labelLine(slot, moved)
+        } else {
+            labelAbsentLine(slot, "no-mobile-type")
+        }
+    }
+
     /**
      * Keeps the stock Wi-Fi view suppressed on a reused overlay record. The label path may have adopted
      * over an already-hidden slot without a skin; if the system later shows the stock view, this
      * suppresses it again before our glyph/label is drawn.
+     *
+     * A label anchored to the data SIM's `mobile_type` is the exception: its anchor has no measured
+     * skin plan and is already blanked by the CELL record's sibling swap, so a stock write here would
+     * touch an unrelated inner view (and can never succeed). The stock Wi-Fi-slot label keeps the call.
      */
     private fun ensureWifiSuppression(record: Record) {
         if (record.mechanism != IosReplaceMechanism.OVERLAY) return
+        if (record.labelSlot && isMobileType(record.outer)) return
         try {
             record.skin?.suppress(record.outer)
         } catch (_: Throwable) {
@@ -2891,6 +3144,12 @@ internal class IosReplaceHost(
     private fun teardownInternal(countLifecycle: Boolean, resetAttempts: Boolean = false) {
         val wasAttached = isAttached || layer != null || records.isNotEmpty()
         val stripRootView = strip?.rootView
+        // R5A item 3: only a counted attach can be torn down. A failed attach sets isAttached before
+        // its empty-record teardown, so `wasAttached` alone would count a teardown that never existed.
+        if (countedAttach) {
+            power.onTeardown()
+            countedAttach = false
+        }
         compositionCleanup()
         IosDiagnostics.unregister(this)
         // Always idempotent: a failed attach may have called this already and released.
@@ -2943,6 +3202,7 @@ internal class IosReplaceHost(
         lastCellReading = null
         lastBatteryReading = null
         wifiSlotState = IosWifiSlot.None
+        labelReport = ""
         IosDrawHookInstaller.releaseWhenEmpty()
         if (wasAttached) L.i("iOS replace teardown: stock icons restored")
         if (countLifecycle && wasAttached) noteLifecycle(stripRootView, attach = false)
