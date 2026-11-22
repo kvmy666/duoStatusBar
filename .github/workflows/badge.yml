@@ -16,9 +16,16 @@ on:
 permissions:
   contents: write
 
+# One badge refresh at a time: the job commits to the same file, so overlapping
+# runs would race the push. Never cancel a run that is mid-commit.
+concurrency:
+  group: badge-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@v4
 

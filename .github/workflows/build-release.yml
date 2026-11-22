@@ -8,9 +8,18 @@ on:
 permissions:
   contents: write
 
+# One release job per ref; never cancel a publish midway (a half-uploaded
+# release is worse than a queued one).
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Measured job p95 253.4s; x1.5 = 380s. Eight minutes also covers a cold
+    # Gradle/Robolectric cache, which the release runner has today.
+    timeout-minutes: 8
 
     steps:
       - uses: actions/checkout@v4
@@ -24,8 +33,42 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: No private evidence or private device data may be tracked
-        run: python3 tools/check-private-data.py
+      # Robolectric downloads this 190 MiB artefact at test runtime; it is not a
+      # Gradle dependency and setup-gradle does not cache it. The exact key pins
+      # the artifact coordinates so a Robolectric/SDK bump misses instead of
+      # restoring a jar the new version will not use.
+      - name: Cache Robolectric SDK 35 runtime jar
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: robolectric-4.14.1-sdk35-android-all-instrumented-15-robolectric-12650502-i7-v1
+
+      # Static gates mirroring ci.yml (non-network, no Gradle). They run before
+      # anything is built so a broken invariant fails a release early.
+      - name: Fast static gates
+        run: |
+          set -euo pipefail
+
+          python3 tools/check-private-data.py
+          python3 tools/route-module-logs.py --check
+
+          python3 tools/check-rive-eases.py rive/duo/scene.rml
+          python3 tools/check-rive-eases.py rive/duo/scene_old.rml
+
+          # The selector is security-relevant: it decides which tests gate a PR.
+          # Its built-in cases must pass before it can narrow anything.
+          python3 tools/select-tests.py --selftest
+
+          AUTHORITY='io.github.kvmy666.duostatusbar.settings'
+          grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
+          grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
+          echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
+
+          if grep -rn "IosRiveView" app/src/main; then
+            echo "::error::IosRiveView must not exist in app/src/main; see IosRiveAbsenceTest"
+            exit 1
+          fi
+          echo "IosRiveView absent from app/src/main"
 
       - name: Tag version must match the app version
         run: |
@@ -61,54 +104,68 @@ jobs:
           esac
           echo "release notes heading matches tag version: $VERSION"
 
-      - name: Unit tests
-        run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Restore Rive CLI 1.9.2
+        id: rive-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rive/bin/rive
+            ~/.rive/versions/1.9.2/rive
+          key: rive-1.9.2-linux-x64-v1
 
-      # Safe gates mirroring ci.yml (static, non-network).
-
-      - name: Module logs must go through L
-        run: python3 tools/route-module-logs.py --check
-
-      - name: Rive keyframes must carry the ease they ask for
-        run: |
-          python3 tools/check-rive-eases.py rive/duo/scene.rml
-          python3 tools/check-rive-eases.py rive/duo/scene_old.rml
-
+      # The shipped .riv files were produced by 1.8.0. 1.9.2 tightened
+      # interpolator validation and rejects the old scene; the scene now uses
+      # hold on its 7 terminal keyframes. Only the download/apt work is skipped
+      # on a hit (GL libs are not needed for `--verify`, as documented by
+      # install.sh — UNVERIFIED on the runner).
       - name: Install Rive CLI
+        if: steps.rive-cache.outputs.cache-hit != 'true'
         env:
           CI: '1'
           RIVE_ANALYTICS: 'off'
-          # The shipped .riv files were produced by 1.8.0. 1.9.2 tightened interpolator validation and
-          # rejects the old scene; the scene now uses hold on its 7 terminal keyframes.
           RIVE_VERSION: '1.9.2'
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y libegl1 libgles2 libgl1 libxkbcommon0 libwayland-client0 libx11-6
           curl -fsSL https://releases.rive.app/cli/install.sh | sh
+
+      - name: Assert Rive CLI is exactly 1.9.2
+        run: |
+          set -euo pipefail
           echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
-          "$HOME/.rive/bin/rive" --version
+          chmod +x "$HOME/.rive/bin/rive"
+          VERSION="$("$HOME/.rive/bin/rive" --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+          if [ "$VERSION" != "1.9.2" ]; then
+            echo "::error::expected Rive CLI 1.9.2, got '$VERSION'"
+            exit 1
+          fi
+          echo "Rive CLI version: $VERSION"
+
+      - name: Rive keyframes must carry the ease they ask for
+        run: |
+          set -euo pipefail
+          python3 tools/check-rive-eases.py rive/duo/scene.rml
+          python3 tools/check-rive-eases.py rive/duo/scene_old.rml
+          python3 tools/check-rive-eases.py rive/ios/scene.rml
 
       - name: Both Rive scenes must verify and match the shipped .riv files
         run: bash tools/check-rive-shipped.sh
 
-      - name: The provider authority must match the constant the module asks for
-        run: |
-          AUTHORITY='io.github.kvmy666.duostatusbar.settings'
-          grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
-          grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
-          echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
-
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
 
-      - name: Build release APK
+      # One Gradle invocation: tests and the release APK share configuration and
+      # the build cache, instead of paying two configurations (measured p50 58s
+      # tests + 107s release build).
+      - name: Unit tests and release APK
         env:
           KEYSTORE_FILE: ../keystore.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           TELEGRAM_RELAY_KEY: ${{ secrets.TELEGRAM_RELAY_KEY }}
-        run: ./gradlew assembleRelease --console=plain
+        run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest :app:assembleRelease --build-cache --console=plain
 
       - name: Version name from tag
         id: version
