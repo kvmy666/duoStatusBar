@@ -215,15 +215,37 @@ class IosDataLabelRasterTest {
         val tallestBar = IosGeometry.Cell.SINGLE_BAR_HEIGHTS.max()
         val wifiInkHeight = IosGeometry.Wifi.ARTBOARD_H - 2f * IosGeometry.Wifi.ARTBOARD_MARGIN
         val sb = StringBuilder()
-        sb.append("# R4B data-type label — V2 measurements\n\n")
+        sb.append("# R5B data-type label — measurements\n\n")
         sb.append(
-            "Authority for shapes/widths/spacing: " +
+            "Real-device capture: `.pm/ref/r5/1-real-iphone-5g-dual.jpg` (sha256 `0e009673…`, " +
+                "1272x2772, dark, dual-SIM) reads \"5G\" and is the first real iOS status-bar capture " +
+                "of this label. Its 50%-threshold measurement is `.pm/ref/out-r5/r5b-measurements.md` " +
+                "/ `.json`: battery body H = 42.377 px = 100 units (1 px = 2.360 units, +/-0.5 px = " +
+                "+/-1.18 units). Shape/width/spacing authority remains " +
                 "`.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (SF-style \"LTE E 4G 5G 5G+ 345\", " +
-                "light on black, measured with a 50%-threshold connected-component script). " +
-                "The reference weight is lighter than the shipped bold digits, so the reference " +
-                "supplies shapes/widths/spacing only; the weight is the in-battery digit run-stroke.\n\n"
+                "light on black). The fixed bold `IosDigits` 3/4/5 are not retyped, so our \"5\" is " +
+                "bolder than ref 1's; the letters and G use the measured 11.1 stroke.\n\n"
         )
-        sb.append("## Reference measurement (cap 36 px, flat letters L/T/E/4)\n\n")
+        val cellToLabel = IosGeometry.Strip.CELL_LABEL_GAP
+        val labelToBattery = IosGeometry.Strip.LABEL_BATTERY_GAP
+        sb.append("## Real capture (ref 1, cap 32.93 px = 77.69 u)\n\n")
+        sb.append("| Quantity | px | design units |\n|---|---:|---:|\n")
+        sb.append("| Label cap (5 flat top -> baseline) | 32.93 | 77.69 |\n")
+        sb.append("| Cap top in label/Wi-Fi artboard | 6.33 | 14.95 |\n")
+        sb.append("| Baseline in label/Wi-Fi artboard | 39.25 | 92.63 |\n")
+        sb.append("| Label stroke (median 5/G stem) | 4.70 | 11.10 |\n")
+        sb.append(
+            String.format(Locale.US, "| Cell ink right -> label ink left | 22.06 | %.2f |%n", cellToLabel)
+        )
+        sb.append(
+            String.format(Locale.US, "| Label ink right -> battery body left | 22.90 | %.2f |%n", labelToBattery)
+        )
+        sb.append("| Cap centre - battery body centre | +1.18 | +2.79 |\n")
+        sb.append("| Battery remainder alpha | — | 0.4975 (0.50 confirmed) |\n")
+        sb.append("| Battery cap alpha | — | 0.5021 (0.50 confirmed) |\n")
+        sb.append("| Inactive bar/dot alpha | — | UNVERIFIED (ref 1 all active) |\n\n")
+
+        sb.append("## SF shape/width reference (cap 36 px, flat letters L/T/E/4)\n\n")
         sb.append("| Quantity | Measured | / cap |\n|---|---:|---:|\n")
         sb.append("| Cap height (L/T/E/4) | 36 px | 1.000 |\n")
         sb.append("| L ink width | 22 px | 0.611 |\n")
@@ -249,19 +271,25 @@ class IosDataLabelRasterTest {
         sb.append(
             String.format(
                 Locale.US,
-                "| Cap height | %.2f | 0.70 x tallest single bar %.1f |\n",
-                d.CAP_HEIGHT,
-                tallestBar
+                "| Cap height | %.2f | measured ref-1 5 cap 32.93 px x 2.360 (0.777 of the body) |\n",
+                d.CAP_HEIGHT
             )
         )
         sb.append(
             String.format(
                 Locale.US,
-                "| Stroke | %.2f | measured digit 11.40/57 x cap |\n",
+                "| Stroke | %.2f | measured ref-1 label weight, 0.143 cap |\n",
                 d.STROKE
             )
         )
-        sb.append(String.format(Locale.US, "| Cap-box top | %.2f | centred on the Wi-Fi ink |\n", d.TOP))
+        sb.append(
+            String.format(
+                Locale.US,
+                "| Cap-box top | %.2f | measured ref-1 cap top (top-anchored); baseline %.2f |\n",
+                d.TOP,
+                d.TOP + d.CAP_HEIGHT
+            )
+        )
         sb.append(String.format(Locale.US, "| L width | %.2f | 0.611 x cap |\n", d.inkWidth('L')))
         sb.append(String.format(Locale.US, "| T width | %.2f | 0.806 x cap |\n", d.inkWidth('T')))
         sb.append(String.format(Locale.US, "| E width | %.2f | 0.667 x cap |\n", d.inkWidth('E')))
@@ -349,13 +377,14 @@ class IosDataLabelRasterTest {
         sb.append(
             String.format(
                 Locale.US,
-                "\nHeight-limited (LTE, 4G, 5G, 3G, E): geometric cap %.2f px (1x) = %.3f x the " +
+                "\nHeight-limited (4G, 5G, 3G, E): geometric cap %.2f px (1x) = %.3f x the " +
                     "%.2f-unit Wi-Fi ink. 5G+ is WIDTH-limited (artboard %.2f): geometric cap %.2f px, " +
-                    "~0.64 of the Wi-Fi ink (measured ink ratio in the table is slightly higher because " +
-                    "anti-aliasing adds ~1 px per edge). The 5G+ shrink is the 80x50 slot constraint " +
-                    "caused by honoring the measured 0.750-cap plus, not a geometry bug; the " +
-                    "alternative is a smaller plus (~0.49-0.51 cap), closer to the constant cap but " +
-                    "deviating from the reference. " +
+                    "~0.63 of the Wi-Fi ink (measured ink ratio in the table is slightly higher because " +
+                    "anti-aliasing adds ~1 px per edge). At the measured cap LTE is width-limited too " +
+                    "(artboard ~176.3), at ~0.72 of the Wi-Fi ink. The shrink is the 80x50 slot " +
+                    "constraint caused by honoring the measured 0.750-cap plus and the measured cap, " +
+                    "not a geometry bug; the alternative is a smaller plus (~0.49-0.51 cap) or cap, " +
+                    "closer to the constant cap but deviating from the reference. " +
                     "Geometric Wi-Fi ink %.2f units; measured Wi-Fi ink %.2f px.\n\n",
                 d.CAP_HEIGHT * heightScale4x / ss,
                 d.CAP_HEIGHT / wifiInkHeight,
@@ -382,12 +411,16 @@ class IosDataLabelRasterTest {
         sb.append("`r4-label-{lte,4g,5g,5g-plus,3g,e}-dark-v2.png`, ")
         sb.append("`r4-label-family-light-v2.png`, `r4-label-family-dark-v2.png`.\n")
         sb.append(
-            "\nUNVERIFIED: no iOS status-bar capture shows the data-type label; the cap/bar fallback " +
-                "0.70 and the vertical placement are bar-geometry estimates, and the reference weight " +
-                "is lighter than the shipped bold digits. The plus uses the measured 0.750 height as " +
-                "an equal-arm square, so 5G+ is width-limited at the 80x50 slot (the five other labels " +
-                "stay height-limited); this is a slot constraint, not a geometry bug. Owner/device " +
-                "review required.\n"
+            "\nMeasured on ref 1: cap 77.69, top 14.95 (top-anchored), baseline 92.64, stroke 11.1, " +
+                "cell->label / label->battery ink gaps 52.07 / 54.04. The battery remainder (0.4975) " +
+                "and cap (0.5021) alphas confirm 0.50. UNVERIFIED: `Cell.INACTIVE_ALPHA` (ref 1 has " +
+                "all four bars and dots active) and the battery cap W/H (low confidence, outside this " +
+                "change). Known limitation: the 3/4/5 digits stay the fixed bold `IosDigits` glyphs " +
+                "(0.20 cap), so our \"5\" is bolder than ref 1's measured 0.143-cap letters. The plus " +
+                "uses the measured 0.750 height as an equal-arm square, so 5G+ is width-limited at the " +
+                "80x50 slot; at the measured cap LTE is width-limited too, while 4G/5G/3G/E stay " +
+                "height-limited. This is a slot constraint, not a geometry bug. Owner/device review " +
+                "required.\n"
         )
         return sb.toString()
     }

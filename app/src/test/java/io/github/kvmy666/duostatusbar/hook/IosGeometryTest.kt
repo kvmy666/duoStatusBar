@@ -201,6 +201,64 @@ class IosGeometryTest {
     }
 
     @Test
+    fun `label strip uses the measured ink gaps and label X formulas`() {
+        val s = IosGeometry.Strip
+        val d = IosGeometry.DataLabel
+        val b = IosGeometry.Battery
+
+        // Ref 1 ink gaps: 22.06 px and 22.90 px x 2.360 units/px.
+        assertEquals(52.07f, s.CELL_LABEL_GAP, 0.0001f)
+        assertEquals(54.04f, s.LABEL_BATTERY_GAP, 0.0001f)
+
+        // Artboard origins: label ink starts at +1 (margin), battery body at +BODY_LEFT (1).
+        assertEquals(IosGeometry.Cell.BLOCK_W + s.CELL_LABEL_GAP, s.LABEL_X, 0.0001f)
+        val labelInk = requireNotNull(d.widthOf("5G")) { "5G must have ink" }
+        assertEquals(
+            s.LABEL_X + IosGeometry.Wifi.ARTBOARD_MARGIN + labelInk + s.LABEL_BATTERY_GAP,
+            s.LABEL_BATTERY_X_5G + b.BODY_LEFT,
+            0.0001f
+        )
+        // Ink-to-ink gaps are exactly the constants (both artboards carry a 1-unit margin).
+        val cellInkRight = IosGeometry.Cell.BLOCK_W + IosGeometry.Cell.LEFT
+        val labelInkLeft = s.LABEL_X + IosGeometry.Wifi.ARTBOARD_MARGIN
+        assertEquals(s.CELL_LABEL_GAP, labelInkLeft - cellInkRight, 0.0001f)
+
+        // Our measured-gap span: our G is slightly wider, so the cell->battery span is ~239.0 u
+        // against ref 1's 238.58 u (well inside the measured +/-1.18 u plus the G-shape note).
+        val span = s.CELL_LABEL_GAP + labelInk + s.LABEL_BATTERY_GAP
+        assertEquals(238.58f, span, 2.0f)
+
+        // The battery artboard origin for the label strip and its full width.
+        assertEquals(
+            s.LABEL_BATTERY_X_5G + b.BODY_W + b.CAP_GAP + b.CAP_W,
+            s.LABEL_WIDTH_5G,
+            0.0001f
+        )
+    }
+
+    @Test
+    fun `label battery X is per-label and rejects an unsupported label`() {
+        val s = IosGeometry.Strip
+        val x5 = s.labelBatteryX("5G")
+        assertTrue("labelBatteryX(5G) must be finite", x5.isFinite())
+        assertEquals("the 5G constant is the per-label call", s.LABEL_BATTERY_X_5G, x5, 0.0f)
+
+        // A wider label moves the battery artboard further right; nothing collapses silently.
+        assertTrue("5G+ is wider than 5G", s.labelBatteryX("5G+") > x5)
+        assertTrue("E strip battery X is finite", s.labelBatteryX("E").isFinite())
+
+        try {
+            s.labelBatteryX("WIFI")
+            org.junit.Assert.fail("an unsupported label must be rejected, not collapsed")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(
+                "the error must name the unsupported label",
+                e.message.orEmpty().contains("WIFI")
+            )
+        }
+    }
+
+    @Test
     fun `bolt points stay inside the battery body`() {
         val points = IosGeometry.Battery.BOLT_POINTS
         assertEquals(0, points.size % 2)

@@ -5,8 +5,10 @@
 frozen record of the numbers, thresholds and ±px.
 
 The real-iPhone references are ref 6 (single-SIM), ref 5 (dual-SIM) and ref 1 (owner target); ref 7 is
-the owner device running our current glyphs. Every number below was printed by `measure-reference.py`
-and is reproducible from `.pm/ref/out-r2/measurements.md` / `measurements.json`.
+the owner device running our current glyphs. Every number below was printed by a 50 %-threshold
+measurement script: the original table is reproducible from `.pm/ref/out-r2/measurements.md` /
+`measurements.json`, and the R5B data-label numbers from `.pm/ref/out-r5/r5b-measurements.md` /
+`.json` (ref 1, 1272x2772, battery body H = 42.377 px).
 
 > **The old "annotated" step-3 target is superseded.** The `ios-reference-arrows` mockup specified
 > 15.2 x 36.8 for the cap and 48 / 63.4 / 81.2 / 99 for the single bars. That mockup is the outlier:
@@ -173,17 +175,94 @@ the same geometry measures outer 0.836 / inner 0.930 there even though the spans
 The full fit and the dark cross-check are in the B4 measurement notes (kept outside the repository), sections 2 and 3. The old
 "Duo uniformly scaled" glyph has been removed.
 
-## Data-type label (R4B)
+## Data-type label (R5B)
 
 When the active network is not Wi-Fi, the Wi-Fi slot can draw a data-type label ("LTE", "4G", "5G",
 "5G+", "3G", "E") from `IosGeometry.DataLabel`.
 
-**No iOS status-bar capture shows this label.** The glyph SHAPES, widths and spacing come from
-`.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (an SF-style "LTE E 4G 5G 5G+ 345" strip, light on
-black), measured with a 50%-threshold connected-component script: the reference cap (flat letters
-L/T/E/4) is 36 px. That reference is **lighter** than the shipped bold digits, so it is not the weight
-authority. The size follows the PM fallback rule "cap = 0.70 of the tallest cellular bar", and the
-weight is the in-battery digit run-stroke.
+**Ref 1 is the first real iOS status-bar capture of this label.** `.pm/ref/r5/1-real-iphone-5g-dual.jpg`
+(sha256 `0e0096738eb3b246…`, 1272x2772, dark, dual-SIM) reads "5G"; its right cluster (cell, label,
+battery) was measured with the 50 %-threshold connected-component script. Battery body H = 42.377 px =
+100 design units, so 1 px = 2.360 units and ±0.5 px = **±1.18 units**. Evidence:
+`.pm/ref/out-r5/r5b-measurements.md` / `.json`, the annotated crop
+`.pm/ref/out-r5/r5b-ref1-statusbar.png`, and the side-by-side
+`.pm/ref/out-r5/` evidence written by R5B (`r5b-ours-strip-dark-4x.png`,
+`r5b-compare-ref1-vs-ours.png`). The SF strip
+`.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the authority for the glyph SHAPES, ink widths
+and internal spacing only; its 36 px cap is the fraction denominator below.
+
+### Before / after (design units, battery body H = 100)
+
+| Quantity | Before (R4B) | After (R5B, measured) | Constant | Source |
+|---|---:|---:|---|---|
+| Label cap height | 66.85 | **77.69** | `DataLabel.CAP_HEIGHT` | 5 cap 32.93 px x 2.360 |
+| Cap-box top | 14.96 (Wi-Fi-centred) | **14.95 (pinned, top-anchored)** | `DataLabel.TOP` | cap top 5.90 px below body top; artboard top = body top - 1 |
+| Baseline | 81.81 | **92.64** | `TOP + CAP_HEIGHT` | measured 92.63 |
+| Label stroke | 13.37 (0.200 cap) | **11.1 (0.143 cap)** | `DataLabel.STROKE` | median of 5 stem 9.87 / G stem 12.33 |
+| Cell -> Wi-Fi gap | 57.5 | 57.5 (kept) | `Strip.CELL_WIFI_GAP` | ref 6 light, ink-to-ink |
+| Wi-Fi -> battery gap | 59.77 | 59.77 (kept) | `Strip.WIFI_BATTERY_GAP` | ref 6 light, ink-to-ink |
+| Cell -> label ink gap | 57.5 (Wi-Fi rule) | **52.07** | `Strip.CELL_LABEL_GAP` (new) | cell ink right -> label ink left 22.06 px |
+| Label -> battery ink gap | 59.77 (Wi-Fi rule) | **54.04** | `Strip.LABEL_BATTERY_GAP` (new) | label ink right -> body left 22.90 px |
+| Battery remainder alpha | 0.50 | 0.50 confirmed | `Battery.REMAINDER_ALPHA` | 0.4975 (RGB 0.501/0.497/0.499) |
+| Battery cap alpha | 0.50 | 0.50 confirmed | `Battery.CAP_ALPHA` | 0.5021 (cap interior) |
+| Inactive bar/dot alpha | 0.25 | 0.25 **UNVERIFIED** | `Cell.INACTIVE_ALPHA` | ref 1 has all four bars + dots active |
+| Battery cap W / H | 9.5 / 26.0 | unchanged (low confidence) | `Battery.CAP_W/H` | measured 13.7 / 34.3, outside this change |
+| Scene / `ios.riv` | — | **untouched** | — | no scene-represented alpha changes; Rive CLI absent |
+
+### Measured label (ref 1) and the top-anchored mapping
+
+| Reference quantity | Measured | / cap (77.69) |
+|---|---:|---:|
+| Cap height (5 flat top -> baseline) | 32.93 px | 1.000 |
+| Cap top below battery body top | 13.95 u | 0.180 |
+| Cap top in label/Wi-Fi artboard | 14.95 u | 0.192 |
+| Baseline in label/Wi-Fi artboard | 92.63 u | 1.192 |
+| Cap centre minus body centre | +2.79 u | 0.036 |
+| 5 ink width | 52.85 u | 0.680 |
+| G ink width | 67.88 u | 0.874 |
+| Label ink width (5G) | 132.48 u | 1.705 |
+| 5 -> G ink gap | 11.75 u | 0.151 |
+| Label stroke (median 4.70 px) | 11.10 u | 0.143 |
+| Cell ink right -> label ink left | 52.07 u | 0.670 |
+| Label ink right -> body left | 54.04 u | 0.696 |
+| Cell ink right -> body left (span) | 238.58 u | 3.071 |
+
+The strip composition aligns the label/Wi-Fi artboard top with the battery artboard top at `y = 0`,
+and the battery body top is at `y = 1` in its own artboard. With the measured body top 715.57 px and
+0.4238 px/unit, the artboard top is 715.15 px; the measured cap top 721.48 px gives
+**`DataLabel.TOP = 14.95`**. The label is therefore **top-anchored**: the baseline sits 8.37 u above
+the body bottom and 35.19 u below the cell bar baseline, and the cap is **not** centred on the Wi-Fi
+ink. The old formula `1 + (94.77 - cap)/2` gives 9.54 at this cap and is removed.
+
+The ref-1 label is slightly **tighter** than the Wi-Fi slot: its two ink gaps are 52.07 / 54.04 versus
+57.5 / 59.77, and its cell->body span is 238.58 u versus the ref-6-derived 244.8 u. The measured gaps
+are adopted for the label strip only; the Wi-Fi constants are unchanged.
+
+The shipped constants:
+
+| Quantity | Value | Source |
+|---|---:|---|
+| Cap height | 77.69 | measured ref-1 5 cap 32.93 px x 2.360 (0.777 of the body, 0.814 of the tallest bar) |
+| Stroke | 11.10 | measured ref-1 label weight, 0.143 cap |
+| Cap-box top | 14.95 | measured ref-1 cap top; baseline 92.64 (top-anchored) |
+| L / T / E / G width | 47.48 / 62.58 / 51.79 / 73.37 | measured SF 0.611 / 0.806 / 0.667 / 0.944 x cap |
+| + width | 58.27 | 0.750 x cap square (measured SF height; SF width 0.778) |
+| Letter side bearing | 3.11 | 0.04 x cap (measured T..E 0.083 cap gap) |
+| Plus side bearing | 4.66 | 0.06 x cap (G..+ gap 0.10 cap, closer to the measured 0.167) |
+| Cap / tallest bar | 0.814 | 77.69 / 95.5 |
+| Cap / Wi-Fi ink | 0.820 | 77.69 / 94.77 |
+| Artboard | dynamic, `ink width + 2 x 1` | the group ink starts at the 1-unit margin; height stays 96.77 |
+| Labels | LTE, 4G, 5G, 5G+, 3G, E | reader/reporting order |
+| Digits 3/4/5 | `IosDigits` widths, advances and even-odd contours x (77.69 / 57) | fixed bold battery glyphs (0.20 cap); never retyped or thinned |
+| Vertical placement | cap top = 14.95, top-anchored | measured ref 1 |
+| Horizontal placement | ink group starts at the 1-unit margin | group layout `sum(advances) - firstBearing - lastBearing` |
+
+**Known digit-weight limitation.** Ref 1's label is a 0.143-cap weight, but the 3/4/5 are the fixed
+bold `IosDigits` battery glyphs (0.20 cap). Adopting the measured 11.1 stroke lightens every letter,
+the plus and the G, while the digit stays bold: our "5" is therefore heavier than ref 1's. The digit
+widths, advances and `DIGIT_SCALE = cap / 57` are unchanged.
+
+SF shape/width reference (cap 36 px, flat letters L/T/E/4):
 
 | Reference quantity | Measured | / cap (36) |
 |---|---:|---:|
@@ -202,25 +281,6 @@ weight is the in-battery digit run-stroke.
 | G counter/bar aperture | ~36 deg visible above the bar | band gap 318.93..20.66 deg |
 | Gaps T..E / 4..G / 5..G / G..+ | 3 / 4 / 5 / 6 px | 0.083 / 0.111 / 0.139 / 0.167 |
 | Gaps 3..4 / 4..5 | 4 / 5 px | 0.111 / 0.139 |
-
-The shipped constants:
-
-| Quantity | Value | Source |
-|---|---:|---|
-| Cap height | 66.85 | 0.70 x the tallest single bar (95.5) — **fallback, UNVERIFIED** |
-| Stroke | 13.37 | measured percentage digit weight 11.40 / cap 57, scaled to the label cap |
-| Cap-box top | 14.96 | `1 + (Wi-Fi ink 94.77 - cap 66.85) / 2` (cap centred on the Wi-Fi glyph) |
-| L / T / E / G width | 40.85 / 53.85 / 44.57 / 63.14 | measured 0.611 / 0.806 / 0.667 / 0.944 x cap |
-| + width | 50.14 | 0.750 x cap square (measured height; reference width 0.778) |
-| Letter side bearing | 2.67 | 0.04 x cap (measured T..E 0.083 cap gap) |
-| Plus side bearing | 4.01 | 0.06 x cap (G..+ gap 0.10 cap, closer to the measured 0.167) |
-| Cap / tallest bar | 0.700 | 66.85 / 95.5 |
-| Cap / Wi-Fi ink | 0.705 | 66.85 / 94.77 |
-| Artboard | dynamic, `ink width + 2 x 1` | the group ink starts at the 1-unit margin; height stays 96.77 |
-| Labels | LTE, 4G, 5G, 5G+, 3G, E | reader/reporting order |
-| Digits 3/4/5 | `IosDigits` widths, advances and even-odd contours x (66.85 / 57) | same family/weight as the battery percentage; the digits are never retyped |
-| Vertical placement | cap box centred on the Wi-Fi ink, top = 14.96 | PM fallback (UNVERIFIED) |
-| Horizontal placement | ink group starts at the 1-unit margin | group layout `sum(advances) - firstBearing - lastBearing` |
 
 **Filled outlines, no strokes/font.** Every letter and the plus are one or more closed contours,
 consistently clockwise, filled with `Path.FillType.WINDING` so overlapping shapes union without alpha
@@ -249,9 +309,9 @@ The shipped shape is a union of three clockwise contours (WINDING):
   to a slanted bottom `0.97497 C` on the left and `0.92007 C` on the right (the measured y60/y59
   stem-to-bowl joint). This is the visible right stem the old shape lacked.
 
-`G_REFERENCE_STEM_STROKE = (1 - 0.84951) x 34/36 x cap = 9.50` design units. Production scales every
-G stroke by `G_PRODUCTION_WEIGHT = STROKE / 9.50 = 1.407`, so the stem is exactly the digit `STROKE`
-(13.37) and the band/bar keep the measured proportions. The same builder is exposed at weight 1 for
+`G_REFERENCE_STEM_STROKE = (1 - 0.84951) x 34/36 x cap = 11.04` design units. Production scales every
+G stroke by `G_PRODUCTION_WEIGHT = STROKE / 11.04 = 1.006`, so the stem is exactly the measured label
+`STROKE` (11.1) and the band/bar keep the measured proportions. The same builder is exposed at weight 1 for
 the weight-normalised IoU evidence. The counter opens through the upper-right aperture (0 closed
 holes: the `IosDataLabelTest` flood-fill requires no enclosed background), and the right stem is
 inked below the bar, so the glyph is distinguishable from a C.
@@ -284,26 +344,34 @@ most of the counter open.
 **Spacing and the plus.** The letter side bearing is 0.04 C, which reproduces the measured 0.083 C
 T..E gap. The plus uses the measured 0.750 C height as an equal-arm square with a 0.06 C side bearing,
 so the G..+ gap is 0.10 C (closer to the measured 0.167 C than the earlier 0.02 C). Honouring the
-reference plus makes "5G+" wider than the 80x50 slot's height-limited width: "5G+" is **width-limited**
-at an artboard of ~173, a rendered cap of ~19.4 px (about 0.64 of the Wi-Fi ink), while LTE/4G/5G/3G/E
-stay height-limited at ~21.6 px (0.705 of the Wi-Fi ink). This is the 80x50 slot constraint, not a
-geometry bug; the alternative is a smaller plus (~0.49-0.51 C), closer to the constant cap but
-deviating from the reference. The runtime renderer is `IosGlyphRenderer.drawDataLabel` (Canvas).
-`rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` are unchanged: there is no `rive` CLI on this
-machine, and R4B uses the Canvas path only. V2 evidence fixtures are written by
-`IosDataLabelRasterTest` (`r4-label-{lte,4g,5g,5g-plus,3g,e}-{light,dark}-v2.png`,
-`r4-label-family-{light,dark}-v2.png`, `measurements-v2.md`); the first R4B fixtures are not
-overwritten. The v3 G evidence adds `r4-glyph-*-refweight-v3.png` (weight-normalised glyphs),
-`r4-glyph-g-bold-v3.png`, `r4-label-{4g,5g,5g-plus,3g}-{light,dark}-v3.png` and the v3 family row;
-`r4-label-compare-v3.png` and `overlay-g.png` are the owner-review images. The v2 files are untouched.
+reference plus makes "5G+" wider than the production slot's height-limited width: at the 80x50 Wi-Fi
+slot (4x supersampled) "5G+" is **width-limited** at an artboard of ~200.9, a rendered cap of
+~19.4 px (about 0.63 of the Wi-Fi ink). At the measured cap **LTE is width-limited too** (L+T+E ink =
+174.28 u, artboard ~176.3, rendered cap ~22.1 px / 0.72 of the Wi-Fi ink), while 4G/5G/3G/E stay
+height-limited at ~25.1 px (0.820 of the Wi-Fi ink). This is the slot constraint, not a geometry bug;
+the alternative is a smaller cap or plus
+(~0.49-0.51 C), closer to the constant cap but deviating from the reference. The runtime renderer is
+`IosGlyphRenderer.drawDataLabel` (Canvas).
 
-**UNVERIFIED.** No iOS status-bar capture shows this label. The cap = 0.70-bar fallback and the
-vertical placement are bar-geometry estimates, not measurements; the reference weight is lighter than
-the shipped bold digits, so only shapes/widths/spacing are matched. The G v3 shape and the per-glyph
-IoU above are measured against the SF strip, but the label's on-device size/placement still need
-owner/device review. Honouring the measured plus makes "5G+" width-limited at the 80x50 slot (a slot
-constraint, not a geometry bug); the alternative is a smaller plus (~0.49-0.51 C), closer to the
-constant cap but deviating from the reference. Owner/device review is required before release.
+`rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` are **untouched by R5B**: no alpha represented
+in the scene changes (the measured 0.4975/0.5021 confirm the authored 0.50, and the label is
+Canvas-only), the `rive` CLI is absent on this machine, and editing the scene without rebuilding would
+break the hash gate. The shipped hash is still
+`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe` (40,985 bytes). V2/R4B evidence
+fixtures are still written by `IosDataLabelRasterTest`
+(`r4-label-{lte,4g,5g,5g-plus,3g,e}-{light,dark}-v2.png`, `r4-label-family-{light,dark}-v2.png`,
+`measurements-v2.md`); the v3 G evidence adds `r4-glyph-*-refweight-v3.png`,
+`r4-glyph-g-bold-v3.png`, `r4-label-{4g,5g,5g-plus,3g}-{light,dark}-v3.png` and the v3 family row.
+R5B adds the end-to-end strip fixture `r5b-ours-strip-dark-4x.png` (written by `IosR5LabelStripTest`
+when `IOS_RENDER_OUT` is set) and the side-by-side `r5b-compare-ref1-vs-ours.png`.
+
+**UNVERIFIED / known limits.** The cap, top, baseline, stroke and label gaps are measured from ref 1
+(±1.18 u); the G v3 shape and the per-glyph IoU above remain measured against the SF strip. The
+vertical placement and the on-device size still need owner/device review. The 3/4/5 digits stay the
+fixed bold `IosDigits` glyphs (0.20 cap), so our "5" is bolder than ref 1's 0.143-cap label; the G ink
+fraction (0.944 shipped vs 0.874 measured here) and the shorter cell bars are outside this change.
+Honouring the measured plus makes "5G+" width-limited at the slot (a slot constraint, not a geometry
+bug). Owner/device review is required before release.
 
 ## Relative sizes and per-kind draw scale
 
@@ -362,19 +430,49 @@ green-grid probe (1072x880, 73 428 B). The original was recovered from the uploa
 (`ref6-recovered-original.jpg`, 158 105 B, 1239x726, sha256 `3563a34b…bb50b0`); every surviving ref-6
 crop is an exact crop of it (template MSE 0.37-1.03). The evidence is in `.pm/ref/out-r2/`.
 
-## Strip composition (preview and evidence)
+## Strip composition (in-app preview and R5B evidence)
+
+All gaps are **ink-to-ink**: every artboard carries a 1-unit margin and `Battery.BODY_LEFT = 1`.
+
+The two consumers are separate, and neither is used at runtime:
+
+- The **Wi-Fi gaps** (`CELL_WIFI_GAP` 57.5 / `WIFI_BATTERY_GAP` 59.77) drive the in-app
+  `IosPreview` composition. `IosPreview.kt` reads only those two constants.
+- The **label gaps** (`CELL_LABEL_GAP` 52.07 / `LABEL_BATTERY_GAP` 54.04) drive the R5B 5G evidence
+  strip (`labelBatteryX("5G")`, `LABEL_BATTERY_X_5G`, `LABEL_WIDTH_5G`, used by
+  `IosR5LabelStripTest`). The in-app preview does not use them.
+- The **runtime** does not use `Strip` at all: each glyph is drawn into its stock icon slot with
+  `Fit.CONTAIN`; the host-applied `Relative.sizeFor` inset is not wired in R2B.
 
 | Gap | Value | Source |
 |---|---:|---|
-| Cell -> Wi-Fi | 57.5 | 51.14 light px |
-| Wi-Fi -> battery | 59.77 | 53.15 light px |
-| Full strip width | 602.4 | 148.1 + 57.5 + 127.53 + 59.77 + 209.5 (smaller cap) |
-| Top alignment | battery, Wi-Fi, single cell share y=0 | measured |
+| Cell -> Wi-Fi (Wi-Fi strip, preview) | 57.5 | 51.14 light px (ref 6) |
+| Wi-Fi -> battery (Wi-Fi strip, preview) | 59.77 | 53.15 light px (ref 6) |
+| Cell -> label (label strip, R5B evidence) | 52.07 | ref 1: 22.06 px x 2.360 |
+| Label -> battery (label strip, R5B evidence) | 54.04 | ref 1: 22.90 px x 2.360 |
+| Wi-Fi strip width | 602.4 | 148.1 + 57.5 + 127.53 + 59.77 + 209.5 (smaller cap) |
+| 5G label strip width | ~596.55 | `LABEL_WIDTH_5G` = `LABEL_BATTERY_X_5G + 192.5 + 7.5 + 9.5` |
+| Top alignment | battery, Wi-Fi, label and single cell share y=0 | measured |
 | Dual cell top | -4.2 relative to battery | measured 3 px above at dark scale |
 
-The runtime still gives each glyph the stock icon's slot and uses `Fit.CONTAIN`; the strip constants
-are for the preview and the PNG evidence at the reference scale. The host-applied
-`Relative.sizeFor` inset is not wired in R2B.
+The label artboard origins are derived from the ink gaps:
+
+```
+LABEL_X = Cell.BLOCK_W + CELL_LABEL_GAP
+
+fun labelBatteryX(label: String): Float {
+    val artboard = requireNotNull(DataLabel.artboardWidth(label))  // reject unsupported names
+    return LABEL_X + artboard - Wifi.ARTBOARD_MARGIN + LABEL_BATTERY_GAP - Battery.BODY_LEFT
+}
+
+LABEL_BATTERY_X_5G = labelBatteryX("5G")
+LABEL_WIDTH_5G = LABEL_BATTERY_X_5G + Battery.BODY_W + Battery.CAP_GAP + Battery.CAP_W
+```
+
+so the label ink starts at `LABEL_X + 1`, the battery body at `labelBatteryX(label) + 1`, and the
+drawn gaps equal the constants (`IosGeometryTest` pins this, including the rejection of an
+unsupported label name). `Strip.WIFI_X`, `BATTERY_X` and `WIDTH` keep their Wi-Fi semantics and are
+unchanged by R5B.
 
 ## Rive build and verification (R3D)
 
@@ -389,6 +487,14 @@ digit; all ten built from ref 4/6 with the uniform bold construction); the runti
 scene are pinned together by `IosGeometryParityTest`. If the installed CLI's cached minimum version
 blocks 1.8.0, run it with an isolated `RIVE_HOME` whose `update-check` minimum is 1.8.0; the build
 itself is offline.
+
+**R5B does not rebuild the scene.** The measured battery remainder/cap alphas (0.4975 / 0.5021)
+confirm the authored 0.50, the label lives on the Canvas path, and `Cell.INACTIVE_ALPHA` is unchanged
+and still UNVERIFIED. Because the `rive` CLI is absent on this machine, editing `rive/ios/scene.rml`
+without rebuilding would make `ios.riv` stale and break the hash gate. The scene and
+`app/src/main/res/raw/ios.riv` are therefore untouched, the hash stays
+`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`, and there is no scene-parity
+drift.
 
 ## UNVERIFIED / caveats
 
@@ -411,6 +517,16 @@ itself is offline.
   confidence; the battery and Wi-Fi scales are direct bbox measurements.
 - **Clock metric:** the union of the digits is 30 px but flat digits measure 28-29 px, a ±1 px (±3 %)
   uncertainty. The target ratios carry that tolerance.
+- **Data-type label (R5B):** the cap (77.69), top (14.95), baseline (92.64), stroke (11.1) and label
+  gaps (52.07 / 54.04) are measured from ref 1 with ±1.18 u uncertainty. The 3/4/5 remain the fixed
+  bold `IosDigits` glyphs (0.20 cap), so our "5" is bolder than ref 1's 0.143-cap label — a known
+  mismatch, not a geometry bug. `Cell.INACTIVE_ALPHA` stays 0.25 **UNVERIFIED** (ref 1 has all bars
+  and dots active; ref 2 is only weakly consistent at ~0.36-0.37). The battery cap W/H measure
+  13.7 / 34.3 versus the frozen 9.5 / 26.0 (low confidence, unchanged). The G ink fraction is 0.874
+  measured vs 0.944 shipped, and the shorter cell bars measure 35.7/43.4/53.8/63.9 vs
+  30.3/37.5/49.9/62.7; both are outside this change and unchanged. Evidence:
+  `.pm/ref/out-r5/r5b-measurements.md` / `.json`, `r5b-ref1-statusbar.png`,
+  `r5b-ours-strip-dark-4x.png`, `r5b-compare-ref1-vs-ours.png`.
 - **Cap height variant:** the single-SIM promo measures 28.1 units and the dual refs 23.8-25.6; the
   recommended 26.0 splits them. Which is the iOS 27 final is unconfirmed.
 - **Row artboards:** the per-row runtime viewports are derived from the same design geometry; the stock
