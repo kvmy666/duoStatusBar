@@ -23,18 +23,6 @@ internal enum class IosCellMode { SINGLE, DUAL }
 internal enum class IosCellRole { DATA, OTHER, BOTH }
 
 /**
- * R4A item 3: the state of the middle slot, read by the host for R4B's label glyph.
- *
- * [Wifi] is the Wi-Fi glyph, [DataType] names the mobile data path (`5G`/`5G+`/`LTE`/`4G`/`3G`/`E`/
- * `G`), and [None] leaves the slot empty. The host only carries the state; the drawing is R4B's.
- */
-internal sealed class IosWifiSlot {
-    object Wifi : IosWifiSlot()
-    data class DataType(val label: String) : IosWifiSlot()
-    object None : IosWifiSlot()
-}
-
-/**
  * Everything an iOS status-bar glyph needs, derived from system state.
  *
  * Pure data on purpose, like [DuoVisual]: this is the half that can go wrong silently, so it stays free
@@ -53,8 +41,11 @@ internal data class IosVisual(
     val boltOpacity: Float = 0f,
     /** Wi-Fi level 0..3. */
     val wifiLevel: Float = 0f,
-    /** R4A item 3: Wi-Fi/data-type/empty slot state, copied onto every visual by the host. */
-    val wifiSlot: IosWifiSlot = IosWifiSlot.None,
+    /**
+     * R4 item 3: Wi-Fi/data-type/empty slot state, copied onto every visual by the host. The default
+     * [IosWifiSlot.Wifi] preserves today's glyph for callers that never set it (AGENTS rule 6).
+     */
+    val wifiSlot: IosWifiSlot = IosWifiSlot.Wifi,
     val cellMode: IosCellMode = IosCellMode.SINGLE,
     val cellRole: IosCellRole = IosCellRole.DATA,
     /** Dual-SIM data row, 0..4 bars. */

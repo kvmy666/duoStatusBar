@@ -30,7 +30,15 @@ internal object IosGlyphRenderer {
     /** The artboard width for [kind] in the state described by [visual]. */
     fun artboardWidth(kind: IosIconKind, visual: IosVisual): Float = when (kind) {
         IosIconKind.BATTERY -> IosGeometry.Battery.ARTBOARD_W
-        IosIconKind.WIFI -> IosGeometry.Wifi.ARTBOARD_W
+        IosIconKind.WIFI -> {
+            val slot = visual.wifiSlot
+            if (slot is IosWifiSlot.DataType) {
+                IosGeometry.DataLabel.artboardWidth(slot.label)
+                    ?: IosGeometry.Wifi.ARTBOARD_W
+            } else {
+                IosGeometry.Wifi.ARTBOARD_W
+            }
+        }
         IosIconKind.CELL -> when {
             visual.cellMode == IosCellMode.SINGLE -> IosGeometry.Cell.ARTBOARD_W
             visual.cellRole == IosCellRole.BOTH -> IosGeometry.Cell.ARTBOARD_W
@@ -239,6 +247,19 @@ internal object IosGlyphRenderer {
     // ----------------------------------------------------------------------------------- wifi
 
     private fun drawWifi(canvas: Canvas, v: IosVisual, alpha: Float, overrideTint: Int?) {
+        when (val slot = v.wifiSlot) {
+            // NONE: the host wins the slot for something else; draw no glyph at all.
+            IosWifiSlot.None -> return
+            is IosWifiSlot.DataType -> {
+                // An unsupported label draws nothing: never silently fall back to Wi-Fi ink.
+                if (IosGeometry.DataLabel.supports(slot.label)) {
+                    drawDataLabel(canvas, slot.label, alpha, overrideTint ?: v.tint)
+                }
+                return
+            }
+            IosWifiSlot.Wifi -> Unit
+        }
+
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -277,6 +298,57 @@ internal object IosGlyphRenderer {
         }
         fill.color = withAlpha(tint, 1f, alpha)
         canvas.drawPath(dot, fill)
+    }
+
+    /**
+     * Draws a data-type label ("LTE", "4G", ...) in the Wi-Fi artboard: letters and the plus are
+     * filled WINDING outlines (closed, clockwise contours that union without seams), the 3/4/5 digits
+     * are the measured [IosDigits] filled even-odd contours scaled to
+     * [IosGeometry.DataLabel.CAP_HEIGHT]. There is no font and no bitmap. The group ink starts at the
+     * artboard margin and is centred by the caller's CONTAIN fit; the cap box top is
+     * [IosGeometry.DataLabel.TOP]. An unsupported label is not drawn here (the dispatch in [drawWifi]
+     * checks [IosGeometry.DataLabel.supports] first).
+     */
+    private fun drawDataLabel(canvas: Canvas, label: String, alpha: Float, tint: Int) {
+        val d = IosGeometry.DataLabel
+        val first = label.firstOrNull() ?: return
+        val colour = withAlpha(tint, 1f, alpha)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = colour
+        }
+
+        val top = d.TOP
+        var pen = IosGeometry.Wifi.ARTBOARD_MARGIN - d.bearing(first)
+        for (ch in label) {
+            val glyphLeft = pen + d.bearing(ch)
+            if (d.isDigit(ch)) {
+                val saved = canvas.save()
+                try {
+                    canvas.translate(glyphLeft, top)
+                    canvas.scale(d.DIGIT_SCALE, d.DIGIT_SCALE)
+                    canvas.drawPath(IosDigits.buildPath(IosDigits.glyph(ch), 0f, 0f), fill)
+                } finally {
+                    canvas.restoreToCount(saved)
+                }
+            } else {
+                val path = Path().apply {
+                    fillType = Path.FillType.WINDING
+                    for (contour in d.outlines(ch)) {
+                        if (contour.size < 6) continue
+                        moveTo(glyphLeft + contour[0], top + contour[1])
+                        var i = 2
+                        while (i < contour.size) {
+                            lineTo(glyphLeft + contour[i], top + contour[i + 1])
+                            i += 2
+                        }
+                        close()
+                    }
+                }
+                canvas.drawPath(path, fill)
+            }
+            pen += d.advance(ch)
+        }
     }
 
     private fun arc(

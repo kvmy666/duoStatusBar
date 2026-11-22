@@ -173,6 +173,94 @@ the same geometry measures outer 0.836 / inner 0.930 there even though the spans
 The full fit and the dark cross-check are in the B4 measurement notes (kept outside the repository), sections 2 and 3. The old
 "Duo uniformly scaled" glyph has been removed.
 
+## Data-type label (R4B)
+
+When the active network is not Wi-Fi, the Wi-Fi slot can draw a data-type label ("LTE", "4G", "5G",
+"5G+", "3G", "E") from `IosGeometry.DataLabel`.
+
+**No iOS status-bar capture shows this label.** The glyph SHAPES, widths and spacing come from
+`.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (an SF-style "LTE E 4G 5G 5G+ 345" strip, light on
+black), measured with a 50%-threshold connected-component script: the reference cap (flat letters
+L/T/E/4) is 36 px. That reference is **lighter** than the shipped bold digits, so it is not the weight
+authority. The size follows the PM fallback rule "cap = 0.70 of the tallest cellular bar", and the
+weight is the in-battery digit run-stroke.
+
+| Reference quantity | Measured | / cap (36) |
+|---|---:|---:|
+| L ink width | 22 px | 0.611 |
+| T ink width | 29 px | 0.806 |
+| E ink width | 24 px | 0.667 |
+| G ink width | 34 px | 0.944 |
+| + ink width x height | 28 x 27 px | 0.778 x 0.750 |
+| Digit 3 ink width | 25 px | 0.694 |
+| Digit 4 ink width | 27 px | 0.750 |
+| Digit 5 ink width | 24 px | 0.667 |
+| G bar y | 44..48 px | 0.444..0.556 |
+| G bar left | x204 (G box 184..217) | 0.588 W |
+| G upper-right terminal | ~y33.5 | ~0.14 |
+| G spur bottom | y59.5 | 0.875 |
+| Gaps T..E / 4..G / 5..G / G..+ | 3 / 4 / 5 / 6 px | 0.083 / 0.111 / 0.139 / 0.167 |
+| Gaps 3..4 / 4..5 | 4 / 5 px | 0.111 / 0.139 |
+
+The shipped constants:
+
+| Quantity | Value | Source |
+|---|---:|---|
+| Cap height | 66.85 | 0.70 x the tallest single bar (95.5) — **fallback, UNVERIFIED** |
+| Stroke | 13.37 | measured percentage digit weight 11.40 / cap 57, scaled to the label cap |
+| Cap-box top | 14.96 | `1 + (Wi-Fi ink 94.77 - cap 66.85) / 2` (cap centred on the Wi-Fi glyph) |
+| L / T / E / G width | 40.85 / 53.85 / 44.57 / 63.14 | measured 0.611 / 0.806 / 0.667 / 0.944 x cap |
+| + width | 50.14 | 0.750 x cap square (measured height; reference width 0.778) |
+| Letter side bearing | 2.67 | 0.04 x cap (measured T..E 0.083 cap gap) |
+| Plus side bearing | 4.01 | 0.06 x cap (G..+ gap 0.10 cap, closer to the measured 0.167) |
+| Cap / tallest bar | 0.700 | 66.85 / 95.5 |
+| Cap / Wi-Fi ink | 0.705 | 66.85 / 94.77 |
+| Artboard | dynamic, `ink width + 2 x 1` | the group ink starts at the 1-unit margin; height stays 96.77 |
+| Labels | LTE, 4G, 5G, 5G+, 3G, E | reader/reporting order |
+| Digits 3/4/5 | `IosDigits` widths, advances and even-odd contours x (66.85 / 57) | same family/weight as the battery percentage; the digits are never retyped |
+| Vertical placement | cap box centred on the Wi-Fi ink, top = 14.96 | PM fallback (UNVERIFIED) |
+| Horizontal placement | ink group starts at the 1-unit margin | group layout `sum(advances) - firstBearing - lastBearing` |
+
+**Filled outlines, no strokes/font.** Every letter and the plus are one or more closed contours,
+consistently clockwise, filled with `Path.FillType.WINDING` so overlapping shapes union without alpha
+seams. L is a stem+foot polygon; T a top-bar+stem polygon; E four overlapping rectangles (stem +
+top/middle/bottom arms, middle arm 0.95 of full width). The plus is two equal-arm rectangles forming a
+0.750-cap square centred at C/2.
+
+**G construction (SF-style).** An oval arc band with outer radii `W/2, C/2` and inner radii
+`W/2-STROKE, C/2-STROKE`, sweeping counter-clockwise from the upper-right terminal at 315 deg (the
+measured terminal is ~y33.5 with cap top ~28.5, i.e. ~0.14 C) through the top, left and bottom to the
+spur angle. The geometric arc gap is 93.59 deg (360 - 266.41); the visible open aperture above the stem
+top (0.4 C, ~348.5 deg) is ~34 deg (315..348.5 deg). The spur angle is derived from the measured spur
+bottom: `asin((0.875 - 0.5) / 0.5) = 48.59 deg`, where the outer ellipse reaches the measured y59.5
+(0.875 C). The vertical right stem is `x = W-STROKE..W`, `y = 0.4 C..0.875 C` (the longer measured
+flat-bottom spur), and the horizontal bar `x = 0.588 W..W`, `y = 0.4 C..0.6 C` reaches into the counter
+from the right. The counter stays open through the upper-right ~34 deg visible aperture (0 closed holes:
+the `IosDataLabelTest` flood-fills the raster and requires no enclosed background). The earlier R4B
+stroked arc (which started at 300 deg) with a centre-to-edge bar read as "6" in owner review; the filled
+band + short bar leaves most of the counter open.
+
+**Spacing and the plus.** The letter side bearing is 0.04 C, which reproduces the measured 0.083 C
+T..E gap. The plus uses the measured 0.750 C height as an equal-arm square with a 0.06 C side bearing,
+so the G..+ gap is 0.10 C (closer to the measured 0.167 C than the earlier 0.02 C). Honouring the
+reference plus makes "5G+" wider than the 80x50 slot's height-limited width: "5G+" is **width-limited**
+at an artboard of ~173, a rendered cap of ~19.4 px (about 0.64 of the Wi-Fi ink), while LTE/4G/5G/3G/E
+stay height-limited at ~21.6 px (0.705 of the Wi-Fi ink). This is the 80x50 slot constraint, not a
+geometry bug; the alternative is a smaller plus (~0.49-0.51 C), closer to the constant cap but
+deviating from the reference. The runtime renderer is `IosGlyphRenderer.drawDataLabel` (Canvas).
+`rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` are unchanged: there is no `rive` CLI on this
+machine, and R4B uses the Canvas path only. V2 evidence fixtures are written by
+`IosDataLabelRasterTest` (`r4-label-{lte,4g,5g,5g-plus,3g,e}-{light,dark}-v2.png`,
+`r4-label-family-{light,dark}-v2.png`, `measurements-v2.md`); the first R4B fixtures are not
+overwritten.
+
+**UNVERIFIED.** No iOS status-bar capture shows this label. The cap = 0.70-bar fallback and the
+vertical placement are bar-geometry estimates, not measurements; the reference weight is lighter than
+the shipped bold digits, so only shapes/widths/spacing are matched. Honouring the measured plus makes
+"5G+" width-limited at the 80x50 slot (a slot constraint, not a geometry bug); the alternative is a
+smaller plus (~0.49-0.51 C), closer to the constant cap but deviating from the reference. Owner/device
+review is required before release.
+
 ## Relative sizes and per-kind draw scale
 
 All ratios use the battery body height = 1.0, measured from ref 6 (clock digit cap 30 px union,
@@ -194,26 +282,36 @@ The adopted constants use the 1.00 clock/battery simplification, so the clock co
 x 1.033; the direct ref-6 measurements (Wi-Fi W 1.300 / H 0.967, single H 0.967, dual H 1.077, cap H
 0.281 light / 0.254 dual) are within the +/-3 % clock uncertainty.
 
-The ref 7 (owner phone) before/target calibration:
+The ref 7 (owner phone) before/target calibration. **R4 = R3 x1.10**: the R4 defaults are the R3
+calibration multiplied by 1.10, and a 100 % user scale stays relative to 100, so it equals the new
+default (the identity user transform still draws the new default).
 
-| Kind | Draw scale | Before -> target (clock = 1.0) | Confidence |
-|---|---:|---|---|
-| Battery | 0.81 | body 37 px / 1.233x -> 30 px / 1.000x | high (direct bbox) |
-| Wi-Fi | 0.57 | bbox 50 px / 1.667x -> 28.3 px / 0.944x | high (direct bbox) |
-| Cell single | 0.75 | 1.316x on ref 7 (1.267x after the 95.5-unit bar 4) -> 0.955x | medium (inferred; device showed the side-by-side bug) |
-| Cell dual | 0.76 | 1.377x -> 1.042x | medium (stacked block inferred, not observed) |
+| Kind | R4 draw scale | R3 -> R4 | Ref-7 before (clock = 1.0) | R3 target | R4 target (x1.10) | Measured production (clock = 1.0) | Confidence |
+|---|---:|---|---:|---:|---:|---|---|
+| Battery | 0.891 | 0.81 -> 0.891 | body 37 px / 1.233x | 1.000 | 1.100 | 1.100 (33.0 / 30, box 71x34) | high (direct bbox) |
+| Wi-Fi | 0.627 | 0.57 -> 0.627 | bbox 50 px / 1.667x | 0.944 | 1.0384 | 1.025 (30.75 / 30, box 50x31) | high (direct bbox) |
+| Cell single | 0.825 | 0.75 -> 0.825 | 1.316x on ref 7 (1.267x after the 95.5-unit bar 4) | 0.955 | 1.0505 | 1.0583 (31.75 / 30, box 66x35) | medium (inferred; device showed the side-by-side bug) |
+| Cell dual | 0.836 | 0.76 -> 0.836 | 1.377x | 1.042 | 1.1462 | 1.1417 (34.25 / 30, box 67x35) | medium (stacked block inferred, not observed) |
 
-The "target" column is not device pixels yet: it is what `Relative.sizeFor` produces once the host
-integration applies it.
+The R4 target is the R3 target x1.10, not a measured device value. The measured production column is
+the rendered ink height / 30 px clock through the production path (full stock slot +
+`relativeSize = true`, 4x supersampled) for the ref-7 slot; it is a unit render, not a device
+capture. Integer rounding therefore moves Wi-Fi from the 1.0384 target to the measured production
+ratio 1.025 (30.75 / 30): the 1x integer `sizeFor` box is 50x31, while the 4x production render box is
+50.25x31.25. The battery stays at 1.100; the +/-3 % band in `IosRelativeSizeTest` is the
+integer-rounding tolerance. The 1.10 growth itself is **UNVERIFIED**: it has not been measured on a
+device yet; the old ref-7 calibration is the only measured baseline.
 
 `IosGeometry.Relative.sizeFor(kind, slotWidth, slotHeight, dualCell)` is exposed for the host
 integration (R2A/R2C, outside R2B). R2B does not wire it, so the current drawable still fills its
-stock bounds and the "target" pixels in the ref-7 table are targets, not device pixels yet. The
-renderer keeps its `min(w/W, h/H)` CONTAIN + centred placement, so an extreme slot letterboxes
-instead of squashing; `IosDrawablesTest` pins that with the 200x40 and 40x200 slots.
-`IosRelativeSizeTest` proves the rendered ink at those `sizeFor` boxes: battery 1.000, Wi-Fi 0.950,
-single 0.967, dual 1.042 of the 30 px clock. The scales are data only: neither the renderer nor the
-drawable applies a base scale; the host applies `sizeFor` when it wires the inset.
+stock bounds unless the host passes `relativeSize`; the "measured production" pixels above are the
+unit-render result at the `sizeFor` boxes, not device pixels. The renderer keeps its
+`min(w/W, h/H)` CONTAIN + centred placement, so an extreme slot letterboxes instead of squashing;
+`IosDrawablesTest` pins that with the 200x40 and 40x200 slots. `IosRelativeSizeTest` pins the
+production integer-box ink heights (battery 1.100, Wi-Fi 1.025, single 1.0583, dual 1.1417 of the
+30 px clock) and keeps the +/-3 % comparison against the R4 targets. The scales are data only:
+neither the renderer nor the drawable applies a base scale; the host applies `sizeFor` when it wires
+the inset.
 
 The ref 6 provenance: the original upload (`6-25b39679.jpg`) was overwritten on 2026-11-21 22:43 by a
 green-grid probe (1072x880, 73 428 B). The original was recovered from the upload cache

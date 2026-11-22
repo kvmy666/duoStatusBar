@@ -58,7 +58,7 @@ class DiagnosticsTruthTest {
     fun `stale heartbeat says the module is not running now`() {
         val now = 3_000L + DuoPrefs.HEARTBEAT_STALE_MS + 1L
         assertEquals(
-            "${formatTimestamp(3_000L)} (heartbeat) — module not running now",
+            "${formatTimestamp(3_000L)} (heartbeat), module not running now",
             moduleLoadLine(0L, "", emptyList(), 0L, 3_000L, now)
         )
     }

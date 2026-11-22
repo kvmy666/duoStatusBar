@@ -21,14 +21,14 @@ object DuoActions {
     const val AUTO_EXPAND_PACKAGE = "io.github.kvmy666.autoexpand"
 
     val ALL: List<Pair<String, String>> = listOf(
-        "no_action" to "No Action",
+        "no_action" to "No action",
         "toggle_wifi" to "Toggle Wi-Fi",
         "toggle_bluetooth" to "Toggle Bluetooth",
-        "toggle_mobile_data" to "Toggle Mobile Data",
+        "toggle_mobile_data" to "Toggle mobile data",
         "toggle_dnd" to "Toggle Do Not Disturb",
-        "toggle_airplane_mode" to "Toggle Airplane Mode",
-        "toggle_auto_rotate" to "Toggle Auto Rotate",
-        "toggle_power_saver" to "Toggle Power Saver"
+        "toggle_airplane_mode" to "Toggle airplane mode",
+        "toggle_auto_rotate" to "Toggle auto-rotate",
+        "toggle_power_saver" to "Toggle power saver"
     )
 
     fun isAutoExpandInstalled(context: Context): Boolean = try {

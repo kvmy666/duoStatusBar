@@ -17,11 +17,17 @@ import kotlin.math.roundToInt
  * The `IosGeometry.Relative` before/after contract for the ref 7 stock slots: battery 80x38,
  * Wi-Fi 80x50, single cell 80x42 (105.6 units at the measured 0.3987 px/unit) and dual-BOTH cell
  * 80x42. The full-slot ink nearly fills the slot; insetting the drawable to
- * [IosGeometry.Relative.sizeFor] shrinks it by the per-kind scale (0.81 / 0.57 / 0.75 / 0.76).
+ * [IosGeometry.Relative.sizeFor] shrinks it by the per-kind scale. **R4 defaults are the R3
+ * calibration x1.10**, so the scales are now 0.891 / 0.627 / 0.825 / 0.836 and a 100 % user scale is
+ * the new default (identity still draws it).
  *
- * The assertion that matters is the RENDERED INK height / 30 px clock against the measured target
- * ratio (battery 1.000, Wi-Fi 0.944, single cell 0.955, dual cell 1.042, +/-3 %), not the inner box
- * height. The box test only pins the `sizeFor` arithmetic.
+ * The assertion that matters is the RENDERED INK height / 30 px clock, not the inner box height. The
+ * documented R4 target is the R3 target x1.10: battery 1.100, Wi-Fi 1.0384, single cell 1.0505,
+ * dual cell 1.1462. The production render at the integer `sizeFor` box measures battery 1.100,
+ * Wi-Fi 1.025, single cell 1.0583 and dual cell 1.1417 (4x supersampled); integer rounding, e.g. the
+ * 50x31 Wi-Fi box, is why production does not equal the target exactly. The +/-3 % assertion is the
+ * integer-rounding tolerance, and the measured value is pinned in [Case.measuredClockRatio]. The
+ * x1.10 growth itself is UNVERIFIED on a device; owner review required.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -38,6 +44,7 @@ class IosRelativeSizeTest {
         val slotHeight: Int,
         val expectedBoxHeight: Int,
         val targetClockRatio: Float,
+        val measuredClockRatio: Float,
         val dualCell: Boolean = false
     )
 
@@ -48,13 +55,13 @@ class IosRelativeSizeTest {
             IosMapping.battery(
                 100, 20, false, false, BatteryManager.BATTERY_STATUS_DISCHARGING, Color.BLACK
             ),
-            80, 38, 31, 1.000f
+            80, 38, 34, 1.100f, 1.1000f
         ),
         Case(
             "wifi",
             IosIconKind.WIFI,
             IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f),
-            80, 50, 29, 0.944f
+            80, 50, 31, 1.0384f, 1.0250f
         ),
         Case(
             "cell-single",
@@ -67,7 +74,7 @@ class IosRelativeSizeTest {
                 cellBars = 4f,
                 cellDots = 0f
             ),
-            80, 42, 32, 0.955f
+            80, 42, 35, 1.0505f, 1.0583f
         ),
         Case(
             "cell-dual-both",
@@ -80,7 +87,7 @@ class IosRelativeSizeTest {
                 cellBars = 2f,
                 cellDots = 3f
             ),
-            80, 42, 32, 1.042f,
+            80, 42, 35, 1.1462f, 1.1417f,
             dualCell = true
         )
     )
@@ -119,9 +126,10 @@ class IosRelativeSizeTest {
                 ratio,
                 0.02f
             )
-            // The rendered ink (not the box) is what the user sees: must match the measured target.
+            // The rendered ink (not the box) is what the user sees. This direct 1x sizeFor draw
+            // matches the R4 target inside the +/-3 % integer-rounding tolerance.
             assertEquals(
-                "${c.label} rendered ink / 30 px clock",
+                "${c.label} rendered ink / 30 px clock vs R4 target",
                 c.targetClockRatio,
                 inset / clockPx,
                 0.03f
@@ -131,19 +139,26 @@ class IosRelativeSizeTest {
     }
 
     @Test
-    fun `production relative sizing at the full slot matches the target and the direct inset`() {
+    fun `production relative sizing at the full slot matches the measured production and the direct inset`() {
         // The "wire" proof: production passes the FULL stock slot plus relativeSize = true, and the
-        // drawable itself computes the per-kind inner box. That must equal the measured target and the
-        // direct draw at sizeFor(...). Only this test proves the production flag, not just the API.
+        // drawable itself computes the per-kind inner box. That must match the measured production
+        // ratio and the direct draw at sizeFor(...). Only this test proves the production flag, not
+        // just the API. The R4 target is asserted separately inside its +/-3 % tolerance.
         for (c in cases()) {
             val wired = inkHeight(
                 c.kind, c.visual, c.slotWidth, c.slotHeight, relativeSize = true
             )
             assertEquals(
-                "${c.label} wired rendered ink / 30 px clock",
+                "${c.label} wired rendered ink / 30 px clock vs R4 target",
                 c.targetClockRatio,
                 wired / clockPx,
                 0.03f
+            )
+            assertEquals(
+                "${c.label} wired rendered ink / 30 px clock vs measured production",
+                c.measuredClockRatio,
+                wired / clockPx,
+                0.005f
             )
             val (w, h) = IosGeometry.Relative.sizeFor(
                 c.kind, c.slotWidth, c.slotHeight, c.dualCell
