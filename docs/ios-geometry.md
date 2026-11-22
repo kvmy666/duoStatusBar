@@ -51,27 +51,63 @@ put the stroked extent at -1.5..103.1, outside the artboard; the shipped 3.0-uni
 the constant cannot drift apart again. Whether the host view bounds clip the 0/101.6 edges cleanly on a
 real device is still **UNVERIFIED**.
 
-## Percentage inside (R3B)
+## Percentage inside (R3M, digit-v5 filled outlines)
 
 Runtime toggle `ios_percent_inside` (default **off**). When on, the battery percentage is drawn inside
-the body from `hook/IosDigits.kt` (our own polylines, no font); `IosDigits` is the matching plain Rive
-artboard in `rive/ios/scene.rml` (no state machine, no view model).
+the body from `hook/IosDigits.kt` (our own filled contours, no font); `IosDigits` is the matching plain
+Rive artboard in `rive/ios/scene.rml` (no state machine, no view model).
+
+The shipped design is **digit-v5**: every digit is a filled outline at cap 57, drawn with
+`Path.FillType.EVEN_ODD`. The first contour is the outer edge and every further contour is a separate
+counter (hole), so winding order does not matter. There is no runtime stroke and no constant advance:
+each glyph carries its measured ink width, advance and bearing `(advance - width) / 2`; layout is
+`sum(advances) - firstBearing - lastBearing`.
+
+Digits **0/1/2/4/5/7/8** are the digit-v4 data (ref 4/6 + the 0.55-unit regular ink dilation).
+Digits **3/6/9** are the **ref-4 shape** with a Euclidean boundary dilation whose vertical growth is
+clamped to the 57-unit cap; the radius is tuned per digit so the ink area matches the measured bold
+in-battery weight (refs 1/2). This keeps the ref-4 letterform while making the stroke bold; it is one
+filled even-odd construction, not the bold ref traced as a new letterform. The 6/9 counters are kept.
 
 | Quantity | Value | Source |
-|---|---:|---|
-| Digit cap height | 57 | measured bold refs 3/6/9 |
-| Stroke | 10.5, round cap / round join | measured bold refs 3/6/9 |
-| Advance | 52 | measured bold refs 3/6/9 |
+|---|---|---|---|
+| Source data | `.pm/ref/out-r3/digit-v4/digits-v5.json` (cap 57, body 100, 2,008 points) | refs 1/2/4/6 |
+| Fill rule | even-odd, counters as separate closed contours | filled outline, no font |
+| Cap height | 57 | ref 4 and ref 6; 1/2 for bold weight |
 | Group gap (digits -> inline bolt) | 5 | measured bold refs 3/6/9 |
-| Digit widths | 0:43, 1:24, 2:41, 3:39.5, 4:44, 5:40, 6:43, 7:38, 8:43, 9:43 | regular ref 4 for 1-9 |
 | Inline bolt | 40 x 59, follows the digits when charging | same 21-point bolt, no outline |
 | Layout | the group is centred on the battery body | owner rule |
+| Weight | 0/1/2/4/5/7/8 +0.55-unit dilation; 3/6/9 ref-4 shape + clamped dilation to bold area | area 1256/1429/1429 |
 
-Digits **1-9** come from the regular ref 4; the bold battery refs **3/6/9** supply the cap height,
-stroke, advance, group gap and the shared bold contour cross-check. Digit **0 has no reference** and
-remains provisional. This supersedes the PM's earlier flag list: 1-9 are all measured (4 and 7 are in
-ref 4 like the rest), so only 0 is still unmeasured. The scene's `IosDigits` artboard and the runtime
-`IosDigits` object carry the same values; `IosGeometryParityTest` pins every vertex.
+| Digit | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Width | 37.81 | 20.81 | 38.88 | 40.50 | 42.56 | 37.62 | 42.62 | 34.88 | 37.06 | 43.25 |
+| Advance | 43.81 | 30.91 | 44.81 | 49.47 | 46.54 | 43.71 | 50.59 | 39.34 | 43.55 | 50.59 |
+| Contours | 2 | 1 | 1 | 1 | 2 | 1 | 2 | 1 | 3 | 2 |
+
+**Primary acceptance** is shape vs ref 4 (digit 0 uses ref 6), weight-normalised at 16 px/unit:
+**0.913-0.963** for 3/6/9 and 0.921-0.962 for the rest; every digit is >= 0.90. The bold letterform
+is a secondary number only (`iou_bold_ref12`: 3 = 0.816, 6 = 0.659, 9 = 0.641), because the bold
+in-battery refs legitimately draw a different letterform. The per-digit table is
+`.pm/ref/out-r3/iou-r3m.csv`; the build-time table is
+`.pm/ref/out-r3/digit-v4/iou-v5-build.csv`. Overlaps are `r3m-overlay-0..9.png` (shipped Kotlin
+contours against ref 4).
+
+| Digit | Area (design u²) | Bold area | Stroke run | Bold run | EDT stroke | Bold EDT |
+|---:|---:|---:|---:|---:|---:|---:|
+| 3 | 1257.8 | 1256.4 | 11.56 | 12.27 | 10.62 | 9.62 |
+| 6 | 1428.1 | 1429.5 | 13.56 | 11.40 | 12.33 | 9.41 |
+| 9 | 1428.7 | 1428.9 | 13.50 | 10.69 | 12.14 | 9.50 |
+
+The bold targets are matched on **ink area**; the ref-4-derived 6/9 have a larger counter than the
+bold refs, so their median cross-stroke run is longer at the same area. That is the shape-vs-weight
+trade-off the PM acceptance asks for, and it is reported rather than hidden.
+
+The v5 layout fits the frozen body: `100` ink is 110.48 (body margin 41.01 per side) and `100` plus
+the inline bolt is 155.48; `69` plus the bolt is 138.53. The scene's `IosDigits` artboard and the
+runtime `IosDigits` object carry the same values; `IosGeometryParityTest` pins every contour vertex
+and the even-odd fill, and `IosDigitsTest` pins the widths, advances, contour/point counts and the
+canonical digest.
 
 ## Cellular (artboard `IosCell`, 150.1 x 105.6, frozen envelope)
 
@@ -191,15 +227,19 @@ The runtime still gives each glyph the stock icon's slot and uses `Fit.CONTAIN`;
 are for the preview and the PNG evidence at the reference scale. The host-applied
 `Relative.sizeFor` inset is not wired in R2B.
 
-## Rive build and verification (R3B)
+## Rive build and verification (R3M)
 
 The scene is built offline with **Rive 1.8.0** (`rive rive/ios --once`). Rive **1.9.2** is used only to
 verify (`rive . --verify`), including `tools/check-rive-shipped.sh`. The brief's 1.9.2 build path is not
 possible here: 1.9.2 removed `--once`, and `--publish` needs a login, so it cannot write an unsigned
 `.riv` offline. Building the same scene twice with 1.8.0 is byte-identical, and the committed
-`app/src/main/res/raw/ios.riv` is that build. If the installed CLI's cached minimum version blocks
-1.8.0, run it with an isolated `RIVE_HOME` whose `update-check` minimum is 1.8.0; the build itself is
-offline.
+`app/src/main/res/raw/ios.riv` is that build (37,252 bytes, sha256
+`db457e8d…cf25d49`). The `IosDigits` artboard now carries the v5 filled contours (one closed
+`PointsPath` per contour, one `Fill fillRule="evenOdd"` per digit; 3/6/9 are the ref-4 shape with the
+clamped bold dilation); the runtime `IosDigits` and the scene are pinned together by
+`IosGeometryParityTest`. If the installed CLI's cached
+minimum version blocks 1.8.0, run it with an isolated `RIVE_HOME` whose `update-check` minimum is 1.8.0;
+the build itself is offline.
 
 ## UNVERIFIED / caveats
 
@@ -209,9 +249,11 @@ offline.
 - **Bolt outline clipping:** the shipped 3.0-unit outline keeps the stroked 96-unit bolt inside the
   102-high battery artboard (extent 0..101.6, guard-tested). Whether the host view bounds clip the
   0/101.6 edges cleanly on a real device is UNVERIFIED.
-- **Percentage digit 0:** there is no reference capture for 0, so its contour is provisional and needs
-  an owner measurement; digits 1-9 are measured from ref 4 (with 3/6/9 cross-checked against the bold
-  battery refs).
+- **Percentage digits:** 0 is measured from the owner's ref 6 (`6-sf-digit-0.jpg`); 1/2/4/5/7/8 use
+  ref 4. 3/6/9 are the ref-4 SHAPE thickened to the bold ink area, so their shape gate is ref 4 and
+  their bold letterform score (0.816/0.659/0.641) is secondary, not the acceptance gate. The cap row
+  traces to 56.94 rather than exactly 57.0 (1/16 = 0.0625 units), a raster artefact, not a short
+  glyph.
 - **Cell draw scales:** the ref 7 phone rendered the 4 bars + 4 dots side-by-side (the known dual-SIM
   bug), so the single and stacked-dual blocks are inferred from the measured drawable px/unit. Medium
   confidence; the battery and Wi-Fi scales are direct bbox measurements.

@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.graphics.Color
+import android.graphics.Path
 import android.graphics.RectF
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -14,9 +15,10 @@ import java.security.MessageDigest
 import java.util.Locale
 
 /**
- * Pins the R3B digit source (`.pm/ref/out-r3/digits-final.json`): the ten glyph widths, the cell
- * bounds, the percentage widths that must fit the battery body, the normalised bolt box and the
- * knockout colour rule. The renderer tests cover the pixels.
+ * Pins the v5 digit source (`.pm/ref/out-r3/digit-v4/digits-v5.json`): the ten glyph widths and
+ * advances, the contour layout (first contour outer, further contours counters), the point counts,
+ * the percentage widths that must fit the battery body, the normalised bolt box and the knockout
+ * colour rule. The renderer tests cover the pixels.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -24,55 +26,73 @@ import java.util.Locale
 class IosDigitsTest {
 
     private val widths = mapOf(
-        '0' to 43f,
-        '1' to 24f,
-        '2' to 41f,
-        '3' to 39.5f,
-        '4' to 44f,
-        '5' to 40f,
-        '6' to 43f,
-        '7' to 38f,
-        '8' to 43f,
-        '9' to 43f
+        '0' to 37.81f,
+        '1' to 20.81f,
+        '2' to 38.88f,
+        '3' to 40.50f,
+        '4' to 42.56f,
+        '5' to 37.62f,
+        '6' to 42.62f,
+        '7' to 34.88f,
+        '8' to 37.06f,
+        '9' to 43.25f
     )
 
-    private val strokeCounts = mapOf(
-        '0' to 1, '1' to 2, '2' to 1, '3' to 1, '4' to 3,
-        '5' to 1, '6' to 3, '7' to 1, '8' to 2, '9' to 3
+    private val advances = mapOf(
+        '0' to 43.81f,
+        '1' to 30.91f,
+        '2' to 44.81f,
+        '3' to 49.47f,
+        '4' to 46.54f,
+        '5' to 43.71f,
+        '6' to 50.59f,
+        '7' to 39.34f,
+        '8' to 43.55f,
+        '9' to 50.59f
+    )
+
+    private val contourCounts = mapOf(
+        '0' to 2, '1' to 1, '2' to 1, '3' to 1, '4' to 2,
+        '5' to 1, '6' to 2, '7' to 1, '8' to 3, '9' to 2
     )
 
     private val pointCounts = mapOf(
-        '0' to 43, '1' to 4, '2' to 29, '3' to 47, '4' to 6,
-        '5' to 30, '6' to 51, '7' to 3, '8' to 66, '9' to 52
+        '0' to 247, '1' to 63, '2' to 200, '3' to 216, '4' to 153,
+        '5' to 268, '6' to 184, '7' to 162, '8' to 315, '9' to 200
     )
 
     /**
-     * The frozen golden digest of the current glyph data (`.pm/ref/out-r3/digits-final.json`).
+     * The frozen golden digest of the v5 glyph data
+     * (`.pm/ref/out-r3/digit-v4/digits-v5.json`).
      *
-     * The canonical form is `ch|width|points` for '0'..'9', one glyph per line: width is 2dp, and
-     * every stroke point is `x,y` at 2dp, flattened across strokes with `;`. The hash therefore pins
-     * the width, the point order and each x/y orientation; a transposed point changes the digest.
+     * The canonical form is `ch|advance|width|contours` for '0'..'9', one glyph per line:
+     * fields at 2dp, each point `x:y` at 2dp, points joined by `,`, contours joined by `;`.
+     * The hash therefore pins the advance, the width, the contour split, the point order and each
+     * x/y orientation; a transposed point changes the digest.
      */
     private val expectedGlyphDigest =
-        "422dd0232062fcdf75435adf9a0e288a2068ccf0e2ee0b8606d71c6151e5ee07"
+        "9ab787bc44b3ca9e4b7b88f0c3487c95f93c32096136b7607aac7e105f1f2113"
 
     private fun canonicalGlyph(ch: Char, transpose: Boolean = false): String {
         val glyph = IosDigits.glyph(ch)
         val builder = StringBuilder()
         builder.append(ch).append('|')
+        builder.append("%.2f".format(Locale.ROOT, glyph.advance)).append('|')
         builder.append("%.2f".format(Locale.ROOT, glyph.width)).append('|')
-        var first = true
-        for (stroke in glyph.strokes) {
-            var i = 0
-            while (i < stroke.size) {
-                if (!first) builder.append(';')
-                val x = if (transpose) stroke[i + 1] else stroke[i]
-                val y = if (transpose) stroke[i] else stroke[i + 1]
-                builder.append("%.2f,%.2f".format(Locale.ROOT, x, y))
-                first = false
-                i += 2
+        builder.append(
+            glyph.contours.joinToString(";") { contour ->
+                val points = StringBuilder()
+                var i = 0
+                while (i < contour.size) {
+                    if (i > 0) points.append(',')
+                    val x = if (transpose) contour[i + 1] else contour[i]
+                    val y = if (transpose) contour[i] else contour[i + 1]
+                    points.append("%.2f:%.2f".format(Locale.ROOT, x, y))
+                    i += 2
+                }
+                points.toString()
             }
-        }
+        )
         return builder.toString()
     }
 
@@ -82,17 +102,24 @@ class IosDigitsTest {
     }
 
     @Test
-    fun `all ten glyphs use the measured widths`() {
+    fun `all ten glyphs use the measured widths and advances`() {
         assertEquals(10, widths.size)
-        for ((ch, width) in widths) {
-            assertEquals("glyph $ch width", width, IosDigits.glyph(ch).width, 0.0001f)
+        assertEquals(10, advances.size)
+        for (ch in '0'..'9') {
+            assertEquals("glyph $ch width", widths.getValue(ch), IosDigits.glyph(ch).width, 0.0001f)
+            assertEquals(
+                "glyph $ch advance",
+                advances.getValue(ch),
+                IosDigits.glyph(ch).advance,
+                0.0001f
+            )
         }
     }
 
     @Test
     fun `glyph geometry matches the frozen digest`() {
         val canonical = ('0'..'9').joinToString("\n") { canonicalGlyph(it) }
-        assertEquals("R3B glyph digest changed", expectedGlyphDigest, sha256(canonical))
+        assertEquals("v5 glyph digest changed", expectedGlyphDigest, sha256(canonical))
 
         // A transposed (y,x) point is a different glyph, so the golden digest must reject it too.
         val transposed = ('0'..'9').joinToString("\n") { canonicalGlyph(it, transpose = true) }
@@ -104,54 +131,77 @@ class IosDigitsTest {
     }
 
     @Test
-    fun `glyph stroke and point counts round-trip the canonical form`() {
-        assertEquals(10, strokeCounts.size)
+    fun `glyph contour and point counts round-trip the canonical form`() {
+        assertEquals(10, contourCounts.size)
         assertEquals(10, pointCounts.size)
         for (ch in '0'..'9') {
             val glyph = IosDigits.glyph(ch)
-            assertEquals("glyph $ch stroke count", strokeCounts.getValue(ch), glyph.strokes.size)
-            val points = glyph.strokes.sumOf { it.size / 2 }
+            assertEquals("glyph $ch contour count", contourCounts.getValue(ch), glyph.contours.size)
+            val points = glyph.contours.sumOf { it.size / 2 }
             assertEquals("glyph $ch point count", pointCounts.getValue(ch), points)
-            for (stroke in glyph.strokes) {
-                assertEquals("glyph $ch odd stroke", 0, stroke.size % 2)
+            for (contour in glyph.contours) {
+                assertEquals("glyph $ch odd contour", 0, contour.size % 2)
+                assertTrue("glyph $ch short contour", contour.size >= 6)
             }
-            // The canonical form must consume every point exactly once; a dropped or extra point
-            // would change this count and the digest above.
-            val canonicalPoints = canonicalGlyph(ch).substringAfter('|').substringAfter('|')
+        }
+        assertEquals("total point count", 2008, pointCounts.values.sum())
+    }
+
+    @Test
+    fun `glyph coordinates stay inside the cell`() {
+        // The 16 px/unit traced mask quantises its cap row to 1/16 = 0.0625 units, so the measured
+        // top/bottom row lands at 56.94 rather than exactly 57.0. Keep a 0.05-unit guard (56.95)
+        // and require the ink to actually reach the cap instead of hiding a short glyph.
+        val capLimit = IosDigits.CAP_HEIGHT - 0.05f
+        for (ch in '0'..'9') {
+            val glyph = IosDigits.glyph(ch)
+            var maxY = 0f
+            for (contour in glyph.contours) {
+                for (i in contour.indices step 2) {
+                    val x = contour[i]
+                    val y = contour[i + 1]
+                    maxY = maxOf(maxY, y)
+                    assertTrue("glyph $ch x=$x is finite", x.isFinite())
+                    assertTrue("glyph $ch y=$y is finite", y.isFinite())
+                    assertTrue("glyph $ch x=$x outside 0..${glyph.width}", x in 0f..glyph.width)
+                    assertTrue("glyph $ch y=$y outside 0..$capLimit", y in 0f..capLimit)
+                }
+            }
+            assertTrue("glyph $ch does not reach the cap (max y $maxY)", maxY >= IosDigits.CAP_HEIGHT - 0.1f)
+        }
+    }
+
+    @Test
+    fun `every glyph has one outer contour with at least three points`() {
+        for (ch in '0'..'9') {
+            val glyph = IosDigits.glyph(ch)
+            assertTrue("glyph $ch has no contours", glyph.contours.isNotEmpty())
+            val outer = glyph.contours.first()
+            assertTrue("glyph $ch outer contour has ${outer.size / 2} points", outer.size / 2 >= 3)
+            // Counters are separate contours: every digit with a contour count above one must have
+            // at least one more closed loop, not a single multi-winding path.
             assertEquals(
-                "glyph $ch canonical point count",
-                pointCounts.getValue(ch),
-                canonicalPoints.split(';').size
+                "glyph $ch counter contours",
+                contourCounts.getValue(ch) - 1,
+                glyph.contours.drop(1).count { it.size / 2 >= 3 }
             )
         }
     }
 
     @Test
-    fun `glyph coordinates stay inside the cell`() {
+    fun `buildPath is one closed even-odd path with every contour`() {
         for (ch in '0'..'9') {
             val glyph = IosDigits.glyph(ch)
-            for (stroke in glyph.strokes) {
-                assertEquals("glyph $ch odd coordinate count", 0, stroke.size % 2)
-                for (i in stroke.indices step 2) {
-                    val x = stroke[i]
-                    val y = stroke[i + 1]
-                    assertTrue("glyph $ch x=$x is finite", x.isFinite())
-                    assertTrue("glyph $ch y=$y is finite", y.isFinite())
-                    assertTrue("glyph $ch x=$x outside 0..${glyph.width}", x in 0f..glyph.width)
-                    assertTrue("glyph $ch y=$y outside 0..${IosDigits.CAP_HEIGHT}", y in 0f..IosDigits.CAP_HEIGHT)
-                }
-            }
-        }
-    }
-
-    @Test
-    fun `every glyph has at least one stroke with two points`() {
-        for (ch in '0'..'9') {
-            val glyph = IosDigits.glyph(ch)
-            assertTrue("glyph $ch has no strokes", glyph.strokes.isNotEmpty())
+            val path = IosDigits.buildPath(glyph, 0f, 0f)
+            assertEquals("glyph $ch fill type", Path.FillType.EVEN_ODD, path.fillType)
+            val bounds = RectF()
+            path.computeBounds(bounds, true)
+            assertTrue("glyph $ch path is empty", bounds.width() > 0f && bounds.height() > 0f)
+            assertTrue("glyph $ch opens outside the cell", bounds.left >= 0f && bounds.top >= 0f)
+            assertTrue("glyph $ch right ${bounds.right}", bounds.right <= glyph.width + 0.001f)
             assertTrue(
-                "glyph $ch has no two-point stroke",
-                glyph.strokes.any { it.size >= 4 }
+                "glyph $ch bottom ${bounds.bottom}",
+                bounds.bottom <= IosDigits.CAP_HEIGHT + 0.001f
             )
         }
     }
@@ -176,15 +226,21 @@ class IosDigitsTest {
     }
 
     @Test
-    fun `percentage groups keep an 8 unit margin inside the battery body`() {
+    fun `percentage groups use the measured v5 advances`() {
         val body = IosGeometry.Battery.BODY_W
-        // Measured: 100 + bolt = 137.5 + 5 + 40 = 182.5, i.e. 5.0 units per side (10 total).
+        // Advances 30.91 + 43.81 + 43.81 = 118.53, minus the first/last bearings 5.05 + 3.00
+        // = 110.48 ink; plus the 5-unit gap and 40-unit inline bolt = 155.48.
+        val hundredInk = IosDigits.textInkWidth("100")
         val hundred = IosDigits.groupWidth("100", withBolt = true)
-        // Measured: 69 + bolt = 95.0 + 5 + 40 = 140.0, i.e. 26.25 units per side.
+        // Advances 50.59 + 50.59 = 101.18, minus bearings 3.985 + 3.670 = 93.53 ink;
+        // with the inline bolt 138.53.
+        val sixtyNineInk = IosDigits.textInkWidth("69")
         val sixtyNine = IosDigits.groupWidth("69", withBolt = true)
 
-        assertEquals(182.5f, hundred, 0.01f)
-        assertEquals(140f, sixtyNine, 0.01f)
+        assertEquals(110.48f, hundredInk, 0.01f)
+        assertEquals(155.48f, hundred, 0.01f)
+        assertEquals(93.53f, sixtyNineInk, 0.01f)
+        assertEquals(138.53f, sixtyNine, 0.01f)
         assertTrue("100 + bolt $hundred < body $body", hundred < body)
         assertTrue("100 + bolt $hundred <= body - 8", hundred <= body - 8f)
         assertTrue("69 + bolt $sixtyNine < body $body", sixtyNine < body)

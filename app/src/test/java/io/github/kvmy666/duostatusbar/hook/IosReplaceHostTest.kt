@@ -1667,6 +1667,50 @@ class IosReplaceHostTest {
         assertEquals(settings.iosTransform(IosIconKind.BATTERY, 79f), after)
     }
 
+    @Test
+    fun `percent inside reaches the live battery visual and defaults off`() {
+        val tree = oplusBatteryTree()
+        val host = host()
+        assertTrue(host.attachIn(tree.strip, null))
+
+        // Default OFF keeps today's battery: the visual carries no inside percentage.
+        assertEquals(false, host.visualForTest(tree.leaf)?.percentInside)
+
+        host.refreshSettings(ModuleSettings.DEFAULT.copy(iosPercentInside = true))
+
+        assertEquals(true, host.visualForTest(tree.leaf)?.percentInside)
+
+        host.refreshSettings(ModuleSettings.DEFAULT)
+
+        assertEquals(
+            "turning it back off restores today's battery",
+            false,
+            host.visualForTest(tree.leaf)?.percentInside
+        )
+        host.teardown()
+    }
+
+    @Test
+    fun `an extra host refreshed through the shared settings gets percent inside`() {
+        val mainTree = oplusBatteryTree()
+        val extraTree = oplusBatteryTree()
+        val main = host()
+        val extra = host(isMainBar = false, surface = "shade header")
+        assertTrue(main.attachIn(mainTree.strip, null))
+        assertTrue(extra.attachIn(extraTree.strip, null))
+        assertEquals(false, extra.visualForTest(extraTree.leaf)?.percentInside)
+
+        refreshIosHostSettings(
+            ModuleSettings.DEFAULT.copy(iosPercentInside = true),
+            listOf(main, extra)
+        )
+
+        assertEquals(true, main.visualForTest(mainTree.leaf)?.percentInside)
+        assertEquals(true, extra.visualForTest(extraTree.leaf)?.percentInside)
+        main.teardown()
+        extra.teardown()
+    }
+
     private companion object {
         val NEXT_NAMED_ID = AtomicInteger(0x7f0f0000.toInt())
     }

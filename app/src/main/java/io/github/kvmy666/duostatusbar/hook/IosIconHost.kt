@@ -148,6 +148,7 @@ private class IosIconReport(
     val kind: IosIconKind,
     val view: View,
     val family: IosSkinFamily,
+    val mechanism: IosReplaceMechanism,
     val cellSlot: Int = -1,
     val subId: Int = 0,
     var reason: String = "not-adopted",
@@ -618,11 +619,14 @@ internal class IosIconHost(
     /** The battery/Wi-Fi/cellular stock icons currently in the strip. Read-only. */
     private fun stockInventory(): List<StockIcon> {
         val inventory = strip?.let { StockIconKey.inventory(it) } ?: emptyList()
-        return inventory.filter {
-            it.kind == StockIconKind.BATTERY ||
-                it.kind == StockIconKind.WIFI ||
-                it.kind == StockIconKind.CELLULAR
-        }
+        return mappedCellInventory(
+            inventory.filter {
+                it.kind == StockIconKind.BATTERY ||
+                    it.kind == StockIconKind.WIFI ||
+                    it.kind == StockIconKind.CELLULAR
+            },
+            ::subIdOf
+        )
     }
 
     /**
@@ -915,15 +919,18 @@ internal class IosIconHost(
                 )
             )
         }
-        return icons
+        return mappedCellInventory(icons, ::subIdOf)
     }
 
     private fun attachOverStrip(name: String?, strip: ViewGroup, parent: FrameLayout): Boolean {
-        val inventory = StockIconKey.inventory(strip).filter {
-            it.kind == StockIconKind.BATTERY ||
-                it.kind == StockIconKind.WIFI ||
-                it.kind == StockIconKind.CELLULAR
-        }
+        val inventory = mappedCellInventory(
+            StockIconKey.inventory(strip).filter {
+                it.kind == StockIconKind.BATTERY ||
+                    it.kind == StockIconKind.WIFI ||
+                    it.kind == StockIconKind.CELLULAR
+            },
+            ::subIdOf
+        )
         if (inventory.isEmpty()) {
             logOnce.once("no-icons") {
                 L.i("iOS host: no battery/Wi-Fi/cellular icon in the strip - stock icons untouched")
@@ -1048,6 +1055,11 @@ internal class IosIconHost(
             } catch (_: Throwable) {
                 IosSkinPlan(IosSkinFamily.UNKNOWN, IosSkinStrategy.SKIP)
             }
+            val mechanism = try {
+                IosReplacePlanner.planFor(icon.view).mechanism
+            } catch (_: Throwable) {
+                IosReplaceMechanism.SKIP
+            }
             val slot = if (kind == IosIconKind.CELL) {
                 cellIcons.indexOfFirst { it.view === icon.view }.let { if (it >= 0) it else cellIndex }
             } else {
@@ -1058,6 +1070,7 @@ internal class IosIconHost(
                     kind = kind,
                     view = icon.view,
                     family = plan.family,
+                    mechanism = mechanism,
                     cellSlot = slot,
                     subId = subIdOf(icon.view),
                     reason = when {
@@ -1129,7 +1142,7 @@ internal class IosIconHost(
                 append("ios surface=").append(surface)
                 append(' ').append(report.kind.name)
                 append(" family=").append(report.family.name)
-                append(" mech=OVERLAY")
+                append(" mech=").append(report.mechanism.name)
                 append(" state=").append(state)
                 append(" slot=").append(slot[0]).append(',').append(slot[1])
                     .append(',').append(slot[2]).append(',').append(slot[3])
@@ -1444,7 +1457,8 @@ internal class IosIconHost(
             saver = saver,
             plugged = reading.plugged,
             status = reading.status,
-            tint = tint
+            tint = tint,
+            percentInside = settings.iosPercentInside
         )
     }
 

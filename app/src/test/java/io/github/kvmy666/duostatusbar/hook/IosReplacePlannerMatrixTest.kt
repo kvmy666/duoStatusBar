@@ -152,6 +152,53 @@ class IosReplacePlannerMatrixTest {
         assertFalse("a named-leaf family must not fall back to the first ImageView", oplus.allowFirstImageView)
     }
 
+    /**
+     * The vivo custom battery is an AOSP `BatteryMeterView` descendant by name only: its drawing leaf
+     * is the custom-drawn `VivoBatteryIconBaseView.onDraw`. The guard runs before the generic AOSP
+     * battery shape, so the plan is the fail-closed SKIP/stock (reason: `vivo-custom-battery`,
+     * IOS-REPLACE-map §4) and never installs an ImageView drawable the custom onDraw would ignore.
+     */
+    @Test
+    fun `vivo custom battery is fail-closed to SKIP before the generic AOSP battery shape`() {
+        for (name in listOf(
+            "VivoBatteryMeterView",
+            "VIVOBATTERYMETERVIEW",
+            "vivoBatteryMeterView",
+            "VivoBatteryIconBaseView"
+        )) {
+            val plan = IosReplacePlanner.planFor(
+                IosSkinFamily.UNKNOWN,
+                name,
+                "battery",
+                StockIconKind.BATTERY
+            )
+            assertEquals(
+                "$name must stay SKIP (reason: vivo-custom-battery)",
+                IosReplaceMechanism.SKIP,
+                plan.mechanism
+            )
+            assertEquals(IosSkinFamily.UNKNOWN, plan.family)
+            assertTrue("$name must not name a leaf", plan.leafIds.isEmpty())
+            assertFalse("$name must not use first-ImageView", plan.allowFirstImageView)
+        }
+
+        // The guard is narrow: the measured AOSP/vendor battery shapes keep the generic rule.
+        for (name in listOf("BatteryMeterView", "TrBatteryMeterView", "VendorBatteryMeterView")) {
+            val plan = IosReplacePlanner.planFor(
+                IosSkinFamily.UNKNOWN,
+                name,
+                "battery",
+                StockIconKind.BATTERY
+            )
+            assertEquals(
+                "$name keeps the generic AOSP battery shape",
+                IosReplaceMechanism.IMAGE_DRAWABLE,
+                plan.mechanism
+            )
+            assertTrue("$name keeps the first-ImageView fallback", plan.allowFirstImageView)
+        }
+    }
+
     private fun rows(): List<Row> = buildList {
         // ---------------------------------------------------------------- OxygenOS 16 (V-1 rows 1-4)
         oplus(1, "OxygenOS 16 CPH2747")

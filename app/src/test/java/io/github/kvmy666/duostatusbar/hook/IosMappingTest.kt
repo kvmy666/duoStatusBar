@@ -354,6 +354,21 @@ class IosMappingTest {
     }
 
     @Test
+    fun `two readable signals with one unreadable slot stay stock but one active subscription still draws`() {
+        // Safest mixed-sub edge: the dual plan needs both slots readable, so both stock icons stay.
+        assertEquals(
+            IosCellPlan.None,
+            plan(twoSims, slots = listOf(slot(11), slot(0)))
+        )
+
+        // The same slot list with one active subscription still maps the readable slot and draws it.
+        val p = single(plan(listOf(sig(0, 11, 3)), slots = listOf(slot(11), slot(0))))
+        assertEquals(0, p.slot)
+        assertEquals(11, p.subId)
+        assertEquals(3f, p.level, 0.0001f)
+    }
+
+    @Test
     fun `one sim with no matching slot is none`() {
         assertEquals(
             IosCellPlan.None,

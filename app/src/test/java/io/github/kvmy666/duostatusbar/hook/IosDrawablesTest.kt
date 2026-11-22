@@ -16,6 +16,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlin.math.ceil
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -308,7 +309,8 @@ class IosDrawablesTest {
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
         val bitmap = render(drawable, BATTERY_W, BATTERY_H)
 
-        assertEquals(0, countBackgroundInk(bitmap, 45, 20, 150, 82))
+        val seat = digitSeat("69")
+        assertEquals(0, countBackgroundInk(bitmap, seat[0], seat[1], seat[2], seat[3]))
         val fill = bitmap.getPixel(60, 45)
         assertEquals("stroke seat alpha", 255, Color.alpha(fill))
         assertTrue("stroke seat red ${Color.red(fill)}", Color.red(fill) <= 2)
@@ -322,8 +324,9 @@ class IosDrawablesTest {
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
         val bitmap = render(drawable, BATTERY_W, BATTERY_H)
 
-        // Black tint -> white knockout ink. The "69" strokes sit between x 54 and x 145, y 33..61.
-        val knockouts = countBackgroundInk(bitmap, 45, 20, 150, 82)
+        // Black tint -> white knockout ink. The seat is derived from the v5 advances/bearings.
+        val seat = digitSeat("69")
+        val knockouts = countBackgroundInk(bitmap, seat[0], seat[1], seat[2], seat[3])
         assertTrue("no digit ink inside the body ($knockouts)", knockouts > 100)
     }
 
@@ -377,10 +380,23 @@ class IosDrawablesTest {
         // The large bolt (when the setting is off) is white in the top strip; inside mode puts the
         // small bolt after the digits, so that strip must stay free of white.
         assertEquals(0, countBackgroundInk(bitmap, 60, 4, 135, 18))
-        // The inline bolt sits at x 127..167, y 22..81; it must actually be drawn.
+        // Derive the inline bolt's own box from the measured v4 layout instead of hard-coding a seat.
+        val b = IosGeometry.Battery
+        val group = IosDigits.groupWidth("60", withBolt = true)
+        val left = b.BODY_LEFT + b.BODY_W / 2f - group / 2f
+        val boltLeft = left + IosDigits.textInkWidth("60") + IosDigits.INLINE_BOLT_GAP
+        val boltRight = boltLeft + IosDigits.INLINE_BOLT_W
+        val boltTop = b.BODY_TOP + (b.BODY_H - IosDigits.INLINE_BOLT_H) / 2f
+        val boltBottom = boltTop + IosDigits.INLINE_BOLT_H
         assertTrue(
             "no inline bolt after the digits",
-            countBackgroundInk(bitmap, 130, 25, 165, 78) > 50
+            countBackgroundInk(
+                bitmap,
+                boltLeft.toInt() + 2,
+                boltTop.toInt() + 2,
+                kotlin.math.ceil(boltRight).toInt() - 2,
+                kotlin.math.ceil(boltBottom).toInt() - 2
+            ) > 50
         )
     }
 
@@ -674,6 +690,20 @@ class IosDrawablesTest {
     }
 
     /** Counts near-white opaque pixels in an inclusive-exclusive artboard rectangle. */
+    /** The pixel box that exactly covers [text] when it is centred inside the body. */
+    private fun digitSeat(text: String): IntArray {
+        val b = IosGeometry.Battery
+        val group = IosDigits.groupWidth(text, withBolt = false)
+        val left = b.BODY_LEFT + b.BODY_W / 2f - group / 2f
+        val top = b.BODY_TOP + (b.BODY_H - IosDigits.CAP_HEIGHT) / 2f
+        return intArrayOf(
+            left.toInt(),
+            top.toInt(),
+            ceil(left + group).toInt(),
+            ceil(top + IosDigits.CAP_HEIGHT).toInt()
+        )
+    }
+
     private fun countBackgroundInk(
         bitmap: Bitmap,
         x0: Int,

@@ -372,6 +372,84 @@ class IosIconHostTest {
     private fun oneSimReading(): CellReading =
         twoSimReading().copy(samples = twoSimReading().samples.take(1), defaultSub = 5)
 
+    /** The QS/shade reading: two mapped SIMs, with the measured subscription ids 2 (data) and 1. */
+    private fun qsTwoSimReading(): CellReading {
+        val base = twoSimReading()
+        return base.copy(
+            samples = listOf(
+                base.samples[0].copy(subscriptionId = 2),
+                base.samples[1].copy(subscriptionId = 1)
+            ),
+            defaultSub = 2
+        )
+    }
+
+    private class QsCellTree(
+        val root: FrameLayout,
+        val strip: LinearLayout,
+        val carriers: List<NamedView>,
+        val first: OplusModernStatusBarMobileViewWithSub,
+        val firstGroup: NamedGroup,
+        val firstSignal: NamedImageView,
+        val second: OplusModernStatusBarMobileViewWithSub,
+        val secondGroup: NamedGroup,
+        val secondSignal: NamedImageView
+    )
+
+    /**
+     * R3 A2: the visible QS/shade strip. Twelve carrier-group rows (`mobile_in`/`mobile_out`/
+     * `mobile_roaming`, all `getSubId()` = 0 and with no `mobile_signal` leaf) share the strip with the
+     * two measured OPLUS SIM outers (subIds 2 and 1).
+     */
+    private fun qsCellTree(): QsCellTree {
+        val root = FrameLayout(context)
+        val strip = LinearLayout(context)
+
+        val carriers = ArrayList<NamedView>()
+        for (i in 0 until 12) {
+            val name = when (i % 3) {
+                0 -> "mobile_in"
+                1 -> "mobile_out"
+                else -> "mobile_roaming"
+            }
+            val carrier = NamedView(context, name)
+            carriers.add(carrier)
+            strip.addView(carrier, LinearLayout.LayoutParams(10, 20))
+        }
+
+        fun mobile(sub: Int): Triple<OplusModernStatusBarMobileViewWithSub, NamedGroup, NamedImageView> {
+            val outer = OplusModernStatusBarMobileViewWithSub(context, sub)
+            val group = NamedGroup(context, "mobile_group")
+            val signal = NamedImageView(context, "mobile_signal")
+            outer.addView(group, FrameLayout.LayoutParams(60, 63))
+            group.addView(signal, FrameLayout.LayoutParams(60, 51))
+            strip.addView(outer, LinearLayout.LayoutParams(60, 63))
+            return Triple(outer, group, signal)
+        }
+
+        val (first, firstGroup, firstSignal) = mobile(2)
+        val (second, secondGroup, secondSignal) = mobile(1)
+
+        root.addView(strip, FrameLayout.LayoutParams(300, 63))
+        root.layout(0, 0, 1000, 100)
+        strip.layout(0, 0, 300, 63)
+        carriers.forEachIndexed { index, carrier ->
+            carrier.layout(index * 10, 0, 10 + index * 10, 20)
+        }
+        // Measured OPLUS outers are 0×0; the visible groups carry the size and translation.
+        first.layout(0, 0, 0, 0)
+        firstGroup.layout(0, 0, 60, 63)
+        firstGroup.translationX = 130f
+        firstSignal.layout(2, 6, 62, 57)
+        second.layout(0, 0, 0, 0)
+        secondGroup.layout(0, 0, 60, 63)
+        secondGroup.translationX = 200f
+        secondSignal.layout(2, 6, 62, 57)
+        return QsCellTree(
+            root, strip, carriers, first, firstGroup, firstSignal, second, secondGroup, secondSignal
+        )
+    }
+
     private class CellTree(
         val root: FrameLayout,
         val strip: LinearLayout,
@@ -634,6 +712,29 @@ class IosIconHostTest {
         host.teardown()
         assertEquals(1, tree.root.childCount)
         assertSame(tree.original, tree.battery.icon.drawable)
+    }
+
+    @Test
+    fun `percent inside reaches the rendered battery and defaults off`() {
+        val tree = batteryTree()
+        val created = ArrayList<FakeElement>()
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        val glyph = created[0]
+        assertEquals(
+            false,
+            glyph.renders.last { it.part == IosPart.BATTERY }.percentInside
+        )
+
+        host.refreshSettings(ModuleSettings.DEFAULT.copy(iosPercentInside = true))
+
+        assertTrue(glyph.renders.last { it.part == IosPart.BATTERY }.percentInside)
+
+        host.refreshSettings(ModuleSettings.DEFAULT)
+
+        assertFalse(glyph.renders.last { it.part == IosPart.BATTERY }.percentInside)
+        host.teardown()
     }
 
     // ---- visibility ----
@@ -1079,6 +1180,71 @@ class IosIconHostTest {
         assertTrue(glyph.tornDown > 0)
         assertEquals(1, tree.root.childCount)
         assertFalse(host.attached)
+    }
+
+    // ---- R3 A2: QS/shade carrier rows on the overlay surface ----
+
+    @Test
+    fun `a QS strip with subId-0 carrier rows still draws one BOTH block for the two mapped SIMs`() {
+        val qs = qsCellTree()
+        val created = ArrayList<FakeElement>()
+        val host = host(
+            canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } },
+            batterySource = { null },
+            cellSource = { qsTwoSimReading() }
+        )
+
+        val carrierLayouts = qs.carriers.map { it.layoutParams }
+        assertTrue(host.attachIn(qs.strip, qs.root))
+
+        // A2: the 12 unreadable carrier rows are not part of the plan, so the two SIM slots map.
+        val cellGlyphs = created.filter { it.kind == IosIconKind.CELL }
+        assertEquals("one BOTH block, never two single rows", 1, cellGlyphs.size)
+        val visual = cellGlyphs[0].renders.last { it.part == IosPart.CELL }
+        assertEquals(IosCellMode.DUAL, visual.cellMode)
+        assertEquals(IosCellRole.BOTH, visual.cellRole)
+
+        // Both mapped OPLUS SIMs are replaced; their content groups and every carrier row stay as is.
+        assertEquals(View.INVISIBLE, qs.first.visibility)
+        assertEquals(View.INVISIBLE, qs.second.visibility)
+        assertTrue(qs.firstGroup.visibility == View.VISIBLE && qs.firstSignal.visibility == View.VISIBLE)
+        assertTrue(qs.secondGroup.visibility == View.VISIBLE && qs.secondSignal.visibility == View.VISIBLE)
+        assertTrue(
+            "carrier rows stay stock",
+            qs.carriers.all { it.visibility == View.VISIBLE && it.alpha == 1f }
+        )
+        assertEquals(carrierLayouts, qs.carriers.map { it.layoutParams })
+
+        host.teardown()
+
+        assertEquals(View.VISIBLE, qs.first.visibility)
+        assertEquals(View.VISIBLE, qs.second.visibility)
+        assertTrue(
+            "carrier rows are untouched on teardown",
+            qs.carriers.all { it.visibility == View.VISIBLE && it.alpha == 1f }
+        )
+        assertEquals(carrierLayouts, qs.carriers.map { it.layoutParams })
+    }
+
+    @Test
+    fun `the QS overlay dump reports exactly the two mapped CELL lines`() {
+        val qs = qsCellTree()
+        val host = host(
+            batterySource = { null },
+            cellSource = { qsTwoSimReading() }
+        )
+        assertTrue(host.attachIn(qs.strip, qs.root))
+
+        val cells = host.diagnosticLines().filter { " CELL " in it }
+        assertEquals(2, cells.size)
+        assertEquals(
+            "only the two mapped SIM slots may be reported",
+            setOf("2", "1"),
+            cells.map { it.substringAfter("subId=").trim() }.toSet()
+        )
+        assertTrue("no carrier row may leak into the dump", cells.none { it.contains("subId=-") })
+
+        host.teardown()
     }
 
     // ---- replaced surface, attach retry, invisible slots ----

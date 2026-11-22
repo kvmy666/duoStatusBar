@@ -236,18 +236,17 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 reporter.report(ctx, stage, iosSettings)
                 return@guard
             }
-            // Leaving iOS mode restores its stock icons before the Duo path runs. When no iOS host was
-            // ever created this is a no-op, so the existing path stays byte-identical. `isActive` also
-            // covers a boot where the order was activated before any host could attach.
-            if (iosMainHost != null || iosExtraHosts.isNotEmpty() || IosIconOrder.isActive) {
-                iosTeardown(next)
-            }
+            // C11: decide the action before touching the live iOS attachment. An unreachable provider
+            // reads as DEFAULT (owner NONE), and the old order tore the iOS host down for that - exactly
+            // the "unreachable looks like off" regression. A live iOS host counts as an element here so
+            // the existing keep-and-retry branch also protects it.
+            val iosLive = iosMainHost != null || iosExtraHosts.isNotEmpty() || IosIconOrder.isActive
             val action = settingsApplyAction(
                 stage,
                 override != null,
                 DuoSettingsClient.providerUnreachable,
                 DuoSettingsClient.servedFromBridge,
-                host?.duo != null
+                host?.duo != null || iosLive
             )
             if (next.owner == BarOwner.NONE && action == SettingsApplyAction.KEEP_UNREACHABLE) {
                 // The unreachable read is ModuleSettings.DEFAULT; applying it would visually reset the
@@ -257,6 +256,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 scheduleSettingsReread()
                 reporter.report(ctx, stage, null)
                 return@guard
+            }
+            // Leaving iOS mode restores its stock icons before the Duo path runs. When no iOS host was
+            // ever created this is a no-op, so the existing path stays byte-identical. `isActive` also
+            // covers a boot where the order was activated before any host could attach. A reachable
+            // off/other-owner answer still tears down exactly as before.
+            if (iosLive && !keepIosOnUnreachable(next.owner, action)) {
+                iosTeardown(next)
             }
             commitFeatures(stage, snapshot, override, next)
             if (!next.duoRuntime) {
@@ -1452,7 +1458,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             if (now - lastIosExtraAttachAt < IOS_EXTRA_ATTACH_MIN_MS) return
             lastIosExtraAttachAt = now
             val kg = ensureIosExtra(iosCtx, "keyguard bar")
-            if (!kg.attachedIn(shade)) kg.attachSurface("keyguard bar", shade, "system_icons")
+            if (!kg.attachedUsableIn(shade)) kg.attachSurface("keyguard bar", shade, "system_icons")
             val header = shadeHeader
             val headerHost = ensureIosExtra(iosCtx, "shade header")
             val headerAttached = header != null && attachIosShadeHeader(header)
@@ -1511,7 +1517,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val host = ensureIosExtra(ctx, "shade header")
             // A live host on this window already owns the header surface; attaching again would tear
             // it down and rebuild it on every shade layout pass (iOS-LAG).
-            if (host.attachedIn(header)) return true
+            if (host.attachedUsableIn(header)) return true
             // This header had no attachable strip a moment ago: do not re-resolve it on every pass.
             val now = SystemClock.uptimeMillis()
             if (header === iosHeaderFailed && now - iosHeaderFailedAt < IOS_HEADER_RETRY_MS) return false
@@ -1549,7 +1555,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         return try {
             // A separate surface from the notification header: both strips can be live in one shade.
             val host = ensureIosExtra(ctx, "qs header")
-            if (host.attachedIn(window)) {
+            if (host.attachedUsableIn(window)) {
                 iosShadeGate.noteSuccess()
                 return true
             }
@@ -1937,3 +1943,13 @@ internal fun refreshIosHostSettings(settings: ModuleSettings, hosts: Iterable<Io
         }
     }
 }
+
+/**
+ * FIX 1 / C11: a settings apply that only failed because the provider was unreachable must not restore
+ * the stock iOS icons. The snapshot then still says [BarOwner.NONE] (the default), so the owner alone
+ * cannot tell "unreachable" apart from "the user switched iOS off"; the decision action can.
+ *
+ * Pure, so the order in `settingsApply` is pinned without an Android/SystemUI seam.
+ */
+internal fun keepIosOnUnreachable(owner: BarOwner, action: SettingsApplyAction): Boolean =
+    owner == BarOwner.NONE && action == SettingsApplyAction.KEEP_UNREACHABLE

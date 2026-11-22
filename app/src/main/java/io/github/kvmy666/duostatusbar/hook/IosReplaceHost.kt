@@ -420,6 +420,18 @@ internal class IosReplaceHost(
     }
 
     /**
+     * True while this attachment lives under [root] *and* its strip is still usable (shown, non-zero).
+     *
+     * The callers used [attachedIn] alone, so a host stuck on a hidden/zero-area copy short-circuited
+     * before the re-target path in [attachSurface] could move it to the visible copy (A1). A composed
+     * overlay host keeps its own usability handling, so it keeps the existing [IosIconHost] answer.
+     */
+    internal fun attachedUsableIn(root: View): Boolean {
+        composed?.let { return it.attachedIn(root) }
+        return attachedIn(root) && stripUsable(strip)
+    }
+
+    /**
      * True when [stripId] resolves under [root] and the strip has a replaceable plan or an overlay
      * parent. Read-only; any failure is "not attachable" (rule 5).
      */
@@ -798,6 +810,9 @@ internal class IosReplaceHost(
             logOnce.once("no-icons:$name") {
                 L.i("iOS replace ${name ?: "main bar"}: no battery/Wi-Fi/cellular icon - stock icons untouched")
             }
+            // A5.3: a strip with no recognised icon (e.g. an id-less Compose leaf) used to vanish from
+            // the dump entirely. Keep one compact stock line so a user report is diagnosable.
+            recordNoIcons()
             return false
         }
         logCellSubIds(inventory)
@@ -988,7 +1003,9 @@ internal class IosReplaceHost(
         iconReports.clear()
         val mapped = mappedCells(inventory)
         var cellIndex = 0
-        for (icon in inventory) {
+        // A2/A5.3: the QS dump must describe the two mapped SIMs, not the 12 subId-0 carrier rows that
+        // share the same strip. BATTERY/WIFI are unchanged; only the CELL entries are filtered.
+        for (icon in effectiveInventory(inventory)) {
             val kind = iosKindOf(icon.kind) ?: continue
             val plan = planForSafe(icon.view)
             val cellSlot = if (kind == IosIconKind.CELL) {
@@ -1053,6 +1070,14 @@ internal class IosReplaceHost(
         IosDiagnostics.recordAttempt(
             surface,
             listOf("ios surface=$surface state=stock reason=no-strip")
+        )
+    }
+
+    /** A strip that resolved but carries no recognised icon still gets one honest stock line (A5.3). */
+    private fun recordNoIcons() {
+        IosDiagnostics.recordAttempt(
+            surface,
+            listOf("ios surface=$surface state=stock reason=no-icons")
         )
     }
 
@@ -2023,7 +2048,8 @@ internal class IosReplaceHost(
             saver = saver,
             plugged = reading.plugged,
             status = reading.status,
-            tint = tint
+            tint = tint,
+            percentInside = settings.iosPercentInside
         )
     }
 

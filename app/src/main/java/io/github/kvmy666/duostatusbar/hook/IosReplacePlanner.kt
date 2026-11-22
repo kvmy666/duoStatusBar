@@ -108,6 +108,14 @@ internal object IosReplacePlanner {
             // is one the decoded AOSP/OEM trees prove (IOS-REPLACE-map §1-§3): an OPLUS/HyperOS-shaped
             // named ImageView leaf, an AOSP `*BatteryMeterView` whose first ImageView is the drawing
             // leaf, or an opaque Compose/stat icon. Anything with no proven shape stays SKIP/stock.
+            //
+            // Fail closed first for the vivo custom battery (reason: vivo-custom-battery). Its outer
+            // name contains `BatteryMeterView`, but the drawing leaf is the custom-drawn
+            // `VivoBatteryIconBaseView`, not the AOSP `mBatteryIconView` Drawable. The generic shape
+            // below would install a drawable the custom onDraw never paints while the stock battery
+            // stays visible; map §4 keeps vivo battery SKIP/stock.
+            if (kind == StockIconKind.BATTERY && isVivoCustomBattery(cls)) return skip(family)
+
             val composeBattery = id == "battery_composable_view" ||
                 (cls.contains("composeview") &&
                     (id?.contains("battery") == true || kind == StockIconKind.BATTERY))
@@ -211,6 +219,15 @@ internal object IosReplacePlanner {
             IosSkinFamily.UNKNOWN -> skip(family)
         }
     }
+
+    /**
+     * vivo OriginOS's `VivoBatteryMeterView` is an AOSP `BatteryMeterView` descendant, but its leaf
+     * is the custom `VivoBatteryIconBaseView` (a final `onDraw`), not an ImageView + Drawable. Match
+     * only these measured class names, case-insensitively; no resource id is inferred. Reason:
+     * `vivo-custom-battery` (IOS-REPLACE-map §4: vivo battery stays SKIP/stock).
+     */
+    private fun isVivoCustomBattery(cls: String): Boolean =
+        cls.contains("vivobatterymeter") || cls.contains("vivobatteryiconbase")
 
     private fun image(
         family: IosSkinFamily,

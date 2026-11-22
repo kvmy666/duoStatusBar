@@ -179,7 +179,7 @@ class IosGeometryParityTest {
     }
 
     @Test
-    fun `IosDigits artboard repeats every glyph stroke and the inline bolt`() {
+    fun `IosDigits artboard repeats every filled contour and the inline bolt`() {
         val artboard = Regex(
             "<Artboard[^>]*name=\"IosDigits\"[^>]*>(.*?)</Artboard>",
             RegexOption.DOT_MATCHES_ALL
@@ -189,42 +189,55 @@ class IosGeometryParityTest {
         assertTrue(tag.contains("x=\"0\" y=\"220\" width=\"630\" height=\"160\""))
         val body = artboard!!.groupValues[1]
         var shapes = 0
+        var offset = 10f
         for (ch in '0'..'9') {
             val glyph = IosDigits.glyph(ch)
-            for (i in glyph.strokes.indices) {
-                val stroke = glyph.strokes[i]
-                val shape = Regex(
-                    "<Shape[^>]*name=\"digit${ch}s$i\"[^>]*>(.*?)</Shape>",
-                    RegexOption.DOT_MATCHES_ALL
-                ).find(body)
-                assertNotNull("digit$ch stroke $i", shape)
-                val shapeBody = shape!!.groupValues[1]
+            val shape = Regex(
+                "<Shape x=\"([-0-9.]+)\" y=\"([-0-9.]+)\" name=\"digit$ch\"[^>]*>(.*?)</Shape>",
+                RegexOption.DOT_MATCHES_ALL
+            ).find(body)
+            assertNotNull("digit$ch shape", shape)
+            assertEquals("digit$ch offset x", offset, shape!!.groupValues[1].toFloat(), 0.01f)
+            assertEquals("digit$ch offset y", 10f, shape.groupValues[2].toFloat(), 0.001f)
+            val shapeBody = shape.groupValues[3]
+            // One closed PointsPath per contour: the first is the outer edge, the rest are counters.
+            val paths = Regex(
+                "<PointsPath isClosed=\"true\" name=\"Path[0-9]+\">(.*?)</PointsPath>",
+                RegexOption.DOT_MATCHES_ALL
+            ).findAll(shapeBody).toList()
+            assertEquals("digit$ch contour count", glyph.contours.size, paths.size)
+            for (i in glyph.contours.indices) {
+                val contour = glyph.contours[i]
                 val vertices = Regex("<StraightVertex x=\"([-0-9.]+)\" y=\"([-0-9.]+)\"")
-                    .findAll(shapeBody).toList()
-                assertEquals("digit$ch stroke $i vertex count", stroke.size / 2, vertices.size)
+                    .findAll(paths[i].groupValues[1]).toList()
+                assertEquals("digit$ch contour $i vertex count", contour.size / 2, vertices.size)
                 for (v in vertices.indices) {
                     assertEquals(
-                        "digit$ch stroke $i vertex $v x",
-                        stroke[v * 2],
+                        "digit$ch contour $i vertex $v x",
+                        contour[v * 2],
                         vertices[v].groupValues[1].toFloat(),
                         0.001f
                     )
                     assertEquals(
-                        "digit$ch stroke $i vertex $v y",
-                        stroke[v * 2 + 1],
+                        "digit$ch contour $i vertex $v y",
+                        contour[v * 2 + 1],
                         vertices[v].groupValues[2].toFloat(),
                         0.001f
                     )
                 }
-                assertTrue("digit$ch stroke $i is open", !shapeBody.contains("isClosed=\"true\""))
-                val strokeTag = Regex("<Stroke[^>]*name=\"Stroke\"[^>]*>").find(shapeBody)!!.value
-                assertTrue("digit$ch stroke $i thickness", strokeTag.contains("thickness=\"10.5\""))
-                assertTrue("digit$ch stroke $i cap", strokeTag.contains("cap=\"round\""))
-                assertTrue("digit$ch stroke $i join", strokeTag.contains("join=\"round\""))
-                shapes++
             }
+            assertTrue(
+                "digit$ch has an even-odd fill",
+                shapeBody.contains("<Fill fillRule=\"evenOdd\" name=\"Fill\">")
+            )
+            assertTrue(
+                "digit$ch fill is white",
+                shapeBody.contains("colorValue=\"FFFFFFFF\"")
+            )
+            shapes++
+            offset += glyph.advance
         }
-        assertEquals(18, shapes)
+        assertEquals(10, shapes)
         val inline = Regex(
             "<Shape[^>]*name=\"inlineBoltSample\"[^>]*>(.*?)</Shape>",
             RegexOption.DOT_MATCHES_ALL

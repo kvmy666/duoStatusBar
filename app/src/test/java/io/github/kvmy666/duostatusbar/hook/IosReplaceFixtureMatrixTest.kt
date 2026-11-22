@@ -1,10 +1,12 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.app.Activity
 import android.content.Context
 import android.content.res.Resources
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -15,14 +17,18 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -98,12 +104,16 @@ class IosReplaceFixtureMatrixTest {
         override fun getResources(): Resources = fake ?: super.getResources()
     }
 
-    open class NamedGroup(context: Context, entry: String) : FrameLayout(context) {
+    open class NamedGroup(context: Context, entry: String?) : FrameLayout(context) {
         private var fake: Resources? = null
 
         init {
-            id = NEXT_NAMED_ID.getAndIncrement()
-            fake = FakeResources(context.resources, mapOf(id to entry))
+            if (entry == null) {
+                id = View.NO_ID
+            } else {
+                id = NEXT_NAMED_ID.getAndIncrement()
+                fake = FakeResources(context.resources, mapOf(id to entry))
+            }
         }
 
         override fun getResources(): Resources = fake ?: super.getResources()
@@ -145,7 +155,7 @@ class IosReplaceFixtureMatrixTest {
 
     class SingleBindableStatusBarComposeIconView(
         context: Context,
-        entry: String,
+        entry: String?,
         private val sub: Int
     ) : NamedGroup(context, entry) {
         fun getSubId(): Int = sub
@@ -153,6 +163,26 @@ class IosReplaceFixtureMatrixTest {
 
     private class SingleBindableStatusBarIconView(context: Context) :
         NamedFrameLayout(context, "wifi_combo")
+
+    /** HyperOS older (vayu) / AOSP-shaped classes: the UNKNOWN-family leaf-swap path. */
+    private class StatusBarWifiView(context: Context) : NamedFrameLayout(context, "wifi_combo")
+
+    class StatusBarMobileView(context: Context, private val sub: Int) :
+        NamedFrameLayout(context, "mobile_combo") {
+        fun getSubId(): Int = sub
+    }
+
+    /** vivo OriginOS: the outer is an AOSP `BatteryMeterView` descendant with a custom-drawn leaf. */
+    private class VivoBatteryMeterView(context: Context) : NamedFrameLayout(context, "battery")
+
+    /** vivo's real battery leaf has no id; the AOSP battery shape would grab it as the first ImageView. */
+    private class VivoBatteryIconBaseView(context: Context) : ImageView(context)
+
+    /** vivo's named mobile setter leaf: an ImageView with the measured `mobile_signal` id. */
+    private class VivoMobileSignal(context: Context) : NamedImageView(context, "mobile_signal")
+
+    /** Samsung One UI: `wifi_signal` sits inside a `wifi_iconset` FrameLayout that must stay visible. */
+    private class WifiIconSet(context: Context) : NamedGroup(context, "wifi_iconset")
 
     // ------------------------------------------------------------------------------- shared trees
 
@@ -177,11 +207,12 @@ class IosReplaceFixtureMatrixTest {
 
     private fun host(
         surface: String = "fixture",
+        isMainBar: Boolean = true,
         cellSource: (Context) -> CellReading = { noCellReading() }
     ): IosReplaceHost = IosReplaceHost(
         context = context,
         classLoader = null,
-        isMainBar = true,
+        isMainBar = isMainBar,
         surface = surface,
         batterySource = { IosBatteryReading(50, false, 0) },
         cellSource = cellSource,
@@ -221,6 +252,17 @@ class IosReplaceFixtureMatrixTest {
         airplane = false
     )
 
+    private fun twoSimReading(firstSub: Int = 1, secondSub: Int = 2): CellReading = CellReading(
+        samples = listOf(sample(0, firstSub, 3), sample(1, secondSub, 2)),
+        count = 4,
+        defaultRaw = 3,
+        defaultMaxIndex = 4,
+        defaultDots = 3,
+        defaultSub = firstSub,
+        defaultSrc = SignalMapping.SRC_PER_SUB,
+        airplane = false
+    )
+
     private fun sample(slot: Int, subId: Int, dots: Int): CellSample = CellSample(
         slot = slot,
         subscriptionId = subId,
@@ -234,6 +276,57 @@ class IosReplaceFixtureMatrixTest {
         src = SignalMapping.SRC_PER_SUB,
         airplane = false
     )
+
+    /** One keyguard/shade-style `system_icons` strip with a battery, Wi-Fi and one SIM. */
+    private class SurfaceIcons(
+        val root: FrameLayout,
+        val strip: NamedGroup,
+        val batteryLeaf: NamedImageView,
+        val wifiLeaf: NamedImageView,
+        val mobileLeaf: NamedImageView,
+        val batteryOriginal: Drawable,
+        val wifiOriginal: Drawable,
+        val mobileOriginal: Drawable
+    )
+
+    private fun surfaceIcons(): SurfaceIcons {
+        val root = windowRoot()
+        val strip = NamedGroup(root.context, "system_icons")
+
+        val battery = BatteryMeterView(root.context)
+        val batteryLeaf = NamedImageView(root.context, "battery_icon")
+        val batteryOriginal = ColorDrawable(Color.RED)
+        batteryLeaf.setImageDrawable(batteryOriginal)
+        battery.addView(batteryLeaf, FrameLayout.LayoutParams(79, 39))
+
+        val wifi = ModernStatusBarWifiView(root.context)
+        val wifiLeaf = NamedImageView(root.context, "wifi_signal")
+        val wifiOriginal = ColorDrawable(Color.GREEN)
+        wifiLeaf.setImageDrawable(wifiOriginal)
+        wifi.addView(wifiLeaf, FrameLayout.LayoutParams(24, 24))
+
+        val mobile = ModernStatusBarMobileViewWithSub(root.context, 4)
+        val mobileLeaf = NamedImageView(root.context, "mobile_signal")
+        val mobileOriginal = ColorDrawable(Color.CYAN)
+        mobileLeaf.setImageDrawable(mobileOriginal)
+        mobile.addView(mobileLeaf, FrameLayout.LayoutParams(20, 20))
+
+        strip.addView(battery, LinearLayout.LayoutParams(80, 48))
+        strip.addView(wifi, LinearLayout.LayoutParams(24, 24))
+        strip.addView(mobile, LinearLayout.LayoutParams(20, 20))
+        root.addView(strip, FrameLayout.LayoutParams(300, 50))
+        strip.layout(0, 0, 300, 50)
+        battery.layout(0, 0, 80, 48)
+        batteryLeaf.layout(0, 0, 79, 39)
+        wifi.layout(100, 0, 124, 24)
+        wifiLeaf.layout(0, 0, 24, 24)
+        mobile.layout(140, 0, 160, 20)
+        mobileLeaf.layout(0, 0, 20, 20)
+        return SurfaceIcons(
+            root, strip, batteryLeaf, wifiLeaf, mobileLeaf,
+            batteryOriginal, wifiOriginal, mobileOriginal
+        )
+    }
 
     // ------------------------------------------------------------------------------- fixtures
 
@@ -739,7 +832,545 @@ class IosReplaceFixtureMatrixTest {
         assertSame(original, leaf.drawable)
     }
 
+    // --------------------------------------------------------------------- Revision-2 coverage
+
+    @Test
+    fun `hyperos older StatusBarWifiView and StatusBarMobileView replace leaves and leave the battery stock`() {
+        val tree = tree()
+        val battery = MiuiBatteryMeterView(context)
+        val batteryLeaf = NamedImageView(context, "battery_image").apply {
+            setImageDrawable(ColorDrawable(Color.YELLOW))
+            visibility = View.GONE
+        }
+        val batteryOriginal = batteryLeaf.drawable
+        battery.addView(batteryLeaf, FrameLayout.LayoutParams(0, 0))
+
+        val wifi = StatusBarWifiView(context)
+        val wifiLeaf = NamedImageView(context, "wifi_signal").apply {
+            setImageDrawable(ColorDrawable(Color.GREEN))
+        }
+        val wifiOriginal = wifiLeaf.drawable
+        val wifiActivity = NamedImageView(context, "wifi_activity").apply {
+            setImageDrawable(ColorDrawable(Color.GRAY))
+        }
+        val wifiActivityOriginal = wifiActivity.drawable
+        wifi.addView(wifiLeaf, FrameLayout.LayoutParams(24, 24))
+        wifi.addView(wifiActivity, FrameLayout.LayoutParams(6, 6))
+
+        val mobile = StatusBarMobileView(context, 7)
+        val mobileLeaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        val mobileOriginal = mobileLeaf.drawable
+        val mobileType = NamedImageView(context, "mobile_type").apply {
+            setImageDrawable(ColorDrawable(Color.MAGENTA))
+        }
+        val mobileTypeOriginal = mobileType.drawable
+        mobile.addView(mobileLeaf, FrameLayout.LayoutParams(20, 20))
+        mobile.addView(mobileType, FrameLayout.LayoutParams(6, 6))
+
+        tree.strip.addView(battery, LinearLayout.LayoutParams(100, 60))
+        tree.strip.addView(wifi, LinearLayout.LayoutParams(24, 24))
+        tree.strip.addView(mobile, LinearLayout.LayoutParams(20, 20))
+        tree.layout()
+        battery.layout(0, 0, 100, 60)
+        batteryLeaf.layout(0, 0, 0, 0)
+        wifi.layout(110, 0, 134, 24)
+        wifiLeaf.layout(0, 0, 24, 24)
+        wifiActivity.layout(18, 18, 24, 24)
+        mobile.layout(140, 0, 160, 20)
+        mobileLeaf.layout(0, 0, 20, 20)
+        mobileType.layout(14, 14, 20, 20)
+
+        assertEquals(
+            IosReplaceMechanism.LEAF_DRAW,
+            IosReplacePlanner.planFor(battery).mechanism
+        )
+        assertEquals(
+            IosReplaceMechanism.IMAGE_DRAWABLE,
+            IosReplacePlanner.planFor(wifi).mechanism
+        )
+        assertEquals(
+            IosReplaceMechanism.IMAGE_DRAWABLE,
+            IosReplacePlanner.planFor(mobile).mechanism
+        )
+
+        val host = host(cellSource = { oneSimReading(7) })
+        assertTrue(host.attachIn(tree.strip, tree.root))
+        // The battery has no sized Miui leaf, so it stays stock (named reason "no-leaf"); one record
+        // each for Wi-Fi and cellular, and no overlay draws an icon twice.
+        assertEquals(2, host.recordCountForTest())
+        assertEquals(
+            setOf(IosIconKind.WIFI, IosIconKind.CELL),
+            host.recordKindsForTest().toSet()
+        )
+        assertSame(batteryOriginal, batteryLeaf.drawable)
+        assertEquals(View.GONE, batteryLeaf.visibility)
+        assertTrue(wifiLeaf.drawable is IosWifiDrawable)
+        assertTrue(mobileLeaf.drawable is IosCellDrawable)
+        assertEquals(0, wifiActivity.drawable.alpha)
+        assertEquals(0, mobileType.drawable.alpha)
+        assertEquals(0, countCanvasViews(tree.root))
+
+        host.teardown()
+        assertSame(batteryOriginal, batteryLeaf.drawable)
+        assertSame(wifiOriginal, wifiLeaf.drawable)
+        assertSame(wifiActivityOriginal, wifiActivity.drawable)
+        assertSame(mobileOriginal, mobileLeaf.drawable)
+        assertSame(mobileTypeOriginal, mobileType.drawable)
+
+        assertNoThrash(
+            host,
+            attach = { host.attachIn(tree.strip, tree.root) },
+            teardown = { host.teardown() },
+            stock = {
+                assertSame(batteryOriginal, batteryLeaf.drawable)
+                assertSame(wifiOriginal, wifiLeaf.drawable)
+                assertSame(wifiActivityOriginal, wifiActivity.drawable)
+                assertSame(mobileOriginal, mobileLeaf.drawable)
+                assertSame(mobileTypeOriginal, mobileType.drawable)
+                assertEquals(0, countCanvasViews(tree.root))
+            }
+        )
+    }
+
+    @Test
+    fun `vivo generic wifi and VivoMobileSignal replace their leaves and restore exactly`() {
+        val tree = tree()
+        val wifi = ModernStatusBarWifiView(context)
+        val wifiLeaf = NamedImageView(context, "wifi_signal").apply {
+            setImageDrawable(ColorDrawable(Color.GREEN))
+        }
+        val wifiOriginal = wifiLeaf.drawable
+        val wifiActivity = NamedImageView(context, "wifi_activity").apply {
+            setImageDrawable(ColorDrawable(Color.GRAY))
+        }
+        val wifiActivityOriginal = wifiActivity.drawable
+        wifi.addView(wifiLeaf, FrameLayout.LayoutParams(24, 24))
+        wifi.addView(wifiActivity, FrameLayout.LayoutParams(6, 6))
+
+        val mobile = ModernStatusBarMobileViewWithSub(context, 9)
+        val mobileLeaf = VivoMobileSignal(context).apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        val mobileOriginal = mobileLeaf.drawable
+        val mobileType = NamedImageView(context, "mobile_type").apply {
+            setImageDrawable(ColorDrawable(Color.MAGENTA))
+        }
+        val mobileTypeOriginal = mobileType.drawable
+        mobile.addView(mobileLeaf, FrameLayout.LayoutParams(20, 20))
+        mobile.addView(mobileType, FrameLayout.LayoutParams(6, 6))
+
+        tree.strip.addView(wifi, LinearLayout.LayoutParams(24, 24))
+        tree.strip.addView(mobile, LinearLayout.LayoutParams(20, 20))
+        tree.layout()
+        wifi.layout(0, 0, 24, 24)
+        wifiLeaf.layout(0, 0, 24, 24)
+        wifiActivity.layout(18, 18, 24, 24)
+        mobile.layout(30, 0, 50, 20)
+        mobileLeaf.layout(0, 0, 20, 20)
+        mobileType.layout(14, 14, 20, 20)
+
+        assertEquals(
+            IosReplaceMechanism.IMAGE_DRAWABLE,
+            IosReplacePlanner.planFor(wifi).mechanism
+        )
+        assertEquals(
+            IosReplaceMechanism.IMAGE_DRAWABLE,
+            IosReplacePlanner.planFor(mobile).mechanism
+        )
+        assertEquals(listOf("mobile_signal"), IosReplacePlanner.planFor(mobile).leafIds)
+
+        val host = host(cellSource = { oneSimReading(9) })
+        assertTrue(host.attachIn(tree.strip, tree.root))
+        assertEquals(2, host.recordCountForTest())
+        assertTrue(wifiLeaf.drawable is IosWifiDrawable)
+        assertTrue(mobileLeaf.drawable is IosCellDrawable)
+        assertEquals(0, wifiActivity.drawable.alpha)
+        assertEquals(0, mobileType.drawable.alpha)
+        assertEquals(0, countCanvasViews(tree.root))
+
+        host.teardown()
+        assertSame(wifiOriginal, wifiLeaf.drawable)
+        assertSame(wifiActivityOriginal, wifiActivity.drawable)
+        assertSame(mobileOriginal, mobileLeaf.drawable)
+        assertSame(mobileTypeOriginal, mobileType.drawable)
+
+        assertNoThrash(
+            host,
+            attach = { host.attachIn(tree.strip, tree.root) },
+            teardown = { host.teardown() },
+            stock = {
+                assertSame(wifiOriginal, wifiLeaf.drawable)
+                assertSame(wifiActivityOriginal, wifiActivity.drawable)
+                assertSame(mobileOriginal, mobileLeaf.drawable)
+                assertSame(mobileTypeOriginal, mobileType.drawable)
+                assertEquals(0, countCanvasViews(tree.root))
+            }
+        )
+    }
+
+    /**
+     * R3 A5.1: `VivoBatteryMeterView` is an AOSP `BatteryMeterView` descendant by name only; its
+     * drawing leaf is the custom `VivoBatteryIconBaseView.onDraw`. The planner's `vivo-custom-battery`
+     * guard therefore returns SKIP before the generic AOSP battery shape (map §4: vivo battery is
+     * SKIP/stock), so the host has nothing to adopt and leaves the exact stock drawing untouched.
+     */
+    @Test
+    fun `vivo custom battery is not adopted by the generic AOSP battery shape`() {
+        val tree = tree()
+        val battery = VivoBatteryMeterView(context)
+        val customLeaf = VivoBatteryIconBaseView(context).apply {
+            setImageDrawable(ColorDrawable(Color.RED))
+        }
+        val original = customLeaf.drawable
+        battery.addView(customLeaf, FrameLayout.LayoutParams(84, 56))
+        tree.strip.addView(battery, LinearLayout.LayoutParams(100, 60))
+        tree.layout()
+        battery.layout(0, 0, 100, 60)
+        customLeaf.layout(0, 0, 84, 56)
+
+        // The measured leaf row is SKIP, and the vendor outer now resolves to the same SKIP.
+        assertEquals(
+            IosReplaceMechanism.SKIP,
+            IosReplacePlanner.planFor(
+                IosSkinFamily.UNKNOWN,
+                "VivoBatteryIconBaseView",
+                "battery",
+                StockIconKind.BATTERY
+            ).mechanism
+        )
+        assertEquals(
+            IosReplaceMechanism.SKIP,
+            IosReplacePlanner.planFor(battery).mechanism
+        )
+
+        val host = host()
+        // A SKIP-only strip never adopts anything, restores exactly and never thrashes over 20 cycles.
+        assertNoThrash(
+            host,
+            expectedAttach = false,
+            attach = { host.attachIn(tree.strip, null) },
+            teardown = { host.teardown() },
+            stock = {
+                assertSame(original, customLeaf.drawable)
+                assertEquals(View.VISIBLE, customLeaf.visibility)
+            }
+        )
+
+        assertFalse(
+            "a SKIP-only vivo battery strip has nothing to adopt",
+            host.attachIn(tree.strip, null)
+        )
+        val records = host.recordCountForTest()
+        assertEquals("the stock battery must never be blanked", View.VISIBLE, customLeaf.visibility)
+        host.teardown()
+        assertSame("the SKIP path leaves the exact stock drawable", original, customLeaf.drawable)
+        assertEquals("vivo battery must stay stock (map §4)", 0, records)
+        IosDiagnostics.clearAttempt("fixture")
+    }
+
+    @Test
+    fun `samsung wifi_iconset named wifi and mobile replace without hiding the ancestor`() {
+        val tree = tree()
+        val wifi = ModernStatusBarWifiView(context)
+        val iconSet = WifiIconSet(context)
+        val wifiLeaf = NamedImageView(context, "wifi_signal").apply {
+            setImageDrawable(ColorDrawable(Color.GREEN))
+        }
+        val wifiOriginal = wifiLeaf.drawable
+        val vowifi = NamedImageView(context, "vowifi").apply {
+            setImageDrawable(ColorDrawable(Color.GRAY))
+        }
+        val vowifiOriginal = vowifi.drawable
+        iconSet.addView(wifiLeaf, FrameLayout.LayoutParams(24, 24))
+        iconSet.addView(vowifi, FrameLayout.LayoutParams(8, 8))
+        wifi.addView(iconSet, FrameLayout.LayoutParams(32, 24))
+
+        val mobile = ModernStatusBarMobileViewWithSub(context, 3)
+        val mobileLeaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        val mobileOriginal = mobileLeaf.drawable
+        val mobileType = NamedImageView(context, "mobile_type").apply {
+            setImageDrawable(ColorDrawable(Color.MAGENTA))
+        }
+        val mobileTypeOriginal = mobileType.drawable
+        mobile.addView(mobileLeaf, FrameLayout.LayoutParams(20, 20))
+        mobile.addView(mobileType, FrameLayout.LayoutParams(6, 6))
+
+        tree.strip.addView(wifi, LinearLayout.LayoutParams(32, 24))
+        tree.strip.addView(mobile, LinearLayout.LayoutParams(20, 20))
+        tree.layout()
+        wifi.layout(0, 0, 32, 24)
+        iconSet.layout(0, 0, 32, 24)
+        wifiLeaf.layout(0, 0, 24, 24)
+        vowifi.layout(24, 16, 32, 24)
+        mobile.layout(40, 0, 60, 20)
+        mobileLeaf.layout(0, 0, 20, 20)
+        mobileType.layout(14, 14, 20, 20)
+
+        val wifiPlan = IosReplacePlanner.planFor(wifi)
+        assertEquals(IosReplaceMechanism.IMAGE_DRAWABLE, wifiPlan.mechanism)
+        assertEquals(listOf("wifi_signal"), wifiPlan.leafIds)
+        assertTrue("vowifi is suppressed only when it is a sibling", "vowifi" in wifiPlan.siblingIds)
+
+        val host = host(cellSource = { oneSimReading(3) })
+        assertTrue(host.attachIn(tree.strip, tree.root))
+        assertEquals(2, host.recordCountForTest())
+        assertTrue(wifiLeaf.drawable is IosWifiDrawable)
+        assertTrue(mobileLeaf.drawable is IosCellDrawable)
+        // `wifi_iconset` is the leaf's ancestor: it must never be hidden or blanked.
+        assertEquals(View.VISIBLE, iconSet.visibility)
+        assertEquals(0, vowifi.drawable.alpha)
+        assertEquals(0, mobileType.drawable.alpha)
+        assertEquals(0, countCanvasViews(tree.root))
+
+        host.teardown()
+        assertSame(wifiOriginal, wifiLeaf.drawable)
+        assertSame(vowifiOriginal, vowifi.drawable)
+        assertSame(mobileOriginal, mobileLeaf.drawable)
+        assertSame(mobileTypeOriginal, mobileType.drawable)
+        assertEquals(View.VISIBLE, iconSet.visibility)
+
+        assertNoThrash(
+            host,
+            attach = { host.attachIn(tree.strip, tree.root) },
+            teardown = { host.teardown() },
+            stock = {
+                assertSame(wifiOriginal, wifiLeaf.drawable)
+                assertSame(vowifiOriginal, vowifi.drawable)
+                assertSame(mobileOriginal, mobileLeaf.drawable)
+                assertSame(mobileTypeOriginal, mobileType.drawable)
+                assertEquals(View.VISIBLE, iconSet.visibility)
+                assertEquals(0, countCanvasViews(tree.root))
+            }
+        )
+    }
+
+    @Test
+    fun `id-less compose battery and icon stay stock or use the approved overlay`() {
+        val tree = tree()
+        val battery = ComposeView(context, null)
+        val icon = SingleBindableStatusBarComposeIconView(context, null, 1)
+        tree.strip.addView(battery, LinearLayout.LayoutParams(55, 27))
+        tree.strip.addView(icon, LinearLayout.LayoutParams(52, 49))
+        tree.layout()
+        battery.layout(0, 0, 55, 27)
+        icon.layout(100, 0, 152, 49)
+
+        val host = host(cellSource = { oneSimReading(1) })
+        val attached = host.attachIn(tree.strip, tree.root)
+        if (attached) {
+            // If a future kind path reaches an id-less Compose host, only the approved overlay may own
+            // it: INVISIBLE keeps the slot, one Canvas element draws, and restore puts the views back.
+            assertEquals(View.INVISIBLE, battery.visibility)
+            assertEquals(View.INVISIBLE, icon.visibility)
+            assertTrue("one overlay per Compose host", countCanvasViews(tree.root) >= 1)
+            host.teardown()
+        }
+        assertEquals(View.VISIBLE, battery.visibility)
+        assertEquals(View.VISIBLE, icon.visibility)
+        assertEquals(1f, battery.alpha, 0f)
+        assertEquals(1f, icon.alpha, 0f)
+        assertEquals(0, countCanvasViews(tree.root))
+
+        assertNoThrash(
+            host,
+            expectedAttach = attached,
+            attach = { host.attachIn(tree.strip, tree.root) },
+            teardown = { host.teardown() },
+            stock = {
+                assertEquals(View.VISIBLE, battery.visibility)
+                assertEquals(View.VISIBLE, icon.visibility)
+                assertEquals(0, countCanvasViews(tree.root))
+            }
+        )
+    }
+
+    @Test
+    fun `QS strip with twelve carrier rows and two mapped SIMs adopts one BOTH block`() {
+        val tree = tree()
+        val first = ModernStatusBarMobileViewWithSub(context, 1)
+        val second = ModernStatusBarMobileViewWithSub(context, 2)
+        val firstLeaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.GREEN))
+        }
+        val secondLeaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.RED))
+        }
+        val firstOriginal = firstLeaf.drawable
+        val secondOriginal = secondLeaf.drawable
+        first.addView(firstLeaf, FrameLayout.LayoutParams(20, 20))
+        second.addView(secondLeaf, FrameLayout.LayoutParams(20, 20))
+        tree.strip.addView(first, LinearLayout.LayoutParams(20, 20))
+        tree.strip.addView(second, LinearLayout.LayoutParams(20, 20))
+
+        val carriers = ArrayList<NamedView>()
+        for (i in 0 until 12) {
+            val name = when (i % 3) {
+                0 -> "mobile_in"
+                1 -> "mobile_out"
+                else -> "mobile_roaming"
+            }
+            val carrier = NamedView(context, name)
+            carriers.add(carrier)
+            tree.strip.addView(carrier, LinearLayout.LayoutParams(10, 20))
+        }
+        tree.layout()
+        first.layout(0, 0, 20, 20)
+        second.layout(30, 0, 50, 20)
+        firstLeaf.layout(0, 0, 20, 20)
+        secondLeaf.layout(0, 0, 20, 20)
+        carriers.forEachIndexed { index, carrier ->
+            carrier.layout(60 + index * 10, 0, 70 + index * 10, 20)
+        }
+        val otherParams = second.layoutParams
+        val otherWidth = otherParams.width
+        val otherHeight = otherParams.height
+
+        val host = host(cellSource = { twoSimReading(1, 2) })
+        assertTrue(host.attachIn(tree.strip, tree.root))
+        assertEquals(1, host.recordCountForTest())
+        assertEquals(IosCellRole.BOTH, host.cellRoleForTest(first))
+        assertNull(host.cellRoleForTest(second))
+        assertEquals(View.GONE, second.visibility)
+        assertEquals(0, second.layoutParams.width)
+        assertTrue("carrier-group rows stay stock", carriers.all { it.visibility == View.VISIBLE })
+        assertEquals(0, countCanvasViews(tree.root))
+
+        host.teardown()
+        assertSame(firstOriginal, firstLeaf.drawable)
+        assertSame(secondOriginal, secondLeaf.drawable)
+        assertEquals(View.VISIBLE, second.visibility)
+        assertEquals(otherWidth, second.layoutParams.width)
+        assertEquals(otherHeight, second.layoutParams.height)
+        assertTrue("carrier-group rows are untouched", carriers.all { it.visibility == View.VISIBLE })
+
+        assertNoThrash(
+            host,
+            attach = { host.attachIn(tree.strip, tree.root) },
+            teardown = { host.teardown() },
+            stock = {
+                assertSame(firstOriginal, firstLeaf.drawable)
+                assertSame(secondOriginal, secondLeaf.drawable)
+                assertEquals(View.VISIBLE, second.visibility)
+                assertEquals(otherWidth, second.layoutParams.width)
+                assertTrue(carriers.all { it.visibility == View.VISIBLE })
+                assertEquals(0, countCanvasViews(tree.root))
+            }
+        )
+    }
+
+    @Test
+    fun `keyguard system_icons strip replaces and restores every icon without a double draw`() {
+        val surface = surfaceIcons()
+        val host = host(
+            surface = "keyguard",
+            isMainBar = false,
+            cellSource = { oneSimReading(4) }
+        )
+        assertTrue(host.attachSurface("keyguard", surface.root, "system_icons"))
+        assertEquals(3, host.recordCountForTest())
+        assertEquals(
+            setOf(IosIconKind.BATTERY, IosIconKind.WIFI, IosIconKind.CELL),
+            host.recordKindsForTest().toSet()
+        )
+        assertTrue(surface.batteryLeaf.drawable is IosBatteryDrawable)
+        assertTrue(surface.wifiLeaf.drawable is IosWifiDrawable)
+        assertTrue(surface.mobileLeaf.drawable is IosCellDrawable)
+        assertEquals(0, countCanvasViews(surface.root))
+
+        host.teardown()
+        assertSame(surface.batteryOriginal, surface.batteryLeaf.drawable)
+        assertSame(surface.wifiOriginal, surface.wifiLeaf.drawable)
+        assertSame(surface.mobileOriginal, surface.mobileLeaf.drawable)
+        assertEquals(0, countCanvasViews(surface.root))
+
+        assertNoThrash(
+            host,
+            attach = { host.attachSurface("keyguard", surface.root, "system_icons") },
+            teardown = { host.teardown() },
+            stock = {
+                assertSame(surface.batteryOriginal, surface.batteryLeaf.drawable)
+                assertSame(surface.wifiOriginal, surface.wifiLeaf.drawable)
+                assertSame(surface.mobileOriginal, surface.mobileLeaf.drawable)
+                assertEquals(0, countCanvasViews(surface.root))
+            }
+        )
+    }
+
+    @Test
+    fun `shade system_icons strip replaces and restores every icon without a double draw`() {
+        val surface = surfaceIcons()
+        val host = host(
+            surface = "shade header",
+            isMainBar = false,
+            cellSource = { oneSimReading(4) }
+        )
+        assertTrue(host.attachSurface("shade header", surface.root, "system_icons"))
+        assertEquals(3, host.recordCountForTest())
+        assertTrue(surface.batteryLeaf.drawable is IosBatteryDrawable)
+        assertTrue(surface.wifiLeaf.drawable is IosWifiDrawable)
+        assertTrue(surface.mobileLeaf.drawable is IosCellDrawable)
+        assertEquals(0, countCanvasViews(surface.root))
+
+        host.teardown()
+        assertSame(surface.batteryOriginal, surface.batteryLeaf.drawable)
+        assertSame(surface.wifiOriginal, surface.wifiLeaf.drawable)
+        assertSame(surface.mobileOriginal, surface.mobileLeaf.drawable)
+        assertEquals(0, countCanvasViews(surface.root))
+
+        assertNoThrash(
+            host,
+            attach = { host.attachSurface("shade header", surface.root, "system_icons") },
+            teardown = { host.teardown() },
+            stock = {
+                assertSame(surface.batteryOriginal, surface.batteryLeaf.drawable)
+                assertSame(surface.wifiOriginal, surface.wifiLeaf.drawable)
+                assertSame(surface.mobileOriginal, surface.mobileLeaf.drawable)
+                assertEquals(0, countCanvasViews(surface.root))
+            }
+        )
+    }
+
     // ------------------------------------------------------------------------------- helpers
+
+    /**
+     * R3 A5.1 no-thrash: a normal open/close is spaced by seconds, so 20 attach/teardown cycles must
+     * all adopt, restore the exact stock state and never fill the surface guard.
+     */
+    private fun assertNoThrash(
+        host: IosReplaceHost,
+        expectedAttach: Boolean = true,
+        attach: () -> Boolean,
+        teardown: () -> Unit,
+        stock: () -> Unit
+    ) {
+        // A focused test may have just attached/teardown'd; space the loop from that event too.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        repeat(20) { cycle ->
+            assertEquals("cycle $cycle: attach", expectedAttach, attach())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+            teardown()
+            assertFalse("cycle $cycle: the guard tripped", host.isThrashTrippedForTest())
+            assertEquals("cycle $cycle: records left behind", 0, host.recordCountForTest())
+            stock()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        }
+    }
+
+    /**
+     * A root whose strip can report `isShown` like a real keyguard/shade surface. The Activity is
+     * retained by the content view, so the window stays alive for the whole fixture.
+     */
+    private fun windowRoot(): FrameLayout {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity)
+        activity.setContentView(root)
+        root.layout(0, 0, 1000, 200)
+        return root
+    }
 
     private fun countCanvasViews(view: View): Int {
         var count = if (view is IosCanvasView) 1 else 0

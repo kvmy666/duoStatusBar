@@ -192,10 +192,11 @@ internal object IosGlyphRenderer {
     /**
      * Draws the percentage and the optional inline bolt inside the battery body.
      *
-     * The digits are centred on the body centre at [IosDigits.CAP_HEIGHT]; the group width includes
-     * the inline bolt only when [IosVisual.boltOpacity] is positive. The stroke paint is reused for
-     * every glyph, and the caller's [fill] is reused for the inline bolt (one paint, not one per
-     * digit). The colour is [IosDigits.backgroundColour] so the ink matches the bar behind the icon.
+     * The digits are FILLED OUTLINES (v4): each glyph is one even-odd [Path], so its counters are
+     * holes, not strokes. They are drawn last — after the charged fill and the neutral remainder —
+     * in [IosDigits.backgroundColour] so they knock out of both layers. Glyph origins use the
+     * measured per-digit advance and bearing; the group is centred on the body. The caller's [fill]
+     * is reused for the inline bolt (one paint, not one per digit).
      */
     private fun drawPercentInside(
         canvas: Canvas,
@@ -213,22 +214,19 @@ internal object IosGlyphRenderer {
         val textTop = centreY - IosDigits.CAP_HEIGHT / 2f
         val hasBolt = v.boltOpacity > 0f
         val textWidth = IosDigits.textInkWidth(text)
-        val group = textWidth + if (hasBolt) IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W else 0f
+        val group = IosDigits.groupWidth(text, withBolt = hasBolt)
         val left = centreX - group / 2f
 
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = IosDigits.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
+        val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
             color = withAlpha(colour, 1f, alpha)
         }
-        for ((index, ch) in text.withIndex()) {
+        // [left] is the first glyph's ink edge, so undo its bearing to get the pen origin.
+        var pen = left - IosDigits.bearing(IosDigits.glyph(text.first()))
+        for (ch in text) {
             val glyph = IosDigits.glyph(ch)
-            val originX = left + index * IosDigits.ADVANCE + (IosDigits.ADVANCE - glyph.width) / 2f
-            for (path in IosDigits.buildPaths(glyph, originX, textTop)) {
-                canvas.drawPath(path, stroke)
-            }
+            canvas.drawPath(IosDigits.buildPath(glyph, pen + IosDigits.bearing(glyph), textTop), ink)
+            pen += glyph.advance
         }
 
         if (hasBolt) {
