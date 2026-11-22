@@ -14,6 +14,8 @@ Two deliberate safety choices are documented here because they look surprising:
 * More than 80% of test classes selected is ``FULL``.  At that point the Gradle
   filter saves little, and one missed edge would cost a release.  Class count is
   used (not timing) because it is deterministic and needs no stored measurements.
+* A changed main file with no dependent test is ``FULL``.  Running only the
+  always-run set would silently report a pass for code nothing exercised.
 
 stdout carries only the decision (``FULL`` or ``--tests=...`` lines, or one JSON
 object).  Diagnostics go to stderr.
@@ -93,6 +95,8 @@ DECL_RE = re.compile(
     r"companion|fun)\s+)*(?P<kind>class|interface|object|typealias|fun|val|var)\s+"
     r"(?:<[^>{]*>\s*)?(?:[\w.<>?]+\.)?(?P<name>[A-Za-z_]\w*)"
 )
+FQN_REF_RE = re.compile(re.escape(REPO_PREFIX) + r"(?:\.\w+)+")
+PACKAGE_IMPORT_RE = re.compile(r"(?m)^\s*(?:package|import)\b[^\n]*")
 BUILTINS = set("""Any Array Boolean Byte Char CharSequence Double Float Int Long Map MutableMap
     MutableList MutableSet Nothing Number Pair Set String Triple Unit List Collection Iterable
     Sequence Comparable Throwable Exception RuntimeException Object""".split())
@@ -139,6 +143,16 @@ def _code(text):
     return _strip_literals(_strip_comments(text))
 
 
+def _qualified_refs(code):
+    """Fully-qualified repo references used in code, without an import.
+
+    Package and import clauses are removed first: their own ``io.github...``
+    prefix names a package, not a single file, and resolving it would select
+    every sibling.
+    """
+    return set(FQN_REF_RE.findall(PACKAGE_IMPORT_RE.sub(" ", code)))
+
+
 class Index:
     """Repository dependency index, rebuilt per run."""
 
@@ -165,7 +179,11 @@ def build_index(root):
     index.main_set = set(index.main_files)
 
     type_name_files = defaultdict(set)
-    value_name_files = defaultdict(set)
+    # Top-level values/functions keyed by (package, name).  Kotlin resolves
+    # these without an import only inside their own package, and upper-case
+    # consts (TAG, REVEAL_MS) collide across unrelated packages, so the package
+    # is part of the key instead of a global name map.
+    symbols_by_pkg = defaultdict(set)
     package_files = defaultdict(set)
     fqn_to_file = {}
     code_by_file = {}
@@ -192,10 +210,10 @@ def build_index(root):
                 continue
             if kind in ("class", "interface", "object", "typealias"):
                 type_name_files[name].add(rel)
-            elif not indent and name[:1].islower():
-                # Top-level lowercase values/functions.  Upper-case consts
-                # (TAG, REVEAL_MS) collide across unrelated files.
-                value_name_files[name].add(rel)
+            elif not indent:
+                # Any top-level value or function, lower- or upper-case.  The
+                # package in the key keeps same-named consts apart.
+                symbols_by_pkg[(pkg, name)].add(rel)
             fqn_to_file["%s.%s" % (pkg, name)] = rel
 
         stem = os.path.splitext(os.path.basename(rel))[0]
@@ -221,12 +239,13 @@ def build_index(root):
             fqn = match.group(1)
             if fqn.startswith(REPO_PREFIX):
                 deps.update(resolve_import(fqn))
+        for fqn in _qualified_refs(code):
+            deps.update(resolve_import(fqn))
         for ident in set(IDENT_RE.findall(code)):
             if ident in BUILTINS:
                 continue
             files = set(type_name_files.get(ident, ()))
-            if not files and ident[:1].islower():
-                files = set(value_name_files.get(ident, ()))
+            files.update(symbols_by_pkg.get((pkg, ident), ()))
             for candidate in files:
                 if index.package_of.get(candidate) == pkg:
                     deps.add(candidate)
@@ -277,12 +296,13 @@ def build_index(root):
         for alias, name in aliases.items():
             if re.search(r"\b%s\b" % re.escape(alias), code):
                 direct.update(resolve_import(name))
+        for name in _qualified_refs(code):
+            direct.update(resolve_import(name))
         for ident in set(IDENT_RE.findall(code)):
             if ident in aliases or ident in BUILTINS:
                 continue
             files = set(type_name_files.get(ident, ()))
-            if not files and ident[:1].islower():
-                files = set(value_name_files.get(ident, ()))
+            files.update(symbols_by_pkg.get((pkg, ident), ()))
             for candidate in files:
                 # A cross-package Kotlin reference must be imported; the
                 # import edge above covers it.
@@ -410,6 +430,13 @@ def select(index, changed_paths, statuses=None, explain=False, log=None):
                     "main source not present in the dependency map: %s" % path,
                 )
             dependents = index.tests_by_main.get(path, set())
+            if not dependents:
+                return _result(
+                    "full",
+                    [],
+                    always,
+                    "no test depends on %s; cannot verify it" % path,
+                )
             log("main: %s -> %d dependent test file(s)" % (path, len(dependents)))
             selected.update(dependents)
             continue
@@ -539,7 +566,7 @@ def _exactly_one(items, what):
     return items[0]
 
 
-def _selftest_cases(index):
+def _selftest_cases(index, root):
     def always_set():
         fqns, missing = resolve_always(index)
         assert not missing, "always tests missing: %s" % missing
@@ -623,6 +650,47 @@ def _selftest_cases(index):
         result = select(index, ["app/src/main/AndroidManifest.xml"])
         assert result["mode"] == "full", result["mode"]
 
+    def case_upper_same_package(name, test, symbol):
+        path = main_file(name)
+        result = select(index, [path])
+        assert result["mode"] == "selected", result["reason"]
+        assert test_fqn(test) in result["tests"], (symbol, result["tests"])
+
+    def case_home_setup_upper():
+        case_upper_same_package(
+            "DuoHomeScreen.kt", "HomeSetupGuideTest", "HOME_SETUP_STEP_STRINGS"
+        )
+
+    def case_burn_in_upper():
+        case_upper_same_package("BurnIn.kt", "BurnInTest", "BURN_IN_HOUR_MS")
+
+    def case_action_download_upper():
+        case_upper_same_package(
+            "FeatureSet.kt", "MonitorFeatureFilterTest", "ACTION_DOWNLOAD"
+        )
+
+    def case_surface_qs_upper():
+        case_upper_same_package(
+            "FeatureRegistry.kt", "SurfaceFeatureTest", "SURFACE_QS"
+        )
+
+    def case_uncovered_main_full():
+        path = main_file("DuoApp.kt")
+        result = select(index, [path])
+        assert result["mode"] == "full", result
+        assert "no test depends on" in result["reason"], result["reason"]
+
+    def case_qualified_ref():
+        main_path = main_file("StockIconInventory.kt")
+        test_path = test_rel("StockIconKeyTest.kt")
+        refs = _qualified_refs(_code(_read_text(os.path.join(root, test_path))))
+        assert any(r.endswith(".settings.StockIconInventory") for r in refs), (
+            "the real fully-qualified reference moved: %s" % sorted(refs)
+        )
+        result = select(index, [main_path])
+        assert result["mode"] == "selected", result["reason"]
+        assert test_fqn("StockIconKeyTest") in result["tests"], result["tests"]
+
     return [
         ("changed DeviceFacts.kt selects DeviceFactsTest", case_device_facts),
         ("changed res/values/strings.xml forces FULL", case_res_full),
@@ -635,6 +703,17 @@ def _selftest_cases(index):
         ("empty changed list forces FULL", case_empty_full),
         ("test Java helper forces FULL", case_test_helper_full),
         ("AndroidManifest.xml forces FULL", case_manifest_full),
+        ("DuoHomeScreen.kt selects HomeSetupGuideTest (upper-case const)",
+         case_home_setup_upper),
+        ("BurnIn.kt selects BurnInTest (upper-case const)", case_burn_in_upper),
+        ("FeatureSet.kt selects MonitorFeatureFilterTest (upper-case const)",
+         case_action_download_upper),
+        ("FeatureRegistry.kt selects SurfaceFeatureTest (upper-case const)",
+         case_surface_qs_upper),
+        ("unchanged test map for an uncovered main file forces FULL",
+         case_uncovered_main_full),
+        ("StockIconInventory.kt resolves its fully-qualified test reference",
+         case_qualified_ref),
     ]
 
 
@@ -646,7 +725,7 @@ def run_selftest(root):
         print("FAIL: cannot build dependency map: %s" % exc)
         return 1
 
-    cases = _selftest_cases(index)
+    cases = _selftest_cases(index, root)
     passed = 0
     for name, case in cases:
         try:
