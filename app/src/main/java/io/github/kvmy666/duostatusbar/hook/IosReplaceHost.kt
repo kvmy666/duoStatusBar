@@ -22,6 +22,44 @@ import java.util.Collections
 import java.util.IdentityHashMap
 import kotlin.math.roundToInt
 
+/** R5M: the free cell->battery gap must be at least this wide before a mobile_type label is moved. */
+private const val LABEL_MIN_GAP_PX = 28
+
+/**
+ * R5M runner: horizontal translation (px) that moves a `mobile_type`-anchored label canvas into the
+ * free horizontal gap between the data cell and the battery.
+ *
+ * The stock boxes are `[left, top, width, height]` in the overlay layer's coordinates. The shift is
+ * zero when either box is unknown, when the type box does not overlap the cell box horizontally
+ * (1 px tolerance keeps a flush edge from counting as an overlap), or when the free gap is narrower
+ * than [LABEL_MIN_GAP_PX]. The label canvas centre is its laid-out centre when it has one, otherwise
+ * the stock `mobile_type` centre.
+ */
+internal fun labelShiftPx(
+    typeBox: IntArray,
+    cellBox: IntArray,
+    cellOuterBox: IntArray,
+    batteryBox: IntArray,
+    canvasLeft: Float,
+    canvasWidth: Int
+): Float {
+    if (typeBox[2] <= 0 || cellBox[2] <= 0 || batteryBox[2] <= 0) return 0f
+    val typeLeft = typeBox[0]
+    val typeRight = typeBox[0] + typeBox[2]
+    val cellLeft = cellBox[0]
+    val cellRight = cellBox[0] + cellBox[2]
+    if (typeLeft >= cellRight - 1 || typeRight <= cellLeft + 1) return 0f
+    val gapLeft = maxOf(cellRight, cellOuterBox[0] + cellOuterBox[2])
+    val gapRight = batteryBox[0]
+    if (gapRight - gapLeft < LABEL_MIN_GAP_PX) return 0f
+    val center = if (canvasWidth > 0) {
+        canvasLeft + canvasWidth / 2f
+    } else {
+        (typeLeft + typeRight) / 2f
+    }
+    return (gapLeft + gapRight) / 2f - center
+}
+
 /**
  * The true in-place replacement host (IOS-REPLACE Phase C2).
  *
@@ -148,7 +186,11 @@ internal class IosReplaceHost(
          * Wi-Fi slot or at the data SIM's own `mobile_type`), never the Wi-Fi glyph. A label is dropped
          * before the glyph path runs and is never reused as a glyph (and vice versa).
          */
-        val labelSlot: Boolean = false
+        val labelSlot: Boolean = false,
+        /** R5M runner: horizontal translation applied to a mobile_type label's overlay canvas. */
+        var labelShift: Float = 0f,
+        var labelGapLeft: Int = 0,
+        var labelGapRight: Int = 0
     ) {
         val drawTarget: View?
             get() = when (mechanism) {
@@ -2821,9 +2863,67 @@ internal class IosReplaceHost(
 
     private fun labelLine(slot: IosWifiSlot.DataType, record: Record): String {
         val (width, height) = labelBoxSize(record)
-        val anchor = if (isMobileType(record.outer)) "cell-type" else "wifi-slot"
+        val mobileType = isMobileType(record.outer)
+        val anchor = if (mobileType) "cell-type" else "wifi-slot"
+        val shift = if (mobileType) {
+            " shift=${record.labelShift.roundToInt()}px " +
+                "gap=${record.labelGapLeft}..${record.labelGapRight}"
+        } else {
+            ""
+        }
         return "ios surface=$surface label state=DataType(${slot.label}) " +
-            "anchor=$anchor:${width}x$height"
+            "anchor=$anchor:${width}x$height$shift"
+    }
+
+    /**
+     * R5M runner: slide only our label canvas into the free cell->battery gap when the stock
+     * `mobile_type` box overlaps the cell leaf. The record stays anchored to `mobile_type` (outer
+     * identity, one WIFI record, CELL blanking unchanged); `translationX` changes drawing only and no
+     * stock view is resized (C2).
+     */
+    private fun updateLabelShift(record: Record) {
+        if (record.kind != IosIconKind.WIFI || !record.labelSlot) return
+        if (!isMobileType(record.outer)) return
+        val overlay = record.overlay ?: return
+        val layer = layer
+        if (layer == null) {
+            overlay.translationX = 0f
+            return
+        }
+        val cellRecord = records.firstOrNull {
+            it.kind == IosIconKind.CELL && isUnder(record.outer, it.outer)
+        }
+        val batteryRecord = records.firstOrNull { it.kind == IosIconKind.BATTERY }
+        if (cellRecord == null || batteryRecord == null) {
+            overlay.translationX = 0f
+            record.labelShift = 0f
+            return
+        }
+        val cellBox = boundsIn(cellRecord.leaf ?: cellRecord.outer, layer)
+        val cellOuterBox = boundsIn(cellRecord.outer, layer)
+        val typeBox = boundsIn(record.outer, layer)
+        val batteryBox = boundsIn(batteryRecord.leaf ?: batteryRecord.outer, layer)
+        val laidOut = overlay.width > 0
+        val shift = labelShiftPx(
+            typeBox = typeBox,
+            cellBox = cellBox,
+            cellOuterBox = cellOuterBox,
+            batteryBox = batteryBox,
+            canvasLeft = if (laidOut) overlay.left.toFloat() else typeBox[0].toFloat(),
+            canvasWidth = if (laidOut) overlay.width else 0
+        )
+        overlay.translationX = shift
+        record.labelShift = shift
+        record.labelGapLeft = maxOf(cellBox[0] + cellBox[2], cellOuterBox[0] + cellOuterBox[2])
+        record.labelGapRight = batteryBox[0]
+        val overlaps = typeBox[0] < cellBox[0] + cellBox[2] - 1 &&
+            typeBox[0] + typeBox[2] > cellBox[0] + 1
+        val gapW = record.labelGapRight - record.labelGapLeft
+        if (overlaps && gapW < LABEL_MIN_GAP_PX) {
+            logOnce.once("label-shift-gap-too-narrow") {
+                L.w("iOS label shift: gap-too-narrow (${gapW}px)")
+            }
+        }
     }
 
     private fun labelAbsentLine(slot: IosWifiSlot.DataType, reason: String): String =
@@ -2867,6 +2967,7 @@ internal class IosReplaceHost(
             isUnder(label.outer, cellRecord.outer) && hasRealBox(label)
         ) {
             applyVisual(label, labelVisualFor(slot, tint))
+            updateLabelShift(label)
             labelReport = labelLine(slot, label)
             return
         }
@@ -2877,6 +2978,7 @@ internal class IosReplaceHost(
         } else {
             null
         }
+        if (moved != null) updateLabelShift(moved)
         labelReport = if (moved != null) {
             labelLine(slot, moved)
         } else {
@@ -2973,7 +3075,18 @@ internal class IosReplaceHost(
                         } else {
                             unionBoundsIn(listOf(record.outer) + record.clusterOuters, layer)
                         }
-                        if (bounds[2] > 0 && bounds[3] > 0) placeOverlay(record, bounds)
+                        if (bounds[2] > 0 && bounds[3] > 0) {
+                            placeOverlay(record, bounds)
+                            if (record.kind == IosIconKind.WIFI && record.labelSlot &&
+                                isMobileType(record.outer)
+                            ) {
+                                updateLabelShift(record)
+                                val slotNow = record.visual?.wifiSlot
+                                if (slotNow is IosWifiSlot.DataType) {
+                                    labelReport = labelLine(slotNow, record)
+                                }
+                            }
+                        }
                     }
                     if (record.mechanism == IosReplaceMechanism.LEAF_DRAW) shiftLeafIfNeeded(record)
                 } catch (_: Throwable) {

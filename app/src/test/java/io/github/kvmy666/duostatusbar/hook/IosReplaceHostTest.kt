@@ -1137,6 +1137,139 @@ class IosReplaceHostTest {
         assertEquals(1f, type.alpha)
     }
 
+    private class MeasuredLabelTree(
+        val root: FrameLayout,
+        val strip: LinearLayout,
+        val mobileOuter: OplusModernStatusBarMobileViewWithSub,
+        val mobileLeaf: NamedImageView,
+        val mobileType: NamedImageView,
+        val batteryOuter: StatBatteryMeterView,
+        val batteryLeaf: NamedImageView
+    )
+
+    /**
+     * The owner's measured OPLUS boxes (`.pm/evidence/r5/report/diagnostics.txt:154-164`):
+     * `mobile_combo` 82x63 at (954,51) with `mobile_signal` 60x51 at (976,57) and `mobile_type` 66x51
+     * at (970,57), a battery at 1102,57 and no Wi-Fi view. The type box almost completely covers the
+     * cell leaf, so without the R5M runner shift the label ink is crossed by the cell bars.
+     *
+     * The parameters let the control test move the type box clear of the cell leaf.
+     */
+    private fun measuredLabelTree(
+        cellWidth: Int = 82,
+        leafLeft: Int = 22,
+        typeLeft: Int = 16,
+        batteryLeft: Int = 1102
+    ): MeasuredLabelTree {
+        val root = FrameLayout(context)
+        val strip = LinearLayout(context)
+        val mobile = OplusModernStatusBarMobileViewWithSub(context, 7)
+        val combo = NamedGroup(context, "mobile_combo")
+        val mobileLeaf = NamedImageView(context, "mobile_signal")
+        mobileLeaf.setImageDrawable(ColorDrawable(Color.CYAN))
+        val mobileType = NamedImageView(context, "mobile_type")
+        mobileType.setImageDrawable(ColorDrawable(Color.MAGENTA))
+        combo.addView(mobileLeaf, FrameLayout.LayoutParams(60, 51))
+        combo.addView(mobileType, FrameLayout.LayoutParams(66, 51))
+        mobile.addView(combo, FrameLayout.LayoutParams(cellWidth, 63))
+
+        val battery = StatBatteryMeterView(context)
+        val batteryLeaf = NamedImageView(context, "battery_icon")
+        batteryLeaf.setImageDrawable(ColorDrawable(Color.RED))
+        battery.addView(batteryLeaf, FrameLayout.LayoutParams(79, 48))
+
+        strip.addView(mobile, LinearLayout.LayoutParams(cellWidth, 63))
+        strip.addView(battery, LinearLayout.LayoutParams(90, 48))
+        root.addView(strip, FrameLayout.LayoutParams(1500, 200))
+        root.layout(0, 0, 1600, 200)
+        strip.layout(0, 0, 1500, 200)
+        mobile.layout(954, 51, 954 + cellWidth, 114)
+        combo.layout(0, 0, cellWidth, 63)
+        mobileLeaf.layout(leafLeft, 6, leafLeft + 60, 57)
+        mobileType.layout(typeLeft, 6, typeLeft + 66, 57)
+        battery.layout(batteryLeft, 57, batteryLeft + 90, 105)
+        batteryLeaf.layout(0, 0, 79, 48)
+        return MeasuredLabelTree(root, strip, mobile, mobileLeaf, mobileType, battery, batteryLeaf)
+    }
+
+    /** R5M: the label stays on `mobile_type` but our canvas moves into the free cell->battery gap. */
+    @Test
+    fun `the mobile_type label shifts into the free cell to battery gap`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = measuredLabelTree()
+        val type = tree.mobileType
+        val typeWidth = type.width
+        val host = host(
+            cellSource = { oneSimReading(7) },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
+        assertTrue("the WIFI record is a label", host.labelSlotForTest())
+        assertSame("anchored to mobile_type", type, host.recordOuterForTest(IosIconKind.WIFI))
+        val overlay = host.overlayForTest(IosIconKind.WIFI)
+        assertNotNull("the label needs an overlay canvas", overlay)
+        val shift = overlay!!.translationX
+        assertTrue("the label canvas must move right (shift=$shift)", shift > 0f)
+
+        val params = overlay.layoutParams as FrameLayout.LayoutParams
+        val width = if (overlay.width > 0) overlay.width else params.width
+        val canvasLeft = if (overlay.width > 0) overlay.left.toFloat() else params.leftMargin.toFloat()
+        assertEquals("the measured type canvas width", 66, width)
+        val labelLeft = canvasLeft + shift
+        val labelRight = labelLeft + width
+        val labelCenter = labelLeft + width / 2f
+        val cellRight = 976f + 60f
+        val batteryLeft = 1102f
+        assertTrue("centre $labelCenter must be in the gap", labelCenter in cellRight..batteryLeft)
+        assertTrue("canvas $labelLeft..$labelRight must clear the cell leaf", labelLeft >= cellRight - 0.5f)
+        assertTrue("canvas must stay left of the battery", labelRight <= batteryLeft + 0.5f)
+        // The drawn label ink is ~42 px wide (R5B): the estimated ink must fit the free gap.
+        assertTrue("label ink left ${labelCenter - 21f}", labelCenter - 21f > cellRight)
+        assertTrue("label ink right ${labelCenter + 21f}", labelCenter + 21f < batteryLeft)
+
+        val line = host.diagnosticLines().first { it.contains(" label ") }
+        assertTrue(line, line.contains("anchor=cell-type:66x51"))
+        assertTrue(line, line.contains("shift=66px"))
+        assertTrue(line, line.contains("gap=1036..1102"))
+
+        // C2: the stock type keeps its size and visibility; only our canvas was translated.
+        assertEquals(typeWidth, type.width)
+        assertEquals(66, type.width)
+        assertEquals(View.VISIBLE, type.visibility)
+
+        host.teardown()
+    }
+
+    /** R5M control: no horizontal overlap means no behaviour change (translation stays zero). */
+    @Test
+    fun `a label that does not overlap the cell keeps zero shift`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = measuredLabelTree(cellWidth = 200, leafLeft = 0, typeLeft = 120, batteryLeft = 1300)
+        val host = host(
+            cellSource = { oneSimReading(7) },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        assertTrue(host.labelSlotForTest())
+        assertSame(tree.mobileType, host.recordOuterForTest(IosIconKind.WIFI))
+        val overlay = host.overlayForTest(IosIconKind.WIFI)
+        assertNotNull(overlay)
+        assertEquals("a non-overlapping type box must not move", 0f, overlay!!.translationX, 0f)
+        val line = host.diagnosticLines().first { it.contains(" label ") }
+        assertTrue(line, line.contains("shift=0px"))
+
+        host.teardown()
+    }
+
     @Test
     fun `a visible stock wifi slot is suppressed under the label and restored on teardown`() {
         IosReadings.resetForTest(

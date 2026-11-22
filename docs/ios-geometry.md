@@ -373,6 +373,12 @@ fraction (0.944 shipped vs 0.874 measured here) and the shorter cell bars are ou
 Honouring the measured plus makes "5G+" width-limited at the slot (a slot constraint, not a geometry
 bug). Owner/device review is required before release.
 
+**R5M runtime shift (device visual still UNVERIFIED).** The label record stays anchored to the data
+SIM's `mobile_type`, but when the stock type box overlaps the cell leaf the host translates only its
+own overlay canvas into the free cell->battery gap (`labelShiftPx`; >=28 px gap, zero shift when the
+boxes do not overlap). No stock view is resized or re-laid out; `mobile_type` keeps its size and
+visibility.
+
 ## Relative sizes and per-kind draw scale
 
 All ratios use the battery body height = 1.0, measured from ref 6 (clock digit cap 30 px union,
