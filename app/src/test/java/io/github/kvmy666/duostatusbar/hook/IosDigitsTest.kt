@@ -167,7 +167,7 @@ class IosDigitsTest {
                     assertTrue("glyph $ch y=$y outside 0..$capLimit", y in 0f..capLimit)
                 }
             }
-            assertTrue("glyph $ch does not reach the cap (max y $maxY)", maxY >= IosDigits.CAP_HEIGHT - 0.1f)
+            assertTrue("glyph $ch does not reach the cap (max y $maxY)", maxY >= 56.94f - 0.001f)
         }
     }
 

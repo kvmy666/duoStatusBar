@@ -244,8 +244,24 @@ class IosGeometryParityTest {
         ).find(body)
         assertNotNull("inline bolt sample", inline)
         val inlineBody = inline!!.groupValues[1]
-        assertEquals(21, Regex("<StraightVertex ").findAll(inlineBody).count())
+        val inlineVertices = Regex("<StraightVertex x=\"([-0-9.]+)\" y=\"([-0-9.]+)\"")
+            .findAll(inlineBody).toList()
+        assertEquals(21, inlineVertices.size)
         assertTrue("inline bolt is closed", inlineBody.contains("isClosed=\"true\""))
+        for (i in 0 until 21) {
+            assertEquals(
+                "inline bolt vertex $i x",
+                IosDigits.BOLT_NORMALIZED[i * 2] * IosDigits.INLINE_BOLT_W,
+                inlineVertices[i].groupValues[1].toFloat(),
+                0.01f
+            )
+            assertEquals(
+                "inline bolt vertex $i y",
+                IosDigits.BOLT_NORMALIZED[i * 2 + 1] * IosDigits.INLINE_BOLT_H,
+                inlineVertices[i].groupValues[2].toFloat(),
+                0.01f
+            )
+        }
     }
 
     @Test

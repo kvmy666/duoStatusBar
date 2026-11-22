@@ -11,7 +11,7 @@ import android.graphics.Path
  * Source: `.pm/ref/out-r3/digit-v4/digits-v5.json` (cap 57, body 100, filled even-odd).
  * 0/1/2/4/5/7/8 are digit-v4 (regular refs +0.55-unit ink). 3/6/9 are rebuilt from the ref-4
  * SHAPE with a Euclidean boundary dilation clamped to the 57-unit cap and tuned to the measured
- * bold in-battery ink area (refs 1/2); the primary acceptance is shape vs ref 4 (0.913-0.961 for
+ * bold in-battery ink area (refs 1/2); the primary acceptance is shape vs ref 4 (0.913-0.963 for
  * 3/6/9, 0.921-0.962 for the rest), with the bold letterform reported as a secondary score.
  * Normalisation: cap match, equal-ink-area weight correction, bbox-centre align.
  * The data below is generated from that JSON by
