@@ -23,6 +23,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The publish steps authenticate with the GH_TOKEN env; no git
+          # credential needs to persist in the checkout.
+          persist-credentials: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -104,22 +108,11 @@ jobs:
           esac
           echo "release notes heading matches tag version: $VERSION"
 
-      - name: Restore Rive CLI 1.9.2
-        id: rive-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.rive/bin/rive
-            ~/.rive/versions/1.9.2/rive
-          key: rive-1.9.2-linux-x64-v1
-
       # The shipped .riv files were produced by 1.8.0. 1.9.2 tightened
       # interpolator validation and rejects the old scene; the scene now uses
-      # hold on its 7 terminal keyframes. Only the download/apt work is skipped
-      # on a hit (GL libs are not needed for `--verify`, as documented by
-      # install.sh — UNVERIFIED on the runner).
+      # hold on its 7 terminal keyframes. Caching an unsigned executable was
+      # rejected, so the CLI always installs.
       - name: Install Rive CLI
-        if: steps.rive-cache.outputs.cache-hit != 'true'
         env:
           CI: '1'
           RIVE_ANALYTICS: 'off'
@@ -135,7 +128,7 @@ jobs:
           set -euo pipefail
           echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
           chmod +x "$HOME/.rive/bin/rive"
-          VERSION="$("$HOME/.rive/bin/rive" --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+          VERSION="$("$HOME/.rive/bin/rive" --version 2>&1 | grep -oE '1\.[0-9]+\.[0-9]+' | head -n 1)"
           if [ "$VERSION" != "1.9.2" ]; then
             echo "::error::expected Rive CLI 1.9.2, got '$VERSION'"
             exit 1

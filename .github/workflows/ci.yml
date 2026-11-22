@@ -89,7 +89,7 @@ jobs:
 
   # The Rive CLI install and scene verification used to sit on the build critical
   # path (24s measured). They are independent of Gradle, so run them in parallel
-  # behind their own cache; the gates themselves are unchanged.
+  # here; the gates themselves are unchanged.
   rive:
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -99,20 +99,12 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Restore Rive CLI 1.9.2
-        id: rive-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.rive/bin/rive
-            ~/.rive/versions/1.9.2/rive
-          key: rive-1.9.2-linux-x64-v1
-
       # The published minimum is 1.9.2; 1.9.1 exits 8 before command dispatch.
-      # Only the download/apt work is skipped on a hit (GL libs are not needed
-      # for `--verify`, as documented by install.sh — UNVERIFIED on the runner).
+      # Caching an unsigned executable was rejected, and running `--verify`
+      # without the GL libraries was unverified, so the CLI always installs.
+      # The install sits in this parallel `rive` job and is not on the PR
+      # critical path, so paying for it every run is acceptable.
       - name: Install Rive CLI
-        if: steps.rive-cache.outputs.cache-hit != 'true'
         env:
           CI: '1'
           RIVE_ANALYTICS: 'off'
@@ -128,7 +120,7 @@ jobs:
           set -euo pipefail
           echo "$HOME/.rive/bin" >> "$GITHUB_PATH"
           chmod +x "$HOME/.rive/bin/rive"
-          VERSION="$("$HOME/.rive/bin/rive" --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+          VERSION="$("$HOME/.rive/bin/rive" --version 2>&1 | grep -oE '1\.[0-9]+\.[0-9]+' | head -n 1)"
           if [ "$VERSION" != "1.9.2" ]; then
             echo "::error::expected Rive CLI 1.9.2, got '$VERSION'"
             exit 1
@@ -150,14 +142,18 @@ jobs:
       - name: Both Rive scenes must verify and match the shipped .riv files
         run: bash tools/check-rive-shipped.sh
 
-  # Fast feedback only: the full `build` job above is the check to require in
-  # branch protection (which is currently absent). This job narrows the unit
-  # suite to the classes reachable from the PR diff and prints FULL whenever the
-  # selector cannot prove its map; it never replaces the full-suite run.
+  # Fast feedback only. Branch protection must require BOTH `build` and `rive`
+  # (the Rive gate is a separate job, so requiring only `build` would let a Rive
+  # regression through); that protection is currently absent. This job narrows
+  # the unit suite to the classes reachable from the PR diff and prints FULL
+  # whenever the selector cannot prove its map; it is advisory — fast feedback
+  # only, never a replacement for the full-suite run.
   pr-selected:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    # Its FULL fail-safe runs the whole suite, and the measured cold full run is
+    # 267s; 8 minutes covers that. The selected path normally finishes in ~1-2 min.
+    timeout-minutes: 8
 
     steps:
       - uses: actions/checkout@v4
