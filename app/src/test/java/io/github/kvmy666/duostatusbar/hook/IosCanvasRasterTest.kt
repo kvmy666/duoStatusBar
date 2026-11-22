@@ -61,6 +61,14 @@ class IosCanvasRasterTest {
 
     private companion object {
         const val SS = 4
+
+        /**
+         * 9 of the 48 renders are exact duplicates: `lightSingle()` equals the light/single/100/normal
+         * evidence state, and the eight `insideEvidenceStates(inside = false)` entries equal evidence
+         * states. Rendering is deterministic, so reuse the bitmap. Cached bitmaps are read-only:
+         * callers only sample pixels and compress them — never mutate or recycle a cached bitmap.
+         */
+        val cache = HashMap<Pair<Prog, Int>, Bitmap>()
     }
 
     @Test
@@ -215,7 +223,10 @@ class IosCanvasRasterTest {
 
     // ----------------------------------------------------------------------------- rendering
 
-    private fun render(prog: Prog, background: Int): Bitmap {
+    private fun render(prog: Prog, background: Int): Bitmap =
+        cache.getOrPut(prog to background) { renderUncached(prog, background) }
+
+    private fun renderUncached(prog: Prog, background: Int): Bitmap {
         val dark = prog.dark
         val s = if (dark) 0.7128f else 0.8893f
         val cellX = (if (dark) 108.8f else 60.3f) - 1f * s
