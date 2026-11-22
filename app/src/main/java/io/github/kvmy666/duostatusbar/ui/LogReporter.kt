@@ -94,7 +94,7 @@ internal fun openGitHubIssue(context: Context, fallback: String, status: String)
             "device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, " +
                 "Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})"
         )
-        append("Attach the diagnostics file from the About section.")
+        append("Attach the log from the About section.")
     }
     val url = "$GITHUB_NEW_ISSUE?body=${Uri.encode(body)}"
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -267,7 +267,7 @@ internal fun shareText(context: Context, report: String) {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, report)
     }
-    context.startActivity(Intent.createChooser(send, "Share diagnostics"))
+    context.startActivity(Intent.createChooser(send, "Share log"))
 }
 
 /**

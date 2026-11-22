@@ -176,28 +176,90 @@ The full fit and the dark cross-check are in the B4 measurement notes (kept outs
 ## Data-type label (R4B)
 
 When the active network is not Wi-Fi, the Wi-Fi slot can draw a data-type label ("LTE", "4G", "5G",
-"5G+", "3G", "E") from `IosGeometry.DataLabel`. **No iOS reference capture shows this label**, so the
-size follows the PM fallback rule "match the digit cap height to the Wi-Fi glyph height":
+"5G+", "3G", "E") from `IosGeometry.DataLabel`.
+
+**No iOS status-bar capture shows this label.** The glyph SHAPES, widths and spacing come from
+`.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (an SF-style "LTE E 4G 5G 5G+ 345" strip, light on
+black), measured with a 50%-threshold connected-component script: the reference cap (flat letters
+L/T/E/4) is 36 px. That reference is **lighter** than the shipped bold digits, so it is not the weight
+authority. The size follows the PM fallback rule "cap = 0.70 of the tallest cellular bar", and the
+weight is the in-battery digit run-stroke.
+
+| Reference quantity | Measured | / cap (36) |
+|---|---:|---:|
+| L ink width | 22 px | 0.611 |
+| T ink width | 29 px | 0.806 |
+| E ink width | 24 px | 0.667 |
+| G ink width | 34 px | 0.944 |
+| + ink width x height | 28 x 27 px | 0.778 x 0.750 |
+| Digit 3 ink width | 25 px | 0.694 |
+| Digit 4 ink width | 27 px | 0.750 |
+| Digit 5 ink width | 24 px | 0.667 |
+| G bar y | 44..48 px | 0.444..0.556 |
+| G bar left | x204 (G box 184..217) | 0.588 W |
+| G upper-right terminal | ~y33.5 | ~0.14 |
+| G spur bottom | y59.5 | 0.875 |
+| Gaps T..E / 4..G / 5..G / G..+ | 3 / 4 / 5 / 6 px | 0.083 / 0.111 / 0.139 / 0.167 |
+| Gaps 3..4 / 4..5 | 4 / 5 px | 0.111 / 0.139 |
+
+The shipped constants:
 
 | Quantity | Value | Source |
 |---|---:|---|
-| Cap height | 94.77 | `Wifi.ARTBOARD_H - 2 * Wifi.ARTBOARD_MARGIN` (the Wi-Fi ink height) |
-| Stroke | 18.954 | measured percentage digit weight 11.40 / cap 57, scaled to the label cap |
+| Cap height | 66.85 | 0.70 x the tallest single bar (95.5) — **fallback, UNVERIFIED** |
+| Stroke | 13.37 | measured percentage digit weight 11.40 / cap 57, scaled to the label cap |
+| Cap-box top | 14.96 | `1 + (Wi-Fi ink 94.77 - cap 66.85) / 2` (cap centred on the Wi-Fi glyph) |
+| L / T / E / G width | 40.85 / 53.85 / 44.57 / 63.14 | measured 0.611 / 0.806 / 0.667 / 0.944 x cap |
+| + width | 50.14 | 0.750 x cap square (measured height; reference width 0.778) |
+| Letter side bearing | 2.67 | 0.04 x cap (measured T..E 0.083 cap gap) |
+| Plus side bearing | 4.01 | 0.06 x cap (G..+ gap 0.10 cap, closer to the measured 0.167) |
+| Cap / tallest bar | 0.700 | 66.85 / 95.5 |
+| Cap / Wi-Fi ink | 0.705 | 66.85 / 94.77 |
 | Artboard | dynamic, `ink width + 2 x 1` | the group ink starts at the 1-unit margin; height stays 96.77 |
 | Labels | LTE, 4G, 5G, 5G+, 3G, E | reader/reporting order |
-| Digits 3/4/5 | `IosDigits` widths, advances and even-odd contours x (94.77 / 57) | same family/weight as the battery percentage |
-| Letters/plus | our own round vector strokes, no font | centre lines inset by stroke/2; ink box exactly 0..cap |
-| Vertical placement | cap box centred in the Wi-Fi artboard, top = 1.0 | PM fallback |
-| Horizontal placement | ink group centred in the label artboard, left ink = 1.0 | group layout `sum(advances) - firstBearing - lastBearing` |
-| G construction | 300 deg oval arc (open upper right, 1 -> 3 o'clock) + mid spur from 0.62 width to the arc at 3 o'clock | the spur's free inner cap keeps the counter open; a centre-to-edge bar read as "6" in review |
+| Digits 3/4/5 | `IosDigits` widths, advances and even-odd contours x (66.85 / 57) | same family/weight as the battery percentage; the digits are never retyped |
+| Vertical placement | cap box centred on the Wi-Fi ink, top = 14.96 | PM fallback (UNVERIFIED) |
+| Horizontal placement | ink group starts at the 1-unit margin | group layout `sum(advances) - firstBearing - lastBearing` |
 
-A narrow stock slot limits the `Fit.CONTAIN` scale by width, not height; the widest label "5G+" can
-therefore render smaller than the cap (expected, not a geometry bug). The runtime renderer is
-`IosGlyphRenderer.drawDataLabel` (Canvas). `rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` are
-unchanged: there is no `rive` CLI on this machine, and R4B uses the Canvas path only. The size and
-letterforms are **UNVERIFIED / owner review required** until approved on a device; the evidence
-fixtures are written by `IosDataLabelRasterTest` (light labels, a dark LTE frame, a family row at the
-same clock and `measurements.md`).
+**Filled outlines, no strokes/font.** Every letter and the plus are one or more closed contours,
+consistently clockwise, filled with `Path.FillType.WINDING` so overlapping shapes union without alpha
+seams. L is a stem+foot polygon; T a top-bar+stem polygon; E four overlapping rectangles (stem +
+top/middle/bottom arms, middle arm 0.95 of full width). The plus is two equal-arm rectangles forming a
+0.750-cap square centred at C/2.
+
+**G construction (SF-style).** An oval arc band with outer radii `W/2, C/2` and inner radii
+`W/2-STROKE, C/2-STROKE`, sweeping counter-clockwise from the upper-right terminal at 315 deg (the
+measured terminal is ~y33.5 with cap top ~28.5, i.e. ~0.14 C) through the top, left and bottom to the
+spur angle. The geometric arc gap is 93.59 deg (360 - 266.41); the visible open aperture above the stem
+top (0.4 C, ~348.5 deg) is ~34 deg (315..348.5 deg). The spur angle is derived from the measured spur
+bottom: `asin((0.875 - 0.5) / 0.5) = 48.59 deg`, where the outer ellipse reaches the measured y59.5
+(0.875 C). The vertical right stem is `x = W-STROKE..W`, `y = 0.4 C..0.875 C` (the longer measured
+flat-bottom spur), and the horizontal bar `x = 0.588 W..W`, `y = 0.4 C..0.6 C` reaches into the counter
+from the right. The counter stays open through the upper-right ~34 deg visible aperture (0 closed holes:
+the `IosDataLabelTest` flood-fills the raster and requires no enclosed background). The earlier R4B
+stroked arc (which started at 300 deg) with a centre-to-edge bar read as "6" in owner review; the filled
+band + short bar leaves most of the counter open.
+
+**Spacing and the plus.** The letter side bearing is 0.04 C, which reproduces the measured 0.083 C
+T..E gap. The plus uses the measured 0.750 C height as an equal-arm square with a 0.06 C side bearing,
+so the G..+ gap is 0.10 C (closer to the measured 0.167 C than the earlier 0.02 C). Honouring the
+reference plus makes "5G+" wider than the 80x50 slot's height-limited width: "5G+" is **width-limited**
+at an artboard of ~173, a rendered cap of ~19.4 px (about 0.64 of the Wi-Fi ink), while LTE/4G/5G/3G/E
+stay height-limited at ~21.6 px (0.705 of the Wi-Fi ink). This is the 80x50 slot constraint, not a
+geometry bug; the alternative is a smaller plus (~0.49-0.51 C), closer to the constant cap but
+deviating from the reference. The runtime renderer is `IosGlyphRenderer.drawDataLabel` (Canvas).
+`rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` are unchanged: there is no `rive` CLI on this
+machine, and R4B uses the Canvas path only. V2 evidence fixtures are written by
+`IosDataLabelRasterTest` (`r4-label-{lte,4g,5g,5g-plus,3g,e}-{light,dark}-v2.png`,
+`r4-label-family-{light,dark}-v2.png`, `measurements-v2.md`); the first R4B fixtures are not
+overwritten.
+
+**UNVERIFIED.** No iOS status-bar capture shows this label. The cap = 0.70-bar fallback and the
+vertical placement are bar-geometry estimates, not measurements; the reference weight is lighter than
+the shipped bold digits, so only shapes/widths/spacing are matched. Honouring the measured plus makes
+"5G+" width-limited at the 80x50 slot (a slot constraint, not a geometry bug); the alternative is a
+smaller plus (~0.49-0.51 C), closer to the constant cap but deviating from the reference. Owner/device
+review is required before release.
 
 ## Relative sizes and per-kind draw scale
 

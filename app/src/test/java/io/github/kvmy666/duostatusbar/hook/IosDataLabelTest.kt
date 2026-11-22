@@ -3,6 +3,8 @@ package io.github.kvmy666.duostatusbar.hook
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -16,11 +18,13 @@ import org.robolectric.annotation.GraphicsMode
 import java.security.MessageDigest
 
 /**
- * R4B data-type label: the contract, the derived metrics, and the rendered ink at the production
- * Wi-Fi path (`IosDrawables.create(WIFI, ..., 80, 50, relativeSize = true)`, 4x supersample).
+ * R4B data-type label (V2): the contract, the reference-derived metrics, and the rendered ink at the
+ * production Wi-Fi path (`IosDrawables.create(WIFI, ..., 80, 50, relativeSize = true)`, 4x
+ * supersample).
  *
- * No iOS reference shows this label. The owner rule is "match the digit cap to the Wi-Fi glyph
- * height"; the assertions below pin that, plus the horizontal fit inside the 50x31 inner box.
+ * The glyph shapes/widths/spacing come from `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg`; the size
+ * is the PM fallback cap = 0.70 of the tallest cellular bar. No iOS status-bar capture shows this
+ * label, so the placement and the fallback cap are UNVERIFIED until owner/device approval.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -65,7 +69,8 @@ class IosDataLabelTest {
 
         // Golden baseline of the default Wi-Fi render through the production path
         // (IosDrawables.create(WIFI, ..., 80*4, 50*4, relativeSize = true), 4x supersample,
-        // transparent background). Any change to the Wi-Fi glyph or its fit fails here.
+        // transparent background). Any change to the Wi-Fi glyph or its fit fails here; the V2 label
+        // work must not move it.
         assertEquals("Wi-Fi 4x ink bbox", "77,39,244,162", rawInkBox(bitmap))
         assertEquals(
             "Wi-Fi alpha channel SHA-256",
@@ -127,11 +132,82 @@ class IosDataLabelTest {
     }
 
     @Test
-    fun `stroke is the digit weight and the cap is the Wi-Fi ink height`() {
+    fun `cap is seventy percent of the tallest measured single bar`() {
+        val tallest = IosGeometry.Cell.SINGLE_BAR_HEIGHTS.max()
         val d = IosGeometry.DataLabel
-        assertEquals(94.77f, d.CAP_HEIGHT, 0.0001f)
-        assertEquals(18.954f, d.STROKE, 0.001f)
-        assertEquals(11.40f / 57f, d.STROKE / d.CAP_HEIGHT, 0.0001f)
+        assertEquals("cap / tallest bar", 0.70f, d.CAP_HEIGHT / tallest, 0.0001f)
+        assertEquals(66.85f, d.CAP_HEIGHT, 0.001f)
+        assertEquals(95.5f, tallest, 0.0001f)
+    }
+
+    @Test
+    fun `stroke is the bold digit weight and the cap is centred on the Wi-Fi ink`() {
+        val d = IosGeometry.DataLabel
+        assertEquals("stroke / cap", 11.40f / 57f, d.STROKE / d.CAP_HEIGHT, 0.0001f)
+        assertEquals(13.37f, d.STROKE, 0.001f)
+
+        val wifiInkTop = IosGeometry.Wifi.ARTBOARD_MARGIN
+        val wifiInkBottom = IosGeometry.Wifi.ARTBOARD_H - IosGeometry.Wifi.ARTBOARD_MARGIN
+        val wifiCentre = (wifiInkTop + wifiInkBottom) / 2f
+        assertEquals("cap centred on Wi-Fi ink", wifiCentre, d.TOP + d.CAP_HEIGHT / 2f, 0.0001f)
+        assertEquals(14.96f, d.TOP, 0.001f)
+        assertEquals("cap / Wi-Fi ink height", 0.705f, d.CAP_HEIGHT / (wifiInkBottom - wifiInkTop), 0.001f)
+    }
+
+    @Test
+    fun `letters use the measured reference widths and the plus is a square`() {
+        val d = IosGeometry.DataLabel
+        val c = d.CAP_HEIGHT
+        // Measured ink widths / reference cap 36: L 22, T 29, E 24, G 34.
+        assertEquals(22f / 36f, d.inkWidth('L') / c, 0.0001f)
+        assertEquals(29f / 36f, d.inkWidth('T') / c, 0.0001f)
+        assertEquals(24f / 36f, d.inkWidth('E') / c, 0.0001f)
+        assertEquals(34f / 36f, d.inkWidth('G') / c, 0.0001f)
+        // Equal arms use the measured plus HEIGHT 27/36 = 0.750 (the reference width is 28/36 = 0.778).
+        assertEquals(27f / 36f, d.inkWidth('+') / c, 0.0001f)
+        assertEquals("plus side bearing", 0.06f, d.bearing('+') / c, 0.0001f)
+
+        // The plus is two equal-arm rectangles: the horizontal and vertical spans are identical, and
+        // the arm thickness is the common STROKE.
+        val arms = d.outlines('+')
+        assertEquals("plus has two rectangles", 2, arms.size)
+        val boxes = arms.map { bbox(it) }
+        val horizontal = boxes.maxByOrNull { it.width }!!
+        val vertical = boxes.maxByOrNull { it.height }!!
+        assertEquals("plus arms have equal span", horizontal.width, vertical.height, 0.0001f)
+        assertEquals("horizontal arm thickness", d.STROKE, horizontal.height, 0.0001f)
+        assertEquals("vertical arm thickness", d.STROKE, vertical.width, 0.0001f)
+        assertEquals("plus is square", d.inkWidth('+'), d.CAP_HEIGHT * 0.75f, 0.0001f)
+    }
+
+    @Test
+    fun `G has a measured bar, a short spur and an open upper-right aperture`() {
+        val d = IosGeometry.DataLabel
+        val c = d.CAP_HEIGHT
+        val w = d.inkWidth('G')
+        val outlines = d.outlines('G')
+        assertEquals("G = band + stem + bar", 3, outlines.size)
+
+        val rects = outlines.drop(1).map { bbox(it) }
+        // Horizontal bar: y 0.4..0.6 C, from 0.588 W to the right ink edge.
+        val bar = rects.maxByOrNull { it.width }!!
+        assertEquals(0.40f * c, bar.top, 0.01f)
+        assertEquals(0.60f * c, bar.bottom, 0.01f)
+        assertEquals(0.588f * w, bar.left, 0.01f)
+        assertEquals(w, bar.right, 0.01f)
+        // Vertical stem / spur: x W-STROKE..W, from the bar top to the measured 0.875 C spur bottom.
+        val stem = rects.maxByOrNull { it.height }!!
+        assertEquals(w - d.STROKE, stem.left, 0.01f)
+        assertEquals(w, stem.right, 0.01f)
+        assertEquals(0.40f * c, stem.top, 0.01f)
+        assertEquals(0.875f * c, stem.bottom, 0.01f)
+
+        // The counter is not closed (no holes), and the upper-right aperture is open.
+        val bitmap = renderGlyph('G')
+        assertEquals("G must not have a closed counter", 0, enclosedBackgroundPixels(bitmap))
+        val apertureX = (glyphPad + 0.85f * w).toInt()
+        val apertureY = (glyphPad + 0.25f * c).toInt()
+        assertEquals("G upper-right aperture is not open", 0, Color.alpha(bitmap.getPixel(apertureX, apertureY)))
     }
 
     @Test
@@ -159,7 +235,7 @@ class IosDataLabelTest {
     // ---------------------------------------------------------------------- production rendered ink
 
     @Test
-    fun `label ink height matches the Wi-Fi ink height at the production box`() {
+    fun `labels fill the production box, five are height-limited and 5G+ is width-limited`() {
         val wifiInk = inkBox(render(baseWifiVisual()))
         assertTrue("Wi-Fi drew no ink", wifiInk.height > 0f)
 
@@ -170,29 +246,43 @@ class IosDataLabelTest {
         )
         val innerW = innerW4x / ss.toFloat()
         val innerH = innerH4x / ss.toFloat()
+        val heightScale4x = innerH4x / IosGeometry.Wifi.ARTBOARD_H
         val aaBleed = 0.5f
         for (label in IosGeometry.DataLabel.LABELS) {
             val visual = labelVisual(label)
             val ink = inkBox(render(visual))
             val artboard = IosGlyphRenderer.artboardWidth(IosIconKind.WIFI, visual)
-            val scaleByWidth = innerW4x / artboard
-            val scaleByHeight = innerH4x / IosGeometry.Wifi.ARTBOARD_H
-            val limitedBy = if (scaleByWidth < scaleByHeight) "width" else "height"
-            val ratio = ink.height / wifiInk.height
+            val byWidth = innerW4x / artboard
+            val byHeight = heightScale4x
+            val scale4x = minOf(byWidth, byHeight)
+            val expectedCap1x = IosGeometry.DataLabel.CAP_HEIGHT * scale4x / ss
+            val ratioToWifi = ink.height / wifiInk.height
 
+            // 4x supersampling adds ~2 px of anti-aliased fringe per edge, so allow ~0.7 px (1x)
+            // slack on the small cap; the exact ratio is pinned in the constants test above.
+            assertEquals(
+                "$label rendered cap in 1x pixels (byWidth $byWidth vs byHeight $byHeight)",
+                expectedCap1x,
+                ink.height,
+                0.7f
+            )
             if (label == "5G+") {
-                // The widest label is width-limited in a narrow slot; legibility is the bar.
+                // Honouring the reference plus makes "5G+" wider than the height-limited width.
+                assertTrue("5G+ must be width-limited", byWidth < byHeight)
                 assertTrue(
-                    "5G+ ink/Wi-Fi ratio $ratio (limited by $limitedBy) must be >= 0.80",
-                    ratio >= 0.8f
+                    "5G+ ink / Wi-Fi ink $ratioToWifi must be >= 0.63",
+                    ratioToWifi >= 0.63f
                 )
-                println("5G+ label ink/Wi-Fi ink = $ratio (limited by $limitedBy)")
             } else {
+                assertTrue(
+                    "$label must be height-limited (byWidth $byWidth vs byHeight $byHeight)",
+                    byWidth >= byHeight
+                )
                 assertEquals(
-                    "$label ink height vs Wi-Fi (limited by $limitedBy, ratio $ratio)",
-                    wifiInk.height,
-                    ink.height,
-                    wifiInk.height * 0.03f
+                    "$label ink / Wi-Fi ink is the 0.705 cap ratio (AA slack)",
+                    0.705f,
+                    ratioToWifi,
+                    0.02f
                 )
             }
             assertTrue(
@@ -209,6 +299,8 @@ class IosDataLabelTest {
     }
 
     // ------------------------------------------------------------------------------------ helpers
+
+    private val glyphPad = 8f
 
     private fun baseWifiVisual(): IosVisual =
         IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f)
@@ -236,6 +328,101 @@ class IosDataLabelTest {
         drawable.setBounds(0, 0, bw, bh)
         drawable.draw(canvas)
         return bitmap
+    }
+
+    private data class Box(val left: Float, val top: Float, val right: Float, val bottom: Float) {
+        val width: Float get() = right - left
+        val height: Float get() = bottom - top
+    }
+
+    private fun bbox(contour: FloatArray): Box {
+        var minX = Float.MAX_VALUE
+        var minY = Float.MAX_VALUE
+        var maxX = -Float.MAX_VALUE
+        var maxY = -Float.MAX_VALUE
+        var i = 0
+        while (i < contour.size) {
+            minX = minOf(minX, contour[i])
+            maxX = maxOf(maxX, contour[i])
+            minY = minOf(minY, contour[i + 1])
+            maxY = maxOf(maxY, contour[i + 1])
+            i += 2
+        }
+        return Box(minX, minY, maxX, maxY)
+    }
+
+    /** Rasterises one glyph outline (no digits) into a padded bitmap, 1 unit = 1 px in the ink box. */
+    private fun renderGlyph(ch: Char): Bitmap {
+        val d = IosGeometry.DataLabel
+        val w = d.inkWidth(ch)
+        val h = d.CAP_HEIGHT
+        val bw = (w + 2f * glyphPad).toInt()
+        val bh = (h + 2f * glyphPad).toInt()
+        val bitmap = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val path = Path().apply {
+            fillType = Path.FillType.WINDING
+            for (contour in d.outlines(ch)) {
+                if (contour.size < 6) continue
+                moveTo(glyphPad + contour[0], glyphPad + contour[1])
+                var i = 2
+                while (i < contour.size) {
+                    lineTo(glyphPad + contour[i], glyphPad + contour[i + 1])
+                    i += 2
+                }
+                close()
+            }
+        }
+        canvas.drawPath(
+            path,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = Color.BLACK
+            }
+        )
+        return bitmap
+    }
+
+    /**
+     * Counts background pixels (alpha 0) not reachable from the border by a 4-connected flood: these
+     * are enclosed holes (a "6" would score > 0, an open G scores 0).
+     */
+    private fun enclosedBackgroundPixels(bitmap: Bitmap): Int {
+        val w = bitmap.width
+        val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        val background = BooleanArray(w * h) { Color.alpha(pixels[it]) <= 8 }
+        val reached = BooleanArray(w * h)
+        val queue = IntArray(w * h)
+        var head = 0
+        var tail = 0
+        fun seed(index: Int) {
+            if (background[index] && !reached[index]) {
+                reached[index] = true
+                queue[tail++] = index
+            }
+        }
+        for (x in 0 until w) {
+            seed(x)
+            seed((h - 1) * w + x)
+        }
+        for (y in 0 until h) {
+            seed(y * w)
+            seed(y * w + w - 1)
+        }
+        while (head < tail) {
+            val index = queue[head++]
+            val x = index % w
+            val y = index / w
+            if (x > 0) seed(index - 1)
+            if (x < w - 1) seed(index + 1)
+            if (y > 0) seed(index - w)
+            if (y < h - 1) seed(index + w)
+        }
+        var holes = 0
+        for (i in background.indices) if (background[i] && !reached[i]) holes++
+        return holes
     }
 
     private fun inkCount(bitmap: Bitmap): Int {

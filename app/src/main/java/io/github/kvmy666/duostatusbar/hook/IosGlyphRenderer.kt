@@ -301,10 +301,11 @@ internal object IosGlyphRenderer {
     }
 
     /**
-     * Draws a data-type label ("LTE", "4G", ...) in the Wi-Fi artboard: letters and plus are our own
-     * round vector strokes, the 3/4/5 digits are the measured [IosDigits] filled even-odd contours
-     * scaled to [IosGeometry.DataLabel.CAP_HEIGHT]. There is no font and no bitmap. The group ink
-     * starts at the artboard margin and is centred by the caller's CONTAIN fit; the cap box top is
+     * Draws a data-type label ("LTE", "4G", ...) in the Wi-Fi artboard: letters and the plus are
+     * filled WINDING outlines (closed, clockwise contours that union without seams), the 3/4/5 digits
+     * are the measured [IosDigits] filled even-odd contours scaled to
+     * [IosGeometry.DataLabel.CAP_HEIGHT]. There is no font and no bitmap. The group ink starts at the
+     * artboard margin and is centred by the caller's CONTAIN fit; the cap box top is
      * [IosGeometry.DataLabel.TOP]. An unsupported label is not drawn here (the dispatch in [drawWifi]
      * checks [IosGeometry.DataLabel.supports] first).
      */
@@ -312,13 +313,6 @@ internal object IosGlyphRenderer {
         val d = IosGeometry.DataLabel
         val first = label.firstOrNull() ?: return
         val colour = withAlpha(tint, 1f, alpha)
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = d.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            color = colour
-        }
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = colour
@@ -338,18 +332,20 @@ internal object IosGlyphRenderer {
                     canvas.restoreToCount(saved)
                 }
             } else {
-                for (points in d.strokes(ch)) {
-                    if (points.size < 4) continue
-                    val path = Path().apply {
-                        moveTo(glyphLeft + points[0], top + points[1])
+                val path = Path().apply {
+                    fillType = Path.FillType.WINDING
+                    for (contour in d.outlines(ch)) {
+                        if (contour.size < 6) continue
+                        moveTo(glyphLeft + contour[0], top + contour[1])
                         var i = 2
-                        while (i < points.size) {
-                            lineTo(glyphLeft + points[i], top + points[i + 1])
+                        while (i < contour.size) {
+                            lineTo(glyphLeft + contour[i], top + contour[i + 1])
                             i += 2
                         }
+                        close()
                     }
-                    canvas.drawPath(path, stroke)
                 }
+                canvas.drawPath(path, fill)
             }
             pen += d.advance(ch)
         }
