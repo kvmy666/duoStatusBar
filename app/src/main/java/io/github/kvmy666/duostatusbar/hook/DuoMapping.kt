@@ -52,7 +52,7 @@ object DuoMapping {
     const val MIDDLE_DND = SignalMapping.MIDDLE_DND
     const val MIDDLE_NETWORK = SignalMapping.MIDDLE_NETWORK
 
-    fun wifiBars(stockLevel: Int): Int = SignalMapping.wifiBars(stockLevel)
+    fun wifiBars(stockLevel: Int): Int = SignalMapping.wifiDotsForStockBars(stockLevel)
 
     fun wifiOpacities(level: Int): Triple<Float, Float, Float> = SignalMapping.wifiOpacities(level)
 

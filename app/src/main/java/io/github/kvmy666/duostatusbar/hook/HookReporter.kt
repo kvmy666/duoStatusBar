@@ -63,9 +63,27 @@ internal class HookReporter(
      * Sends the full diagnostic dump to the app (so its "Save status to a file" button ships it) and
      * writes it to the log once per process. Always on — not debug-only — so any release user can pull a
      * complete bug report without a special build.
+     *
+     * [iosLines] defaults to the attached surfaces' self-diagnosis (R3 A5.3); passing an explicit list
+     * keeps the reporter testable and the existing callers source-compatible.
      */
-    fun reportDiagnostics(ctx: Context, stage: Int, settings: ModuleSettings?, element: DuoElement?) {
-        val tree = Diag.collect(ctx, statusBarRoot(), stage, settings, element, extraRoots(), extrasSnapshot)
+    fun reportDiagnostics(
+        ctx: Context,
+        stage: Int,
+        settings: ModuleSettings?,
+        element: DuoElement?,
+        iosLines: List<String> = IosDiagnostics.lines()
+    ) {
+        val tree = Diag.collect(
+            ctx,
+            statusBarRoot(),
+            stage,
+            settings,
+            element,
+            extraRoots(),
+            extrasSnapshot,
+            iosLines
+        )
         // The module's own log rides along, so the report carries the module's lines even on a device
         // where the app cannot run `su` to read LSPosed's log file. Read before logging the tree, so the
         // dump does not log itself into the buffer.

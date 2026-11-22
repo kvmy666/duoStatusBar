@@ -12,7 +12,7 @@ internal data class WifiSample(
     val rssi: Int,
     /** `WifiManager.calculateSignalLevel(rssi, 5)`, the platform's own five-step value. */
     val calc5: Int,
-    /** The count actually fed to [DuoMapping.wifiBars] (five-step shifted to four stock bars). */
+    /** The count actually fed to [SignalMapping.wifiDotsForStockBars] (five-step shifted to stock bars). */
     val stockBars: Int,
     /** Duo's Wi-Fi glyph level 0..3. */
     val dots: Int,
@@ -81,7 +81,11 @@ internal object WifiReader {
                 false
             }
             if (!on) {
-                WifiSample(INVALID_RSSI, 0, 0, 0, on = false, active = false, validated = false, source = "off")
+                resolve(
+                    rssi = null, on = false, active = false, validated = false, source = "off",
+                    currentLevel = currentLevel, currentOn = currentOn,
+                    currentActive = currentActive, currentValidated = currentValidated
+                )
             } else {
                 val activeRssi = try {
                     (caps?.transportInfo as? android.net.wifi.WifiInfo)?.rssi
@@ -100,34 +104,66 @@ internal object WifiReader {
                 }
                 val rssi = activeRssi ?: connectionRssi
                 val source = if (activeRssi != null) "active" else "connectionInfo"
-                when {
-                    rssi == null -> stale(currentLevel, on, active, validated)
-                    rssi == INVALID_RSSI ->
-                        WifiSample(INVALID_RSSI, 0, 0, 0, on, active, validated, source)
-                    else -> {
-                        // The stock icon draws four bars; Duo draws three. `calculateSignalLevel` uses
-                        // the AOSP thresholds, which on OxygenOS report one bar fewer than the icon
-                        // shows (measured: stock 3 bars read as 2). Shift to the stock count, then
-                        // compress.
-                        val calc5 = WifiManager.calculateSignalLevel(rssi, 5)
-                        val stockBars = SignalMapping.stockWifiBars(calc5)
-                        WifiSample(
-                            rssi = rssi,
-                            calc5 = calc5,
-                            stockBars = stockBars,
-                            dots = DuoMapping.wifiBars(stockBars),
-                            on = on,
-                            active = active,
-                            validated = validated,
-                            source = source
-                        )
-                    }
-                }
+                resolve(
+                    rssi = rssi,
+                    on = on,
+                    active = active,
+                    validated = validated,
+                    source = source,
+                    currentLevel = currentLevel,
+                    currentOn = currentOn,
+                    currentActive = currentActive,
+                    currentValidated = currentValidated
+                )
             }
         }
     } catch (t: Throwable) {
         L.w("wifiLevel: ${t.message}")
         stale(currentLevel, currentOn, currentActive, currentValidated)
+    }
+
+    /**
+     * The pure half of [sample]: the one RSSI -> calc5 -> stock-bars -> dots chain plus the
+     * stale/off rules. A successful read always recomputes the level and ignores [currentLevel];
+     * only a failed read keeps it and marks the sample `src=stale` (FR-21).
+     */
+    internal fun resolve(
+        rssi: Int?,
+        on: Boolean,
+        active: Boolean,
+        validated: Boolean,
+        source: String,
+        currentLevel: Int,
+        currentOn: Boolean,
+        currentActive: Boolean,
+        currentValidated: Boolean,
+        /**
+         * The platform's RSSI -> five-step conversion. Production uses [WifiManager.calculateSignalLevel];
+         * the parameter exists so tests can pin the rest of the chain without a device.
+         */
+        calc5Of: (Int) -> Int = { WifiManager.calculateSignalLevel(it, 5) }
+    ): WifiSample = when {
+        !on -> WifiSample(INVALID_RSSI, 0, 0, 0, on = false, active = false, validated = false, source = "off")
+        rssi == null -> stale(currentLevel, on, active, validated)
+        rssi == INVALID_RSSI ->
+            WifiSample(INVALID_RSSI, 0, 0, 0, on, active, validated, source)
+        else -> {
+            // The stock icon draws four bars; Duo draws three. `calculateSignalLevel` uses the AOSP
+            // thresholds, which on OxygenOS report one bar fewer than the icon shows (measured:
+            // stock 3 bars read as 2). Shift to the stock count, then compress.
+            val calc5 = calc5Of(rssi)
+            val stockBars = SignalMapping.stockWifiBars(calc5)
+            WifiSample(
+                rssi = rssi,
+                calc5 = calc5,
+                stockBars = stockBars,
+                dots = SignalMapping.wifiDotsForStockBars(stockBars),
+                on = on,
+                active = active,
+                validated = validated,
+                source = source
+            )
+        }
     }
 
     private fun stale(

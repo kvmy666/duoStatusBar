@@ -51,4 +51,29 @@ class IosSurfaceRoutingTest {
         assertEquals("b", id)
         assertEquals(listOf("a", "b"), asked)
     }
+
+    @Test
+    fun `an invisible copy is not chosen when a visible copy exists`() {
+        data class Copy(val name: String, val shown: Boolean, val area: Int)
+        val invisible = Copy("header", shown = false, area = 1200)
+        val visible = Copy("qs", shown = true, area = 800)
+        assertEquals(
+            visible,
+            IosSurfaceRouting.firstUsable(listOf(invisible, visible), { it.shown }, { it.area })
+        )
+    }
+
+    @Test
+    fun `a zero area strip is rejected`() {
+        data class Copy(val name: String, val shown: Boolean, val area: Int)
+        val empty = Copy("header", shown = true, area = 0)
+        val usable = Copy("qs", shown = true, area = 300)
+        assertEquals(
+            usable,
+            IosSurfaceRouting.firstUsable(listOf(empty, usable), { it.shown }, { it.area })
+        )
+        assertNull(
+            IosSurfaceRouting.firstUsable(listOf(empty), { it.shown }, { it.area })
+        )
+    }
 }

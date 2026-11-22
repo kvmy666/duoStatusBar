@@ -1277,11 +1277,7 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /** Whether the user allows Duo in one of the optional header surfaces. */
-    private fun surfaceEnabled(name: String): Boolean = when (name) {
-        "qs header" -> settings.showInQs
-        "shade header" -> settings.showInShade
-        else -> true
-    }
+    private fun surfaceEnabled(name: String): Boolean = surfaceEnabled(name, settings)
 
     /**
      * The copy the panel is expected to show. While a cover is pending and the owner callback has not
@@ -1325,28 +1321,22 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /**
-     * Applies a live QS/shade enable toggle. Disabling hides our element and restores the stock
-     * header icons in place; enabling re-hides them. No live Duo is removed or reparented.
+     * Applies a live QS/shade enable toggle.
+     *
+     * A disabled surface is dropped completely: its views, its element and every hidden stock icon
+     * (A6). Keeping an invisible slot behind restored stock icons was a leak: the next layout pass
+     * could not tell whether the surface was off or merely hidden. Enabling it again re-creates the
+     * slot on the next attach/layout from the same attach routes.
      */
     private fun applySurfaceSettings() {
-        for (slot in extras) {
+        val drop = surfacesToDrop(extras.map { it.name }, settings)
+        for (slot in extras.toList()) {
+            if (slot.name !in drop) continue
             try {
-                if (!surfaceEnabled(slot.name)) {
-                    slot.alphaRequest = null
-                    slot.element?.ui?.animate()?.cancel()
-                    slot.indicators?.ui?.animate()?.cancel()
-                    slot.element?.ui?.alpha = 0f
-                    slot.indicators?.ui?.alpha = 0f
-                    slot.element?.setRenderActive(false)
-                    slot.indicators?.setRenderActive(false)
-                    logOnce.once("surface-disabled:${slot.name}") {
-                        L.i("${slot.name}: surface disabled - hiding its element and restoring its stock icons")
-                    }
-                    slot.stock.restore()
-                } else {
-                    val target = slot.container ?: continue
-                    hideSlotStock(slot, target, slot.element?.ui)
+                logOnce.once("surface-disabled:${slot.name}") {
+                    L.i("${slot.name}: surface disabled - dropping its element and restoring its stock icons")
                 }
+                dropSlot(slot)
             } catch (t: Throwable) {
                 L.w("${slot.name} surface setting: ${t.javaClass.simpleName}: ${t.message}")
             }
@@ -1795,7 +1785,11 @@ internal class DuoIconHost(private val context: Context) {
                     // Guard it here so a hiding failure in an optional bar can never propagate into SystemUI.
                     try {
                         hideSlotStock(slot, stock, candidate.ui)
-                        candidate.reveal(settings.revealMs)
+                        // A6: the arrival follows its own feature; extra surfaces do not animate it
+                        // when it is off (their alpha is owned by the panel hand-off).
+                        if (settings.animationsEnabled && settings.arrivalEnabled) {
+                            candidate.reveal(settings.revealMs)
+                        }
                         // A cover that was held because this copy was not drawable gets its second
                         // check once the copy is live. Still one frame, still no retry loop.
                         if (mainCoverPending) armMainCoverGuard(force = true)
@@ -2024,6 +2018,9 @@ internal class DuoIconHost(private val context: Context) {
             // pass must not turn it GONE + 0x0 while the other view could not be resolved.
             hideStock(container, keep, keepLayout = battery, owner = slot.stock)
         }
+        // R3 A6: remember the outer cluster too, so the per-layout predicate can skip the nested
+        // `statusIcons` walk when neither container nor a remembered hidden view changed.
+        slot.stock.notePass(container)
     }
 
     /** FR-25: how long an arrival takes, in ms — asked by the monitor when it fires one. */
@@ -2114,7 +2111,8 @@ internal class DuoIconHost(private val context: Context) {
      * journey and settle pulse) remains Rive's.
      */
     fun shakeAll() {
-        if (!settings.animationsEnabled) return
+        // The 20 % charge shake is part of both the animation master and the charging-motion feature.
+        if (!settings.animationsEnabled || !settings.chargingEnabled) return
         // The shake owns translationX while it runs; a collapse slide must not fight it.
         cancelMainHandoff()
         val amp = ChargeMotion.SHAKE_AMPLITUDE_DP * context.resources.displayMetrics.density
@@ -2685,7 +2683,9 @@ internal class DuoIconHost(private val context: Context) {
         holdIconSlot(candidate.ui, container, side)
         installIndicatorGestures(candidate.ui)
         candidate.onReady {
-            candidate.reveal(settings.revealMs)
+            if (settings.animationsEnabled && settings.arrivalEnabled) {
+                candidate.reveal(settings.revealMs)
+            }
             L.i(
                 "icon cluster injected (${side}px, offset ${settings.indicatorsOffsetX}dp, " +
                     "split=${settings.splitIndicators}, view=${candidate.ui.width}x${candidate.ui.height})"
@@ -2706,7 +2706,11 @@ internal class DuoIconHost(private val context: Context) {
             place(canvas.ui, container, windowRoot, side, settings.indicatorsOffsetX, center, rightSeat = false)
             if (alignOverlay) alignIndicatorOverlay(canvas.ui, ringView, container)
             installIndicatorGestures(canvas.ui)
-            canvas.onReady { canvas.reveal(settings.revealMs) }
+            canvas.onReady {
+                if (settings.animationsEnabled && settings.arrivalEnabled) {
+                    canvas.reveal(settings.revealMs)
+                }
+            }
         }
         return candidate
     }
@@ -3065,7 +3069,13 @@ internal class DuoIconHost(private val context: Context) {
             hideOverlayAnchor()
             // Hiding may have changed the strip's layout, so the overlay anchor is re-read after it.
             applyLayout()
-            candidate.reveal(settings.revealMs)
+            // A6: the arrival is its own optional feature. With it off the element simply appears at
+            // full alpha; it must not borrow the reveal animation just because the bar attached.
+            if (settings.animationsEnabled && settings.arrivalEnabled) {
+                candidate.reveal(settings.revealMs)
+            } else {
+                candidate.ui.alpha = if (mainBarVisible || !panelIsOpen()) 1f else 0f
+            }
             publishStockIcons()
             val width = candidate.ui.layoutParams?.width ?: 0
             L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)" +
@@ -3347,6 +3357,24 @@ internal class DuoIconHost(private val context: Context) {
         } catch (t: Throwable) {
             L.w("reapplyHiding: ${t.message}")
         }
+    }
+
+    /**
+     * R3 A6 (plain Duo): the per-layout entry point. Runs the full [reapplyHiding] only when the hide
+     * state may have been undone (a container/child-count change or a remembered view shown again);
+     * otherwise the per-frame DFS walk is skipped. The shade settle still calls [reapplyHiding] itself,
+     * so the full pass always follows a transition.
+     */
+    fun reapplyHidingIfNeeded() {
+        if (thrashTripped) return
+        val strip = hideStrip ?: host
+        val mainNeeded = strip != null && hider.needsReapply(strip)
+        val extraNeeded = extras.any { slot ->
+            val container = slot.container
+            container != null && slot.stock.needsReapply(container)
+        }
+        if (!mainNeeded && !extraNeeded) return
+        reapplyHiding()
     }
 
     /**

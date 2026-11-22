@@ -43,6 +43,9 @@ internal object IosPushHooks {
     private val logOnce = LogOnce()
     private var installed = false
 
+    /** The class-level hooks, kept so an empty registry can release every one of them. */
+    private val hooked = ArrayList<XC_MethodHook.Unhook>()
+
     /** Routes `setImageDrawable` on [view] to [swap]'s same-call adoption. Idempotent. */
     @Synchronized
     fun watch(view: ImageView, swap: IosDrawableSwap) {
@@ -102,6 +105,26 @@ internal object IosPushHooks {
 
     /** Runs the tint delivery without Xposed (test seam). */
     internal fun deliverTintForTest(view: View) = deliverTint(view)
+
+    /**
+     * Unhooks the class-level push/tint methods once no view registration remains.
+     *
+     * Mirrors [IosDrawHookInstaller.releaseWhenEmpty]: iOS teardown must not leave process-wide hooks
+     * registered with zero registrations behind them. A no-op while any view is still watched.
+     */
+    @Synchronized
+    fun releaseWhenEmpty() {
+        if (swaps.isNotEmpty() || pushActions.isNotEmpty() || tints.isNotEmpty()) return
+        val snapshot = hooked.toList()
+        hooked.clear()
+        installed = false
+        for (unhook in snapshot) {
+            try {
+                unhook.unhook()
+            } catch (_: Throwable) {
+            }
+        }
+    }
 
     /** Drops every registration. Test seam only. */
     @Synchronized
@@ -206,7 +229,7 @@ internal object IosPushHooks {
     ) {
         try {
             val target = cls.getDeclaredMethod(method, parameter)
-            XposedBridge.hookMethod(target, object : XC_MethodHook() {
+            val unhook = XposedBridge.hookMethod(target, object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     try {
                         action(param)
@@ -214,6 +237,7 @@ internal object IosPushHooks {
                     }
                 }
             })
+            synchronized(this) { hooked.add(unhook) }
         } catch (_: Throwable) {
             // One missing setter must not stop the other hooks; the pre-draw listener remains.
         }

@@ -36,7 +36,13 @@ internal data class IosReplacePlan(
     val fallbackSiblingIds: List<String> = emptyList(),
     val hookClasses: List<String> = emptyList(),
     val drawMethod: String? = null,
-    val transXField: String? = null
+    val transXField: String? = null,
+    /**
+     * True when a missing named battery leaf may fall back to the outer's first `ImageView`
+     * (`mBatteryIconView` has no id). This is a shape fact, not a family fact: the AOSP-shaped
+     * `*BatteryMeterView` family keeps its measured family name (UNKNOWN for a vendor subclass).
+     */
+    val allowFirstImageView: Boolean = false
 )
 
 /**
@@ -95,11 +101,23 @@ internal object IosReplacePlanner {
         if (kind == StockIconKind.IGNORED) return skip(family)
 
         val cls = className.lowercase()
+        val id = idName?.lowercase()
 
         if (family == IosSkinFamily.UNKNOWN) {
+            // Generic, shape-proven rows for a family the skin planner did not recognise. Each shape
+            // is one the decoded AOSP/OEM trees prove (IOS-REPLACE-map §1-§3): an OPLUS/HyperOS-shaped
+            // named ImageView leaf, an AOSP `*BatteryMeterView` whose first ImageView is the drawing
+            // leaf, or an opaque Compose/stat icon. Anything with no proven shape stays SKIP/stock.
+            val composeBattery = id == "battery_composable_view" ||
+                (cls.contains("composeview") &&
+                    (id?.contains("battery") == true || kind == StockIconKind.BATTERY))
             return when {
-                cls.contains("trbatterymeterview") && kind == StockIconKind.BATTERY ->
-                    image(family, listOf("battery_icon"))
+                // `TrBatteryMeterView` (Infinix X6887) and the AOSP-shaped `BatteryMeterView`
+                // descendants share the dump-proven `battery_icon` entry name. Keep the measured
+                // family (UNKNOWN for a vendor subclass) and let the shape flag, not the family,
+                // enable the runtime's first-ImageView fallback (`mBatteryIconView` has no id).
+                cls.contains("batterymeterview") && kind == StockIconKind.BATTERY ->
+                    image(family, listOf("battery_icon"), allowFirstImageView = true)
                 cls.contains("statusbarwifiview") && kind == StockIconKind.WIFI ->
                     image(family, listOf("wifi_signal"), listOf("wifi_activity"))
                 cls.contains("statusbarmobileview") && kind == StockIconKind.CELLULAR ->
@@ -108,6 +126,15 @@ internal object IosReplacePlanner {
                         listOf("mobile_signal"),
                         listOf("mobile_type", "mobile_left_mobile_inout")
                     )
+                // Opaque Compose hosts expose no View-side drawing leaf; the approved overlay is the
+                // only in-place mechanism (IOS-INV §2.4). Never overlay a kind we do not replace.
+                cls.contains("singlebindablestatusbarcomposeiconview") ||
+                    composeBattery ->
+                    if (kind.replaced) overlay(family) else skip(family)
+                // A self-drawing opaque icon has no leaf to swap; overlay only when it is one of ours.
+                cls.contains("singlebindablestatusbariconview") ||
+                    cls.contains("staticonview") ->
+                    if (kind.replaced) overlay(family) else skip(family)
                 else -> skip(family)
             }
         }
@@ -173,7 +200,8 @@ internal object IosReplacePlanner {
             // `mBatteryIconView` is the public final ImageView child; `battery_icon` is the entry name
             // measured on the AOSP-like dumps when it exists, with the first ImageView as the runtime
             // fallback (the measured replacement map, device dumps, §3).
-            IosSkinFamily.SAMSUNG_BATTERY -> image(family, listOf("battery_icon"))
+            IosSkinFamily.SAMSUNG_BATTERY ->
+                image(family, listOf("battery_icon"), allowFirstImageView = true)
             IosSkinFamily.SAMSUNG_SBICON ->
                 if (kind.replaced) image(family, listOf("icon_view")) else skip(family)
             IosSkinFamily.COMPOSE_BATTERY,
@@ -187,13 +215,15 @@ internal object IosReplacePlanner {
     private fun image(
         family: IosSkinFamily,
         leafIds: List<String>,
-        siblingIds: List<String> = emptyList()
+        siblingIds: List<String> = emptyList(),
+        allowFirstImageView: Boolean = false
     ): IosReplacePlan = IosReplacePlan(
         family = family,
         mechanism = IosReplaceMechanism.IMAGE_DRAWABLE,
         fallback = IosReplaceMechanism.OVERLAY,
         leafIds = leafIds,
-        siblingIds = siblingIds
+        siblingIds = siblingIds,
+        allowFirstImageView = allowFirstImageView
     )
 
     private fun outerDraw(

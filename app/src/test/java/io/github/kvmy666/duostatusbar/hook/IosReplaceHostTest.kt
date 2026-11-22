@@ -23,6 +23,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -58,6 +59,7 @@ class IosReplaceHostTest {
         IosSurfaceOwners.clearForTest()
         IosSurfaceThrash.clearForTest()
         IosPushHooks.clearForTest()
+        IosReadings.resetForTest()
     }
 
     @After
@@ -67,6 +69,7 @@ class IosReplaceHostTest {
         IosSurfaceThrash.clearForTest()
         IosPushHooks.clearForTest()
         IosDrawHookInstaller.releaseWhenEmpty()
+        IosReadings.resetForTest()
     }
 
     // ------------------------------------------------------------------------ measured stock views
@@ -1522,6 +1525,146 @@ class IosReplaceHostTest {
             }
         }
         return false
+    }
+
+    // ------------------------------------------------------------------------ R3 A2/A4 additions
+
+    /** The visible QS/shade strip: carrier-group rows with subId 0, then the two mapped SIM views. */
+    private class QsCarrierTree(
+        val tree: DualMobileTree,
+        val carriers: List<View>
+    )
+
+    private fun qsCarrierTree(): QsCarrierTree {
+        val tree = dualMobileTree(firstSub = 1, secondSub = 2)
+        val carriers = ArrayList<View>()
+        for (i in 0 until 12) {
+            val name = when (i % 3) {
+                0 -> "mobile_in"
+                1 -> "mobile_out"
+                else -> "mobile_roaming"
+            }
+            val carrier = NamedView(context, name)
+            carriers.add(carrier)
+            tree.strip.addView(carrier, LinearLayout.LayoutParams(10, 20))
+        }
+        carriers.forEachIndexed { index, carrier ->
+            carrier.layout(60 + index * 10, 0, 70 + index * 10, 20)
+        }
+        return QsCarrierTree(tree, carriers)
+    }
+
+    @Test
+    fun `a QS strip with subId-0 carrier rows still adopts the two mapped SIMs as one BOTH block`() {
+        val qs = qsCarrierTree()
+        val tree = qs.tree
+        val otherParams = tree.second.layoutParams
+        val otherWidth = otherParams.width
+        val otherHeight = otherParams.height
+        val host = host(cellSource = { twoSimReading(1, 2) })
+
+        assertTrue(host.attachIn(tree.strip, null))
+
+        // A2: the 12 unreadable carrier rows are not part of the plan, so the two SIM slots map.
+        assertEquals(1, host.recordCountForTest())
+        assertEquals(IosCellRole.BOTH, host.cellRoleForTest(tree.first))
+        assertNull(host.cellRoleForTest(tree.second))
+        assertEquals(View.GONE, tree.second.visibility)
+        assertEquals(0, tree.second.layoutParams.width)
+        assertTrue("carrier rows stay stock", qs.carriers.all { it.visibility == View.VISIBLE })
+
+        host.teardown()
+        assertSame(tree.firstDrawable, tree.firstLeaf.drawable)
+        assertSame(tree.secondDrawable, tree.secondLeaf.drawable)
+        assertEquals(View.VISIBLE, tree.first.visibility)
+        assertEquals(View.VISIBLE, tree.second.visibility)
+        assertEquals(otherWidth, tree.second.layoutParams.width)
+        assertEquals(otherHeight, tree.second.layoutParams.height)
+        assertTrue("carrier rows are untouched on teardown", qs.carriers.all { it.visibility == View.VISIBLE })
+    }
+
+    @Test
+    fun `a cell source change from 1 to 3 updates the same record on refresh`() {
+        var reading = oneSimReading(5, dots = 1)
+        val tree = oplusSignalTree(subId = 5)
+        val host = host(cellSource = { reading })
+        assertTrue(host.attachIn(tree.strip, null))
+
+        assertEquals(1f, host.visualForTest(tree.mobileLeaf)?.cellBars ?: -1f)
+        reading = oneSimReading(5, dots = 3)
+        host.refresh()
+
+        assertEquals(3f, host.visualForTest(tree.mobileLeaf)?.cellBars ?: -1f)
+        assertEquals(2, host.recordCountForTest())
+        host.teardown()
+    }
+
+    /** A host that uses the process-wide [IosReadings] sources, like the runtime does. */
+    private fun readingsHost(surface: String): IosReplaceHost = IosReplaceHost(
+        context = context,
+        classLoader = null,
+        sizeOwner = IosSizeOwner(),
+        isMainBar = false,
+        surface = surface
+    )
+
+    @Test
+    fun `two surfaces draw the same Wi-Fi and cell snapshot`() {
+        IosReadings.resetForTest(
+            wifi = { _, _, _, _, _ -> wifiSample(validated = true, dots = 2) },
+            cell = { oneSimReading(5, dots = 3) }
+        )
+        val firstTree = oplusSignalTree(subId = 5)
+        val secondTree = oplusSignalTree(subId = 5)
+        val first = readingsHost("readings one")
+        val second = readingsHost("readings two")
+
+        assertTrue(first.attachIn(firstTree.strip, null))
+        assertTrue(second.attachIn(secondTree.strip, null))
+
+        val firstWifi = first.lastWifiSampleForTest()
+        val secondWifi = second.lastWifiSampleForTest()
+        val firstCell = first.lastCellReadingForTest()
+        val secondCell = second.lastCellReadingForTest()
+        assertNotNull(firstWifi)
+        assertNotNull(firstCell)
+        assertSame("one Wi-Fi sample for every surface", firstWifi, secondWifi)
+        assertSame("one cell reading for every surface", firstCell, secondCell)
+
+        first.teardown()
+        second.teardown()
+    }
+
+    @Test
+    fun `repeated failed attachSurface calls keep the attach attempts bounded`() {
+        val host = host()
+        val root = FrameLayout(context)
+        root.layout(0, 0, 100, 100)
+
+        repeat(20) { host.attachSurface("missing", root, "system_icons") }
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
+
+        assertTrue(
+            "the retry budget never runs away: ${host.attachAttemptsForTest()}",
+            host.attachAttemptsForTest() <= 4
+        )
+        assertFalse(host.attached)
+    }
+
+    @Test
+    fun `an extra host receives the same settings as the main host`() {
+        val main = host()
+        val extra = host(isMainBar = false, surface = "shade header")
+        val before = extra.userTransformFor(IosIconKind.BATTERY, 79f)
+        val settings = ModuleSettings.DEFAULT.copy(
+            iosBatteryScale = ModuleSettings.DEFAULT.iosBatteryScale + 20
+        )
+
+        refreshIosHostSettings(settings, listOf(main, extra))
+
+        val after = extra.userTransformFor(IosIconKind.BATTERY, 79f)
+        assertNotEquals(before, after)
+        assertEquals(settings.iosTransform(IosIconKind.BATTERY, 79f), after)
     }
 
     private companion object {

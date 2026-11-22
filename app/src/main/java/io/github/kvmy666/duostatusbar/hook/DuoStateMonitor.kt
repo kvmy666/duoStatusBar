@@ -67,6 +67,13 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private var lastWifiEvidence = ""
     private val downloadDisplay = DownloadProgress.DisplaySelection()
 
+    /** R3 A6: the exact features this monitor serves. Applied live; empty means "register nothing". */
+    private var features: FeatureSet =
+        FeatureSet(BarOwner.NONE, DuoRenderer.NONE, emptySet(), SharedHook.entries.toSet())
+
+    /** The actions behind the currently registered receiver, so a change can be diffed exactly. */
+    private var registeredActions: List<String> = emptyList()
+
     private val liveEvents = EventArbiter(isEnabled = { host.eventEnabled(it) })
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val screenshotWatcher = ScreenshotWatcher { path -> handler.post { onScreenshot(path) } }
@@ -169,6 +176,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
     /** Asks the punch-hole module for the download it is already showing, if any. */
     private fun requestDownloadState() {
+        if (!features.has(DuoFeature.DOWNLOAD)) return
         try {
             L.i("download query send target=${context.packageName}")
             context.sendBroadcast(
@@ -180,6 +188,13 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     }
 
     private fun onDownload(intent: Intent?) {
+        if (!features.has(DuoFeature.DOWNLOAD)) {
+            // The setting is a gate, not only a display choice: off leaves no stale download state.
+            DownloadProgress.current = DownloadProgress.State()
+            downloadDisplay.update(false)
+            host.setDownloadTap(false, ::toggleDownloadDisplay)
+            return
+        }
         if (intent == null) return
         val next = DownloadProgress.from(intent)
         val prev = DownloadProgress.current
@@ -199,7 +214,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
     private fun toggleDownloadDisplay() {
         // The tap override only exists while the user allows downloads to take over the ring.
-        if (!host.downloadProgressEnabled) return
+        if (!features.has(DuoFeature.DOWNLOAD) || !host.downloadProgressEnabled) return
         if (!downloadDisplay.toggle()) return
         L.i("download display -> ${if (downloadDisplay.showingDownload) "download" else "battery"}")
         render()
@@ -348,53 +363,91 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         }
     }
 
-    fun start() {
-        if (registered) return
-        registered = true
-        try {
-            val filter = IntentFilter().apply {
-                addAction(Intent.ACTION_BATTERY_CHANGED)
-                addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
-                addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
-                addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
-                addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
-                addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_USER_PRESENT)
-                addAction(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
-                addAction(Intent.ACTION_CONFIGURATION_CHANGED)
-                addAction(Intent.ACTION_TIME_CHANGED)
-                addAction(Intent.ACTION_TIMEZONE_CHANGED)
-                addAction(Intent.ACTION_LOCALE_CHANGED)
-                addAction(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)
-                addAction(WifiManager.RSSI_CHANGED_ACTION)
-                addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
-                addAction(ConnectivityManager.CONNECTIVITY_ACTION)
-                addAction(ACTION_SERVICE_STATE_CHANGED)
-                addAction(ACTION_ANY_DATA_STATE)
-                addAction(Intent.ACTION_TIME_TICK)
-                addAction(DownloadProgress.ACTION)
-            }
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            L.i("download receiver registered ctxPkg=${context.packageName} action=${DownloadProgress.ACTION}")
-            screenshotWatcher.start()
-            // The sticky battery broadcast is not guaranteed to be delivered to the receiver at
-            // registration, so read it directly: without this the element shows its default 100 % (and
-            // fills the ring to match) until the next battery change, which on some devices is minutes.
-            readInitialBattery()
-            saver = SystemReaders.isPowerSaveOn(context)
-            airplane = SystemReaders.isAirplaneOn(context)
-            dnd = SystemReaders.isDndOn(context)
-            watchMobileData()
-            updateClock()
-            refresh()
-            requestDownloadState()
-            runCatching { DuoGuard(context).noteHeartbeat() }
-            handler.postDelayed(heartbeatRunnable, HEARTBEAT_MS)
-            L.i("state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane dnd=$dnd")
-        } catch (t: Throwable) {
-            L.e("monitor start failed: ${t.javaClass.simpleName}: ${t.message}")
+    /**
+     * Starts the monitor for exactly [features]. Kept for the boot/attach path; a live apply uses
+     * [apply] so only the changed actions are re-registered.
+     */
+    fun start(features: FeatureSet) {
+        val previous = this.features
+        this.features = features
+        reconcile(previous, initial = true)
+    }
+
+    /**
+     * Applies a new feature snapshot live. Turning the last Duo feature off unregisters the receiver
+     * entirely; turning one on registers exactly the actions [monitorActions] names for it.
+     */
+    fun apply(features: FeatureSet) {
+        val previous = this.features
+        this.features = features
+        reconcile(previous, initial = false)
+    }
+
+    /** The actions this monitor should have registered right now. */
+    private fun desiredActions(): List<String> =
+        monitorActionsForRuntime(features, host.middleSlot == DuoPrefs.MIDDLE_SLOT_CLOCK)
+
+    private fun reconcile(previous: FeatureSet, initial: Boolean) {
+        val actions = desiredActions()
+        if (actions.isEmpty()) {
+            if (registered) stop()
+            return
         }
+        if (!registered) {
+            registered = true
+            try {
+                register(actions)
+                if (features.has(DuoFeature.EVENT_SCREENSHOT)) screenshotWatcher.start()
+                else screenshotWatcher.stop()
+                // The sticky battery broadcast is not guaranteed to be delivered to the receiver at
+                // registration, so read it directly: without this the element shows its default 100 %
+                // (and fills the ring to match) until the next battery change, which can be minutes.
+                readInitialBattery()
+                saver = SystemReaders.isPowerSaveOn(context)
+                airplane = SystemReaders.isAirplaneOn(context)
+                dnd = SystemReaders.isDndOn(context)
+                watchMobileData()
+                updateClock()
+                refresh()
+                if (features.has(DuoFeature.DOWNLOAD)) requestDownloadState()
+                runCatching { DuoGuard(context).noteHeartbeat() }
+                handler.postDelayed(heartbeatRunnable, HEARTBEAT_MS)
+                L.i("state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane dnd=$dnd")
+            } catch (t: Throwable) {
+                L.e("monitor start failed: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            return
+        }
+        // A live settings change: only re-register when the exact action set changed.
+        if (actions != registeredActions) {
+            runCatching { context.unregisterReceiver(receiver) }
+            register(actions)
+            readInitialBattery()
+        }
+        val wasScreenshot = previous.has(DuoFeature.EVENT_SCREENSHOT)
+        val screenshot = features.has(DuoFeature.EVENT_SCREENSHOT)
+        if (screenshot && !wasScreenshot) screenshotWatcher.start()
+        if (!screenshot && wasScreenshot) screenshotWatcher.stop()
+
+        val wasDownload = previous.has(DuoFeature.DOWNLOAD)
+        val download = features.has(DuoFeature.DOWNLOAD)
+        if (!download && wasDownload) {
+            DownloadProgress.current = DownloadProgress.State()
+            downloadDisplay.update(false)
+            host.setDownloadTap(false, ::toggleDownloadDisplay)
+            render()
+        }
+        if (download && !wasDownload) requestDownloadState()
+        if (initial) L.i("state monitor apply: actions=${actions.joinToString(",")}")
+    }
+
+    /** Registers [actions] as the receiver's exact filter. */
+    private fun register(actions: List<String>) {
+        val filter = IntentFilter()
+        for (action in actions) filter.addAction(action)
+        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        registeredActions = actions
+        L.i("state monitor receiver actions=${actions.joinToString(",")}")
     }
 
     /** Reads the current battery/charging state from the sticky broadcast, guarded. */
@@ -408,9 +461,16 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     }
 
     fun stop() {
-        if (!registered) return
+        if (!registered) {
+            registeredActions = emptyList()
+            return
+        }
         registered = false
+        registeredActions = emptyList()
         host.setDownloadTap(false, ::toggleDownloadDisplay)
+        // The download belongs to the monitor: a stopped monitor leaves no stale state behind.
+        DownloadProgress.current = DownloadProgress.State()
+        downloadDisplay.update(false)
         runCatching { fill?.cancel() }
         runCatching { handler.removeCallbacks(hideRunnable) }
         runCatching { handler.removeCallbacks(heartbeatRunnable) }
@@ -682,7 +742,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         try {
             // The setting is a gate, not a display choice: off means the download is treated as
             // inactive, so the ring stays on charging/battery exactly as it did before the feature.
-            val rawDownload = if (host.downloadProgressEnabled) {
+            val rawDownload = if (features.has(DuoFeature.DOWNLOAD) && host.downloadProgressEnabled) {
                 DownloadProgress.current
             } else {
                 DownloadProgress.State()

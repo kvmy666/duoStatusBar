@@ -165,12 +165,18 @@ internal object IosMapping {
      * [IosSimDisplay.SINGLE] forces one row (and hides the other mapped slot when two SIMs are active);
      * [IosSimDisplay.DUAL] keeps the stacked block when two signals exist and otherwise falls back to
      * the one-row plan, because a second SIM cannot be invented.
+     *
+     * [samples] is the optional per-subscription provenance behind [signals]. When supplied, a plan
+     * that would draw a level from a `src=unavailable` sample is rejected ([IosCellPlan.None]) so the
+     * stock icon stays rather than showing the caller's fallback dots. Omitting it keeps the historical
+     * behaviour for callers that only have mapped [SimSignal]s.
      */
     fun cellPlan(
         signals: List<SimSignal>,
         defaultSubId: Int,
         slots: List<CellSlot>,
-        display: IosSimDisplay = IosSimDisplay.AUTO
+        display: IosSimDisplay = IosSimDisplay.AUTO,
+        samples: List<CellSample>? = null
     ): IosCellPlan {
         if (slots.isEmpty()) return IosCellPlan.None
         if (signals.isEmpty()) {
@@ -186,7 +192,7 @@ internal object IosMapping {
         val active = signals.sortedBy { it.slot }
         if (active.map { it.subscriptionId }.distinct().size != active.size) return IosCellPlan.None
 
-        return when (active.size) {
+        val plan = when (active.size) {
             1 -> singlePlan(active[0], slots)
             2 -> when (display) {
                 IosSimDisplay.SINGLE -> forcedSinglePlan(active, defaultSubId, slots)
@@ -194,6 +200,39 @@ internal object IosMapping {
                 IosSimDisplay.DUAL -> dualPlan(active, defaultSubId, slots)
             }
             else -> IosCellPlan.None
+        }
+        return withoutUnavailable(plan, samples)
+    }
+
+    /**
+     * Fail silent when a level the plan would draw came from an `unavailable` sample.
+     *
+     * The sample is matched by subscription id when the plan row carries a positive one. The
+     * single-unreadable-slot fallback carries sub id 0, so it is matched by slot index instead: the
+     * plan draws over that slot, and the sample at that slot is the evidence its level came from.
+     * A sample with no entry at all keeps the historical plan (there is no contradicting evidence);
+     * only the chosen plan's drawn level is checked, so a hidden sibling row cannot veto a row that
+     * is actually drawn.
+     */
+    private fun withoutUnavailable(
+        plan: IosCellPlan,
+        samples: List<CellSample>?
+    ): IosCellPlan {
+        if (samples.isNullOrEmpty()) return plan
+        fun sampleFor(subId: Int, slot: Int): CellSample? =
+            if (subId > 0) samples.firstOrNull { it.subscriptionId == subId }
+            else samples.firstOrNull { it.slot == slot }
+        fun proven(subId: Int, slot: Int): Boolean =
+            sampleFor(subId, slot)?.available ?: true
+        return when (plan) {
+            IosCellPlan.None -> IosCellPlan.None
+            is IosCellPlan.Single -> if (proven(plan.subId, plan.slot)) plan else IosCellPlan.None
+            is IosCellPlan.Dual ->
+                if (proven(plan.dataSubId, plan.dataSlot) && proven(plan.otherSubId, plan.otherSlot)) {
+                    plan
+                } else {
+                    IosCellPlan.None
+                }
         }
     }
 

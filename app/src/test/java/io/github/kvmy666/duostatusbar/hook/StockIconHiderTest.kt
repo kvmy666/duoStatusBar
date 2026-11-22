@@ -235,4 +235,57 @@ class StockIconHiderTest {
         assertEquals(20, alarm.layoutParams.width)
         assertEquals(18, alarm.layoutParams.height)
     }
+
+    // ------------------------------------------------------------------ R3 A6 re-show predicate
+
+    @Test
+    fun `no reapply is needed right after a full pass`() {
+        val strip = LinearLayout(context)
+        strip.addView(FakeIcon(context, "wifi"))
+        strip.addView(FakeIcon(context, "alarm_clock"))
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+
+        assertFalse(hider.needsReapply(strip))
+    }
+
+    @Test
+    fun `a remembered hidden view shown again needs a reapply`() {
+        val strip = LinearLayout(context)
+        val wifi = FakeIcon(context, "wifi")
+        strip.addView(wifi)
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+        assertFalse(hider.needsReapply(strip))
+
+        // The ROM re-shows its icon without changing the child count.
+        wifi.visibility = View.VISIBLE
+        assertTrue(hider.needsReapply(strip))
+    }
+
+    @Test
+    fun `a changed container or child count needs a reapply`() {
+        val strip = LinearLayout(context)
+        strip.addView(FakeIcon(context, "wifi"))
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+
+        strip.addView(FakeIcon(context, "alarm_clock"))
+        assertTrue(hider.needsReapply(strip))
+
+        val other = LinearLayout(context)
+        other.addView(FakeIcon(context, "wifi"))
+        assertTrue(hider.needsReapply(other))
+    }
+
+    @Test
+    fun `restore clears the pass so the next layout runs the full walk`() {
+        val strip = LinearLayout(context)
+        strip.addView(FakeIcon(context, "wifi"))
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+        hider.restore()
+
+        assertTrue(hider.needsReapply(strip))
+    }
 }

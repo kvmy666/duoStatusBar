@@ -22,10 +22,13 @@ data class CellSample(
     val dbm: Int,
     val metric: String,
     val dots: Int,
-    /** `per-sub`, `unavailable`; the source of this sample. */
+    /** `per-sub` or `unavailable`; the source of this sample. */
     val src: String,
     val airplane: Boolean
-)
+) {
+    /** False when the level is only the documented caller fallback, never this SIM's own reading. */
+    val available: Boolean get() = src != SignalMapping.SRC_UNAVAILABLE
+}
 
 /** The subscription the drawn cellular level came from, and whether it fell back. */
 data class CellSelection(
@@ -67,20 +70,22 @@ object SignalMapping {
     const val SRC_FALLBACK = "fallback"
 
     /**
-     * Maps the phone's Wi-Fi bar count onto Duo's three levels, so the ring agrees with the stock icon.
+     * Maps the stock Wi-Fi bar count (1..4) onto Duo's three glyph levels.
      *
-     * The stock icon has four bars (1..4); Duo draws two arcs plus the dot (1..3). The user's mapping,
-     * measured against the real icon: 1 and 2 bars -> 1, 3 bars -> 2, 4 bars -> 3. 0 is "no signal".
+     * This is the single authority for the owner's rule: system levels 1+2 -> arc 1, system 3 -> arc 2,
+     * system 4 -> arc 3. When the system loses its top level, iOS loses its top arc. 0 is "no signal".
+     * The name states the input scale so a caller can never pass a five-step `calculateSignalLevel`
+     * value here by mistake (use [wifiDotsForCalc5] for that).
      */
-    fun wifiBars(stockLevel: Int): Int = when {
-        stockLevel <= 0 -> 0
-        stockLevel <= 2 -> 1
-        stockLevel == 3 -> 2
+    fun wifiDotsForStockBars(stockBars: Int): Int = when {
+        stockBars <= 0 -> 0
+        stockBars <= 2 -> 1
+        stockBars == 3 -> 2
         else -> 3
     }
 
     /**
-     * The stock bar count the reader feeds to [wifiBars].
+     * The stock bar count the reader feeds to [wifiDotsForStockBars].
      *
      * `WifiManager.calculateSignalLevel` uses AOSP's five-step scale and reports one bar fewer than
      * the OxygenOS icon (measured: stock 3 bars read as 2). The shift is pinned separately from the
@@ -88,6 +93,17 @@ object SignalMapping {
      */
     fun stockWifiBars(calc5: Int): Int =
         if (calc5 <= 0) 0 else (calc5 + 1).coerceIn(1, 4)
+
+    /**
+     * The whole five-step -> stock-bars -> dots chain in one call.
+     *
+     * Pinned table (calc5 0..4): stock bars `0,2,3,4,4` -> dots `0,1,2,3,3`. At 5 steps a strong
+     * link (-60/-62 dBm) is calc5 3 and must light all three arcs, while -75 dBm (calc5 2) is two.
+     */
+    fun wifiDotsForCalc5(calc5: Int): Int = wifiDotsForStockBars(stockWifiBars(calc5))
+
+    /** Backwards-compatible name for [wifiDotsForStockBars] (input is the stock 1..4 bar count). */
+    fun wifiBars(stockLevel: Int): Int = wifiDotsForStockBars(stockLevel)
 
     /**
      * Wi-Fi layers, bottom-up: nothing connected dims everything, then the dot, the middle arc and
@@ -155,6 +171,16 @@ object SignalMapping {
         val count = stockLevels.coerceAtLeast(1)
         return if (rawLevel >= count) count else maxOf(count - 1, 1)
     }
+
+    /**
+     * Whether a [CellSample]'s dots were derived from its own raw/count instead of carried over.
+     *
+     * This is the provenance seam the tests use: on a 5-level in-service source raw 3 must draw 3 dots
+     * and raw 2 must draw 2, never 1. An `unavailable` sample is exempt because its dots are the
+     * documented caller fallback, not a claim about this SIM.
+     */
+    fun cellSampleDotsProven(sample: CellSample, hasService: Boolean = true): Boolean =
+        !sample.available || sample.dots == cellDots(sample.raw, sample.count, hasService)
 
     /**
      * Round-to-nearest mapping from a raw index onto Duo's four dots.

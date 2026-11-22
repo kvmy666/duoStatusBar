@@ -15,6 +15,85 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 
 
+/** One attached iOS surface that can describe what it did without another tree walk (R3 A5.3). */
+internal interface IosDiagnosticSource {
+    fun diagnosticLines(): List<String>
+}
+
+/**
+ * The attached iOS surfaces, in attach order. [HookReporter] reads this once per dump; teardown
+ * unregisters, so a report never names a surface that has already restored its stock icons.
+ */
+internal object IosDiagnostics {
+    private val sources = ArrayList<IosDiagnosticSource>()
+
+    /**
+     * The last snapshot of a surface that never became (or stopped being) a live source, keyed by
+     * surface name. Strings only: a failed attach must leave the report behind without pinning a view.
+     */
+    private val attempts = LinkedHashMap<String, List<String>>()
+
+    @Synchronized
+    fun register(source: IosDiagnosticSource) {
+        if (sources.none { it === source }) sources.add(source)
+    }
+
+    @Synchronized
+    fun unregister(source: IosDiagnosticSource) {
+        sources.removeAll { it === source }
+    }
+
+    /** Persists the report of a surface that failed to attach, so a total failure is still visible. */
+    @Synchronized
+    fun recordAttempt(surface: String, lines: List<String>) {
+        val kept = lines.filter { it.isNotBlank() }
+        if (kept.isEmpty()) attempts.remove(surface) else attempts[surface] = kept
+    }
+
+    /** Drops a stale attempt once that surface attaches for real. */
+    @Synchronized
+    fun clearAttempt(surface: String) {
+        attempts.remove(surface)
+    }
+
+    /** Drops every retained attempt: leaving iOS mode, or the module being switched off. */
+    @Synchronized
+    fun clearAttempts() {
+        attempts.clear()
+    }
+
+    /** Live sources plus retained attempts, deduplicated by exact text, never throwing. */
+    @Synchronized
+    fun lines(): List<String> {
+        if (sources.isEmpty() && attempts.isEmpty()) return emptyList()
+        val out = ArrayList<String>()
+        val seen = HashSet<String>()
+        for (source in sources.toList()) {
+            val lines = try {
+                source.diagnosticLines()
+            } catch (_: Throwable) {
+                emptyList()
+            }
+            for (line in lines) {
+                if (line.isNotBlank() && seen.add(line)) out.add(line)
+            }
+        }
+        for (lines in attempts.values) {
+            for (line in lines) {
+                if (line.isNotBlank() && seen.add(line)) out.add(line)
+            }
+        }
+        return out
+    }
+
+    internal fun clearForTest() {
+        synchronized(this) {
+            sources.clear()
+            attempts.clear()
+        }
+    }
+}
+
 /**
  * The debug-only evidence collector (issue: support Android 14 / ColorOS / One UI).
  *
@@ -74,7 +153,12 @@ internal object Diag {
          */
         extraRoots: List<Pair<String, View?>> = emptyList(),
         /** A previously captured tree (e.g. the shade header while it was open). */
-        extraSnapshot: String = ""
+        extraSnapshot: String = "",
+        /**
+         * R3 A5.3 self-diagnosis: one `ios surface=...` line per iOS icon, appended after the
+         * existing `iosMode=...` line. Empty keeps the historical dump byte-identical.
+         */
+        iosLines: List<String> = emptyList()
     ): String = try {
         val profiles = RomProfiles.load(context)
         val rom = RomDetection.forThisRom(
@@ -205,6 +289,7 @@ internal object Diag {
             // dump's settings when present, otherwise the last cached read; never an extra provider read.
             val iosSettings = settings ?: DuoSettingsClient.lastRead()
             appendLine("  iosMode=${iosSettings?.iosMode ?: false} iosAttempts=${IosGuard(context).attempts()}")
+            appendIosLines(this, iosLines)
             settings?.let {
                 appendLine("  settings: enabled=${it.enabled} useRive=${it.useRive} showPercent=${it.showPercent}")
                 appendLine("    size=${it.sizePercent}% offset=${it.offsetX}dp live=${it.liveApply} rev=${it.revision}")
@@ -218,6 +303,21 @@ internal object Diag {
         }
     } catch (t: Throwable) {
         "Duo Status Bar diagnostic dump failed: ${t.javaClass.simpleName}: ${t.message}"
+    }
+
+    /**
+     * Appends the iOS self-diagnosis lines immediately after `iosMode=...`.
+     *
+     * Deduplicated per dump and byte-for-byte silent when the list is empty, so every existing dump
+     * line (and every ROM contract comparison) stays unchanged unless a surface supplied facts.
+     */
+    private fun appendIosLines(sb: StringBuilder, lines: List<String>) {
+        if (lines.isEmpty()) return
+        val seen = HashSet<String>()
+        for (line in lines) {
+            if (line.isBlank() || !seen.add(line)) continue
+            sb.appendLine("  $line")
+        }
     }
 
     /** Logs the dump through [L] (both sinks) once, so a log capture has it too. */

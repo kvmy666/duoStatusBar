@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.hook
 import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
+import android.app.Activity
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -22,6 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -228,6 +230,38 @@ class IosIconHostTest {
         root.layout(0, 0, 1000, 100)
         strip.layout(900, 0, 1000, 40)
         return RetryTree(root, strip, battery, original)
+    }
+
+    // ---- R3 A1 usable-copy resolution (a real window, so isShown() is meaningful) ----
+
+    private class SurfaceCopy(
+        val strip: NamedGroup,
+        val battery: BatteryMeterView,
+        val original: Drawable
+    )
+
+    /** An activity-backed root, so a child strip can report `isShown` like a real shade surface. */
+    private fun windowRoot(): FrameLayout {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity)
+        activity.setContentView(root)
+        return root
+    }
+
+    /** Adds one `system_icons` copy (a battery strip) under [root] and returns its stock facts. */
+    private fun addSurfaceCopy(root: FrameLayout): SurfaceCopy {
+        val strip = NamedGroup(root.context, "system_icons")
+        val battery = BatteryMeterView(root.context)
+        val original = ColorDrawable(Color.RED)
+        battery.icon.setImageDrawable(original)
+        strip.addView(battery, LinearLayout.LayoutParams(80, 40))
+        root.addView(strip, FrameLayout.LayoutParams(200, 40))
+        return SurfaceCopy(strip, battery, original)
+    }
+
+    private fun layoutSurface(copy: SurfaceCopy, left: Int) {
+        copy.strip.layout(left, 0, left + 200, 40)
+        copy.battery.layout(0, 5, 80, 45)
     }
 
     private fun wifiTree(): WifiTree {
@@ -1400,54 +1434,238 @@ class IosIconHostTest {
     // sites (keyguard/header/window) are exercised through the anti-thrash test below.
 
     @Test
-    fun `anti-thrash refuses repeated attach teardown on the same root`() {
-        // Two real strips in one root, so each call replaces the surface and costs one teardown + one
-        // attach. The host is single-surface, which is exactly the shade loop that was reported.
-        val root = FrameLayout(context)
-        val first = NamedGroup(context, "system_icons")
-        val second = NamedGroup(context, "system_icons_alt")
-        for (strip in listOf(first, second)) {
-            val battery = BatteryMeterView(context)
+    fun `anti-thrash refuses repeated attach teardown on the same window`() {
+        // Two same-window containers replace each other, so each call costs one teardown + one attach.
+        // (An oscillation between two usable copies of one id is now absorbed by the R3 A1 retarget
+        // policy instead, so this pins genuine window-level churn.)
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val window = FrameLayout(activity)
+        activity.setContentView(window)
+        val first = FrameLayout(activity)
+        val second = FrameLayout(activity)
+        for (root in listOf(first, second)) {
+            val strip = NamedGroup(activity, "system_icons")
+            val battery = BatteryMeterView(activity)
             battery.icon.setImageDrawable(ColorDrawable(Color.RED))
             strip.addView(battery, FrameLayout.LayoutParams(80, 40))
+            root.addView(strip, FrameLayout.LayoutParams(100, 40))
+            window.addView(root, FrameLayout.LayoutParams(100, 40))
         }
-        root.addView(first, FrameLayout.LayoutParams(100, 40))
-        root.addView(second, FrameLayout.LayoutParams(100, 40))
-        root.layout(0, 0, 1000, 100)
-        first.layout(900, 0, 1000, 40)
-        second.layout(800, 0, 900, 40)
-        first.getChildAt(0).layout(0, 5, 80, 45)
-        second.getChildAt(0).layout(0, 5, 80, 45)
+        window.layout(0, 0, 1000, 100)
+        first.layout(0, 0, 100, 40)
+        second.layout(100, 0, 200, 40)
+        for (root in listOf(first, second)) {
+            val strip = root.getChildAt(0) as ViewGroup
+            strip.layout(0, 0, 100, 40)
+            strip.getChildAt(0).layout(0, 5, 80, 45)
+        }
 
         val host = host()
-        assertTrue("both entry names resolve under the root", host.canAttachSurface(root, "system_icons"))
-        assertTrue(host.canAttachSurface(root, "system_icons_alt"))
-        assertFalse("a missing strip is not attachable", host.canAttachSurface(root, "not_here"))
-        assertTrue(host.attachSurface("first", root, "system_icons"))
+        assertTrue("both containers resolve their strip", host.canAttachSurface(first, "system_icons"))
+        assertTrue(host.canAttachSurface(second, "system_icons"))
+        assertFalse("a missing strip is not attachable", host.canAttachSurface(window, "not_here"))
+        assertTrue(host.attachSurface("first", first, "system_icons"))
 
-        // Alternate strips in the same window until the guard's window fills (8 lifecycle events).
-        val ids = listOf("system_icons_alt", "system_icons")
+        // Alternate the containers in the same window until the guard's window fills (8 events).
+        val roots = listOf(second, first)
         var result = true
         var flips = 0
         while (result && flips < 12) {
-            result = host.attachSurface("flip", root, ids[flips % 2])
+            result = host.attachSurface("flip", roots[flips % 2], "system_icons")
             flips++
         }
         assertFalse("the guard trips within the cycle bound", result)
         assertFalse("a tripped guard leaves nothing attached", host.attached)
 
         // The same window is backed off: no new attach is attempted.
-        assertFalse(host.attachSurface("flip", root, "system_icons"))
+        assertFalse(host.attachSurface("flip", first, "system_icons"))
         assertFalse(host.attached)
 
         // B1: the ROM re-adds/re-removes icons inside the hide loop, so icon churn must not clear the
         // trip. The backed-off host stays refused and detached after both callbacks.
-        val stock = first.getChildAt(0)
+        val stock = (first.getChildAt(0) as ViewGroup).getChildAt(0)
         host.onStockIconAdded(stock)
         host.onStockIconRemoved(stock)
         assertTrue("icon churn must not clear the trip", host.isThrashTrippedForTest())
-        assertFalse(host.attachSurface("after-icon-churn", root, "system_icons"))
+        assertFalse(host.attachSurface("after-icon-churn", first, "system_icons"))
         assertFalse(host.attached)
+    }
+
+    // ---- R3 A1: usable copy + re-target throttle ----
+
+    @Test
+    fun `an all-overlay surface attaches the shown copy and never the hidden one`() {
+        val root = windowRoot()
+        // The hidden copy is first in DFS order, which is exactly the copy the old lookup adopted.
+        val hidden = addSurfaceCopy(root)
+        val shown = addSurfaceCopy(root)
+        hidden.strip.visibility = View.INVISIBLE
+        root.layout(0, 0, 1000, 100)
+        layoutSurface(hidden, 0)
+        layoutSurface(shown, 200)
+
+        val created = ArrayList<FakeElement>()
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
+        try {
+            assertTrue(host.attachSurface("all-overlay", root, "system_icons"))
+            assertTrue(host.attached)
+            assertEquals(1, created.size)
+            assertTrue(created[0].parent != null)
+            assertSame(
+                "the hidden first copy is never adopted",
+                hidden.original,
+                hidden.battery.icon.drawable
+            )
+            assertEquals(View.INVISIBLE, hidden.strip.visibility)
+            assertNull("the shown copy is suppressed", shown.battery.icon.drawable)
+        } finally {
+            host.teardown()
+        }
+    }
+
+    @Test
+    fun `a shown copy retargets a hidden attachment once and throttles the next call`() {
+        val root = windowRoot()
+        val first = addSurfaceCopy(root)
+        val second = addSurfaceCopy(root)
+        second.strip.visibility = View.INVISIBLE
+        root.layout(0, 0, 1000, 100)
+        layoutSurface(first, 0)
+        layoutSurface(second, 200)
+
+        val created = ArrayList<FakeElement>()
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
+        try {
+            assertTrue(host.attachSurface("retarget", root, "system_icons"))
+            assertEquals(1, created.size)
+            assertNull(first.battery.icon.drawable)
+
+            // The first copy collapses and the second becomes the usable one.
+            first.strip.visibility = View.INVISIBLE
+            second.strip.visibility = View.VISIBLE
+
+            assertTrue(host.attachSurface("retarget", root, "system_icons"))
+            assertEquals("one re-target, one new glyph", 2, created.size)
+            assertSame("the old copy is restored exactly", first.original, first.battery.icon.drawable)
+            assertNull("the new copy is suppressed", second.battery.icon.drawable)
+            val live = created[1]
+            assertTrue(live.parent != null)
+
+            // The caller's 500 ms cadence must not re-attach inside the 1 s re-target throttle.
+            assertTrue(host.attachSurface("retarget", root, "system_icons"))
+            assertEquals("an immediate second call is throttled", 2, created.size)
+            assertSame("the live glyph is kept", live, created[1])
+            assertNull(second.battery.icon.drawable)
+        } finally {
+            host.teardown()
+        }
+    }
+
+    @Test
+    fun `a hidden surface with no usable copy keeps its live attachment`() {
+        val root = windowRoot()
+        val copy = addSurfaceCopy(root)
+        root.layout(0, 0, 1000, 100)
+        layoutSurface(copy, 0)
+
+        val created = ArrayList<FakeElement>()
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
+        try {
+            assertTrue(host.attachSurface("hidden", root, "system_icons"))
+            assertEquals(1, created.size)
+            val live = created[0]
+
+            copy.strip.visibility = View.INVISIBLE
+
+            assertTrue(host.attachSurface("hidden", root, "system_icons"))
+            assertTrue("a merely hidden surface is kept, not torn down", host.attached)
+            assertEquals(1, created.size)
+            assertSame(live, created[0])
+            assertTrue(live.parent != null)
+            assertNull("the live suppression is kept", copy.battery.icon.drawable)
+        } finally {
+            host.teardown()
+        }
+    }
+
+    @Test
+    fun `a real settings change resets the retarget throttle`() {
+        val root = windowRoot()
+        val first = addSurfaceCopy(root)
+        val second = addSurfaceCopy(root)
+        second.strip.visibility = View.INVISIBLE
+        root.layout(0, 0, 1000, 100)
+        layoutSurface(first, 0)
+        layoutSurface(second, 200)
+
+        val created = ArrayList<FakeElement>()
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
+        try {
+            assertTrue(host.attachSurface("settings", root, "system_icons"))
+            first.strip.visibility = View.INVISIBLE
+            second.strip.visibility = View.VISIBLE
+            assertTrue(host.attachSurface("settings", root, "system_icons"))
+            assertEquals(2, created.size)
+
+            // Swap back immediately: the throttle keeps the current (now hidden) attachment.
+            second.strip.visibility = View.INVISIBLE
+            first.strip.visibility = View.VISIBLE
+            assertTrue(host.attachSurface("settings", root, "system_icons"))
+            assertEquals(2, created.size)
+            assertSame("the usable copy stays stock while throttled", first.original, first.battery.icon.drawable)
+            assertNull("the hidden attachment is kept", second.battery.icon.drawable)
+
+            host.refreshSettings(ModuleSettings.DEFAULT.copy(revision = ModuleSettings.DEFAULT.revision + 1L))
+
+            assertTrue(host.attachSurface("settings", root, "system_icons"))
+            assertEquals("a real settings change unlocks the re-target", 3, created.size)
+            assertNull(first.battery.icon.drawable)
+            assertSame(second.original, second.battery.icon.drawable)
+        } finally {
+            host.teardown()
+        }
+    }
+
+    @Test
+    fun `teardown resets the retarget throttle for the next call`() {
+        val root = windowRoot()
+        val first = addSurfaceCopy(root)
+        val second = addSurfaceCopy(root)
+        second.strip.visibility = View.INVISIBLE
+        root.layout(0, 0, 1000, 100)
+        layoutSurface(first, 0)
+        layoutSurface(second, 200)
+
+        val created = ArrayList<FakeElement>()
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
+        try {
+            assertTrue(host.attachSurface("teardown", root, "system_icons"))
+            first.strip.visibility = View.INVISIBLE
+            second.strip.visibility = View.VISIBLE
+            assertTrue(host.attachSurface("teardown", root, "system_icons"))
+            assertEquals(2, created.size)
+
+            // Swap back immediately: throttled, so the host stays on the hidden copy.
+            second.strip.visibility = View.INVISIBLE
+            first.strip.visibility = View.VISIBLE
+            assertTrue(host.attachSurface("teardown", root, "system_icons"))
+            assertEquals(2, created.size)
+
+            host.teardown()
+            assertFalse(host.attached)
+
+            // The timestamp was reset, so a fresh attach and the next swap may re-target at once.
+            assertTrue(host.attachSurface("teardown", root, "system_icons"))
+            assertEquals(3, created.size)
+            first.strip.visibility = View.INVISIBLE
+            second.strip.visibility = View.VISIBLE
+            assertTrue(host.attachSurface("teardown", root, "system_icons"))
+            assertEquals("teardown reset the throttle", 4, created.size)
+            assertNull(second.battery.icon.drawable)
+            assertSame(first.original, first.battery.icon.drawable)
+        } finally {
+            host.teardown()
+        }
     }
 
     @Test

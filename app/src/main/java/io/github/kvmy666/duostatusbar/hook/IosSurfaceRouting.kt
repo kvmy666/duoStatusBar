@@ -25,4 +25,19 @@ internal object IosSurfaceRouting {
     /** Pure ordering rule, separated so it is testable without a host or a SystemUI tree. */
     internal fun firstAttachable(ids: List<String>, canAttach: (String) -> Boolean): String? =
         ids.firstOrNull(canAttach)
+
+    /**
+     * Picks the usable copy of a strip entry name: it must be shown and have a measured content area.
+     *
+     * A shade window can contain the same id several times (an invisible header copy plus the visible
+     * QS strip). Only a shown, non-empty copy can carry a replacement; the largest such copy wins so a
+     * collapsed zero-height duplicate never shadows the live strip.
+     */
+    internal fun <T> firstUsable(
+        candidates: List<T>,
+        shown: (T) -> Boolean,
+        area: (T) -> Int
+    ): T? = candidates
+        .filter { shown(it) && area(it) > 0 }
+        .maxByOrNull { area(it) }
 }

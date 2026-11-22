@@ -22,6 +22,9 @@ internal class StockIconHider {
     private val hiddenOriginals = ArrayList<HiddenState>()
     private val logOnce = LogOnce()
 
+    /** Every container the last full passes covered, with the child count seen, for [needsReapply]. */
+    private val appliedContainers = java.util.IdentityHashMap<ViewGroup, Int>()
+
     /**
      * Hides every child of [container] except [keep], remembering each one's original state.
      *
@@ -41,6 +44,7 @@ internal class StockIconHider {
             if (child === keep || alsoKeep.any { it === child }) continue
             if (child === keepLayout) hideKeepLayout(child) else hide(child)
         }
+        noteApplied(container)
         logOnce.once("hide") {
             L.i("stock status-bar views removed (GONE + 0x0), not overlaid - FR-08")
         }
@@ -67,6 +71,7 @@ internal class StockIconHider {
         selected: Set<String> = emptySet()
     ) {
         walk(container, keep, keepLayout, alsoKeep, selected, HashMap())
+        noteApplied(container)
         logOnce.once("hide-replaced") {
             L.i("only the replaced battery/Wi-Fi/cellular and selected status views hidden; " +
                 "other icons kept - FR-08b")
@@ -82,6 +87,36 @@ internal class StockIconHider {
         if (view.visibility == View.INVISIBLE) return
         rememberOriginal(view)
         view.visibility = View.INVISIBLE
+        markApplied(view, View.INVISIBLE)
+    }
+
+    /**
+     * R3 A6 (plain Duo): true when a full hide pass is still needed.
+     *
+     * A layout tick on the shade fires per frame; walking the whole tree each time was the measured
+     * cost. The ROM only re-shows its icons by re-inflating/re-adding them (container or child count
+     * changes) or by making a remembered hidden view visible again; when neither happened the previous
+     * hide is still in force. The settle pass always runs the full walk, so nothing is left hidden or
+     * shown late.
+     */
+    fun needsReapply(container: ViewGroup): Boolean {
+        val childCount = appliedContainers[container] ?: return true
+        if (container.childCount != childCount) return true
+        return hiddenOriginals.any { it.appliedVisibility != it.view.visibility }
+    }
+
+    /** Remembers that a full pass just ran for [container]. */
+    private fun noteApplied(container: ViewGroup) {
+        appliedContainers[container] = container.childCount
+    }
+
+    /**
+     * Records that a pass covered [container] even when it hid icons in a nested strip (the QS
+     * cluster's `statusIcons`); the caller only needs [needsReapply] to stay false when nothing
+     * re-appeared.
+     */
+    fun notePass(container: ViewGroup) {
+        noteApplied(container)
     }
 
     /**
@@ -104,6 +139,7 @@ internal class StockIconHider {
         hideOthers: Boolean
     ) {
         walkForIos(container, preserve, selected, hideOthers, HashMap())
+        noteApplied(container)
         logOnce.once("hide-ios") {
             L.i("iOS stock icons: selected/hide-others applied - $selected")
         }
@@ -129,6 +165,7 @@ internal class StockIconHider {
                 view.layoutParams = it
             }
         }
+        markApplied(view, View.GONE)
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) hide(view.getChildAt(i))
         }
@@ -149,6 +186,7 @@ internal class StockIconHider {
             }
         }
         hiddenOriginals.clear()
+        appliedContainers.clear()
     }
 
     /**
@@ -230,5 +268,17 @@ internal class StockIconHider {
         hiddenOriginals.add(HiddenState(view, view.visibility, lp?.width ?: 0, lp?.height ?: 0))
     }
 
-    private data class HiddenState(val view: View, val visibility: Int, val width: Int, val height: Int)
+    /** The visibility the last hide pass left [view] in, so a re-show is detectable without a walk. */
+    private fun markApplied(view: View, visibility: Int) {
+        hiddenOriginals.firstOrNull { it.view === view }?.appliedVisibility = visibility
+    }
+
+    private class HiddenState(
+        val view: View,
+        val visibility: Int,
+        val width: Int,
+        val height: Int
+    ) {
+        var appliedVisibility: Int = visibility
+    }
 }

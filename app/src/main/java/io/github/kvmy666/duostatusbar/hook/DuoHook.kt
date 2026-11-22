@@ -47,8 +47,22 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private val handler = Handler(Looper.getMainLooper())
     private val attaching = AtomicBoolean(false)
 
-    /** The status-bar touch hook is installed once per process. */
-    private val touchHooked = AtomicBoolean(false)
+    /**
+     * R3 A6: the one cached feature snapshot every Duo/iOS entry point checks. It is recomputed in
+     * [start], [enable], [settingsApply] and after an attach, never inside a hot hook.
+     */
+    private var features: FeatureSet =
+        FeatureSet(BarOwner.NONE, DuoRenderer.NONE, emptySet(), SharedHook.entries.toSet())
+
+    /** The settings revision whose [featureLogLine] was already written, so boot/apply log once. */
+    private var loggedFeatureRevision: Long = Long.MIN_VALUE
+    private var loggedFeatureOwner: BarOwner? = null
+
+    /** The Duo-only registrations that are currently installed; diffed on every feature change. */
+    private val registrations = RegistrationSet<DuoRegistration, () -> Unit>(
+        installer = { installDuoRegistration(it) },
+        uninstaller = { remove -> remove() }
+    )
 
     /**
      * The boot hook set (shade header, vendor QS cluster, icon container, tint, orientation) is installed
@@ -58,6 +72,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The one pending post-shade-layout pass, so overlapping layout passes do not stack settles. */
     private var shadeSettle: Runnable? = null
+
+    /** R3 A6: the header attach is attempted at most once per settle, not on every layout tick. */
+    private var shadeSettleHeaderAttempted = false
 
     /** Panel expansion state from SystemUI; authoritative for main/extras visibility. */
     private var qsExpanded = false
@@ -73,6 +90,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The shade window that already owns the one layout listener. */
     private var shadeLayoutWindow: View? = null
+
+    /** The one shared shade layout listener, kept so it can be removed when no owner remains (D). */
+    private var shadeLayoutListener: View.OnLayoutChangeListener? = null
 
     /**
      * The status-bar layout listener is installed once per root. A live disable/re-enable must not
@@ -109,9 +129,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     /** IOS-LAG: at most one extra-surface attach attempt per [IOS_EXTRA_ATTACH_MIN_MS]. */
     private var lastIosExtraAttachAt = 0L
 
+    /** R3 A6: the same bound for the plain-Duo extra bars, which had no throttle at all. */
+    private var lastDuoExtraAttachAt = 0L
+
     /** The shade header whose strip was not attachable, and when, so it is retried only after 5 s. */
     private var iosHeaderFailed: View? = null
     private var iosHeaderFailedAt = 0L
+
+    /** The qs/shade window whose strip was not attachable (R3 A1), with the same 5 s memo. */
+    private val iosShadeGate = IosShadeAttachGate(IOS_HEADER_RETRY_MS)
 
     /** The orientation whose settings are currently applied, so a config change can switch sets. */
     private var appliedOrientation = Configuration.ORIENTATION_UNDEFINED
@@ -175,41 +201,55 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val applySavedSize = orientationPending.getAndSet(false)
             val guard = DuoGuard(ctx)
             val stage = guard.stage()
-            // C10: an adb override pinning 0 is a real "off", never an unreachable provider.
-            val adbOverride = guard.override() != null
-            // iOS mode owns its own lifecycle: `DuoGuard.stage()` is OFF while it is on, so the normal
-            // OFF/TEARDOWN path would tear the iOS skin down again. The adb override still wins (C10).
-            val ios = IosGuard.active(DuoSettingsClient.lastRead()?.iosMode == true, guard.override())
-            if (ios) {
+            val override = guard.override()
+            // One fresh snapshot per apply: the owner decision, the feature diff and the monitor
+            // registration all come from the same settings revision, never from different reads.
+            val snapshot = DuoSettingsClient.read(ctx)
+            val next = featureSetFor(snapshot, override, IosRenderers.DRAWING_READY, false)
+
+            if (next.iosRuntime) {
+                commitFeatures(stage, snapshot, override, next)
                 logOnce.once("settings-ios-on") {
                     L.i("settings apply: iOS mode on - Duo element suppressed")
                 }
-                // Mutual exclusivity (rule 7): no Duo drawing while iOS owns the bar.
-                monitor?.stop()
-                monitor = null
-                host?.teardown()
-                val iosSettings = DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx)
+                // Mutual exclusivity (rule 7, A6): no Duo host, monitor, hook or listener survives.
+                stopDuoRuntime()
+                val iosSettings = snapshot
                 val iosMain = ensureIosMain(ctx)
-                iosMain.refreshSettings(iosSettings)
                 installHooksOnce()
+                // R3 A3: install only while iOS owns the bar (A6: no iOS work when it is off).
+                IosIconOrder.install(lp.classLoader)
+                IosIconOrder.activate()
                 statusBarRoot?.let { iosMain.attach(it) }
-                shadeRoot?.let { attachExtraBars(it) }
+                shadeRoot?.let { shade ->
+                    attachExtraBars(shade)
+                    // D: re-arm the shared layout listener if a NONE period detached it.
+                    addShadeLayoutListener(shade)
+                }
+                refreshIosHostSettings(
+                    iosSettings,
+                    listOfNotNull(iosMainHost) + iosExtraHosts.values
+                )
                 iosRefreshAll()
+                applyDuoRegistrations()
                 settingsRereadAttempt = 0
                 reporter.report(ctx, stage, iosSettings)
                 return@guard
             }
             // Leaving iOS mode restores its stock icons before the Duo path runs. When no iOS host was
-            // ever created this is a no-op, so the existing path stays byte-identical.
-            if (iosMainHost != null || iosExtraHosts.isNotEmpty()) iosTeardown()
+            // ever created this is a no-op, so the existing path stays byte-identical. `isActive` also
+            // covers a boot where the order was activated before any host could attach.
+            if (iosMainHost != null || iosExtraHosts.isNotEmpty() || IosIconOrder.isActive) {
+                iosTeardown(next)
+            }
             val action = settingsApplyAction(
                 stage,
-                adbOverride,
+                override != null,
                 DuoSettingsClient.providerUnreachable,
                 DuoSettingsClient.servedFromBridge,
                 host?.duo != null
             )
-            if (action == SettingsApplyAction.KEEP_UNREACHABLE) {
+            if (next.owner == BarOwner.NONE && action == SettingsApplyAction.KEEP_UNREACHABLE) {
                 // The unreachable read is ModuleSettings.DEFAULT; applying it would visually reset the
                 // live element, so keep the current settings until a read succeeds. Do not consume a
                 // pending rotation apply either - the next successful read still has to draw it.
@@ -218,28 +258,41 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 reporter.report(ctx, stage, null)
                 return@guard
             }
-            settingsRereadAttempt = 0
-            val settings = host?.refreshSettings(applySavedSize)
-            when (action) {
-                SettingsApplyAction.TEARDOWN -> {
-                    // Stop the broadcast receiver, content observer, screenshot watcher and heartbeat
-                    // before tearing the host down. Leaving the monitor registered kept every
-                    // RSSI/connectivity refresh (and the 20 s Settings.Global write) alive with no
-                    // element attached after a live disable.
-                    logOnce.once("settings-off-teardown") {
-                        L.i("settings apply: stage OFF from the settings source - tearing down (stock icons restored)")
-                    }
-                    monitor?.stop()
-                    monitor = null
-                    host?.teardown()
-                    // An OFF/Duo-disabled state always restores the iOS skin too (idempotent).
-                    iosTeardown()
+            commitFeatures(stage, snapshot, override, next)
+            if (!next.duoRuntime) {
+                settingsRereadAttempt = 0
+                logOnce.once("settings-off-teardown") {
+                    L.i("settings apply: stage OFF from the settings source - tearing down (stock icons restored)")
                 }
-                // Switched on live: install the full boot hook set first, then attach. Attaching only
-                // the main bar left the shade/vendor/tint/orientation hooks missing until a restart.
-                // enable() installs them behind its one-shot guard and schedules the attach itself.
+                stopDuoRuntime()
+                applyDuoRegistrations()
+                reporter.report(ctx, stage, snapshot)
+                return@guard
+            }
+            settingsRereadAttempt = 0
+            val settings = host?.refreshSettings(applySavedSize) ?: snapshot
+            // refreshSettings reads the provider itself; trust its owner when it differs from the
+            // snapshot above (a live toggle can land between the two reads).
+            val refreshed = featureSetFor(settings, override, IosRenderers.DRAWING_READY, false)
+            commitFeatures(stage, settings, override, refreshed)
+            if (!refreshed.duoRuntime) {
+                stopDuoRuntime()
+                applyDuoRegistrations()
+                reporter.report(ctx, stage, settings)
+                return@guard
+            }
+            when (action) {
+                // B: a teardown must diff the stopped set, not the DUO set that triggered it, or it
+                // re-installs the very hooks whose host has just been torn down.
+                SettingsApplyAction.TEARDOWN -> stopDuoRuntime(features.stopped())
+                // Switched on live: install the shared boot hook set first, then attach. enable()
+                // installs them behind its one-shot guard and schedules the attach itself.
                 SettingsApplyAction.ENABLE -> enable(ctx, attempt = 0)
-                SettingsApplyAction.REFRESH -> monitor?.refresh()
+                SettingsApplyAction.REFRESH -> {
+                    monitor?.apply(features)
+                    monitor?.refresh()
+                    applyDuoRegistrations()
+                }
                 SettingsApplyAction.KEEP_UNREACHABLE -> Unit
             }
             reporter.report(ctx, stage, settings)
@@ -309,6 +362,99 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         return DuoIconHost(ctx).also { host = it }
     }
 
+    /**
+     * Caches [next] and writes the deterministic boot line once per settings revision.
+     *
+     * The line is the single source of truth in a dump for "what did the module actually keep
+     * registered": owner, renderer, stage, override, revision, active Duo features and shared hooks.
+     */
+    private fun commitFeatures(
+        stage: Int,
+        settings: ModuleSettings?,
+        override: Int?,
+        next: FeatureSet
+    ) {
+        features = next
+        val revision = settings?.revision ?: -1L
+        if (revision == loggedFeatureRevision && next.owner == loggedFeatureOwner) return
+        loggedFeatureRevision = revision
+        loggedFeatureOwner = next.owner
+        L.i(featureLogLine(next, stage, revision, override))
+    }
+
+    /** Re-resolves the cached features from the last settings snapshot and the current override. */
+    private fun refreshFeatures(stage: Int, override: Int?, settings: ModuleSettings?) {
+        commitFeatures(
+            stage,
+            settings,
+            override,
+            featureSetFor(settings, override, IosRenderers.DRAWING_READY, false)
+        )
+    }
+
+    /**
+     * Stops everything Duo-only. Called on every owner change away from Duo (iOS, NONE, unreachable
+     * disable): monitor, dynamic registrations (event hooks, touch, layout listener) and the host
+     * itself, in that order, so no callback can reach a torn-down host.
+     *
+     * [next] is the set the runtime is left in, assigned before the registration diff. A teardown passes
+     * [FeatureSet.stopped] instead of the Duo set that triggered it, so the diff removes the Duo hooks
+     * rather than keeping them installed with no host (B).
+     *
+     * The shared panel-expansion registration is not Duo work: when [next] is already iOS the diff
+     * keeps it installed, and a transition to NONE removes it. The shared shade layout listener is kept
+     * for either owner and removed only when nothing remains (D).
+     */
+    private fun stopDuoRuntime(next: FeatureSet = features) {
+        features = next
+        monitor?.stop()
+        monitor = null
+        applyDuoRegistrations()
+        host?.teardown()
+        host = null
+        attaching.set(false)
+        // `panelHookInstalled` is owned by hookShadeExpansion and its unhook, not by this teardown:
+        // the shared panel hook survives a Duo -> iOS switch, so clearing it here would make the Duo
+        // coverage branch skip setPanelOwner(null) after iOS -> Duo. The unhook clears it for NONE.
+        lastPanelOwner = null
+        qsExpanded = false
+        notificationExpanded = false
+        shadedOrQsExpanded = false
+        if (!keepShadeLayoutListener(next)) detachShadeLayoutListener()
+    }
+
+    /**
+     * Installs or removes exactly the dynamic registrations the cached features ask for. The shared
+     * panel-expansion hook is part of this set, so it is installed while either Duo or iOS owns the bar
+     * and removed for NONE.
+     */
+    private fun applyDuoRegistrations() {
+        val diff = registrations.apply(duoRegistrationsFor(features))
+        if (diff.isEmpty) return
+        val added = diff.added.map { it.tag }.sorted().joinToString(",")
+        val removed = diff.removed.map { it.tag }.sorted().joinToString(",")
+        val active = registrations.installed().map { it.tag }.sorted().joinToString(",")
+        L.i("duo registrations added=[$added] removed=[$removed] active=[$active]")
+    }
+
+    /** Opens exactly one Duo registration; the returned lambda removes everything it installed. */
+    private fun installDuoRegistration(key: DuoRegistration): (() -> Unit)? = when (key) {
+        DuoRegistration.FLASHLIGHT -> hookFlashlight()
+        DuoRegistration.SCREENSHOT -> hookScreenshot()
+        DuoRegistration.UNLOCK -> hookKeyguardUnlock()
+        DuoRegistration.PANEL_EXPANSION -> hookShadeExpansion()
+        DuoRegistration.STATUS_TOUCH -> statusBarRoot?.let { hookStatusBarTouch(it) }
+        DuoRegistration.STATUS_LAYOUT -> hookStatusLayout()
+    }
+
+    /** Runs an installer, logging and returning null when the ROM lacks that class/method. */
+    private fun installGuarded(where: String, block: () -> (() -> Unit)?): (() -> Unit)? = try {
+        block()
+    } catch (t: Throwable) {
+        L.w("$where: ${t.javaClass.simpleName}: ${t.message}")
+        null
+    }
+
     /** The main-bar iOS host for this process, created on first use (shares [iosSizeOwner], M15). */
     private fun ensureIosMain(ctx: Context): IosReplaceHost =
         iosMainHost ?: IosReplaceHost(
@@ -343,8 +489,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun attachOnePlusIos(cluster: ViewGroup, battery: View?, source: String): Boolean {
         val ctx = app ?: cluster.context
-        if (DuoSettingsClient.lastRead()?.iosMode != true) return false
-        if (!iosModeActive(ctx)) return false
+        if (!features.iosRuntime) return false
         return try {
             ensureIosExtra(ctx, "oneplus qs").attachCluster("oneplus qs", cluster, battery, source)
         } catch (t: Throwable) {
@@ -353,16 +498,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             false
         }
-    }
-
-    /**
-     * Whether the iOS skin should own the bar right now. Reads only the cached settings snapshot and the
-     * adb override, so the Duo path takes no extra provider read when the mode is off (C10/C11). The
-     * override always wins: override `2` with iOS mode on means Duo draws and iOS stays suppressed.
-     */
-    private fun iosModeActive(ctx: Context): Boolean {
-        if (DuoSettingsClient.lastRead()?.iosMode != true) return false
-        return IosGuard.active(true, DuoGuard(ctx).override())
     }
 
     /** Repaints every live iOS host. No-op when the mode is off and no host was ever created. */
@@ -375,12 +510,36 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * Tears every iOS host down and restores every replaced stock drawing. Idempotent:
      * `IosReplaceHost.teardown` is itself idempotent and the maps are cleared, so a second call does
      * nothing.
+     *
+     * [next] is the owner the apply is moving to, so the shared shade listener is removed only when
+     * nothing owns the bar afterwards (D).
      */
-    private fun iosTeardown() {
+    private fun iosTeardown(next: FeatureSet = features) {
         iosMainHost?.teardown()
         iosMainHost = null
         iosExtraHosts.values.forEach { it.teardown() }
         iosExtraHosts.clear()
+        // R3 A5.3: a retained failed-attach snapshot belongs to this iOS session only. Leaving iOS (or
+        // the module being switched off) must not leave a stale `ios surface=` line in later reports.
+        IosDiagnostics.clearAttempts()
+        // R3 A3: leaving iOS (or the module being switched off) is the only event that restores the
+        // stock order. A QS-header teardown while iOS stays on never reaches this method.
+        IosIconOrder.restore()
+        // C: the order hooks are process-wide and retained. Release them with the session so a later
+        // iOS enable installs a fresh set and no callback mutates a container while iOS is off.
+        IosIconOrder.release()
+        // Do not leave the process-wide ImageView push/tint hooks registered with zero views.
+        IosPushHooks.releaseWhenEmpty()
+        if (!keepShadeLayoutListener(next)) detachShadeLayoutListener()
+    }
+
+    /** R3 A1: a panel transition (or a new shade/header) is when a failed strip may be attachable. */
+    private fun resetIosAttachMemos() {
+        // F: header construction/inflate runs on every boot; iOS-off must not touch iOS state.
+        if (!features.iosRuntime) return
+        iosShadeGate.reset()
+        iosHeaderFailed = null
+        iosHeaderFailedAt = 0L
     }
 
     /** Installs the boot hook set once per process. Shared by the Duo and iOS enable paths. */
@@ -395,12 +554,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             { host },
             { cluster, battery, source -> attachOnePlusIos(cluster, battery, source) }
         ).install()
-        hookShadeExpansion()
+        // Flashlight/screenshot/unlock/panel-expansion are Duo-only and installed by the feature diff
+        // (A6), never here: an iOS boot must not register them at all.
         hookStatusIconContainer()
         hookBarAppearance()
-        hookFlashlight()
-        hookScreenshot()
-        hookKeyguardUnlock()
         // The settings receiver is already registered in start(), before this gate, so a restart
         // request still arrives when the module reads as off. Orientation is installed here, once
         // we know a rotation might need to attach the other set.
@@ -484,6 +641,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         if (shadeRoot != null) return
         shadeRoot = view
         L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
+        resetIosAttachMemos()
         if (monitor != null || iosMainHost != null) {
             attachExtraBars(view)
             addShadeLayoutListener(view)
@@ -530,9 +688,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         L.guard("DuoHook enable #$attempt") {
             val guard = DuoGuard(ctx)
             val stage = guard.stage()
-            // iOS mode is read from the cached snapshot; with the mode off this is false and every
-            // branch below is the untouched Duo path.
-            val ios = iosModeActive(ctx)
+            val override = guard.override()
+            val settings = DuoSettingsClient.read(ctx)
+            refreshFeatures(stage, override, settings)
             if (attempt == 0) {
                 // Heartbeat before the gate: it is how the app tells "LSPosed never injected the module"
                 // apart from "the module ran but is switched off". Two signals: a Settings.Global stamp,
@@ -540,11 +698,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // a false "never" on a ROM that denies SystemUI WRITE_SECURE_SETTINGS.
                 L.guard("DuoHook heartbeat") {
                     guard.noteLoaded()
-                    DuoSettingsClient.report(ctx, "loaded · stage=$stage")
+                    // E: the app-visible line carries the same owner/renderer/stage/override/rev/
+                    // active/shared fields as the L boot line, not a reduced fragment.
+                    DuoSettingsClient.report(
+                        ctx,
+                        "loaded · " + featureStatus(features, stage, settings.revision, override)
+                    )
                     DuoSettingsClient.reportFallback(ctx, "")
                 }
             }
-            if (stage == DuoGuard.OFF && !ios) {
+            if (!features.duoRuntime && !features.iosRuntime) {
                 // Retry only while the provider itself was unreachable; a real "off" answer is final.
                 // An unreachable read looks like "off", so it must not be treated as the other
                 // orientation being off too — that would skip the hooks and never retry.
@@ -567,15 +730,31 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 }
             }
             L.i("application ready: ${ctx.packageName} (stage $stage)")
-            if (ios) L.i("ios mode on - Duo element suppressed")
-            if (!ios) ensureHost(ctx)
+            if (features.iosRuntime) L.i("ios mode on - Duo element suppressed")
+            // Shared boot hooks are installed for both owners; the Duo/iOS-only work is branched.
             installHooksOnce()
+            if (features.iosRuntime) {
+                // Boot/initial attach with iOS already on: order before the first icon pass.
+                IosIconOrder.install(lp.classLoader)
+                IosIconOrder.activate()
+                ensureIosMain(ctx)
+                statusBarRoot?.let { scheduleAttach(attempt = 0) }
+                // A4/A1/A6: the panel-expansion hook is shared, so iOS must install it too. It is the
+                // only dynamic registration an iOS bar carries; every Duo-only key is absent.
+                applyDuoRegistrations()
+                return@guard
+            }
+            // A: the Duo host is created only when Duo owns the bar. An off orientation keeps no host:
+            // the next enable for the on orientation attaches it, so a vendor shade callback can never
+            // reach Duo work while Duo is off.
+            if (shouldCreateDuoHost(features)) ensureHost(ctx)
             // The window may already have been captured by the early addView hook; attach now.
-            if (!ios && stage == DuoGuard.OFF) {
+            if (!features.duoRuntime) {
                 L.i("this orientation is off - waiting to apply the other orientation")
             } else {
                 statusBarRoot?.let { scheduleAttach(attempt = 0) }
             }
+            applyDuoRegistrations()
         }
     }
 
@@ -802,18 +981,22 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // Prefer the Application, but fall back to the bar window's own context: on a ROM where
                 // the module is injected late the Application may never have been captured.
                 val ctx = app ?: root.context
-                if (iosModeActive(ctx)) {
+                if (features.iosRuntime) {
                     // iOS has its own lifecycle. If the drawing is unavailable, `attach` returns false
                     // and touches nothing, so a false result is the expected state - never retry it and
                     // never report it as a Duo attach failure.
+                    // R3 A3: idempotent, and the process-wide owner keeps the order across surfaces.
+                    IosIconOrder.install(lp.classLoader)
+                    IosIconOrder.activate()
                     val iosMain = ensureIosMain(ctx)
                     iosMain.attach(root)
                     shadeRoot?.let { shade ->
                         attachExtraBars(shade)
                         addShadeLayoutListener(shade)
                     }
-                    iosMain.refreshSettings(
-                        DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx)
+                    refreshIosHostSettings(
+                        DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx),
+                        listOfNotNull(iosMainHost) + iosExtraHosts.values
                     )
                     iosMain.refresh()
                     logOnce.once("ios-attach") {
@@ -821,13 +1004,23 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     }
                     return@guard
                 }
+                // A6: nothing attaches while no owner is named (off, kill switch, unreachable).
+                if (!features.duoRuntime) return@guard
                 val attached = ensureHost(ctx).attach(root)
                 if (attached) {
+                    // attach() re-reads the settings; take the same snapshot for the monitor and the
+                    // Duo-only registrations so a live toggle during attach cannot leave a stale set.
+                    val appliedSettings =
+                        DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx)
+                    val guard = DuoGuard(ctx)
+                    refreshFeatures(guard.stage(), guard.override(), appliedSettings)
                     if (monitor == null) {
-                        monitor = DuoStateMonitor(ctx, host!!).also { it.start() }
-                        // Keep the state fresh without polling: a cheap re-read on every layout pass.
-                        attachLayoutListener(root)
+                        monitor = DuoStateMonitor(ctx, host!!).also { it.start(features) }
+                    } else {
+                        monitor?.apply(features)
                     }
+                    // Installs the Duo-only layout listener and touch hook through the same diff.
+                    applyDuoRegistrations()
                     if (!attaching.compareAndSet(false, true)) return@guard
                     // The keyguard and the shade header may already be on screen (the element attaches
                     // at boot, they come later, but a re-attach after rotation can land either way).
@@ -841,9 +1034,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     if (qsExpanded || notificationExpanded) {
                         host?.setPanelOwner(if (qsExpanded) "qs header" else "shade header")
                     }
-                    hookStatusBarTouch(root)
                     L.i("Duo attached on attempt $attempt")
-                    reporter.report(ctx, DuoGuard(ctx).stage(), null)
+                    reporter.report(ctx, guard.stage(), null)
                 } else {
                     scheduleAttach(attempt + 1)
                 }
@@ -863,32 +1055,52 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * The runtime class is checked for a *declared* override: hooking an inherited
      * `ViewGroup.dispatchTouchEvent` would intercept every touch in the process.
      */
-    private fun hookStatusBarTouch(root: View) {
-        if (!touchHooked.compareAndSet(false, true)) return
-        L.guard("DuoHook status bar touch") {
-            // `dispatchTouchEvent` is inherited from ViewGroup, so this hooks the base method and the
-            // identity guard below keeps it to the status-bar window only (hooking without the guard
-            // would run for every touch in the process).
-            val method = try {
-                XposedHelpers.findMethodExact(
-                    root.javaClass, "dispatchTouchEvent", android.view.MotionEvent::class.java
-                )
-            } catch (t: Throwable) {
-                L.w("no dispatchTouchEvent on ${root.javaClass.simpleName}: ${t.message}")
-                return@guard
-            }
-            XposedBridge.hookMethod(method, object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    if (param.thisObject !== root) return
-                    try {
-                        val event = param.args.getOrNull(0) as? android.view.MotionEvent ?: return
-                        host?.handleElementTouch(event)
-                    } catch (t: Throwable) {
-                        L.w("element touch: ${t.javaClass.simpleName}: ${t.message}")
-                    }
+    private fun hookStatusBarTouch(root: View): (() -> Unit)? = installGuarded("DuoHook status bar touch") {
+        // `dispatchTouchEvent` is inherited from ViewGroup, so this hooks the base method and the
+        // identity guard below keeps it to the status-bar window only (hooking without the guard
+        // would run for every touch in the process).
+        val method = try {
+            XposedHelpers.findMethodExact(
+                root.javaClass, "dispatchTouchEvent", android.view.MotionEvent::class.java
+            )
+        } catch (t: Throwable) {
+            L.w("no dispatchTouchEvent on ${root.javaClass.simpleName}: ${t.message}")
+            return@installGuarded null
+        }
+        val unhook = XposedBridge.hookMethod(method, object : XC_MethodHook() {
+            override fun beforeHookedMethod(param: MethodHookParam) {
+                if (param.thisObject !== root) return
+                // A6: a touch hook that outlives its owner must be inert before teardown completes.
+                if (!features.duoRuntime) return
+                try {
+                    val event = param.args.getOrNull(0) as? android.view.MotionEvent ?: return
+                    host?.handleElementTouch(event)
+                } catch (t: Throwable) {
+                    L.w("element touch: ${t.javaClass.simpleName}: ${t.message}")
                 }
-            })
-            L.i("status bar touch hook installed (${root.javaClass.simpleName}) - FR-05/18")
+            }
+        })
+        L.i("status bar touch hook installed (${root.javaClass.simpleName}) - FR-05/18")
+        return@installGuarded { unhook.unhook() }
+    }
+
+    /**
+     * Installs the main-bar layout listener as a removable Duo-only registration.
+     *
+     * The listener is what re-applies hiding after a layout pass; it has no business running while
+     * iOS owns the bar. [attachLayoutListener] owns the actual listener identity, so removing the
+     * exact instance it returned cannot strip a newer one.
+     */
+    private fun hookStatusLayout(): (() -> Unit)? {
+        val root = statusBarRoot ?: return null
+        attachLayoutListener(root)
+        val listener = layoutListener ?: return null
+        return {
+            if (layoutListener === listener) {
+                runCatching { root.removeOnLayoutChangeListener(listener) }
+                layoutListenerRoot = null
+                layoutListener = null
+            }
         }
     }
 
@@ -908,7 +1120,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // Orientation is an int compare and only posts work when it actually changed.
                     // The display listener covers a rotation that has not reached this configuration yet.
                     app?.let { noteOrientation(it.resources.configuration.orientation) }
-                    host?.reapplyHiding()
+                    // R3 A6: the full walk only when the hide state may have been undone.
+                    host?.reapplyHidingIfNeeded()
                 }
             }
             layoutListenerRoot = root
@@ -938,15 +1151,30 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         else handler.post { block() }
     }
 
-    private fun hookShadeExpansion() {
+    private fun hookShadeExpansion(): (() -> Unit)? {
+        val handles = ArrayList<XC_MethodHook.Unhook>()
         L.guard("DuoHook shade expansion") {
             val coverageCallback = object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     val expanded = param.args.getOrNull(0) as? Boolean ?: return
                     onMain {
+                        // R3 A4/A1/A6: the panel hook is shared. The aggregate boolean is tracked for
+                        // both owners; only a real edge does work, so a per-frame drag stays cheap.
+                        val changed = shadedOrQsExpanded != expanded
+                        shadedOrQsExpanded = expanded
+                        if (changed &&
+                            PanelTransitionAction.IOS_REFRESH in panelTransitionActions(features)
+                        ) {
+                            // iOS branch only: drop the shared reading snapshot, allow a failed attach
+                            // memo to retry and repaint the live iOS surfaces. No Duo host access.
+                            resetIosAttachMemos()
+                            IosReadings.invalidate()
+                            iosRefreshAll()
+                        }
+                        // A6: the Duo part of this shared registration must not touch the torn-down
+                        // Duo host while iOS (or nothing) owns the bar.
+                        if (!features.duoRuntime) return@onMain
                         try {
-                            val changed = shadedOrQsExpanded != expanded
-                            shadedOrQsExpanded = expanded
                             if (changed) {
                                 // Entering QS/shade: hold the main copy until the incoming copy is
                                 // opaque. Leaving: onPanelCollapsed() owns the order (slide, latch,
@@ -972,7 +1200,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     lp.classLoader
                 )
                 try {
-                    XposedHelpers.findAndHookMethod(
+                    handles += XposedHelpers.findAndHookMethod(
                         cls, "onShadeOrQsExpanded", java.lang.Boolean::class.java,
                         coverageCallback
                     )
@@ -1014,7 +1242,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     "com.android.systemui.shade.PanelType", lp.classLoader
                 )
                 phase = "method"
-                XposedHelpers.findAndHookMethod(
+                handles += XposedHelpers.findAndHookMethod(
                     cls, "onPanelExpansionChanged",
                     Float::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
                     Boolean::class.javaPrimitiveType, String::class.java, panelType,
@@ -1023,21 +1251,45 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             val expanded = param.args.getOrNull(1) as? Boolean ?: return
                             val type = param.args.getOrNull(4)?.toString().orEmpty()
                             onMain {
+                                val panelOwner = ShadeExpansionClassifier.ownerOf(type)
+                                val wasPanelExpanded = when (panelOwner) {
+                                    ShadeOwner.QS -> qsExpanded
+                                    ShadeOwner.NOTIFICATION -> notificationExpanded
+                                    ShadeOwner.NONE -> null
+                                }
+                                val wasCovered = shadedOrQsExpanded
+                                // Track the panel/aggregate booleans for both owners; the iOS branch
+                                // below consumes only the edge, the Duo body consumes the owner.
+                                when (panelOwner) {
+                                    ShadeOwner.QS -> qsExpanded = expanded
+                                    ShadeOwner.NOTIFICATION -> notificationExpanded = expanded
+                                    ShadeOwner.NONE -> { }
+                                }
+                                // Aggregate (when present): a false event means both parts
+                                // are actually collapsed; true is covered above.
+                                if (type.contains("SHADE_PANEL") && !expanded) {
+                                    qsExpanded = false
+                                    notificationExpanded = false
+                                }
+                                val covered = qsExpanded || notificationExpanded
+                                shadedOrQsExpanded = covered
+                                val changed = (wasPanelExpanded != null &&
+                                    wasPanelExpanded != expanded) || wasCovered != covered
+                                if (changed &&
+                                    PanelTransitionAction.IOS_REFRESH in panelTransitionActions(features)
+                                ) {
+                                    // iOS branch only (R3 A4/A1): a real panel edge is when a stale
+                                    // Wi-Fi/cell level or a failed attach memo becomes visible. No Duo
+                                    // host or monitor work is reached here.
+                                    resetIosAttachMemos()
+                                    IosReadings.invalidate()
+                                    iosRefreshAll()
+                                }
+                                // A6: this callback is shared; the Duo part runs only while Duo owns
+                                // the bar and never touches a torn-down host.
+                                if (!features.duoRuntime) return@onMain
                                 try {
-                                    when (ShadeExpansionClassifier.ownerOf(type)) {
-                                        ShadeOwner.QS -> qsExpanded = expanded
-                                        ShadeOwner.NOTIFICATION -> notificationExpanded = expanded
-                                        ShadeOwner.NONE -> { }
-                                    }
-                                    // Aggregate (when present): a false event means both parts
-                                    // are actually collapsed; true is covered above.
-                                    if (type.contains("SHADE_PANEL") && !expanded) {
-                                        qsExpanded = false
-                                        notificationExpanded = false
-                                    }
-                                    val covered = qsExpanded || notificationExpanded
-                                    if (covered != shadedOrQsExpanded) {
-                                        shadedOrQsExpanded = covered
+                                    if (covered != wasCovered) {
                                         if (covered) host?.setMainBarVisible(false)
                                         else host?.onPanelCollapsed()
                                     }
@@ -1088,6 +1340,37 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 L.w("shade panel expansion lookup failed at phase=$phase - panel owner falls back to attach order: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
+        if (handles.isEmpty()) return null
+        return {
+            for (unhook in handles) {
+                try {
+                    unhook.unhook()
+                } catch (_: Throwable) {
+                }
+            }
+            panelHookInstalled = false
+            lastPanelOwner = null
+            qsExpanded = false
+            notificationExpanded = false
+            shadedOrQsExpanded = false
+        }
+    }
+
+    /**
+     * Removes the one shared shade layout listener and its pending settle when no owner remains (D).
+     * Idempotent; the next attach/layout installs it again.
+     */
+    private fun detachShadeLayoutListener() {
+        shadeLayoutWindow?.let { window ->
+            shadeLayoutListener?.let { listener ->
+                runCatching { window.removeOnLayoutChangeListener(listener) }
+            }
+        }
+        shadeLayoutWindow = null
+        shadeLayoutListener = null
+        shadeSettle?.let { handler.removeCallbacks(it) }
+        shadeSettle = null
+        shadeSettleHeaderAttempted = false
     }
 
     /**
@@ -1096,35 +1379,50 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * stored so a burst of layout passes replaces it instead of stacking a second settle burst.
      */
     private fun addShadeLayoutListener(shade: View) {
-        if (shadeLayoutWindow === shade) return
+        if (shadeLayoutWindow === shade && shadeLayoutListener != null) return
+        // A new window replaces the old listener, so exactly one is ever installed.
+        detachShadeLayoutListener()
         shadeLayoutWindow = shade
-        shade.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        val listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             L.guard("DuoHook onShadeLayout") {
+                // A6: this listener is shared (both modes need it), but each mode's work is separate.
+                val duo = features.duoRuntime
+                val ios = features.iosRuntime
+                if (!duo && !ios) return@guard
                 attachExtraBars(shade)
-                // Opening the shade re-shows the main bar's icon views, so the hide pass has to run
-                // again here - the status bar's own layout pass does not fire for a shade drag.
-                host?.reapplyHiding()
-                // Exactly one copy may be visible at any stage. The owner is updated by the last
-                // successful QS/shade attach; showing it here also hides the other copy on every
-                // layout, so entering/exiting QS cannot leave both on screen.
-                host?.showSurfaceOwner()
+                if (duo) {
+                    // R3 A1/A6: every Duo call below is gated on a live host. While iOS owns the bar
+                    // the settings apply drops the Duo host, so a torn-down instance is never touched.
+                    // The full walk only runs when the hide state may have been undone.
+                    host?.reapplyHidingIfNeeded()
+                    // Exactly one copy may be visible at any stage. The owner is updated by the last
+                    // successful QS/shade attach; showing it here also hides the other copy on every
+                    // layout, so entering/exiting QS cannot leave both on screen.
+                    host?.showSurfaceOwner()
+                }
+                if (shadeSettle == null) shadeSettleHeaderAttempted = false
                 shadeSettle?.let { handler.removeCallbacks(it) }
                 val settle = Runnable {
                     shadeSettle = null
                     L.guard("DuoHook shade settle") {
-                        host?.reapplyHiding()
-                        shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
-                        shadeHeader?.let {
-                            if (iosModeActive(app ?: it.context) || iosMainHost != null) {
-                                attachIosShadeHeader(it)
-                            }
+                        if (!shadeSettleHeaderAttempted) {
+                            shadeSettleHeaderAttempted = true
+                            if (duo) shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                            if (ios) shadeHeader?.let { attachIosShadeHeader(it) }
                         }
-                        host?.showSurfaceOwner()
-                        // Snapshot the header's layout while the shade is open. The app-only dump
-                        // happens after the shade closed, by which point these bounds are gone
-                        // (Issue #1: the element jumps when Quick Settings expands).
-                        shadeHeader?.let {
-                            reporter.captureExtras(Diag.treeText("shade header (as last laid out)", it))
+                        if (duo) {
+                            // The settle is the one full hide pass after the transition; the per-layout
+                            // callback above is only a cheap re-show check.
+                            host?.reapplyHiding()
+                            host?.showSurfaceOwner()
+                            // Snapshot the header's layout while the shade is open. The app-only dump
+                            // happens after the shade closed, by which point these bounds are gone
+                            // (Issue #1: the element jumps when Quick Settings expands).
+                            if (host != null) {
+                                shadeHeader?.let {
+                                    reporter.captureExtras(Diag.treeText("shade header (as last laid out)", it))
+                                }
+                            }
                         }
                     }
                 }
@@ -1132,6 +1430,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 handler.postDelayed(settle, SHADE_SETTLE_MS)
             }
         }
+        shadeLayoutListener = listener
+        shade.addOnLayoutChangeListener(listener)
     }
 
     /**
@@ -1144,7 +1444,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun attachExtraBars(shade: View) {
         // iOS owns the bar in its own mode; each surface gets its own host, all sharing one size owner.
         val iosCtx = app ?: shade.context
-        if (iosModeActive(iosCtx)) {
+        if (features.iosRuntime) {
             // The shade fires a layout pass on every frame. Re-attaching a live host tears it down and
             // rebuilds its Rive views each pass (global-ref exhaustion -> SIGABRT, iOS-LAG), so only a
             // dead attachment is replaced. The replacement/rotation path still runs when this is false.
@@ -1162,6 +1462,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             if (!headerAttached && !headerHost.attachedIn(shade)) attachIosShadeWindow(shade)
             return
         }
+        if (!features.duoRuntime) return
+        // R3 A6: the shade fires a layout pass per frame. The Duo extra bars had no throttle, so every
+        // pass re-resolved strips and re-ran `attachExtra`/`attachShadeHeader`. One attempt per 500 ms
+        // is enough for a transition; the settle below still completes the pass.
+        val now = SystemClock.uptimeMillis()
+        if (now - lastDuoExtraAttachAt < DUO_EXTRA_ATTACH_MIN_MS) return
+        lastDuoExtraAttachAt = now
         val host = host
         if (host == null) {
             ShadeProbe.logOnce("shadeProbe:attachExtraBars:noHost", "attachExtraBars host=null (main bar not ready)")
@@ -1199,7 +1506,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun attachIosShadeHeader(header: View): Boolean {
         val ctx = app ?: header.context
-        if (!iosModeActive(ctx) && iosMainHost == null) return false
+        if (!features.iosRuntime) return false
         return try {
             val host = ensureIosExtra(ctx, "shade header")
             // A live host on this window already owns the header surface; attaching again would tear
@@ -1238,20 +1545,35 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun attachIosShadeWindow(window: View): Boolean {
         val ctx = app ?: window.context
-        if (!iosModeActive(ctx)) return false
+        if (!features.iosRuntime) return false
         return try {
             // A separate surface from the notification header: both strips can be live in one shade.
             val host = ensureIosExtra(ctx, "qs header")
             if (host.attachedIn(window)) {
-                true
-            } else {
-                // QS expanded header first (`quick_qs_status_icons` inside
-                // `qs_status_bar_container_layout`), then the shade header and shared strip.
-                val id = IosSurfaceRouting.firstAttachable(host, window, IosSurfaceRouting.WINDOW_IDS)
-                    ?: return false
-                host.attachSurface("qs header", window, id)
+                iosShadeGate.noteSuccess()
+                return true
             }
+            // R3 A1: a strip that was not attachable a moment ago (usually the invisible header copy)
+            // is not re-resolved on every shade pass. A panel transition/new window clears the memo.
+            val now = SystemClock.uptimeMillis()
+            if (!iosShadeGate.shouldAttempt(window, now)) return false
+            // QS expanded header first (`quick_qs_status_icons` inside
+            // `qs_status_bar_container_layout`), then the shade header and shared strip. The host's
+            // usable-copy resolution rejects the invisible/zero-area copy.
+            val id = IosSurfaceRouting.firstAttachable(host, window, IosSurfaceRouting.WINDOW_IDS)
+            if (id == null) {
+                iosShadeGate.noteFailure(window, now)
+                return false
+            }
+            val attached = host.attachSurface("qs header", window, id)
+            if (attached) {
+                iosShadeGate.noteSuccess()
+            } else {
+                iosShadeGate.noteFailure(window, now)
+            }
+            attached
         } catch (t: Throwable) {
+            iosShadeGate.noteFailure(window, SystemClock.uptimeMillis())
             logOnce.once("ios-shade-window-attach") {
                 L.w("shade window: iOS attach failed (${t.javaClass.simpleName}: ${t.message})")
             }
@@ -1286,10 +1608,18 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val callback = object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     L.guard("DuoHook icon added") {
+                        // R3 A3: the container is the object addView was called on. Registration is
+                        // additive; the existing host notifications below stay exactly as they were.
+                        (param.thisObject as? ViewGroup)?.let { IosIconOrder.onIconAdded(it) }
                         val child = param.args.firstOrNull() as? View ?: return@guard
-                        host?.onStatusIconAdded(child)
-                        iosMainHost?.onStockIconAdded(child)
-                        iosExtraHosts.values.toList().forEach { it.onStockIconAdded(child) }
+                        // A6: feed only the owner that is live. The other mode's fields are null while
+                        // it is off, but the explicit gate keeps a slow async callback from reaching a
+                        // host created for the other mode during a live switch.
+                        if (features.duoRuntime) host?.onStatusIconAdded(child)
+                        if (features.iosRuntime) {
+                            iosMainHost?.onStockIconAdded(child)
+                            iosExtraHosts.values.toList().forEach { it.onStockIconAdded(child) }
+                        }
                     }
                 }
             }
@@ -1326,9 +1656,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // builds pass the intensity as an int too. [BarTint.pickTint] keeps only the
                         // int(s) that can be a resolved colour, so an intensity is never read as one.
                         val color = BarTint.pickTint(param.args)
+                        // The shared work (remember the bar colour) always runs; only the owning
+                        // mode's redraw is branched.
                         if (color != 0 && BarTint.update(color)) {
-                            monitor?.onBarAppearanceChanged()
-                            if (iosMainHost != null || iosExtraHosts.isNotEmpty()) iosRefreshAll()
+                            if (features.duoRuntime) monitor?.onBarAppearanceChanged()
+                            if (features.iosRuntime &&
+                                (iosMainHost != null || iosExtraHosts.isNotEmpty())
+                            ) {
+                                iosRefreshAll()
+                            }
                         }
                     } catch (t: Throwable) {
                         L.w("bar tint: ${t.javaClass.simpleName}: ${t.message}")
@@ -1341,11 +1677,17 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
-    private fun hookFlashlight() {
-        L.guard("DuoHook flashlight") {
-            val cls = XposedHelpers.findClass("com.android.systemui.statusbar.policy.FlashlightControllerImpl", lp.classLoader)
-            XposedHelpers.findAndHookMethod(cls, "dispatchListeners", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, object : XC_MethodHook() {
+    private fun hookFlashlight(): (() -> Unit)? = installGuarded("DuoHook flashlight") {
+        val cls = XposedHelpers.findClass(
+            "com.android.systemui.statusbar.policy.FlashlightControllerImpl",
+            lp.classLoader
+        )
+        val unhook = XposedHelpers.findAndHookMethod(
+            cls, "dispatchListeners",
+            Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
+            object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
+                    if (!features.duoRuntime) return
                     // dispatchListeners(int what, boolean value): type 1 is onFlashlightChanged;
                     // 2 is availability, 6 is night-light, and 0 is an error. Treating every
                     // callback as the torch state made availability updates light the icon while
@@ -1357,44 +1699,55 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     ) ?: return
                     monitor?.onFlashlightChanged(state)
                 }
-            })
-            L.i("flashlight event hook installed")
-        }
+            }
+        )
+        L.i("flashlight event hook installed")
+        return@installGuarded { unhook.unhook() }
     }
 
-    private fun hookScreenshot() {
+    private fun hookScreenshot(): (() -> Unit)? = installGuarded("DuoHook screenshot") {
         // AOSP/OnePlus route every screenshot request (hardware key, QS tile, assistant, long screenshot)
         // through TakeScreenshotExecutorImpl.executeScreenshotsAsync. Hooking the async executor catches
         // the request before the capture; it is the same surface on the measured OxygenOS SystemUI.
-        L.guard("DuoHook screenshot") {
-            val cls = XposedHelpers.findClass(
-                "com.android.systemui.screenshot.TakeScreenshotExecutorImpl",
-                lp.classLoader
-            )
-            XposedBridge.hookAllMethods(cls, "executeScreenshotsAsync", object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    monitor?.onScreenshot()
+        val cls = XposedHelpers.findClass(
+            "com.android.systemui.screenshot.TakeScreenshotExecutorImpl",
+            lp.classLoader
+        )
+        val hooks = XposedBridge.hookAllMethods(cls, "executeScreenshotsAsync", object : XC_MethodHook() {
+            override fun beforeHookedMethod(param: MethodHookParam) {
+                if (!features.duoRuntime) return
+                monitor?.onScreenshot()
+            }
+        })
+        if (hooks.isEmpty()) return@installGuarded null
+        L.i("screenshot event hook installed")
+        return@installGuarded {
+            for (unhook in hooks) {
+                try {
+                    unhook.unhook()
+                } catch (_: Throwable) {
                 }
-            })
-            L.i("screenshot event hook installed")
+            }
         }
     }
 
-    private fun hookKeyguardUnlock() {
+    private fun hookKeyguardUnlock(): (() -> Unit)? = installGuarded("DuoHook keyguard unlock") {
         // ACTION_USER_PRESENT is not delivered to this receiver on OxygenOS, so hook the measured
         // keyguard manager instead. notifyKeyguardAuthenticated(true) is the successful PIN/biometric
         // path; onKeyguardFadedAway is the completion fallback.
-        L.guard("DuoHook keyguard unlock") {
-            val cls = XposedHelpers.findClass(
-                "com.android.systemui.statusbar.phone.StatusBarKeyguardViewManager",
-                lp.classLoader
-            )
-            XposedHelpers.findAndHookMethod(
+        val cls = XposedHelpers.findClass(
+            "com.android.systemui.statusbar.phone.StatusBarKeyguardViewManager",
+            lp.classLoader
+        )
+        val handles = ArrayList<XC_MethodHook.Unhook>()
+        try {
+            handles += XposedHelpers.findAndHookMethod(
                 cls,
                 "notifyKeyguardAuthenticated",
                 java.lang.Boolean.TYPE,
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
+                        if (!features.duoRuntime) return
                         if (param.args.firstOrNull() == true) {
                             L.i("keyguard authenticated -> unlock event")
                             monitor?.onUnlock()
@@ -1402,13 +1755,31 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     }
                 }
             )
-            XposedHelpers.findAndHookMethod(cls, "onKeyguardFadedAway", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    L.i("keyguard faded away -> unlock fallback")
-                    monitor?.onUnlock()
+        } catch (t: Throwable) {
+            L.w("keyguard authenticated hook unavailable: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        try {
+            handles += XposedHelpers.findAndHookMethod(
+                cls, "onKeyguardFadedAway", object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        if (!features.duoRuntime) return
+                        L.i("keyguard faded away -> unlock fallback")
+                        monitor?.onUnlock()
+                    }
                 }
-            })
-            L.i("keyguard unlock hook installed")
+            )
+        } catch (t: Throwable) {
+            L.w("keyguard faded-away hook unavailable: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        if (handles.isEmpty()) return@installGuarded null
+        L.i("keyguard unlock hook installed")
+        return@installGuarded {
+            for (unhook in handles) {
+                try {
+                    unhook.unhook()
+                } catch (_: Throwable) {
+                }
+            }
         }
     }
 
@@ -1439,12 +1810,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             ShadeProbe.tree("header (ctor)", view)
                             L.i("shade header view: ${view.javaClass.name}")
                             shadeHeader = view
+                            resetIosAttachMemos()
                                 view.post {
-                                    shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
-                                    shadeHeader?.let {
-                                        if (iosModeActive(app ?: it.context) || iosMainHost != null) {
-                                            attachIosShadeHeader(it)
-                                        }
+                                    if (features.duoRuntime) {
+                                        shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                                    }
+                                    if (features.iosRuntime) {
+                                        shadeHeader?.let { attachIosShadeHeader(it) }
                                     }
                                 }
                         }
@@ -1475,12 +1847,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 ShadeProbe.tree("header (stub)", view)
                                 L.i("shade header inflated from a stub: ${view.javaClass.name}")
                                 shadeHeader = view
+                                resetIosAttachMemos()
                             view.post {
-                                shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
-                                shadeHeader?.let {
-                                    if (iosModeActive(app ?: it.context) || iosMainHost != null) {
-                                        attachIosShadeHeader(it)
-                                    }
+                                if (features.duoRuntime) {
+                                    shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                                }
+                                if (features.iosRuntime) {
+                                    shadeHeader?.let { attachIosShadeHeader(it) }
                                 }
                             }
                             }
@@ -1516,7 +1889,51 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         /** IOS-LAG: the extra-surface (keyguard/shade) attach is throttled to this cadence. */
         const val IOS_EXTRA_ATTACH_MIN_MS = 500L
 
+        /** R3 A6: the plain-Duo extra bars use the same cadence. */
+        const val DUO_EXTRA_ATTACH_MIN_MS = 500L
+
         /** IOS-LAG: a header with no attachable strip is retried only after this long. */
         const val IOS_HEADER_RETRY_MS = 5_000L
+    }
+}
+
+/**
+ * R3 A1: a strip that could not be attached is not re-resolved on every shade layout pass. The memo
+ * is keyed by the exact window/header view and expires after [retryMs]; a panel transition or a new
+ * shade/header identity resets it, because that is when the tree may have become attachable.
+ */
+internal class IosShadeAttachGate(private val retryMs: Long) {
+
+    private var failedView: View? = null
+    private var failedAt = 0L
+
+    /** True when [view] may be attempted now (never failed, or the memo has expired). */
+    fun shouldAttempt(view: View, now: Long): Boolean =
+        failedView !== view || now - failedAt >= retryMs
+
+    fun noteFailure(view: View, now: Long) {
+        failedView = view
+        failedAt = now
+    }
+
+    fun noteSuccess() {
+        failedView = null
+        failedAt = 0L
+    }
+
+    fun reset() {
+        failedView = null
+        failedAt = 0L
+    }
+}
+
+/** R3 A4: every iOS surface follows the same user settings, main and extras alike. */
+internal fun refreshIosHostSettings(settings: ModuleSettings, hosts: Iterable<IosReplaceHost>) {
+    for (host in hosts) {
+        try {
+            host.refreshSettings(settings)
+        } catch (_: Throwable) {
+            // Fail silent: one surface's settings must never blank another.
+        }
     }
 }

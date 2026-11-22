@@ -90,20 +90,34 @@ internal object CellReader {
                 airplane = true
             )
         }
-        val default = readDefault(context, count, fallbackDots)
+        // One default-line snapshot feeds the aggregate line; each active subscription is read on its
+        // own below. Reading `signalStrength` twice per refresh used to cost a second binder call.
+        val tm = try {
+            context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        } catch (t: Throwable) {
+            L.w("cell telephony: ${t.message}")
+            null
+        }
+        val strength = try {
+            tm?.signalStrength
+        } catch (t: Throwable) {
+            L.w("cellLevel: ${t.message}")
+            null
+        }
+        val default = defaultSignal(tm, strength, count, fallbackDots)
         val samples = try {
             val sm = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
-            sm?.activeSubscriptionInfoList.orEmpty()
+            val active = sm?.activeSubscriptionInfoList.orEmpty()
                 .sortedBy { it.simSlotIndex }
-                .map {
-                    sampleFor(
-                        context = context,
-                        slot = it.simSlotIndex,
-                        subId = it.subscriptionId,
-                        count = count,
-                        fallbackDots = default.dots
-                    )
-                }
+            active.map {
+                sampleFor(
+                    context = context,
+                    slot = it.simSlotIndex,
+                    subId = it.subscriptionId,
+                    count = count,
+                    fallbackDots = default.dots
+                )
+            }
         } catch (t: Throwable) {
             L.w("cellSignals: ${t.message}")
             emptyList()
@@ -128,14 +142,17 @@ internal object CellReader {
         val src: String
     )
 
-    private fun readDefault(context: Context, count: Int, fallbackDots: Int): DefaultSignal {
+    private fun defaultSignal(
+        tm: TelephonyManager?,
+        ss: android.telephony.SignalStrength?,
+        count: Int,
+        fallbackDots: Int
+    ): DefaultSignal {
         val fallback = fallbackDots.coerceIn(0, 4)
+        if (ss == null) {
+            return DefaultSignal(-1, SignalMapping.cellMaxIndex(-1, count), fallback, SignalMapping.SRC_STALE)
+        }
         return try {
-            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-            val ss = tm?.signalStrength
-            if (ss == null) {
-                DefaultSignal(-1, SignalMapping.cellMaxIndex(-1, count), fallback, SignalMapping.SRC_STALE)
-            } else {
             val raw = ss.level
             val maxIndex = SignalMapping.cellMaxIndex(raw, count)
             DefaultSignal(
@@ -144,51 +161,63 @@ internal object CellReader {
                 SignalMapping.cellDots(raw, count, serviceInService(tm)),
                 SignalMapping.SRC_DEFAULT
             )
-            }
         } catch (t: Throwable) {
             L.w("cellLevel: ${t.message}")
             DefaultSignal(-1, SignalMapping.cellMaxIndex(-1, count), fallback, SignalMapping.SRC_STALE)
         }
     }
 
-    /** One subscription's sample; a failed per-sub read is marked unavailable, never reported as 0. */
+    /**
+     * One subscription's sample; a failed per-sub read is marked unavailable, never reported as 0.
+     *
+     * `SignalStrength.getCellSignalStrengths()` is ordered by modem/phone, not by `simSlotIndex`, so
+     * it cannot stand in for a failed per-subscription read. The sample keeps `raw=-1`,
+     * `src=unavailable` and the caller's documented fallback, so the host can leave the stock icon.
+     */
     @SuppressLint("MissingPermission")
-    private fun sampleFor(
+    internal fun sampleFor(
         context: Context,
         slot: Int,
         subId: Int,
         count: Int,
         fallbackDots: Int
-    ): CellSample = try {
-        val base = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-        val perSub = base?.let { tm ->
-            method(tm.javaClass, "createForSubscriptionId", Int::class.javaPrimitiveType!!)
-                ?.invoke(tm, subId) as? TelephonyManager
+    ): CellSample {
+        val base = try {
+            context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        } catch (t: Throwable) {
+            L.w("cellLevel[$subId]: ${t.message}")
+            null
         }
-        val ss = perSub?.signalStrength
-        if (ss == null) {
+        return try {
+            val perSub = base?.let { tm ->
+                method(tm.javaClass, "createForSubscriptionId", Int::class.javaPrimitiveType!!)
+                    ?.invoke(tm, subId) as? TelephonyManager
+            }
+            val ss = perSub?.signalStrength
+            if (ss == null) {
+                unavailable(slot, subId, count, fallbackDots)
+            } else {
+                val raw = ss.level
+                val maxIndex = SignalMapping.cellMaxIndex(raw, count)
+                val (dbm, metric) = signalMetric(ss)
+                CellSample(
+                    slot = slot,
+                    subscriptionId = subId,
+                    raw = raw,
+                    count = count,
+                    maxIndex = maxIndex,
+                    rat = ratOf(ss),
+                    dbm = dbm,
+                    metric = metric,
+                    dots = SignalMapping.cellDots(raw, count, serviceInService(perSub)),
+                    src = SignalMapping.SRC_PER_SUB,
+                    airplane = false
+                )
+            }
+        } catch (t: Throwable) {
+            L.w("cellLevel[$subId]: ${t.message}")
             unavailable(slot, subId, count, fallbackDots)
-        } else {
-            val raw = ss.level
-            val maxIndex = SignalMapping.cellMaxIndex(raw, count)
-            val (dbm, metric) = signalMetric(ss)
-            CellSample(
-                slot = slot,
-                subscriptionId = subId,
-                raw = raw,
-                count = count,
-                maxIndex = maxIndex,
-                rat = ratOf(ss),
-                dbm = dbm,
-                metric = metric,
-                dots = SignalMapping.cellDots(raw, count, serviceInService(perSub)),
-                src = SignalMapping.SRC_PER_SUB,
-                airplane = false
-            )
         }
-    } catch (t: Throwable) {
-        L.w("cellLevel[$subId]: ${t.message}")
-        unavailable(slot, subId, count, fallbackDots)
     }
 
     private fun unavailable(slot: Int, subId: Int, count: Int, fallbackDots: Int): CellSample =
@@ -215,7 +244,13 @@ internal object CellReader {
             ss.cellSignalStrengths.firstOrNull()
         } catch (_: Throwable) {
             null
-        } ?: return -999 to "-"
+        }
+        return signalMetric(primary)
+    }
+
+    /** The dBm/metric read for one platform `CellSignalStrength`. */
+    private fun signalMetric(primary: Any?): Pair<Int, String> {
+        if (primary == null) return -999 to "-"
         val name = primary.javaClass.simpleName
         val candidates = when {
             name.contains("Lte") -> listOf("getRsrp" to "rsrp", "getRssi" to "rssi")
@@ -241,7 +276,13 @@ internal object CellReader {
     }
 
     private fun ratOf(ss: android.telephony.SignalStrength): String = try {
-        val name = ss.cellSignalStrengths.firstOrNull()?.javaClass?.simpleName ?: "-"
+        ratOf(ss.cellSignalStrengths.firstOrNull())
+    } catch (_: Throwable) {
+        "-"
+    }
+
+    private fun ratOf(primary: Any?): String = try {
+        val name = primary?.javaClass?.simpleName ?: "-"
         name.removePrefix("CellSignalStrength").ifEmpty { "-" }
     } catch (_: Throwable) {
         "-"

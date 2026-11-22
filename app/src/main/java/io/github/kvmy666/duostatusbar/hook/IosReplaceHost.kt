@@ -63,16 +63,16 @@ internal class IosReplaceHost(
     private val isMainBar: Boolean = true,
     private val surface: String = if (isMainBar) "main bar" else "extra",
     private val batterySource: (Context) -> IosBatteryReading? = ::readStickyBattery,
-    private val cellSource: (Context) -> CellReading = { CellReader.read(it, airplane = false) },
+    private val cellSource: (Context) -> CellReading = { IosReadings.cell(it) },
     private val wifiSource: (Context, Int, Boolean, Boolean, Boolean) -> WifiSample =
         { ctx, level, on, active, validated ->
-            WifiReader.sample(ctx, level, on, active, validated)
+            IosReadings.wifi(ctx, level, on, active, validated)
         },
     private val survivalDelayMs: Long = 5_000L,
     private val idleDelayMs: Long = 3_000L
-) {
+) : IosDiagnosticSource {
 
-    private companion object {
+    internal companion object {
         const val REFRESH_DEBOUNCE_MS = 120L
         const val ATTACH_RETRY_MS = 400L
         const val ATTACH_MAX_ATTEMPTS = 5
@@ -81,6 +81,30 @@ internal class IosReplaceHost(
         const val ACTION_ANY_DATA_STATE = "android.intent.action.ANY_DATA_STATE"
         const val ACTION_WIFI_RSSI = "android.net.wifi.RSSI_CHANGED"
         const val ACTION_WIFI_STATE = "android.net.wifi.WIFI_STATE_CHANGED"
+
+        /** R3 A1: a strip-id oscillation may tear down/re-attach at most once per second. */
+        const val MIN_RETARGET_INTERVAL_MS = 1_000L
+
+        /**
+         * R3 A1: may [attachSurface] tear a live host down to move to the usable copy of its strip id?
+         *
+         * Pure and Android-free. A hidden attachment is kept when no usable copy exists (a closing
+         * panel must be reused on the next open), and a re-target is throttled so two copies that
+         * alternate their visibility cannot tear the host down on every layout pass.
+         */
+        internal fun retarget(
+            attached: Boolean,
+            attachedUsable: Boolean,
+            usableExists: Boolean,
+            currentStripIsUsableCopy: Boolean,
+            msSinceLastRetarget: Long
+        ): Boolean {
+            if (!attached) return false
+            if (attachedUsable) return false
+            if (!usableExists) return false
+            if (currentStripIsUsableCopy) return false
+            return msSinceLastRetarget >= MIN_RETARGET_INTERVAL_MS
+        }
     }
 
     /**
@@ -124,6 +148,22 @@ internal class IosReplaceHost(
             }
     }
 
+    /**
+     * One line of the R3 A5.3 self-diagnosis. Built once per attach from the stock inventory (so an
+     * icon that was never adopted still appears), then joined with the live records at dump time. No
+     * tree walk happens per frame; only this snapshot and the readers' last values are read.
+     */
+    private class IconReport(
+        val kind: IosIconKind,
+        val view: View,
+        val family: IosSkinFamily,
+        val plannedMechanism: IosReplaceMechanism,
+        val cellSlot: Int = -1,
+        val subId: Int = 0,
+        var reason: String = "not-adopted",
+        var slot: IntArray? = null
+    )
+
     private val logOnce = LogOnce()
     private val handler = Handler(Looper.getMainLooper())
     private val records = ArrayList<Record>()
@@ -146,6 +186,12 @@ internal class IosReplaceHost(
     private var isAttached = false
     val attached: Boolean get() = isAttached
 
+    /**
+     * R3 A1: when this host last tore down to re-target another copy of its strip id
+     * ([SystemClock.uptimeMillis]); null means never, or reset by teardown/settings.
+     */
+    private var lastSurfaceRetargetAt: Long? = null
+
     private var settings = ModuleSettings.DEFAULT
     private var hiddenStockKeys: Set<String> = emptySet()
     /** Item 8-runtime: hides the selected stock icons, and every non-replaced one when asked. */
@@ -163,6 +209,9 @@ internal class IosReplaceHost(
     private var attachRetry: Runnable? = null
     private var attachAttempts = 0
 
+    /** A one-per-minute refresh is cheap; screen-off still never reads. */
+    private var screenOn = true
+
     private var lastCellPlan: IosCellPlan = IosCellPlan.None
     private var lastCellSignature = ""
 
@@ -171,6 +220,24 @@ internal class IosReplaceHost(
     private var lastWifiOn = false
     private var lastWifiActive = false
     private var lastWifiValidated = false
+
+    /**
+     * The last snapshot this host actually drew, kept for the diagnostics task and because a value
+     * must never be re-read per surface (R3 A4): every glyph on this host follows one sample.
+     */
+    private var lastWifiSample: WifiSample? = null
+    private var lastCellReading: CellReading? = null
+    private var lastBatteryReading: IosBatteryReading? = null
+
+    /** R3 A5.3: one entry per battery/Wi-Fi/cellular stock icon, rebuilt on every attach. */
+    private val iconReports = ArrayList<IconReport>()
+
+    /**
+     * The inventory/plan signature the current [iconReports] were built from. A later refresh that
+     * sees a different signature (a SIM added/removed, an icon added by the ROM) rebuilds the report
+     * off the same tree read it already did; unchanged refreshes never rebuild.
+     */
+    private var lastReportSignature = ""
 
     /** IOS-LAG: attach/teardown churn and drawable re-assert fights are backed off per surface. */
     private val thrashTripped: Boolean
@@ -203,11 +270,23 @@ internal class IosReplaceHost(
                     ACTION_SERVICE_STATE,
                     ACTION_ANY_DATA_STATE,
                     ACTION_WIFI_RSSI,
-                    ACTION_WIFI_STATE -> scheduleRefresh()
+                    ACTION_WIFI_STATE -> {
+                        IosReadings.invalidate()
+                        scheduleRefresh()
+                    }
 
-                    Intent.ACTION_SCREEN_OFF -> handler.removeCallbacks(refreshRunnable)
+                    // R3 A4: a low-cost freshness tick; the platform sends it once a minute.
+                    Intent.ACTION_TIME_TICK -> if (screenOn) scheduleRefresh()
 
-                    Intent.ACTION_SCREEN_ON -> if (isAttached) scheduleRefresh()
+                    Intent.ACTION_SCREEN_OFF -> {
+                        screenOn = false
+                        handler.removeCallbacks(refreshRunnable)
+                    }
+
+                    Intent.ACTION_SCREEN_ON -> {
+                        screenOn = true
+                        if (isAttached) scheduleRefresh()
+                    }
 
                     else -> Unit
                 }
@@ -247,6 +326,7 @@ internal class IosReplaceHost(
                 logOnce.once("no-strip") {
                     L.i("iOS replace: no status icon strip - stock icons untouched")
                 }
+                recordNoStrip()
                 false
             } else {
                 attachToStrip(null, found, root, null, null)
@@ -266,15 +346,33 @@ internal class IosReplaceHost(
     fun attachSurface(name: String, root: View, stripId: String = "system_icons"): Boolean {
         composed?.let { return it.attachSurface(name, root, stripId) }
         if (thrashBlocked(root)) return false
-        if (isAttached && attachedAlive(root)) return true
+        // R3 A1: a strip entry name can exist several times in the shade window; the first DFS hit is
+        // often an invisible header copy. Resolve by usability, and re-target a host that is still on
+        // an invisible copy once a visible one appears.
+        val usable = findUsableStrip(root, stripId)
+        val now = SystemClock.uptimeMillis()
+        val current = strip
+        val decision = retarget(
+            attached = isAttached,
+            attachedUsable = stripUsable(current),
+            usableExists = usable != null,
+            currentStripIsUsableCopy = current != null && current === usable,
+            msSinceLastRetarget = lastSurfaceRetargetAt?.let { now - it } ?: Long.MAX_VALUE
+        )
+        if (decision) {
+            teardownInternal(countLifecycle = false)
+            lastSurfaceRetargetAt = now
+        }
+        if (!decision && isAttached && attachedAlive(root)) return true
         if (isAttached) teardown()
         if (thrashTripped) return false
         val result = try {
-            val found = findByEntryName(root, stripId) as? ViewGroup
+            val found = usable
             if (found == null) {
                 logOnce.once("no-strip:$name:$stripId") {
-                    L.i("iOS replace $name: $stripId not found - stock icons untouched")
+                    L.i("iOS replace $name: $stripId not visible - stock icons untouched")
                 }
+                recordNoStrip()
                 false
             } else {
                 attachToStrip(name, found, root, null, null)
@@ -328,8 +426,8 @@ internal class IosReplaceHost(
     internal fun canAttachSurface(root: View, stripId: String): Boolean {
         composed?.let { return it.canAttachSurface(root, stripId) }
         return try {
-            val found = findByEntryName(root, stripId) as? ViewGroup ?: return false
-            val inventory = inventoryOf(found, null)
+            val found = findUsableStrip(root, stripId) ?: return false
+            val inventory = effectiveInventory(inventoryOf(found, null))
             val plans = inventory.map { planForSafe(it.view) }
             val replaceable = plans.any {
                 it.mechanism != IosReplaceMechanism.OVERLAY && it.mechanism != IosReplaceMechanism.SKIP
@@ -356,6 +454,19 @@ internal class IosReplaceHost(
 
     /** Test seam: the kinds of the records currently owned. */
     internal fun recordKindsForTest(): List<IosIconKind> = records.map { it.kind }
+
+    /** Test seam: the visual currently applied to [view]'s record, if any. */
+    internal fun visualForTest(view: View): IosVisual? =
+        records.firstOrNull { it.leaf === view || it.outer === view }?.visual
+
+    /** Test seam: how many attach retries have been consumed (never resets on a failed attach). */
+    internal fun attachAttemptsForTest(): Int = attachAttempts
+
+    /** Test seam: the exact Wi-Fi snapshot this host last drew (same instance for every surface). */
+    internal fun lastWifiSampleForTest(): WifiSample? = lastWifiSample
+
+    /** Test seam: the exact cellular reading this host last drew. */
+    internal fun lastCellReadingForTest(): CellReading? = lastCellReading
 
     /**
      * Test seam: recomputes every record's tint from its current leaf/outer, without re-reading any
@@ -394,7 +505,10 @@ internal class IosReplaceHost(
     fun refreshSettings(settings: ModuleSettings) {
         val previous = this.settings
         val changed = previous != settings
-        if (changed) resetThrash()
+        if (changed) {
+            resetThrash()
+            lastSurfaceRetargetAt = null
+        }
         this.settings = settings
         hiddenStockKeys = DuoPrefs.parseHiddenStockIcons(settings.hiddenStockIcons).toSet()
         composed?.let {
@@ -461,7 +575,7 @@ internal class IosReplaceHost(
             val inventory = inventoryOf(strip ?: return, null)
             val batteryIcon = selectBest(inventory, StockIconKind.BATTERY)
             val wifiIcon = selectBest(inventory, StockIconKind.WIFI)
-            val cellIcons = inventory.filter { it.kind == StockIconKind.CELLULAR }
+            val cellIcons = mappedCells(inventory)
 
             val batteryRecord = recordOf(IosIconKind.BATTERY)
             val wifiRecord = recordOf(IosIconKind.WIFI)
@@ -514,9 +628,14 @@ internal class IosReplaceHost(
                     cellSignals(reading),
                     reading.defaultSub,
                     cellSlots(cellIcons),
-                    IosMapping.simDisplay(settings.simDisplay)
+                    IosMapping.simDisplay(settings.simDisplay),
+                    samples = reading.samples
                 )
             }
+            // R3 A5.3: an icon added later (or a live 1→2 SIM transition) must gain its own line.
+            // The signature check runs off the tree read above, so an unchanged refresh does nothing.
+            maybeRebuildIconReports(inventory, plan)
+            reportCellPlan(plan, reading, cellIcons)
             val signature = cellSignature(plan)
             lastCellPlan = plan
             if (signature != lastCellSignature) {
@@ -529,8 +648,69 @@ internal class IosReplaceHost(
             } else {
                 updateCellRecords(plan)
             }
+            updateStockReasons(battery, wifi)
+            logStockReasons()
         } catch (t: Throwable) {
             failRefresh(t)
+        }
+    }
+
+    /**
+     * R3 A5.3: names the reason the cellular plan left the stock icons, and logs the `unavailable`
+     * veto once per process. The plan itself is computed above from the same inventory; no tree walk.
+     */
+    private fun reportCellPlan(
+        plan: IosCellPlan,
+        reading: CellReading?,
+        cellIcons: List<StockIcon>
+    ) {
+        if (plan != IosCellPlan.None || reading == null) return
+        val reason = cellNoneReason(reading, cellIcons)
+        if (reason == "plan-unavailable") {
+            logOnce.once("cell-plan-unavailable") {
+                L.i("iOS replace cell plan=none reason=unavailable")
+            }
+        }
+        for (report in iconReports) {
+            if (report.kind == IosIconKind.CELL) report.reason = reason
+        }
+    }
+
+    private fun cellNoneReason(reading: CellReading, cellIcons: List<StockIcon>): String {
+        if (reading.samples.any { !it.available }) return "plan-unavailable"
+        if (reading.samples.isEmpty()) return "no-active-sim"
+        val subs = cellIcons.map { subIdOf(it.view) }
+        if (subs.size > 1 && (subs.any { it <= 0 } || subs.distinct().size != subs.size)) {
+            return "carrier-duplicate-subId0"
+        }
+        return "plan-NONE"
+    }
+
+    /**
+     * Records why a battery/Wi-Fi icon stayed stock. The reasons are observed decisions from the same
+     * refresh that already read the tree and the readers; nothing is re-read and no view is written.
+     */
+    private fun updateStockReasons(battery: IosVisual?, wifi: IosVisual?) {
+        for (report in iconReports) {
+            if (recordForReport(report) != null) continue
+            when (report.kind) {
+                IosIconKind.BATTERY -> if (battery == null) report.reason = "battery-unreadable"
+                IosIconKind.WIFI ->
+                    if (wifi != null && !wifi.visible) report.reason = "wifi-hidden"
+                IosIconKind.CELL -> Unit
+            }
+        }
+    }
+
+    /** Logs each stock/fallback reason once per surface and icon class, never per layout pass. */
+    private fun logStockReasons() {
+        for (report in iconReports) {
+            if (recordForReport(report) != null) continue
+            val reason = report.reason
+            if (reason == "-" || reason == "not-adopted" || reason == "plan-unavailable") continue
+            logOnce.once("stock-reason:$surface:${report.kind}:${report.view.javaClass.name}:$reason") {
+                L.i("iOS surface=$surface ${report.kind.name} state=stock reason=$reason")
+            }
         }
     }
 
@@ -544,7 +724,7 @@ internal class IosReplaceHost(
             } catch (_: Throwable) {
             }
         }
-        teardownInternal(countLifecycle = true)
+        teardownInternal(countLifecycle = true, resetAttempts = true)
     }
 
     // ----------------------------------------------------------------------------- attach machinery
@@ -622,6 +802,15 @@ internal class IosReplaceHost(
         }
         logCellSubIds(inventory)
 
+        // Build the per-icon report before anything can decide to tear this host down (R3 A5.3): a
+        // strip where every icon fails has no records to describe, so the inventory snapshot is the
+        // only evidence, and it must exist before the records-empty/thrash decision.
+        strip = targetStrip
+        rootView = root
+        this.overlayParent = overlayParent
+        buildIconReports(inventory)
+        lastReportSignature = reportSignature(inventory, IosCellPlan.None)
+
         // All-overlay strips use the approved hide-in-place + Canvas fallback. No Rive is created:
         // IosIconHost only builds the Canvas element (IOS-R2 0c).
         val plans = inventory.map { planForSafe(it.view) }
@@ -631,7 +820,10 @@ internal class IosReplaceHost(
         if (allOverlayOrSkip && plans.any { it.mechanism == IosReplaceMechanism.OVERLAY }) {
             val parent = overlayParent
                 ?: (finder.findOverlayContainer(targetStrip, root) as? FrameLayout)
-                ?: return false
+                ?: run {
+                    persistAttempt()
+                    return false
+                }
             val delegate = IosIconHost(
                 context = context,
                 sizeOwner = sizeOwner,
@@ -641,12 +833,15 @@ internal class IosReplaceHost(
                 cellSource = cellSource,
                 wifiSource = wifiSource
             )
-            if (!delegate.attachIn(targetStrip, parent)) return false
+            if (!delegate.attachIn(targetStrip, parent)) {
+                persistAttempt()
+                return false
+            }
             composed = delegate
-            strip = targetStrip
-            rootView = root
             this.overlayParent = parent
             isAttached = true
+            IosDiagnostics.register(this)
+            IosDiagnostics.clearAttempt(surface)
             L.i("iOS owner $surface: overlay host attached")
             noteLifecycle(root, attach = true)
             if (thrashTripped) {
@@ -656,9 +851,6 @@ internal class IosReplaceHost(
             return true
         }
 
-        strip = targetStrip
-        rootView = root
-        this.overlayParent = overlayParent
         addLayoutListener(targetStrip)
         for (icon in inventory) addLayoutListener(icon.view)
         registerReceivers()
@@ -676,22 +868,31 @@ internal class IosReplaceHost(
                 L.i("iOS owner $surface: stock icons hidden by the user - nothing to draw")
                 noteLifecycle(root, attach = true)
                 if (thrashTripped) {
+                    persistAttempt()
                     teardownInternal(countLifecycle = false)
                     return false
                 }
+                IosDiagnostics.register(this)
+                IosDiagnostics.clearAttempt(surface)
                 return true
             }
         }
         if (records.isEmpty() || thrashTripped) {
+            // The stock snapshot is the only line a total failure can produce; keep it before the
+            // teardown unregisters this host (review A5 MAJOR 1).
+            persistAttempt()
             teardownInternal(countLifecycle = false)
             return false
         }
         L.i("iOS owner $surface: replace host attached")
         noteLifecycle(root, attach = true)
         if (thrashTripped) {
+            persistAttempt()
             teardownInternal(countLifecycle = false)
             return false
         }
+        IosDiagnostics.register(this)
+        IosDiagnostics.clearAttempt(surface)
         return true
     }
 
@@ -733,12 +934,337 @@ internal class IosReplaceHost(
     private fun logCellSubIds(inventory: List<StockIcon>) {
         val cells = inventory.filter { it.kind == StockIconKind.CELLULAR }
         if (cells.isEmpty()) return
-        val entries = cells.mapIndexed { index, icon ->
+        val mapped = mappedCells(inventory)
+        val entries = mapped.mapIndexed { index, icon ->
             val entry = entryName(icon.view) ?: icon.label
             "$entry#${index + 1}=${subIdOf(icon.view)}"
         }
-        val subIds = cells.map { subIdOf(it.view) }.joinToString(",", "[", "]")
-        L.i("iOS replace subIds: ${entries.joinToString(" ")} subIds=$subIds")
+        val subIds = mapped.map { subIdOf(it.view) }.joinToString(",", "[", "]")
+        L.i(
+            "iOS replace subIds: ${entries.joinToString(" ")} subIds=$subIds " +
+                "cells=${mapped.size}/${cells.size}"
+        )
+    }
+
+    /**
+     * R3 A2: only the cellular slots with a readable subscription id take part in the plan.
+     *
+     * The visible QS/shade strip also carries carrier-group rows (`mobile_in`/`mobile_out`/
+     * `mobile_roaming`) whose `getSubId()` is 0; the mapping needs exactly the two SIM slots and used
+     * to reject all 14 entries and leave both stock towers. When no slot exposes an id the full list is
+     * kept, which is the existing single unreadable-SIM fallback.
+     */
+    private fun mappedCells(inventory: List<StockIcon>): List<StockIcon> {
+        val cells = inventory.filter { it.kind == StockIconKind.CELLULAR }
+        val mapped = cells.filter { subIdOf(it.view) > 0 }
+        return mapped.ifEmpty { cells }
+    }
+
+    /** The inventory the plan reads: unmapped cellular rows never reach it. */
+    private fun effectiveInventory(inventory: List<StockIcon>): List<StockIcon> {
+        val mapped = mappedCells(inventory)
+        return inventory.filter { icon ->
+            icon.kind != StockIconKind.CELLULAR || mapped.any { it.view === icon.view }
+        }
+    }
+
+    // ----------------------------------------------------------------------------- self-diagnosis
+
+    private fun iosKindOf(kind: StockIconKind): IosIconKind? = when (kind) {
+        StockIconKind.BATTERY -> IosIconKind.BATTERY
+        StockIconKind.WIFI -> IosIconKind.WIFI
+        StockIconKind.CELLULAR -> IosIconKind.CELL
+        else -> null
+    }
+
+    /**
+     * Builds the per-surface report once, from the same inventory and plans attach uses.
+     *
+     * The records cannot describe an icon that was never adopted (SKIP, no leaf, zero size), so the
+     * stock inventory is the source of truth here. It is read only; no view is written and no reader
+     * is called.
+     */
+    private fun buildIconReports(inventory: List<StockIcon>) {
+        iconReports.clear()
+        val mapped = mappedCells(inventory)
+        var cellIndex = 0
+        for (icon in inventory) {
+            val kind = iosKindOf(icon.kind) ?: continue
+            val plan = planForSafe(icon.view)
+            val cellSlot = if (kind == IosIconKind.CELL) {
+                val mappedIndex = mapped.indexOfFirst { it.view === icon.view }
+                if (mappedIndex >= 0) mappedIndex else cellIndex
+            } else {
+                -1
+            }
+            iconReports.add(
+                IconReport(
+                    kind = kind,
+                    view = icon.view,
+                    family = plan.family,
+                    plannedMechanism = plan.mechanism,
+                    cellSlot = cellSlot,
+                    subId = subIdOf(icon.view),
+                    reason = initialStockReason(icon.view, plan),
+                    slot = slotSnapshot(icon.view, plan)
+                )
+            )
+            if (kind == IosIconKind.CELL) cellIndex++
+        }
+    }
+
+    /**
+     * The identity of the inventory/plan the report was built from. View identity (not a class name)
+     * is included so an icon the ROM adds later forces a rebuild, and the cell plan string makes a
+     * 1→2 SIM transition visible even when the same two views keep their roles.
+     */
+    private fun reportSignature(inventory: List<StockIcon>, plan: IosCellPlan): String = buildString {
+        for (icon in inventory) {
+            val kind = iosKindOf(icon.kind) ?: continue
+            append(kind.name).append(':')
+                .append(System.identityHashCode(icon.view)).append(':')
+                .append(subIdOf(icon.view)).append('|')
+        }
+        append('#').append(cellSignature(plan))
+    }
+
+    /** Rebuilds the per-icon snapshot only when the inventory/plan signature actually changed. */
+    private fun maybeRebuildIconReports(inventory: List<StockIcon>, plan: IosCellPlan) {
+        val signature = reportSignature(inventory, plan)
+        if (signature == lastReportSignature) return
+        lastReportSignature = signature
+        buildIconReports(inventory)
+    }
+
+    /**
+     * Keeps the last stock snapshot of a failed attach in [IosDiagnostics] before its teardown
+     * unregisters the host. Strings only, so no view is retained by the process-wide registry.
+     */
+    private fun persistAttempt() {
+        try {
+            val lines = diagnosticLines()
+            if (lines.isNotEmpty()) IosDiagnostics.recordAttempt(surface, lines)
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** A strip that never resolved still gets one honest line instead of disappearing from the dump. */
+    private fun recordNoStrip() {
+        IosDiagnostics.recordAttempt(
+            surface,
+            listOf("ios surface=$surface state=stock reason=no-strip")
+        )
+    }
+
+    /**
+     * The slot rectangle of an icon that was never adopted, using the same leaf geometry the draw path
+     * would: the leaf's offset rect when the plan names one, otherwise the stock outer's rect.
+     */
+    private fun slotSnapshot(view: View, plan: IosReplacePlan): IntArray {
+        val leaf = when (plan.mechanism) {
+            IosReplaceMechanism.IMAGE_DRAWABLE ->
+                findLeaf(view, plan.leafIds, allowFirstImageView = isAospBattery(plan))
+            IosReplaceMechanism.OUTER_DRAW ->
+                findLeaf(view, plan.leafIds, allowFirstImageView = false)
+            IosReplaceMechanism.LEAF_DRAW -> findVisibleSizedLeaf(view, plan.leafIds)
+            else -> null
+        }
+        return if (leaf != null) leafBounds(leaf, view) else rectSnapshot(view, strip ?: view)
+    }
+
+    /** The reason a stock icon stays stock before any adoption has happened. */
+    private fun initialStockReason(view: View, plan: IosReplacePlan): String {
+        if (hiddenStockKeys.contains(stockKeyOf(view))) return "user-hidden"
+        if (view.visibility != View.VISIBLE) return "not-visible"
+        return when (plan.mechanism) {
+            IosReplaceMechanism.SKIP -> "plan-SKIP"
+            IosReplaceMechanism.OVERLAY -> "no-overlay-parent"
+            IosReplaceMechanism.IMAGE_DRAWABLE -> {
+                val leaf = findLeaf(view, plan.leafIds, allowFirstImageView = isAospBattery(plan))
+                when {
+                    leaf == null -> "no-leaf"
+                    leaf.width <= 0 || leaf.height <= 0 -> "zero-size"
+                    else -> "not-adopted"
+                }
+            }
+            IosReplaceMechanism.OUTER_DRAW -> {
+                val leaf = findLeaf(view, plan.leafIds, allowFirstImageView = false)
+                when {
+                    leaf == null -> "no-leaf"
+                    (leaf.width <= 0 || leaf.height <= 0) &&
+                        (view.width <= 0 || view.height <= 0) -> "zero-size"
+                    else -> "not-adopted"
+                }
+            }
+            IosReplaceMechanism.LEAF_DRAW -> {
+                if (findVisibleSizedLeaf(view, plan.leafIds) == null) "no-leaf" else "not-adopted"
+            }
+        }
+    }
+
+    /** One compact, parseable line per stock icon. Reads the snapshot and the live records only. */
+    override fun diagnosticLines(): List<String> {
+        composed?.let { return it.diagnosticLines() }
+        if (iconReports.isEmpty()) return emptyList()
+        val ordered = iconReports.withIndex().sortedWith(
+            compareBy({ kindOrder(it.value.kind) }, { it.index })
+        )
+        return ordered.map { (_, report) ->
+            val record = recordForReport(report)
+            // The plan asked for one mechanism; the record says what was actually applied. A silent
+            // fallback (OVERLAY, or OUTER_DRAW downgraded to the leaf swap) must never claim replaced.
+            val state = when {
+                record == null -> "stock"
+                record.mechanism == IosReplaceMechanism.OVERLAY -> "fallback"
+                record.mechanism != report.plannedMechanism -> "fallback"
+                else -> "replaced"
+            }
+            val mechanism = record?.mechanism ?: report.plannedMechanism
+            val reason = when {
+                record != null -> "-"
+                report.view.parent == null -> "detached"
+                hiddenStockKeys.contains(stockKeyOf(report.view)) -> "user-hidden"
+                else -> report.reason
+            }
+            val slot = record?.let { slotOf(it) } ?: report.slot ?: intArrayOf(0, 0, 0, 0)
+            val tint = tintReport(record, report)
+            buildString {
+                append("ios surface=").append(surface)
+                append(' ').append(report.kind.name)
+                append(" family=").append(report.family.name)
+                append(" mech=").append(mechanism.name)
+                append(" state=").append(state)
+                append(" slot=").append(slot[0]).append(',').append(slot[1])
+                    .append(',').append(slot[2]).append(',').append(slot[3])
+                append(" tint=").append(tint.first).append(':').append(argbHex(tint.second))
+                append(" level=").append(levelReport(report))
+                append(" reason=").append(reason)
+                // Two dual-SIM rows can otherwise be byte-identical; the subscription id keeps the
+                // exact-text dedupe from collapsing them into one line.
+                if (report.kind == IosIconKind.CELL) {
+                    append(" subId=").append(if (report.subId > 0) report.subId else "-")
+                }
+            }
+        }
+    }
+
+    private fun kindOrder(kind: IosIconKind): Int = when (kind) {
+        IosIconKind.BATTERY -> 0
+        IosIconKind.WIFI -> 1
+        IosIconKind.CELL -> 2
+    }
+
+    private fun recordForReport(report: IconReport): Record? = records.firstOrNull { record ->
+        record.kind == report.kind && (
+            record.outer === report.view ||
+                record.leaf === report.view ||
+                record.collapse?.target === report.view ||
+                record.clusterOuters.any { it === report.view }
+            )
+    }
+
+    /** The record's draw rectangle: the leaf's offset rect, or the overlay's pinned margins. */
+    private fun slotOf(record: Record): IntArray {
+        if (record.mechanism == IosReplaceMechanism.OVERLAY) {
+            record.overlayParams?.let {
+                return intArrayOf(
+                    it.leftMargin,
+                    it.topMargin,
+                    it.leftMargin + it.width,
+                    it.topMargin + it.height
+                )
+            }
+        }
+        val leaf = record.leaf
+        return if (leaf != null) {
+            leafBounds(leaf, record.outer)
+        } else {
+            intArrayOf(0, 0, record.outer.width, record.outer.height)
+        }
+    }
+
+    private fun rectSnapshot(view: View, ancestor: View): IntArray {
+        val bounds = boundsIn(view, ancestor)
+        return intArrayOf(bounds[0], bounds[1], bounds[0] + bounds[2], bounds[1] + bounds[3])
+    }
+
+    private fun stockKeyOf(view: View): String = try {
+        StockIconKey.keyOf(view)
+    } catch (_: Throwable) {
+        ""
+    }
+
+    /** The tint source the draw uses, plus its resolved ARGB value. */
+    private fun tintReport(record: Record?, report: IconReport): Pair<String, Int> {
+        val leaf = record?.leaf ?: report.view
+        val outer = record?.outer ?: (report.view.parent as? View)
+        val oemTint = record?.oemTint ?: 0
+        val (source, resolved) = tintSourceOf(leaf, outer, oemTint)
+        val value = record?.visual?.tint ?: resolved
+        return source to value
+    }
+
+    /**
+     * Mirrors [oemTintOf] but names the winning source, so a report can say why the glyph is white
+     * (the OEM's ImageTintList) rather than black (the bar colour). Never throws.
+     */
+    private fun tintSourceOf(leaf: View?, outer: View?, oemTint: Int): Pair<String, Int> {
+        try {
+            val image = leaf as? ImageView
+            if (image != null) {
+                val fromList = image.imageTintList?.defaultColor ?: 0
+                if (Color.alpha(fromList) != 0) return "imageTint" to fromList
+                val filter = image.colorFilter as? PorterDuffColorFilter
+                val fromFilter = if (filter != null) {
+                    try {
+                        (filter.javaClass.getMethod("getColor").invoke(filter) as? Int) ?: 0
+                    } catch (_: Throwable) {
+                        0
+                    }
+                } else {
+                    0
+                }
+                if (Color.alpha(fromFilter) != 0) return "porterDuff" to fromFilter
+            }
+            if (outer != null) {
+                val fromImage = (outer as? ImageView)?.imageTintList?.defaultColor ?: 0
+                if (Color.alpha(fromImage) != 0) return "imageTint" to fromImage
+                val fromBackground = outer.backgroundTintList?.defaultColor ?: 0
+                if (Color.alpha(fromBackground) != 0) return "backgroundTint" to fromBackground
+                val fromForeground = outer.foregroundTintList?.defaultColor ?: 0
+                if (Color.alpha(fromForeground) != 0) return "foregroundTint" to fromForeground
+            }
+        } catch (_: Throwable) {
+        }
+        if (Color.alpha(oemTint) != 0) return "oemTint" to oemTint
+        val bar = try {
+            BarTint.fgColor(context)
+        } catch (_: Throwable) {
+            0xFFFFFFFF.toInt()
+        }
+        return "barTint" to bar
+    }
+
+    private fun levelReport(report: IconReport): String = when (report.kind) {
+        IosIconKind.BATTERY -> lastBatteryReading?.let { "battery:sticky:${it.level}" } ?: "-"
+        IosIconKind.WIFI -> lastWifiSample?.let { "wifi:${it.source}:${it.dots}" } ?: "-"
+        IosIconKind.CELL -> {
+            val reading = lastCellReading
+            val sample = reading?.samples?.firstOrNull {
+                report.subId > 0 && it.subscriptionId == report.subId
+            } ?: reading?.samples?.getOrNull(report.cellSlot)
+            when {
+                sample != null -> "cell:${sample.src}:${sample.raw}:${sample.dots}"
+                reading != null ->
+                    "cell:${reading.defaultSrc}:${reading.defaultRaw}:${reading.defaultDots}"
+                else -> "-"
+            }
+        }
+    }
+
+    private fun argbHex(value: Int): String {
+        val text = Integer.toHexString(value).uppercase()
+        return "0".repeat((8 - text.length).coerceAtLeast(0)) + text
     }
 
     // ----------------------------------------------------------------------------- adoption
@@ -826,12 +1352,12 @@ internal class IosReplaceHost(
     }
 
     /**
-     * Only the AOSP/Samsung `BatteryMeterView` family may fall back to its first ImageView
-     * (`mBatteryIconView` has no id). A named HyperOS/Oplus/leaf id that is absent is not a reason to
-     * grab an arbitrary sibling (`mobile_type` on rodin/newer layouts).
+     * Only an AOSP-shaped battery (`BatteryMeterView` and descendants) may fall back to its first
+     * ImageView (`mBatteryIconView` has no id). A named HyperOS/Oplus/leaf id that is absent is not a
+     * reason to grab an arbitrary sibling (`mobile_type` on rodin/newer layouts). The shape flag keeps
+     * a vendor subclass reported under its measured family (UNKNOWN for Infinix `TrBatteryMeterView`).
      */
-    private fun isAospBattery(plan: IosReplacePlan): Boolean =
-        plan.family == IosSkinFamily.SAMSUNG_BATTERY
+    private fun isAospBattery(plan: IosReplacePlan): Boolean = plan.allowFirstImageView
 
     private fun adoptImage(
         kind: IosIconKind,
@@ -1484,6 +2010,7 @@ internal class IosReplaceHost(
         } catch (_: Throwable) {
             null
         } ?: return null
+        lastBatteryReading = reading
         val low = lowThreshold()
         val saver = try {
             DeviceStateReader.isPowerSaveOn(context)
@@ -1502,6 +2029,7 @@ internal class IosReplaceHost(
 
     private fun wifiVisual(tint: Int): IosVisual {
         val sample = wifiSource(context, lastWifiLevel, lastWifiOn, lastWifiActive, lastWifiValidated)
+        lastWifiSample = sample
         lastWifiLevel = sample.dots
         lastWifiOn = sample.on
         lastWifiActive = sample.active
@@ -1510,7 +2038,7 @@ internal class IosReplaceHost(
     }
 
     private fun readCell(): CellReading? = try {
-        cellSource(context)
+        cellSource(context).also { lastCellReading = it }
     } catch (_: Throwable) {
         null
     }
@@ -2027,15 +2555,18 @@ internal class IosReplaceHost(
         }
     }
 
-    private fun teardownInternal(countLifecycle: Boolean) {
+    private fun teardownInternal(countLifecycle: Boolean, resetAttempts: Boolean = false) {
         val wasAttached = isAttached || layer != null || records.isNotEmpty()
         val stripRootView = strip?.rootView
         compositionCleanup()
+        IosDiagnostics.unregister(this)
         // Always idempotent: a failed attach may have called this already and released.
         IosSurfaceOwners.release(surface, this)
         attachRetry?.let { handler.removeCallbacks(it) }
         attachRetry = null
-        attachAttempts = 0
+        // R3 A1: a failed attach must not reset the budget, or the retry loop can never be bounded.
+        // Only the public teardown (a real lifecycle change) starts a fresh attach budget.
+        if (resetAttempts) attachAttempts = 0
         handler.removeCallbacks(refreshRunnable)
         handler.removeCallbacks(tintRefreshRunnable)
         isAttached = false
@@ -2073,6 +2604,7 @@ internal class IosReplaceHost(
         strip = null
         rootView = null
         overlayParent = null
+        lastSurfaceRetargetAt = null
         lastCellPlan = IosCellPlan.None
         lastCellSignature = ""
         cachedLowThreshold = null
@@ -2080,6 +2612,9 @@ internal class IosReplaceHost(
         lastWifiOn = false
         lastWifiActive = false
         lastWifiValidated = false
+        lastWifiSample = null
+        lastCellReading = null
+        lastBatteryReading = null
         IosDrawHookInstaller.releaseWhenEmpty()
         if (wasAttached) L.i("iOS replace teardown: stock icons restored")
         if (countLifecycle && wasAttached) noteLifecycle(stripRootView, attach = false)
@@ -2324,6 +2859,39 @@ internal class IosReplaceHost(
         return null
     }
 
+    /**
+     * All copies of [name] under [root], in depth-first order. The shade window can hold the same id
+     * more than once (R3 A1: an invisible header copy and the visible QS strip).
+     */
+    private fun findAllByEntryName(view: View, name: String, out: MutableList<View>) {
+        if (entryName(view) == name) out.add(view)
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findAllByEntryName(view.getChildAt(i), name, out)
+            }
+        }
+    }
+
+    /** The shown, non-empty copy of [name] under [root], or null when every copy is invisible/0×0. */
+    private fun findUsableStrip(root: View, name: String): ViewGroup? {
+        val copies = ArrayList<View>()
+        findAllByEntryName(root, name, copies)
+        val usable = IosSurfaceRouting.firstUsable(
+            copies,
+            shown = { it.isShown },
+            area = { contentArea(it) }
+        )
+        return usable as? ViewGroup
+    }
+
+    /** True when [view] is a strip this host may draw into right now. */
+    private fun stripUsable(view: ViewGroup?): Boolean =
+        view != null && view.isShown && contentArea(view) > 0
+
+    /** Test seam: the usable copy selection, without attaching. */
+    internal fun findUsableStripForTest(root: View, name: String): ViewGroup? =
+        findUsableStrip(root, name)
+
     private fun addLayoutListener(view: View) {
         if (layoutHosts.any { it === view }) return
         layoutHosts.add(view)
@@ -2364,6 +2932,7 @@ internal class IosReplaceHost(
                 addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_TIME_TICK)
                 addAction(ConnectivityManager.CONNECTIVITY_ACTION)
                 addAction(ACTION_SERVICE_STATE)
                 addAction(ACTION_ANY_DATA_STATE)

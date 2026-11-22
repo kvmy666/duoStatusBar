@@ -280,6 +280,21 @@ internal object StockIconKey {
         return slot != null && slot in INNER_SLOTS
     }
 
+    /**
+     * The status slot of [view] for the iOS order swap: the real `getSlot()`/`getSlotTag()` value,
+     * or the measured `wifi_combo`/`mobile_combo` id/class fallback when reflection returns null.
+     * The fallback is only used after reflection fails, so an OEM that exposes a slot always wins.
+     */
+    internal fun slotTagOf(view: View): String? {
+        slotOf(view)?.let { return it }
+        val tokens = listOfNotNull(idName(view)?.lowercase(), className(view))
+        return when {
+            tokens.any { it.contains("wifi_combo") } -> "wifi"
+            tokens.any { it.contains("mobile_combo") } -> "mobile"
+            else -> null
+        }
+    }
+
     /** `StatusBarIconView.getSlot()`, or the OEM `getSlotTag()`; null when neither exists. */
     private fun slotOf(view: View): String? = try {
         view.javaClass.getMethod("getSlot").invoke(view) as? String

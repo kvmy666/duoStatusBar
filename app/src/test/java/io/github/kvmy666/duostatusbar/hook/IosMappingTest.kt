@@ -627,4 +627,173 @@ class IosMappingTest {
 
         assertNull(IosMapping.cellVisual(IosCellPlan.None, tint))
     }
+
+    // ------------------------------------------------------------------- unavailable per-SIM samples
+
+    private fun cellSample(
+        slot: Int,
+        subId: Int,
+        raw: Int,
+        dots: Int,
+        src: String = SignalMapping.SRC_PER_SUB
+    ) = CellSample(
+        slot = slot,
+        subscriptionId = subId,
+        raw = raw,
+        count = 5,
+        maxIndex = SignalMapping.cellMaxIndex(raw, 5),
+        rat = "Lte",
+        dbm = -95,
+        metric = "rsrp",
+        dots = dots,
+        src = src,
+        airplane = false
+    )
+
+    @Test
+    fun `an unavailable sample vetoes the plan instead of drawing its fallback`() {
+        // sub 11 failed, so its one-dot level is only the caller's fallback; sub 22 read fine.
+        val samples = listOf(
+            cellSample(0, 11, raw = -1, dots = 1, src = SignalMapping.SRC_UNAVAILABLE),
+            cellSample(1, 22, raw = 3, dots = 3)
+        )
+        val signals = samples.map { SimSignal(it.slot, it.subscriptionId, it.dots) }
+        val slots = listOf(slot(11), slot(22))
+
+        assertEquals(
+            IosCellPlan.None,
+            IosMapping.cellPlan(signals, defaultSubId = 11, slots = slots, samples = samples)
+        )
+        // Forced single draws the data SIM (11), which is the unavailable one: stay stock.
+        assertEquals(
+            IosCellPlan.None,
+            IosMapping.cellPlan(
+                signals,
+                defaultSubId = 11,
+                slots = slots,
+                display = IosSimDisplay.SINGLE,
+                samples = samples
+            )
+        )
+    }
+
+    @Test
+    fun `an unavailable single sim stays stock`() {
+        val samples = listOf(
+            cellSample(0, 7, raw = -1, dots = 1, src = SignalMapping.SRC_UNAVAILABLE)
+        )
+        val signals = samples.map { SimSignal(it.slot, it.subscriptionId, it.dots) }
+        assertEquals(
+            IosCellPlan.None,
+            IosMapping.cellPlan(signals, defaultSubId = 7, slots = listOf(slot(7)), samples = samples)
+        )
+    }
+
+    @Test
+    fun `an unreadable slot with an unavailable sample stays stock`() {
+        // The stock slot reports sub id 0, so the plan falls back to the slot itself. The sample is
+        // the per-sub evidence behind that slot; an unavailable one must veto the fallback (sub id 0
+        // must not be looked up as if it were a real subscription).
+        val samples = listOf(
+            cellSample(0, 7, raw = -1, dots = 0, src = SignalMapping.SRC_UNAVAILABLE)
+        )
+        val signals = listOf(SimSignal(slot = 0, subscriptionId = 7, level = 0))
+        assertEquals(
+            IosCellPlan.None,
+            IosMapping.cellPlan(
+                signals,
+                defaultSubId = 7,
+                slots = listOf(CellSlot(subId = 0, visible = true)),
+                samples = samples
+            )
+        )
+    }
+
+    @Test
+    fun `an unreadable slot with an available sample keeps its plan`() {
+        val samples = listOf(cellSample(0, 7, raw = 2, dots = 2))
+        val signals = listOf(SimSignal(slot = 0, subscriptionId = 7, level = 2))
+        val p = single(
+            IosMapping.cellPlan(
+                signals,
+                defaultSubId = 7,
+                slots = listOf(CellSlot(subId = 0, visible = true)),
+                samples = samples
+            )
+        )
+        assertEquals(0, p.slot)
+        assertEquals(0, p.subId)
+        assertEquals(2f, p.level, 0.0001f)
+    }
+
+    @Test
+    fun `a dual plan is vetoed when either subscription sample is unavailable`() {
+        val slots = listOf(slot(11), slot(22))
+        for (failedSub in listOf(11, 22)) {
+            val samples = listOf(
+                cellSample(
+                    0,
+                    11,
+                    raw = if (failedSub == 11) -1 else 2,
+                    dots = if (failedSub == 11) 0 else 2,
+                    src = if (failedSub == 11) {
+                        SignalMapping.SRC_UNAVAILABLE
+                    } else {
+                        SignalMapping.SRC_PER_SUB
+                    }
+                ),
+                cellSample(
+                    1,
+                    22,
+                    raw = if (failedSub == 22) -1 else 3,
+                    dots = if (failedSub == 22) 0 else 3,
+                    src = if (failedSub == 22) {
+                        SignalMapping.SRC_UNAVAILABLE
+                    } else {
+                        SignalMapping.SRC_PER_SUB
+                    }
+                )
+            )
+            val signals = samples.map { SimSignal(it.slot, it.subscriptionId, it.dots) }
+            assertEquals(
+                "sub $failedSub unavailable must stay stock",
+                IosCellPlan.None,
+                IosMapping.cellPlan(signals, defaultSubId = 11, slots = slots, samples = samples)
+            )
+        }
+    }
+
+    @Test
+    fun `a complete per-subscription reading produces the expected plan`() {
+        val samples = listOf(
+            cellSample(0, 11, raw = 2, dots = 2),
+            cellSample(1, 22, raw = 3, dots = 3)
+        )
+        val signals = samples.map { SimSignal(it.slot, it.subscriptionId, it.dots) }
+        val p = dual(
+            IosMapping.cellPlan(
+                signals,
+                defaultSubId = 22,
+                slots = listOf(slot(11), slot(22)),
+                samples = samples
+            )
+        )
+        assertEquals(1, p.dataSlot)
+        assertEquals(0, p.otherSlot)
+        assertEquals(22, p.dataSubId)
+        assertEquals(11, p.otherSubId)
+        assertEquals(3f, p.bars, 0.0001f)
+        assertEquals(2f, p.dots, 0.0001f)
+
+        val one = single(
+            IosMapping.cellPlan(
+                signals.take(1),
+                defaultSubId = 11,
+                slots = listOf(slot(11)),
+                samples = samples.take(1)
+            )
+        )
+        assertEquals(11, one.subId)
+        assertEquals(2f, one.level, 0.0001f)
+    }
 }

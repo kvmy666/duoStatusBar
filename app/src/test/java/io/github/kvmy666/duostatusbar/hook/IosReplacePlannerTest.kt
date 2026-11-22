@@ -130,6 +130,7 @@ class IosReplacePlannerTest {
         assertEquals(IosReplaceMechanism.IMAGE_DRAWABLE, battery.mechanism)
         assertEquals(IosReplaceMechanism.OVERLAY, battery.fallback)
         assertEquals(listOf("battery_icon"), battery.leafIds)
+        assertTrue(battery.allowFirstImageView)
 
         val icon = plan(
             IosSkinFamily.SAMSUNG_SBICON,
@@ -185,6 +186,10 @@ class IosReplacePlannerTest {
         assertEquals(IosReplaceMechanism.IMAGE_DRAWABLE, plan.mechanism)
         assertEquals(IosReplaceMechanism.OVERLAY, plan.fallback)
         assertEquals(listOf("battery_icon"), plan.leafIds)
+        // The shape enables the first-ImageView fallback; it does not relabel a vendor subclass as
+        // Samsung. The measured family stays UNKNOWN.
+        assertEquals(IosSkinFamily.UNKNOWN, plan.family)
+        assertTrue(plan.allowFirstImageView)
     }
 
     @Test
