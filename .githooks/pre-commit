@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Local fast path: run only the CI static gates that the staged paths affect (~1s).
+# Activate once: git config core.hooksPath .githooks
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+if [ -z "$STAGED" ]; then
+    echo "pre-commit: no staged files, nothing to check."
+    exit 0
+fi
+
+has_staged() {
+    grep -Eq "$1" <<< "$STAGED"
+}
+
+fail() {
+    echo "pre-commit: FAILED on $1" >&2
+    exit 1
+}
+
+gate() {
+    local name="$1"
+    shift
+    echo "-- $name"
+    "$@"
+}
+
+# Documents may not carry private evidence or private device data.
+if has_staged '\.(md|txt)$'; then
+    gate "private data in tracked docs" python3 tools/check-private-data.py || fail "private data"
+fi
+
+# Module logs must go through L, never android.util.Log (invisible inside SystemUI on OxygenOS).
+if has_staged '^app/src/main/java/.*\.kt$'; then
+    gate "module logs route through L" python3 tools/route-module-logs.py --check || fail "route-module-logs"
+fi
+
+# Rive keyframes must carry the ease they ask for.
+if has_staged '^rive/duo/scene\.rml$'; then
+    gate "Rive eases: rive/duo/scene.rml" python3 tools/check-rive-eases.py rive/duo/scene.rml || fail "Rive eases (duo)"
+fi
+if has_staged '^rive/duo/scene_old\.rml$'; then
+    gate "Rive eases: rive/duo/scene_old.rml" python3 tools/check-rive-eases.py rive/duo/scene_old.rml || fail "Rive eases (duo old)"
+fi
+if has_staged '^rive/ios/scene\.rml$'; then
+    gate "Rive eases: rive/ios/scene.rml" python3 tools/check-rive-eases.py rive/ios/scene.rml || fail "Rive eases (ios)"
+fi
+
+# The provider authority exists twice and must match in both places.
+if has_staged '^app/src/main/AndroidManifest\.xml$' \
+    || has_staged '^app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs\.kt$'; then
+    gate "provider authority matches in manifest and DuoPrefs" bash -c '
+        set -euo pipefail
+        AUTHORITY="io.github.kvmy666.duostatusbar.settings"
+        grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
+        grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
+        echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
+    ' || fail "provider authority"
+fi
+
+# No Rive view may be created inside SystemUI (contract pinned by IosRiveAbsenceTest).
+if has_staged '^app/src/main/.*\.kt$'; then
+    echo "-- no IosRiveView in app/src/main"
+    if grep -rn "IosRiveView" app/src/main; then
+        echo "error: IosRiveView must not appear in app/src/main (see IosRiveAbsenceTest)" >&2
+        fail "IosRiveView absence"
+    fi
+fi
+
+# Test selector self-test, once the tool exists.
+if has_staged '^tools/select-tests\.py$'; then
+    if [ -f tools/select-tests.py ]; then
+        gate "select-tests self-test" python3 tools/select-tests.py --selftest || fail "select-tests --selftest"
+    else
+        echo "note: tools/select-tests.py is staged but absent on disk; skipping its self-test."
+    fi
+fi
+
+echo "pre-commit: OK"
