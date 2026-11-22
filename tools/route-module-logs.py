@@ -11,7 +11,8 @@ It is idempotent, so it is safe to run again after adding code.
 
 Usage: python tools/route-module-logs.py [--check]
 
-    --check   report what would change and exit non-zero if anything would (for CI/lint use)
+    --check   report what would change and fail if a file would change or if an unmatched
+              `Log.x` call is left in code; comments and string/char literals are ignored
 """
 import re
 import sys
@@ -46,6 +47,84 @@ def add_import(text: str, line: str) -> str:
             break
     lines.insert(at, line + "\n")
     return "".join(lines)
+
+
+def code_only(text: str) -> str:
+    """Blank comments and string/char literals, keeping every newline and column count.
+
+    Kotlin block comments nest, raw strings use `\"\"\"`, and ordinary strings/chars honour a
+    backslash escape. Replacing the content with spaces means `Log.x` mentioned in a KDoc or a
+    string (a help message, a probe payload) is not reported as a live call.
+    """
+    out = list(text)
+    i, n, depth = 0, len(text), 0
+    mode = "code"
+
+    def blank(j: int) -> None:
+        if text[j] != "\n":
+            out[j] = " "
+
+    while i < n:
+        c = text[i]
+        if mode == "code":
+            if text.startswith("//", i):
+                out[i] = out[i + 1] = " "
+                mode, i = "line", i + 2
+            elif text.startswith("/*", i):
+                out[i] = out[i + 1] = " "
+                depth, mode, i = 1, "block", i + 2
+            elif text.startswith('"""', i):
+                out[i] = out[i + 1] = out[i + 2] = " "
+                mode, i = "raw", i + 3
+            elif c == '"':
+                blank(i)
+                mode, i = "string", i + 1
+            elif c == "'":
+                blank(i)
+                mode, i = "char", i + 1
+            else:
+                i += 1
+        elif mode == "line":
+            if c == "\n":
+                mode = "code"
+            else:
+                blank(i)
+            i += 1
+        elif mode == "block":
+            if text.startswith("/*", i):
+                out[i] = out[i + 1] = " "
+                depth, i = depth + 1, i + 2
+            elif text.startswith("*/", i):
+                out[i] = out[i + 1] = " "
+                depth, i = depth - 1, i + 2
+                if depth == 0:
+                    mode = "code"
+            else:
+                blank(i)
+                i += 1
+        elif mode in ("string", "char"):
+            quote = '"' if mode == "string" else "'"
+            if c == "\\":
+                blank(i)
+                if i + 1 < n:
+                    blank(i + 1)
+                    i += 2
+                else:
+                    i += 1
+            elif c == quote:
+                blank(i)
+                mode, i = "code", i + 1
+            else:
+                blank(i)
+                i += 1
+        else:  # raw
+            if text.startswith('"""', i):
+                out[i] = out[i + 1] = out[i + 2] = " "
+                mode, i = "code", i + 3
+            else:
+                blank(i)
+                i += 1
+    return "".join(out)
 
 
 def convert(path: Path) -> bool:
@@ -94,19 +173,25 @@ def main() -> int:
     for c in changed:
         print(("would rewrite " if check else "rewrote ") + c)
 
-    # Leftovers are calls the pattern does not cover and need a human eye.
+    # Leftovers are calls the pattern does not cover and need a human eye. Scan code only: a KDoc
+    # or string literal that merely mentions Log.x is not a live call and must not fail the gate.
     leftovers = []
     for path in sorted(SOURCES.rglob("*.kt")):
         if path == LOGGER or "reverse" in path.parts:
             continue
-        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        text = path.read_text(encoding="utf-8")
+        raw_lines = text.splitlines()
+        for n, line in enumerate(code_only(text).splitlines(), 1):
             if LEFT.search(line):
-                leftovers.append(f"{path.relative_to(ROOT)}:{n}: {line.strip()}")
+                leftovers.append(f"{path.relative_to(ROOT)}:{n}: {raw_lines[n - 1].strip()}")
     print(f"\n{len(changed)} file(s) {'to fix' if check else 'fixed'}, "
           f"{len(leftovers)} log call(s) left for review")
-    for l in leftovers:
-        print("  " + l)
-    return 1 if (check and changed) else 0
+    if leftovers:
+        print(f"error: {len(leftovers)} log call(s) the router cannot rewrite")
+        for l in leftovers:
+            print("  " + l)
+        print("hint: route these through L: module logs must reach logcat + Xposed")
+    return 1 if (check and (changed or leftovers)) else 0
 
 
 if __name__ == "__main__":
