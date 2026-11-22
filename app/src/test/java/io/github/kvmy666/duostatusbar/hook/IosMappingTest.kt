@@ -754,7 +754,8 @@ class IosMappingTest {
         )
         assertEquals(0, p.slot)
         assertEquals(0, p.subId)
-        assertEquals(2f, p.level, 0.0001f)
+        // R4A item 2: the plan draws the sample's iOS level (raw 2 of 5 -> 3 dots), not its Duo dots.
+        assertEquals(3f, p.level, 0.0001f)
     }
 
     @Test
@@ -813,8 +814,9 @@ class IosMappingTest {
         assertEquals(0, p.otherSlot)
         assertEquals(22, p.dataSubId)
         assertEquals(11, p.otherSubId)
-        assertEquals(3f, p.bars, 0.0001f)
-        assertEquals(2f, p.dots, 0.0001f)
+        // R4A item 2: each row uses its own sample. Data (sub 22, raw 3/5) is full; other (raw 2/5) is 3.
+        assertEquals(4f, p.bars, 0.0001f)
+        assertEquals(3f, p.dots, 0.0001f)
 
         val one = single(
             IosMapping.cellPlan(
@@ -825,6 +827,18 @@ class IosMappingTest {
             )
         )
         assertEquals(11, one.subId)
-        assertEquals(2f, one.level, 0.0001f)
+        // R4A item 2: raw 2 of 5 maps to 3 iOS dots (it used to draw the Duo 2).
+        assertEquals(3f, one.level, 0.0001f)
+    }
+
+    // ---------------------------------------------------------------------------- Wi-Fi slot state
+
+    @Test
+    fun `wifi slot chooses wifi first then mobile data then none`() {
+        assertEquals(IosWifiSlot.Wifi, IosMapping.wifiSlotState(true, true, "5G"))
+        assertEquals(IosWifiSlot.Wifi, IosMapping.wifiSlotState(true, false, ""))
+        assertEquals(IosWifiSlot.DataType("5G"), IosMapping.wifiSlotState(false, true, "5G"))
+        assertEquals(IosWifiSlot.None, IosMapping.wifiSlotState(false, false, "5G"))
+        assertEquals(IosWifiSlot.None, IosMapping.wifiSlotState(false, true, ""))
     }
 }

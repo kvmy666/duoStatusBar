@@ -22,9 +22,12 @@ internal object IosReadings {
 
     private class CellCache(val at: Long, val reading: CellReading)
 
+    private class DataCache(val at: Long, val sample: DataLabelSample)
+
     private var generation = 0L
     private var cachedWifi: WifiCache? = null
     private var cachedCell: CellCache? = null
+    private var cachedData: DataCache? = null
 
     private var now: () -> Long = { SystemClock.uptimeMillis() }
 
@@ -36,11 +39,15 @@ internal object IosReadings {
     private var cellReader: (Context) -> CellReading =
         { context -> CellReader.read(context, airplane = false) }
 
-    /** Drops both snapshots so the next surface reads the current platform state. */
+    private var dataReader: (Context) -> DataLabelSample =
+        { context -> DataLabelReader.read(context) }
+
+    /** Drops every snapshot so the next surface reads the current platform state. */
     fun invalidate() {
         generation++
         cachedWifi = null
         cachedCell = null
+        cachedData = null
     }
 
     /** The shared Wi-Fi sample, read at most once per [TTL_MS]. */
@@ -73,6 +80,18 @@ internal object IosReadings {
         return reading
     }
 
+    /** The shared mobile data-type label, read at most once per [TTL_MS]. */
+    fun dataSlot(context: Context): DataLabelSample {
+        val at = now()
+        cachedData?.let { cache ->
+            val age = at - cache.at
+            if (age in 0 until TTL_MS) return cache.sample
+        }
+        val sample = dataReader(context)
+        cachedData = DataCache(at, sample)
+        return sample
+    }
+
     /** Test seam: how many invalidations have happened. */
     internal fun generationForTest(): Long = generation
 
@@ -83,13 +102,16 @@ internal object IosReadings {
                 WifiReader.sample(context, level, on, active, validated)
             },
         cell: (Context) -> CellReading = { context -> CellReader.read(context, airplane = false) },
-        clock: () -> Long = { SystemClock.uptimeMillis() }
+        clock: () -> Long = { SystemClock.uptimeMillis() },
+        data: (Context) -> DataLabelSample = { context -> DataLabelReader.read(context) }
     ) {
         generation = 0
         cachedWifi = null
         cachedCell = null
+        cachedData = null
         wifiReader = wifi
         cellReader = cell
+        dataReader = data
         now = clock
     }
 }

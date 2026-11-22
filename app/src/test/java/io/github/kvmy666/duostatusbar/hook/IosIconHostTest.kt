@@ -1030,8 +1030,9 @@ class IosIconHostTest {
         val visual = glyph.renders.last { it.part == IosPart.CELL }
         assertEquals(IosCellMode.DUAL, visual.cellMode)
         assertEquals(IosCellRole.BOTH, visual.cellRole)
-        assertEquals(3f, visual.cellBars, 0.0001f)
-        assertEquals(2f, visual.cellDots, 0.0001f)
+        // R4A item 2: raw 3 of 4 is full (4 dots) and raw 2 of 4 is 3 dots on the iOS artboard.
+        assertEquals(4f, visual.cellBars, 0.0001f)
+        assertEquals(3f, visual.cellDots, 0.0001f)
 
         // One block anchored to the DATA slot, not the two-slot union.
         val params = glyph.layoutParams as FrameLayout.LayoutParams

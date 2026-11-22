@@ -157,6 +157,20 @@ internal object IosMapping {
     }
 
     /**
+     * R4A item 3: which occupant the middle Wi-Fi slot should show.
+     *
+     * Priority is Wi-Fi, then the mobile data type, then nothing. A connected/validated Wi-Fi wins
+     * even when mobile data is also active; the data label is only surfaced while the active network
+     * is cellular (never alongside Wi-Fi) and only when the reader actually produced a label (data
+     * switched off or an unknown RAT is empty -> [IosWifiSlot.None]).
+     */
+    fun wifiSlotState(wifiVisible: Boolean, mobileActive: Boolean, label: String): IosWifiSlot = when {
+        wifiVisible -> IosWifiSlot.Wifi
+        mobileActive && label.isNotEmpty() -> IosWifiSlot.DataType(label)
+        else -> IosWifiSlot.None
+    }
+
+    /**
      * The cellular drawing plan for one strip.
      *
      * The stock views expose only their own SIM id, so a plan is only produced when the slots and the
@@ -195,11 +209,11 @@ internal object IosMapping {
         if (active.map { it.subscriptionId }.distinct().size != active.size) return IosCellPlan.None
 
         val plan = when (active.size) {
-            1 -> singlePlan(active[0], slots)
+            1 -> singlePlan(active[0], slots, samples)
             2 -> when (display) {
-                IosSimDisplay.SINGLE -> forcedSinglePlan(active, defaultSubId, slots)
+                IosSimDisplay.SINGLE -> forcedSinglePlan(active, defaultSubId, slots, samples)
                 IosSimDisplay.AUTO,
-                IosSimDisplay.DUAL -> dualPlan(active, defaultSubId, slots)
+                IosSimDisplay.DUAL -> dualPlan(active, defaultSubId, slots, samples)
             }
             else -> IosCellPlan.None
         }
@@ -249,7 +263,8 @@ internal object IosMapping {
     private fun forcedSinglePlan(
         active: List<SimSignal>,
         defaultSubId: Int,
-        slots: List<CellSlot>
+        slots: List<CellSlot>,
+        samples: List<CellSample>?
     ): IosCellPlan {
         if (slots.size != 2) return IosCellPlan.None
         val data = active.firstOrNull { it.subscriptionId == defaultSubId } ?: active.first()
@@ -264,23 +279,27 @@ internal object IosMapping {
         return IosCellPlan.Single(
             dataSlot,
             data.subscriptionId,
-            level(data.level),
+            iosLevel(data, samples),
             hiddenSlot = if (otherMatches[0].value.visible) otherSlot else null
         )
     }
 
-    private fun singlePlan(only: SimSignal, slots: List<CellSlot>): IosCellPlan {
+    private fun singlePlan(
+        only: SimSignal,
+        slots: List<CellSlot>,
+        samples: List<CellSample>?
+    ): IosCellPlan {
         val matches = slots.withIndex().filter { it.value.visible && it.value.subId == only.subscriptionId }
         // More than one visible slot claiming the same subscription id is a doubt, not a pick: drawing
         // over the first would leave the second stock icon sitting next to the glyph.
         if (matches.size > 1) return IosCellPlan.None
         if (matches.size == 1) {
-            return IosCellPlan.Single(matches[0].index, only.subscriptionId, level(only.level))
+            return IosCellPlan.Single(matches[0].index, only.subscriptionId, iosLevel(only, samples))
         }
         // One unreadable slot is the current fallback: draw the active SIM over it rather than blanking
         // the only slot the bar has.
         if (slots.size == 1 && slots[0].visible && slots[0].subId <= 0) {
-            return IosCellPlan.Single(0, 0, level(only.level))
+            return IosCellPlan.Single(0, 0, iosLevel(only, samples))
         }
         return IosCellPlan.None
     }
@@ -288,7 +307,8 @@ internal object IosMapping {
     private fun dualPlan(
         active: List<SimSignal>,
         defaultSubId: Int,
-        slots: List<CellSlot>
+        slots: List<CellSlot>,
+        samples: List<CellSample>?
     ): IosCellPlan {
         if (slots.size != 2) return IosCellPlan.None
         val first = slots[0]
@@ -311,8 +331,8 @@ internal object IosMapping {
                 otherSlot = otherSlot,
                 dataSubId = data.subscriptionId,
                 otherSubId = other.subscriptionId,
-                bars = level(data.level),
-                dots = level(other.level)
+                bars = iosLevel(data, samples),
+                dots = iosLevel(other, samples)
             )
         }
         val visible = slots.withIndex().filter { it.value.visible }
@@ -323,7 +343,30 @@ internal object IosMapping {
             other.subscriptionId -> other
             else -> return IosCellPlan.None
         }
-        return IosCellPlan.Single(index, subscription.subscriptionId, level(subscription.level))
+        return IosCellPlan.Single(index, subscription.subscriptionId, iosLevel(subscription, samples))
+    }
+
+    /**
+     * The iOS level for one mapped subscription.
+     *
+     * R4A item 2: the plan must draw the same level the platform's raw/count would draw on the iOS
+     * artboard, not the Duo [SignalMapping.cellDots] table that merges the two weakest bars. The
+     * per-subscription [CellSample] is the evidence; when it is absent (a caller that only mapped
+     * [SimSignal]s) the historical [SimSignal.level] is kept unchanged.
+     */
+    private fun iosLevel(signal: SimSignal, samples: List<CellSample>?): Float {
+        val sample = sampleFor(signal, samples) ?: return level(signal.level)
+        val dots = SignalMapping.iosDots(sample.raw, sample.count, hasService = true)
+        return level(dots)
+    }
+
+    private fun sampleFor(signal: SimSignal, samples: List<CellSample>?): CellSample? {
+        if (samples.isNullOrEmpty()) return null
+        return if (signal.subscriptionId > 0) {
+            samples.firstOrNull { it.subscriptionId == signal.subscriptionId }
+        } else {
+            samples.firstOrNull { it.slot == signal.slot }
+        }
     }
 
     private fun level(raw: Int): Float = raw.coerceIn(0, 4).toFloat()

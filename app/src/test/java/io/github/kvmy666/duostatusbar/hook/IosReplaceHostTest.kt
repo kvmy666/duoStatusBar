@@ -706,6 +706,95 @@ class IosReplaceHostTest {
     }
 
     @Test
+    fun `an overlay canvas grows around the slot centre at 150 percent and does not drift`() {
+        val tree = hyperosBatteryTree()
+        val host = host()
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        val canvas = findCanvas(tree.root)
+        assertNotNull("the battery fell back to the overlay", canvas)
+        val identity = canvas!!.layoutParams as FrameLayout.LayoutParams
+        val base = intArrayOf(
+            identity.leftMargin,
+            identity.topMargin,
+            identity.width,
+            identity.height
+        )
+        assertTrue("the fixture must be enlarged by the scale", base[2] > 1)
+
+        host.refreshSettings(ModuleSettings.DEFAULT.copy(iosBatteryScale = 150))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val scaled = canvas.layoutParams as FrameLayout.LayoutParams
+        val expected = overlayBox(base[0], base[1], base[2], base[3], dxPx = 0f, scale = 1.5f)
+        assertArrayEquals(
+            expected,
+            intArrayOf(scaled.leftMargin, scaled.topMargin, scaled.width, scaled.height)
+        )
+        // The box is centred: the slot centre is preserved by the growth.
+        assertEquals(
+            base[0] + base[2] / 2f,
+            scaled.leftMargin + scaled.width / 2f,
+            1.0f
+        )
+
+        // A second refresh with the same settings must not grow/shift again.
+        host.refresh()
+        val again = canvas.layoutParams as FrameLayout.LayoutParams
+        assertArrayEquals(
+            intArrayOf(scaled.leftMargin, scaled.topMargin, scaled.width, scaled.height),
+            intArrayOf(again.leftMargin, again.topMargin, again.width, again.height)
+        )
+
+        host.teardown()
+    }
+
+    @Test
+    fun `allow glyph overflow clears the targets ancestors up to the strip only`() {
+        val tree = oplusBatteryTree()
+        val host = host()
+        assertTrue(host.attachIn(tree.strip, null))
+
+        // Stock ancestors start clipping, then a scaled glyph asks for room.
+        tree.root.clipChildren = true
+        tree.root.clipToPadding = true
+        tree.strip.clipChildren = true
+        tree.strip.clipToPadding = true
+        tree.outer.clipChildren = true
+        tree.outer.clipToPadding = true
+
+        // The draw target is the leaf ImageView (not a ViewGroup): the parent chain is used.
+        host.allowGlyphOverflow(tree.leaf)
+
+        assertEquals(false, tree.outer.clipChildren)
+        assertEquals(false, tree.outer.clipToPadding)
+        assertEquals(false, tree.strip.clipChildren)
+        assertEquals(false, tree.strip.clipToPadding)
+        // The window root is above the strip and must stay untouched.
+        assertEquals(true, tree.root.clipChildren)
+        assertEquals(true, tree.root.clipToPadding)
+
+        host.teardown()
+    }
+
+    @Test
+    fun `the wifi slot state is copied onto every visual`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = oplusBatteryTree()
+        val host = host()
+        assertTrue(host.attachIn(tree.strip, null))
+
+        assertEquals(
+            IosWifiSlot.DataType("5G"),
+            host.visualForTest(tree.leaf)?.wifiSlot
+        )
+
+        host.teardown()
+    }
+
+    @Test
     fun `hyperos wifi and mobile replace the named leaves and blank their siblings`() {
         val tree = hyperosSignalTree(subId = 7)
         val owner = IosSizeOwner()
@@ -1590,11 +1679,13 @@ class IosReplaceHostTest {
         val host = host(cellSource = { reading })
         assertTrue(host.attachIn(tree.strip, null))
 
-        assertEquals(1f, host.visualForTest(tree.mobileLeaf)?.cellBars ?: -1f)
+        // R4A item 2: the plan now draws the sample's iOS level. raw 1 of 4 -> 2 dots.
+        assertEquals(2f, host.visualForTest(tree.mobileLeaf)?.cellBars ?: -1f)
         reading = oneSimReading(5, dots = 3)
         host.refresh()
 
-        assertEquals(3f, host.visualForTest(tree.mobileLeaf)?.cellBars ?: -1f)
+        // raw 3 of 4 is the top bar -> 4 iOS dots (the old Duo table drew 3).
+        assertEquals(4f, host.visualForTest(tree.mobileLeaf)?.cellBars ?: -1f)
         assertEquals(2, host.recordCountForTest())
         host.teardown()
     }

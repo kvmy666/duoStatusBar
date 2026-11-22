@@ -145,6 +145,25 @@ object SignalMapping {
         cellDots(rawLevel, stockLevels, true)
 
     /**
+     * The iOS-only cellular level: the stock bar count mapped onto the artboard's **four** dots.
+     *
+     * The Duo path's [cellDotsForBars] merges the two weakest bars of a five-bar source, so the
+     * second-from-top bar (raw 3 of 5) drew 3/4 while the stock icon showed a full bar. The iOS
+     * artboard has only four dots, so the platform's bar count is scaled with a ceiling:
+     * `ceil(bars * 4 / count)`. That keeps the top stock bar on four dots, and on a five-level source
+     * raw 0..4 -> 1,2,3,4,4; on a four-level source raw 0..3 -> 1,2,3,4.
+     *
+     * The conversion to a bar count is exactly [cellDots]'s (`raw + 1`, capped at the count); only the
+     * bars -> dots table differs. [cellDots]/[cellDotsForBars] are unchanged for the Duo path.
+     */
+    fun iosDots(rawLevel: Int, stockLevels: Int, hasService: Boolean = true): Int {
+        if (!hasService || rawLevel < 0) return 0
+        val count = stockLevels.coerceAtLeast(1)
+        val bars = if (rawLevel >= count) count else rawLevel + 1
+        return ((bars * 4 + count - 1) / count).coerceIn(1, 4)
+    }
+
+    /**
      * Pure mapping from a bar count (0..[levels]) onto Duo's four dots.
      *
      * Owner's 5-bar table: bars 0..5 -> [0, 1, 1, 2, 3, 4] (bar 1 and bar 2 share dot 1; there is
@@ -359,6 +378,43 @@ object SignalMapping {
             3, 5, 6, 8, 9, 10, 12, 14, 15, 17 -> "3G"
             // GPRS, EDGE, CDMA, 1xRTT, IDEN, GSM
             1, 2, 4, 7, 11, 16 -> "2G"
+            else -> ""
+        }
+    }
+
+    /**
+     * The iOS Wi-Fi-slot data label for a `TelephonyManager.NETWORK_TYPE_*` value.
+     *
+     * Android-free like [networkGeneration], but this is the iOS vocabulary (R4B draws it): `5G+` on
+     * mmWave NR, `5G` on NR, `LTE` for LTE, `4G` for LTE-CA/HSPAP, `3G` for the UMTS/EVDO family,
+     * `E` for EDGE and `G` for GPRS/GSM/CDMA/1xRTT/IDEN. Unknown types and mobile data switched off
+     * are empty so the slot stays off rather than naming a path that is not carrying data.
+     *
+     * [mmWave] only upgrades a connected NR service (`NR_FREQUENCY_RANGE_MMWAVE`); it never turns a
+     * non-NR type into `5G+`.
+     */
+    fun dataTypeLabel(
+        type: Int,
+        nrConnected: Boolean,
+        mmWave: Boolean,
+        dataEnabled: Boolean
+    ): String {
+        if (!dataEnabled) return ""
+        if (nrConnected && mmWave) return "5G+"
+        if (nrConnected) return "5G"
+        return when (type) {
+            // NETWORK_TYPE_NR
+            20 -> "5G"
+            // NETWORK_TYPE_LTE
+            13 -> "LTE"
+            // NETWORK_TYPE_LTE_CA, NETWORK_TYPE_HSPAP
+            19, 15 -> "4G"
+            // UMTS, EVDO_0/0_A/A/B, HSDPA, HSUPA, HSPA, EHRPD, TD_SCDMA
+            3, 5, 6, 8, 9, 10, 12, 14, 17 -> "3G"
+            // NETWORK_TYPE_EDGE
+            2 -> "E"
+            // GPRS, GSM, CDMA, 1xRTT, IDEN
+            1, 16, 4, 7, 11 -> "G"
             else -> ""
         }
     }

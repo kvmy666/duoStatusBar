@@ -21,14 +21,17 @@ class IosReadingsTest {
     private var now = 1_000L
     private var wifiReads = 0
     private var cellReads = 0
+    private var dataReads = 0
     private var lastWifi: WifiSample? = null
     private var lastCell: CellReading? = null
+    private var lastData: DataLabelSample? = null
 
     @Before
     fun setUp() {
         now = 1_000L
         wifiReads = 0
         cellReads = 0
+        dataReads = 0
         IosReadings.resetForTest(
             wifi = { _, _, _, _, _ ->
                 wifiReads++
@@ -39,7 +42,11 @@ class IosReadingsTest {
                 cellReads++
                 oneSim(3).also { lastCell = it }
             },
-            clock = { now }
+            clock = { now },
+            data = {
+                dataReads++
+                DataLabelSample("5G", true, DataLabelReader.SRC_ACTIVE).also { lastData = it }
+            }
         )
     }
 
@@ -69,18 +76,35 @@ class IosReadingsTest {
     }
 
     @Test
-    fun `invalidate drops both snapshots and bumps the generation`() {
+    fun `the data slot shares the same TTL cache`() {
+        val first = IosReadings.dataSlot(context)
+        val second = IosReadings.dataSlot(context)
+        assertEquals(1, dataReads)
+        assertSame(first, second)
+        assertSame(lastData, second)
+
+        now += IosReadings.TTL_MS
+        val third = IosReadings.dataSlot(context)
+        assertEquals(2, dataReads)
+        assertNotSame(first, third)
+    }
+
+    @Test
+    fun `invalidate drops every snapshot and bumps the generation`() {
         IosReadings.wifi(context, 2, true, true, true)
         IosReadings.cell(context)
+        IosReadings.dataSlot(context)
         val generation = IosReadings.generationForTest()
 
         IosReadings.invalidate()
         assertEquals(generation + 1, IosReadings.generationForTest())
         IosReadings.wifi(context, 2, true, true, true)
         IosReadings.cell(context)
+        IosReadings.dataSlot(context)
 
         assertEquals(2, wifiReads)
         assertEquals(2, cellReads)
+        assertEquals(2, dataReads)
     }
 
     @Test

@@ -136,12 +136,26 @@ internal class IosReplaceHost(
         var clusterSkins: List<IosSkin> = emptyList(),
         var clusterOuters: List<View> = emptyList(),
         /** Extra views whose tint writes refresh this record (an overlay's optional leaf). */
-        val tintViews: List<View> = emptyList()
+        val tintViews: List<View> = emptyList(),
+        /**
+         * R4A item 5: an OVERLAY's unscaled `[left, top, width, height]` slot box. The transformed
+         * canvas box is derived from it; it replaces the (already scaled) layout params as the source
+         * for the 100 % drawn width, so the percent offset cannot drift on a second refresh.
+         */
+        var baseBox: IntArray? = null
     ) {
         val drawTarget: View?
             get() = when (mechanism) {
                 IosReplaceMechanism.OUTER_DRAW -> outer
                 IosReplaceMechanism.LEAF_DRAW -> leaf
+                else -> null
+            }
+
+        /** The view whose ancestor chain must not clip an overflowed glyph. */
+        val overflowTarget: View?
+            get() = when (mechanism) {
+                IosReplaceMechanism.IMAGE_DRAWABLE, IosReplaceMechanism.LEAF_DRAW -> leaf
+                IosReplaceMechanism.OUTER_DRAW -> outer
                 else -> null
             }
     }
@@ -229,6 +243,9 @@ internal class IosReplaceHost(
     private var lastWifiSample: WifiSample? = null
     private var lastCellReading: CellReading? = null
     private var lastBatteryReading: IosBatteryReading? = null
+
+    /** R4A item 3: the middle Wi-Fi slot state copied onto every visual (R4B draws the label). */
+    private var wifiSlotState: IosWifiSlot = IosWifiSlot.None
 
     /** R3 A5.3: one entry per battery/Wi-Fi/cellular stock icon, rebuilt on every attach. */
     private val iconReports = ArrayList<IconReport>()
@@ -618,6 +635,19 @@ internal class IosReplaceHost(
             )
             val battery = if (batteryRecord != null || batteryIcon != null) batteryVisual(batteryTint) else null
             val wifi = if (wifiRecord != null || wifiIcon != null) wifiVisual(wifiTint) else null
+
+            // R4A item 3: one shared data-path snapshot for the middle slot. It is computed before any
+            // applyVisual so every record of this refresh carries the same state (R4B draws the label).
+            val dataSlot = try {
+                IosReadings.dataSlot(context)
+            } catch (_: Throwable) {
+                DataLabelSample("", false, DataLabelReader.SRC_UNAVAILABLE)
+            }
+            wifiSlotState = IosMapping.wifiSlotState(
+                wifiVisible = wifi?.visible == true,
+                mobileActive = dataSlot.mobileActive,
+                label = dataSlot.label
+            )
 
             // Battery: one record. A null read keeps the last snapshot (M7); never a blank glyph.
             if (batteryRecord != null) {
@@ -1464,6 +1494,9 @@ internal class IosReplaceHost(
         addLayoutListener(outer)
         addLayoutListener(image)
         if (isMainBar) sizeOwner.pin(kind, width, height)
+        if (userTransformFor(kind, drawnWidthFor(kind, width, height, tinted)) != IosUserTransform.IDENTITY) {
+            allowGlyphOverflow(image)
+        }
         return record
     }
 
@@ -1527,6 +1560,9 @@ internal class IosReplaceHost(
         addLayoutListener(outer)
         addLayoutListener(leaf)
         if (isMainBar) sizeOwner.pin(kind, width, height)
+        if (userTransformFor(kind, drawnWidthFor(kind, width, height, tinted)) != IosUserTransform.IDENTITY) {
+            allowGlyphOverflow(outer)
+        }
         return record
     }
 
@@ -1602,6 +1638,9 @@ internal class IosReplaceHost(
         addLayoutListener(outer)
         addLayoutListener(leaf)
         if (isMainBar) sizeOwner.pin(kind, width, height)
+        if (userTransformFor(kind, drawnWidthFor(kind, width, height, tinted)) != IosUserTransform.IDENTITY) {
+            allowGlyphOverflow(leaf)
+        }
         return record
     }
 
@@ -1633,13 +1672,25 @@ internal class IosReplaceHost(
             }
             val oemTint = oemTintOf(leaf, outer)
             val tinted = visual.withTint(tintFor(leaf, outer, oemTint))
+            // R4A item 5: keep the unscaled slot box and enlarge the canvas to the transformed glyph
+            // box; the renderer is then asked for identity pixels inside the larger canvas.
+            val baseBox = intArrayOf(bounds[0], bounds[1], size.first, size.second)
             val drawnWidth = drawnWidthFor(kind, size.first, size.second, visual)
-            val transformed = tinted.copy(userTransform = userTransformFor(kind, drawnWidth))
-            canvas.render(transformed)
+            val transform = userTransformFor(kind, drawnWidth)
+            val box = overlayBox(
+                baseBox[0],
+                baseBox[1],
+                baseBox[2],
+                baseBox[3],
+                transform.dxPx,
+                transform.scale
+            )
+            val rendered = tinted.copy(userTransform = IosUserTransform(0f, 1f))
+            canvas.render(rendered)
             for (view in tintViews) IosPushHooks.onTint(view, tintCallback)
-            val params = FrameLayout.LayoutParams(size.first, size.second).apply {
-                leftMargin = bounds[0]
-                topMargin = bounds[1]
+            val params = FrameLayout.LayoutParams(box[2], box[3]).apply {
+                leftMargin = box[0]
+                topMargin = box[1]
             }
             added = try {
                 layer.addView(canvas, params)
@@ -1666,9 +1717,10 @@ internal class IosReplaceHost(
                 overlay = canvas,
                 overlayParams = params,
                 siblings = emptyList(),
-                visual = transformed,
+                visual = rendered,
                 oemTint = oemTint,
-                tintViews = tintViews
+                tintViews = tintViews,
+                baseBox = baseBox
             )
             records.add(record)
             addLayoutListener(outer)
@@ -1805,8 +1857,19 @@ internal class IosReplaceHost(
         if (size.first <= 0 || size.second <= 0) return
         val oemTint = oemTintOf(null, dataIcon.view)
         val baseVisual = IosMapping.cellVisual(plan, tintFor(null, dataIcon.view, oemTint)) ?: return
+        // R4A item 5: same enlarged-canvas contract as the single-slot overlay.
+        val baseBox = intArrayOf(bounds[0], bounds[1], size.first, size.second)
         val drawnWidth = drawnWidthFor(IosIconKind.CELL, size.first, size.second, baseVisual)
-        val visual = baseVisual.copy(userTransform = userTransformFor(IosIconKind.CELL, drawnWidth))
+        val transform = userTransformFor(IosIconKind.CELL, drawnWidth)
+        val box = overlayBox(
+            baseBox[0],
+            baseBox[1],
+            baseBox[2],
+            baseBox[3],
+            transform.dxPx,
+            transform.scale
+        )
+        val visual = baseVisual.copy(userTransform = IosUserTransform(0f, 1f))
 
         val collapse = collapseSibling(dataIcon.view, otherIcon.view)
         val firstSkin = IosSkin()
@@ -1839,9 +1902,9 @@ internal class IosReplaceHost(
             canvas.render(visual)
             IosPushHooks.onTint(dataIcon.view, tintCallback)
             IosPushHooks.onTint(otherIcon.view, tintCallback)
-            val params = FrameLayout.LayoutParams(size.first, size.second).apply {
-                leftMargin = bounds[0]
-                topMargin = bounds[1]
+            val params = FrameLayout.LayoutParams(box[2], box[3]).apply {
+                leftMargin = box[0]
+                topMargin = box[1]
             }
             added = try {
                 layer.addView(canvas, params)
@@ -1884,7 +1947,8 @@ internal class IosReplaceHost(
                 subId = plan.dataSubId,
                 collapse = collapse,
                 clusterSkins = if (secondSkin != null) listOf(secondSkin) else emptyList(),
-                clusterOuters = if (secondSkin != null) listOf(otherIcon.view) else emptyList()
+                clusterOuters = if (secondSkin != null) listOf(otherIcon.view) else emptyList(),
+                baseBox = baseBox
             )
             records.add(record)
             addLayoutListener(dataIcon.view)
@@ -2201,6 +2265,14 @@ internal class IosReplaceHost(
      * guess and never a layout write (C2).
      */
     private fun drawnWidthFor(record: Record, visual: IosVisual): Float {
+        // R4A item 5: an overlay's layout params are the SCALED canvas box; the percent offset must be
+        // computed from the unscaled slot box or it drifts on every refresh.
+        if (record.mechanism == IosReplaceMechanism.OVERLAY) {
+            val base = record.baseBox
+            if (base != null && base[2] > 0 && base[3] > 0) {
+                return drawnWidthFor(record.kind, base[2], base[3], visual)
+            }
+        }
         val sources = sequenceOf(
             record.drawable?.intrinsicWidth to record.drawable?.intrinsicHeight,
             record.overlay?.layoutParams?.width to record.overlay?.layoutParams?.height,
@@ -2216,11 +2288,17 @@ internal class IosReplaceHost(
     }
 
     private fun applyVisual(record: Record, visual: IosVisual) {
-        val transformed = visual.copy(
-            userTransform = userTransformFor(record.kind, drawnWidthFor(record, visual))
-        )
+        // R4A/R4B contract: the Wi-Fi slot state (R4B draws the label).
+        val current = visual.copy(wifiSlot = wifiSlotState)
+        if (record.mechanism == IosReplaceMechanism.OVERLAY) {
+            applyOverlayVisual(record, current)
+            return
+        }
+        val transform = userTransformFor(record.kind, drawnWidthFor(record, current))
+        val transformed = current.copy(userTransform = transform)
         val changed = record.visual != transformed
         record.visual = transformed
+        if (transform != IosUserTransform.IDENTITY) allowGlyphOverflow(record.overflowTarget)
         when (record.mechanism) {
             IosReplaceMechanism.IMAGE_DRAWABLE -> {
                 record.swap?.update(transformed)
@@ -2234,8 +2312,77 @@ internal class IosReplaceHost(
                 record.drawable?.update(transformed)
                 if (changed) record.drawTarget?.invalidate()
             }
-            IosReplaceMechanism.OVERLAY -> record.overlay?.render(transformed)
+            IosReplaceMechanism.OVERLAY -> Unit
             IosReplaceMechanism.SKIP -> Unit
+        }
+    }
+
+    /**
+     * R4A item 5: render an OVERLAY inside the transformed glyph box.
+     *
+     * The canvas is our own view (never a stock view), so the host may resize it around the slot
+     * centre: [overlayBox] grows/shrinks the box by the user's scale and shifts it by the offset. The
+     * visual is then rendered with identity user transform, because the enlarged canvas already
+     * provides the scale. **R4B contract:** the renderer must stop clipping its ink to the draw box for
+     * a non-identity transform; this host side only guarantees the canvas is big enough.
+     */
+    private fun applyOverlayVisual(record: Record, visual: IosVisual) {
+        val overlay = record.overlay ?: return
+        val base = record.baseBox
+        if (base == null) {
+            // No slot box was recorded (a record from before the item-5 wiring): keep the old draw.
+            val transformed = visual.copy(
+                userTransform = userTransformFor(record.kind, drawnWidthFor(record, visual))
+            )
+            record.visual = transformed
+            overlay.render(transformed)
+            return
+        }
+        val transform = userTransformFor(record.kind, drawnWidthFor(record, visual))
+        val box = overlayBox(
+            base[0],
+            base[1],
+            base[2],
+            base[3],
+            transform.dxPx,
+            transform.scale
+        )
+        val params = record.overlayParams
+        if (params != null &&
+            (params.width != box[2] || params.height != box[3] ||
+                params.leftMargin != box[0] || params.topMargin != box[1])
+        ) {
+            params.width = box[2]
+            params.height = box[3]
+            params.leftMargin = box[0]
+            params.topMargin = box[1]
+            overlay.layoutParams = params
+        }
+        val rendered = visual.copy(userTransform = IosUserTransform(0f, 1f))
+        record.visual = rendered
+        overlay.render(rendered)
+    }
+
+    /**
+     * R4A item 5: let a scaled glyph draw outside the stock slot's clip.
+     *
+     * Walks from [view] through its parents, including the strip, and stops before the window root
+     * (the strip's parent), so nothing above the strip is touched. Only `clipChildren`/
+     * `clipToPadding` flags change; no stock view is resized or re-laid out (C2). Idempotent, guarded.
+     */
+    internal fun allowGlyphOverflow(view: View?) {
+        if (view == null) return
+        val stop = (strip?.parent as? View) ?: rootView
+        // A draw target may be a leaf ImageView (not a ViewGroup): start at its first parent then.
+        var current: View? = if (view is ViewGroup) view else view.parent as? View
+        while (current is ViewGroup) {
+            if (current === stop) break
+            try {
+                current.clipChildren = false
+                current.clipToPadding = false
+            } catch (_: Throwable) {
+            }
+            current = current.parent as? View
         }
     }
 
@@ -2482,15 +2629,38 @@ internal class IosReplaceHost(
         }
     }
 
-    /** Places an overlay without touching its pinned size (M15); only margins move. */
+    /**
+     * Refreshes an overlay's unscaled slot box from fresh bounds and re-applies the current transform.
+     *
+     * The base size still honours [IosSizeOwner] on extra surfaces (M15), so a lock-screen/shade
+     * overlay cannot grow to its own slot width. Only our canvas params move; the stock outer is
+     * never written (C2).
+     */
     private fun placeOverlay(record: Record, bounds: IntArray) {
-        val overlay = record.overlay ?: return
-        val params = record.overlayParams ?: return
-        if (params.leftMargin == bounds[0] && params.topMargin == bounds[1]) return
-        params.leftMargin = bounds[0]
-        params.topMargin = bounds[1]
-        overlay.layoutParams = params
+        if (record.overlay == null) return
+        val size = overlayBaseSize(record, bounds)
+        val base = record.baseBox
+        if (base == null) {
+            record.baseBox = intArrayOf(bounds[0], bounds[1], size.first, size.second)
+        } else {
+            base[0] = bounds[0]
+            base[1] = bounds[1]
+            base[2] = size.first
+            base[3] = size.second
+        }
+        val current = record.visual ?: return
+        applyVisual(record, current)
     }
+
+    /** The unscaled overlay box size from fresh bounds, preserving the M15 size owner. */
+    private fun overlayBaseSize(record: Record, bounds: IntArray): Pair<Int, Int> =
+        if (isMainBar) {
+            bounds[2] to bounds[3]
+        } else if (record.kind == IosIconKind.CELL && record.cellRole == IosCellRole.BOTH) {
+            sizeOwner.sizeForBlock(bounds[2], bounds[3])
+        } else {
+            sizeOwner.sizeFor(record.kind, bounds[2], bounds[3])
+        }
 
     /** The OEM flips the two HyperOS battery leaves by display style: follow the visible one. */
     private fun shiftLeafIfNeeded(record: Record) {
@@ -2652,6 +2822,7 @@ internal class IosReplaceHost(
         lastWifiSample = null
         lastCellReading = null
         lastBatteryReading = null
+        wifiSlotState = IosWifiSlot.None
         IosDrawHookInstaller.releaseWhenEmpty()
         if (wasAttached) L.i("iOS replace teardown: stock icons restored")
         if (countLifecycle && wasAttached) noteLifecycle(stripRootView, attach = false)
