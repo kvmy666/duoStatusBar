@@ -1583,16 +1583,41 @@ class IosIconHostTest {
     }
 
     @Test
-    fun `attachedAlive is true only for the same attached window root`() {
+    fun `attachedAlive is true only for the same in-tree window root`() {
         val first = FrameLayout(context)
         val second = FrameLayout(context)
+        // A strip still in the tree (parent != null) and in the same window root is alive even when
+        // the window itself transiently detached during a shade close (R4 item 1).
         assertTrue(IosAttachDecision.alive(true, true, true, first, first))
         assertFalse(IosAttachDecision.alive(false, true, true, first, first))
-        assertFalse(IosAttachDecision.alive(true, false, true, first, first))
+        assertFalse("a strip removed from its parent is not alive", IosAttachDecision.alive(true, false, true, first, first))
         assertFalse("a detached layer is not alive", IosAttachDecision.alive(true, true, false, first, first))
         assertFalse(IosAttachDecision.alive(true, true, true, first, second))
         assertFalse(IosAttachDecision.alive(true, true, true, null, first))
         assertFalse(IosAttachDecision.alive(true, true, true, first, null))
+    }
+
+    @Test
+    fun `a parented strip survives a transient window detach`() {
+        val tree = batteryTree()
+        val created = ArrayList<FakeElement>()
+        val host = host(canvasRenderers = { c, k -> FakeElement(c, k).also { created += it } })
+        try {
+            assertTrue(host.attachIn(tree.strip, tree.root))
+            assertFalse("the synthetic tree is not attached to a window", tree.strip.isAttachedToWindow)
+            assertTrue(
+                "a strip still parented in the same root is alive, even without a window",
+                host.attachedAlive(tree.root)
+            )
+            // Re-applying the same state reuses the same drawable instead of rebuilding it.
+            assertTrue(host.attachIn(tree.strip, tree.root))
+            assertEquals(1, created.size)
+
+            tree.root.removeView(tree.strip)
+            assertFalse("a strip removed from its parent is not alive", host.attachedAlive(tree.root))
+        } finally {
+            host.teardown()
+        }
     }
 
     // attachedIn() additionally requires strip.isAttachedToWindow. Robolectric never attaches this
@@ -1854,8 +1879,8 @@ class IosIconHostTest {
         assertEquals(2, tree.root.childCount)
         assertTrue(tree.root.getChildAt(1) is FrameLayout)
 
-        // A detached strip is never alive (the pure predicate above pins the window comparison); the
-        // host still owns the record and teardown restores the stock drawing exactly.
+        // A strip removed from its parent is never alive (the pure predicate above pins the tree and
+        // window comparison); the host still owns the record and teardown restores the stock drawing.
         tree.root.removeView(tree.strip)
         assertFalse(host.attachedAlive(tree.root))
         host.teardown()

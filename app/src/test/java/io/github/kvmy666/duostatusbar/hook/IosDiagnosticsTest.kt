@@ -360,7 +360,7 @@ class IosDiagnosticsTest {
         val host = host()
         assertTrue(host.attachIn(tree.strip, null))
 
-        val lines = host.diagnosticLines()
+        val lines = host.diagnosticLines().filter { " power:" !in it }
         assertEquals(3, lines.size)
         assertEquals(listOf("BATTERY", "WIFI", "CELL"), lines.map { parse(it).kind })
 
@@ -407,7 +407,7 @@ class IosDiagnosticsTest {
         val host = host()
         assertFalse(host.attachIn(strip, null))
 
-        val lines = IosDiagnostics.lines()
+        val lines = IosDiagnostics.lines().filter { " power:" !in it }
         assertEquals(1, lines.size)
         val parsed = parse(lines[0])
         assertEquals("BATTERY", parsed.kind)
@@ -491,7 +491,7 @@ class IosDiagnosticsTest {
         val attached = host()
         assertTrue(attached.attachIn(tree.strip, null))
 
-        val lines = IosDiagnostics.lines()
+        val lines = IosDiagnostics.lines().filter { " power:" !in it }
         assertEquals(3, lines.size)
         assertTrue("the retained no-leaf attempt must not survive a real attach",
             lines.none { it.contains("reason=no-leaf") })
@@ -567,7 +567,7 @@ class IosDiagnosticsTest {
         val host = host()
         assertFalse(host.attachIn(strip, null))
 
-        val lines = host.diagnosticLines()
+        val lines = host.diagnosticLines().filter { " power:" !in it }
         assertEquals(1, lines.size)
         val parsed = parse(lines[0])
         assertEquals("BATTERY", parsed.kind)
@@ -597,7 +597,7 @@ class IosDiagnosticsTest {
         val host = host()
         assertTrue(host.attachIn(tree.strip, null))
 
-        for (line in host.diagnosticLines()) {
+        for (line in host.diagnosticLines().filter { " power:" !in it }) {
             val parsed = parse(line)
             assertTrue(parsed.surface.isNotBlank())
             assertTrue(parsed.family.isNotBlank())

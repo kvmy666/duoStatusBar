@@ -73,6 +73,16 @@ internal fun slotInSameWindow(elementRoot: View?, windowRoot: View?): Boolean =
     elementRoot != null && windowRoot != null && elementRoot === windowRoot
 
 /**
+ * The one absolute horizontal seat for a placed view (R4 item 8).
+ *
+ * [seat] already carries the right-edge/flow offset and [burnIn] the hourly nudge. [holdPx] is the
+ * icon-cluster spacer hold, mirrored under RTL. Every placement writes this absolute value; nothing
+ * ever adds to the previous `translationX`, so reapplying the same state cannot accumulate a drift.
+ */
+internal fun seatX(seat: Float, burnIn: Float, holdPx: Int, rtl: Boolean): Float =
+    seat + burnIn + if (rtl) -holdPx else holdPx
+
+/**
  * True only when a cached element is still attached to the same window the new slot was resolved in.
  *
  * [elementRoot] and [windowRoot] are `View.rootView` identities, never parent identities: a shade
@@ -2437,19 +2447,12 @@ internal class DuoIconHost(private val context: Context) {
 
     private fun middleSlotEmpty(): Boolean = laidOutMiddle == DuoMapping.MIDDLE_OFF
 
-    /** Keeps the cluster drawing where it was after the spacer stops reserving width. */
-    private fun holdIconSlot(view: View, container: ViewGroup, side: Int) {
-        val hold = iconSlotHoldPx(side)
-        if (hold == 0) return
-        val rtl = container.layoutDirection == View.LAYOUT_DIRECTION_RTL
-        view.translationX += if (rtl) -hold else hold
-    }
-
     /**
      * How far the icon cluster has to slide to stay put when [iconSlotInset] stops reserving the spacer.
      *
      * The cluster is the next child after the spacer and overlaps it with a negative margin. Collapsing
-     * the spacer moves that child by the width that was reserved; this puts the drawing back.
+     * the spacer moves that child by the width that was reserved; this puts the drawing back. It is
+     * passed to [place] as an absolute hold, never added to a previous translation.
      */
     private fun iconSlotHoldPx(side: Int): Int {
         if (!middleSlotEmpty() || ringSpacer?.parent == null) return 0
@@ -2476,7 +2479,9 @@ internal class DuoIconHost(private val context: Context) {
         /** Only the main ring asks for this; extra surfaces keep their fixed seat. */
         burnIn: Boolean = false,
         /** Explicit right-seat (physical right edge) instead of the flow nudge. */
-        rightSeat: Boolean = false
+        rightSeat: Boolean = false,
+        /** Icon-cluster spacer hold, folded into the one absolute seat (never added afterwards). */
+        holdPx: Int = 0
     ) {
         // A layout pass is the new owner of the seat: stop the slide before writing its resting value.
         if (view === element?.ui) cancelMainHandoff()
@@ -2509,7 +2514,7 @@ internal class DuoIconHost(private val context: Context) {
             // non-main views (indicators/QS/shade extras).
             offsetPx + (if (container is LinearLayout) 0 else edgeInsetPx(side, settings.edgePadding))
         }
-        view.translationX = seat + burnInShift
+        view.translationX = seatX(seat.toFloat(), burnInShift, holdPx, rtl)
         // The strip sits low in the window, so centring on it wastes the space above. Centre the
         // ring in the whole status bar instead, which is what lets it grow to the window height.
         // The view is taller than the ring; the extra shift keeps the ring put and leaves the
@@ -2645,9 +2650,17 @@ internal class DuoIconHost(private val context: Context) {
                 // used for a cached Rive view.
                 val liveContainer = liveParent
                 val side = sideFor(liveContainer, windowRoot)
-                place(ui, liveContainer, windowRoot, side, settings.indicatorsOffsetX, center, rightSeat = false)
+                place(
+                    ui,
+                    liveContainer,
+                    windowRoot,
+                    side,
+                    settings.indicatorsOffsetX,
+                    center,
+                    rightSeat = false,
+                    holdPx = iconSlotHoldPx(side)
+                )
                 if (alignOverlay) alignIndicatorOverlay(ui, ringView, liveContainer)
-                holdIconSlot(ui, liveContainer, side)
                 installIndicatorGestures(ui)
                 logOnce.once("reuse:cluster:${System.identityHashCode(liveParent)}") {
                     L.i("cluster reuse attached slot parent=${liveParent.javaClass.simpleName}")
@@ -2678,9 +2691,17 @@ internal class DuoIconHost(private val context: Context) {
         if (index >= 0) container.addView(candidate.ui, index + 1) else container.addView(candidate.ui)
         assign(candidate)
         allowOverflow(container)
-        place(candidate.ui, container, windowRoot, side, settings.indicatorsOffsetX, center, rightSeat = false)
+        place(
+            candidate.ui,
+            container,
+            windowRoot,
+            side,
+            settings.indicatorsOffsetX,
+            center,
+            rightSeat = false,
+            holdPx = iconSlotHoldPx(side)
+        )
         if (alignOverlay) alignIndicatorOverlay(candidate.ui, ringView, container)
-        holdIconSlot(candidate.ui, container, side)
         installIndicatorGestures(candidate.ui)
         candidate.onReady {
             if (settings.animationsEnabled && settings.arrivalEnabled) {

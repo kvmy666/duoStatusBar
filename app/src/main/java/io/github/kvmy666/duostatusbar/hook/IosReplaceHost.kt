@@ -1,9 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PorterDuffColorFilter
 import android.net.ConnectivityManager
@@ -70,7 +68,7 @@ internal class IosReplaceHost(
         },
     private val survivalDelayMs: Long = 5_000L,
     private val idleDelayMs: Long = 3_000L
-) : IosDiagnosticSource {
+) : IosDiagnosticSource, IosBroadcastTarget {
 
     internal companion object {
         const val REFRESH_DEBOUNCE_MS = 120L
@@ -204,10 +202,13 @@ internal class IosReplaceHost(
     /** All-overlay strips delegate to [IosIconHost]; the delegate draws with Canvas only (IOS-R2 0c). */
     private var composed: IosIconHost? = null
 
-    private var receiverRegistered = false
     private var updating = false
     private var attachRetry: Runnable? = null
     private var attachAttempts = 0
+
+    /** R4 item 7: one shared-receiver subscription per host, plus its own power accounting. */
+    private val power = IosPowerCounters(clock = { SystemClock.uptimeMillis() })
+    private var lastRefreshAt = 0L
 
     /** A one-per-minute refresh is cheap; screen-off still never reads. */
     private var screenOn = true
@@ -260,40 +261,44 @@ internal class IosReplaceHost(
         onLayoutChanged()
     }
 
-    private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(c: Context?, intent: Intent?) {
-            try {
-                when (intent?.action) {
-                    Intent.ACTION_BATTERY_CHANGED,
-                    PowerManager.ACTION_POWER_SAVE_MODE_CHANGED,
-                    ConnectivityManager.CONNECTIVITY_ACTION,
-                    ACTION_SERVICE_STATE,
-                    ACTION_ANY_DATA_STATE,
-                    ACTION_WIFI_RSSI,
-                    ACTION_WIFI_STATE -> {
-                        IosReadings.invalidate()
-                        scheduleRefresh()
-                    }
-
-                    // R3 A4: a low-cost freshness tick; the platform sends it once a minute.
-                    Intent.ACTION_TIME_TICK -> if (screenOn) scheduleRefresh()
-
-                    Intent.ACTION_SCREEN_OFF -> {
-                        screenOn = false
-                        handler.removeCallbacks(refreshRunnable)
-                    }
-
-                    Intent.ACTION_SCREEN_ON -> {
-                        screenOn = true
-                        if (isAttached) scheduleRefresh()
-                    }
-
-                    else -> Unit
+    /**
+     * R4 item 7: one subscription to the process-wide [IosBroadcastHub] (not a private receiver).
+     *
+     * The hub owns the single `IosReadings.invalidate()` per received event; this host only counts
+     * that event and routes it through the same screen/invalidate logic the old private receiver had.
+     */
+    override fun onIosBroadcast(action: String) {
+        try {
+            when (action) {
+                Intent.ACTION_BATTERY_CHANGED,
+                PowerManager.ACTION_POWER_SAVE_MODE_CHANGED,
+                ConnectivityManager.CONNECTIVITY_ACTION,
+                ACTION_SERVICE_STATE,
+                ACTION_ANY_DATA_STATE,
+                ACTION_WIFI_RSSI,
+                ACTION_WIFI_STATE -> {
+                    power.onInvalidate()
+                    scheduleRefresh()
                 }
-            } catch (t: Throwable) {
-                logOnce.once("receiver") {
-                    L.w("iOS replace receiver: ${t.javaClass.simpleName}: ${t.message}")
+
+                // R3 A4: a low-cost freshness tick; the platform sends it once a minute.
+                Intent.ACTION_TIME_TICK -> if (screenOn) scheduleRefresh()
+
+                Intent.ACTION_SCREEN_OFF -> {
+                    screenOn = false
+                    handler.removeCallbacks(refreshRunnable)
                 }
+
+                Intent.ACTION_SCREEN_ON -> {
+                    screenOn = true
+                    if (isAttached) scheduleRefresh()
+                }
+
+                else -> Unit
+            }
+        } catch (t: Throwable) {
+            logOnce.once("receiver") {
+                L.w("iOS replace receiver: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
@@ -401,12 +406,19 @@ internal class IosReplaceHost(
         return finishAttach(result) { attachCluster(surface, cluster, battery, source) }
     }
 
-    /** True while this attachment still belongs to [root]'s window. Read-only. */
+    /**
+     * True while this attachment still belongs to [root]'s window. Read-only.
+     *
+     * A strip still parented in the same window root is alive even when the window transiently
+     * detached (a closing shade): the measured header host was rebuilt 20 times in 31 minutes because
+     * the old predicate required `isAttachedToWindow` (`.pm/device/r4/diag-lsposed-key.txt:286-322`).
+     * A replaced strip or a different window root still fails and rebuilds once.
+     */
     internal fun attachedAlive(root: View): Boolean {
         composed?.let { return it.attachedAlive(root) }
         return IosAttachDecision.alive(
             isAttached = isAttached,
-            stripAttached = strip?.isAttachedToWindow == true,
+            stripInTree = strip?.let { it.parent != null || it === root } == true,
             layerAttached = layerAttached(),
             stripRoot = strip?.rootView,
             rootRoot = root.rootView
@@ -578,6 +590,8 @@ internal class IosReplaceHost(
             return
         }
         if (!isAttached || thrashTripped) return
+        lastRefreshAt = SystemClock.uptimeMillis()
+        power.onRefresh()
         try {
             // A failed collapse restore is retried before the plan reads the slot visibility again.
             retryPendingCollapses()
@@ -746,6 +760,7 @@ internal class IosReplaceHost(
             attachAttempts = 0
             attachRetry?.let { handler.removeCallbacks(it) }
             attachRetry = null
+            power.onAttach()
             return true
         }
         scheduleAttachRetry(retry)
@@ -868,7 +883,7 @@ internal class IosReplaceHost(
 
         addLayoutListener(targetStrip)
         for (icon in inventory) addLayoutListener(icon.view)
-        registerReceivers()
+        IosBroadcastHub.subscribe(context, this)
         isAttached = true
         // Item 8-runtime: hide the user's selected stock icons (and, with the legacy switch, the
         // non-replaced ones) before the first refresh, so a selected replaced icon is never adopted.
@@ -1127,14 +1142,15 @@ internal class IosReplaceHost(
         }
     }
 
-    /** One compact, parseable line per stock icon. Reads the snapshot and the live records only. */
+    /** One compact, parseable line per stock icon, plus one power/watchdog line (R4 item 7). */
     override fun diagnosticLines(): List<String> {
-        composed?.let { return it.diagnosticLines() }
-        if (iconReports.isEmpty()) return emptyList()
+        val receivers = IosBroadcastHub.receiverCountForTest()
+        composed?.let { return it.diagnosticLines() + power.line(surface, receivers) }
+        if (iconReports.isEmpty()) return listOf(power.line(surface, receivers))
         val ordered = iconReports.withIndex().sortedWith(
             compareBy({ kindOrder(it.value.kind) }, { it.index })
         )
-        return ordered.map { (_, report) ->
+        val lines = ordered.map { (_, report) ->
             val record = recordForReport(report)
             // The plan asked for one mechanism; the record says what was actually applied. A silent
             // fallback (OVERLAY, or OUTER_DRAW downgraded to the leaf swap) must never claim replaced.
@@ -1171,6 +1187,7 @@ internal class IosReplaceHost(
                 }
             }
         }
+        return lines + power.line(surface, receivers)
     }
 
     private fun kindOrder(kind: IosIconKind): Int = when (kind) {
@@ -2596,13 +2613,7 @@ internal class IosReplaceHost(
         handler.removeCallbacks(refreshRunnable)
         handler.removeCallbacks(tintRefreshRunnable)
         isAttached = false
-        if (receiverRegistered) {
-            receiverRegistered = false
-            try {
-                context.unregisterReceiver(receiver)
-            } catch (_: Throwable) {
-            }
-        }
+        IosBroadcastHub.unsubscribe(this)
         for (view in layoutHosts.toList()) {
             try {
                 view.removeOnLayoutChangeListener(layoutListener)
@@ -2950,38 +2961,13 @@ internal class IosReplaceHost(
         return layer?.parent != null
     }
 
-    private fun registerReceivers() {
-        if (receiverRegistered) return
-        try {
-            val filter = IntentFilter().apply {
-                addAction(Intent.ACTION_BATTERY_CHANGED)
-                addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(Intent.ACTION_TIME_TICK)
-                addAction(ConnectivityManager.CONNECTIVITY_ACTION)
-                addAction(ACTION_SERVICE_STATE)
-                addAction(ACTION_ANY_DATA_STATE)
-                addAction(ACTION_WIFI_RSSI)
-                addAction(ACTION_WIFI_STATE)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                context.registerReceiver(receiver, filter)
-            }
-            receiverRegistered = true
-        } catch (t: Throwable) {
-            logOnce.once("receiver-register") {
-                L.w("iOS replace receiver not registered: ${t.javaClass.simpleName}: ${t.message}")
-            }
-        }
-    }
-
     private fun scheduleRefresh() {
         if (!isAttached || thrashTripped) return
         handler.removeCallbacks(refreshRunnable)
-        handler.postDelayed(refreshRunnable, REFRESH_DEBOUNCE_MS)
+        val now = SystemClock.uptimeMillis()
+        val delay = nextRefreshDelayMs(lastRefreshAt, now, REFRESH_DEBOUNCE_MS, MIN_REFRESH_SPACING_MS)
+        // A request the minimum spacing pushes past the debounce is coalesced with the pending one.
+        if (delay > REFRESH_DEBOUNCE_MS) power.onSuppressedRefresh()
+        handler.postDelayed(refreshRunnable, delay)
     }
 }

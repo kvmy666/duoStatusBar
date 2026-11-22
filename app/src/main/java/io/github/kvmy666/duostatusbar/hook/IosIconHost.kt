@@ -103,18 +103,24 @@ internal class IosSizeOwner {
 /**
  * The pure liveness decision behind [IosIconHost.attachedAlive].
  *
- * An attachment is alive for a root only while it exists, its strip is still in a window, and that
- * strip belongs to the same window root. Comparing the window root (not the view path) is what stops
- * the shade loop: the shade header and the fallback strip are in the same shade window.
+ * An attachment is alive for a root only while it exists, its strip is still in the view tree, and
+ * that strip belongs to the same window root. Comparing the window root (not the view path) is what
+ * stops the shade loop: the shade header and the fallback strip are in the same shade window.
+ *
+ * "In the tree" is deliberately not `isAttachedToWindow`: the measured shade/QS header host was torn
+ * down and recreated 20 times in 31 minutes because a closing shade transiently detaches the window
+ * while its strip view survives, still parented to the same tree
+ * (`.pm/device/r4/diag-lsposed-key.txt:286-322`). A transient detach is not death; only a strip
+ * removed from its parent, or a strip under a different window root, needs a rebuild.
  */
 internal object IosAttachDecision {
     fun alive(
         isAttached: Boolean,
-        stripAttached: Boolean,
+        stripInTree: Boolean,
         layerAttached: Boolean,
         stripRoot: View?,
         rootRoot: View?
-    ): Boolean = isAttached && stripAttached && layerAttached && stripRoot != null &&
+    ): Boolean = isAttached && stripInTree && layerAttached && stripRoot != null &&
         rootRoot != null && stripRoot === rootRoot
 }
 
@@ -437,11 +443,15 @@ internal class IosIconHost(
     /**
      * True when the current attachment still belongs to [root]'s window. Read-only and side-effect
      * free; the caller uses it to skip a re-attach that would tear down a live shade host (iOS-LAG).
+     *
+     * The strip counts as present while it is still parented (or is the root itself), even if the
+     * window transiently detached during a shade close. A rebuilt window/replaced strip still fails
+     * the same-root check and rebuilds once.
      */
     internal fun attachedAlive(root: View): Boolean =
         IosAttachDecision.alive(
             isAttached = isAttached,
-            stripAttached = strip?.isAttachedToWindow == true,
+            stripInTree = strip?.let { it.parent != null || it === root } == true,
             layerAttached = layer?.parent != null,
             stripRoot = strip?.rootView,
             rootRoot = root.rootView

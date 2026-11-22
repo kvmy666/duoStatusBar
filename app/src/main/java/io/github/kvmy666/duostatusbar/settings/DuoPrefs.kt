@@ -536,19 +536,55 @@ object DuoPrefs {
         if (orientation == DuoOrientation.LANDSCAPE) LAND_PREFIX else ""
 
     /**
+     * Columns appended after the R2 layout. A landscape row saved before a column existed must read
+     * that column from the portrait row instead of its factory default (R4 item 6), so a scale the
+     * user changed in portrait is not reset by rotating. Any column appended later must go after
+     * [COL_IOS_MODE] in [PORTRAIT_COLUMNS]; legacy columns keep their existing defaults.
+     */
+    private val APPENDED_COLUMNS: Set<String> = PORTRAIT_COLUMNS
+        .dropWhile { it != COL_IOS_MODE }
+        .toSet()
+
+    /**
      * The settings for [orientation]. Defaults to the phone's current orientation, which is what the
      * settings screen edits. Landscape that has never been saved returns the portrait copy, so rotating
      * for the first time does not jump back to factory defaults.
+     *
+     * A landscape row that was saved before the appended iOS columns existed (`landscape_set=true` but
+     * no `land_ios_*` keys) reads each missing appended column from portrait, matching
+     * [DuoSettingsClient.fromCursor]'s landscape→portrait fallback.
      */
     fun read(context: Context, orientation: DuoOrientation = DuoOrientation.of(context)): DuoSettings {
         val p = prefs(context)
-        if (orientation == DuoOrientation.LANDSCAPE && !p.getBoolean(KEY_LANDSCAPE_SET, false)) {
-            return readStored(p, prefix(DuoOrientation.PORTRAIT))
+        if (orientation == DuoOrientation.LANDSCAPE) {
+            if (!p.getBoolean(KEY_LANDSCAPE_SET, false)) {
+                return readStored(p, prefix(DuoOrientation.PORTRAIT))
+            }
+            return readStored(
+                p,
+                prefix(DuoOrientation.LANDSCAPE),
+                prefix(DuoOrientation.PORTRAIT),
+                APPENDED_COLUMNS
+            )
         }
         return readStored(p, prefix(orientation))
     }
 
-    private fun readStored(p: android.content.SharedPreferences, prefix: String): DuoSettings = DuoSettings(
+    private fun readStored(
+        p: android.content.SharedPreferences,
+        prefix: String,
+        fallbackPrefix: String? = null,
+        fallbackColumns: Set<String> = emptySet()
+    ): DuoSettings {
+        // The key for one column: an appended column absent from the landscape row reads its portrait
+        // counterpart. A landscape key that exists wins, even when it holds the default value.
+        fun key(column: String): String =
+            if (fallbackPrefix != null && column in fallbackColumns && !p.contains(prefix + column)) {
+                fallbackPrefix + column
+            } else {
+                prefix + column
+            }
+        return DuoSettings(
         enabled = p.getBoolean(prefix + COL_ENABLED, false),
         useRive = p.getBoolean(prefix + COL_USE_RIVE, true),
         showPercent = p.getBoolean(prefix + COL_SHOW_PERCENT, true),
@@ -615,22 +651,23 @@ object DuoPrefs {
         eventMask = p.getInt(prefix + COL_EVENT_MASK, EVENT_ALL) and EVENT_ALL,
         downloadProgressEnabled = p.getBoolean(prefix + COL_DOWNLOAD_PROGRESS, true),
         burnInEnabled = p.getBoolean(prefix + COL_BURN_IN, false),
-        iosMode = p.getBoolean(prefix + COL_IOS_MODE, false),
-        iosBatteryOffset = p.getInt(prefix + COL_IOS_BATTERY_OFFSET, 0)
+        iosMode = p.getBoolean(key(COL_IOS_MODE), false),
+        iosBatteryOffset = p.getInt(key(COL_IOS_BATTERY_OFFSET), 0)
             .coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
-        iosBatteryScale = p.getInt(prefix + COL_IOS_BATTERY_SCALE, DEFAULT_ICON_SCALE)
+        iosBatteryScale = p.getInt(key(COL_IOS_BATTERY_SCALE), DEFAULT_ICON_SCALE)
             .coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
-        iosWifiOffset = p.getInt(prefix + COL_IOS_WIFI_OFFSET, 0)
+        iosWifiOffset = p.getInt(key(COL_IOS_WIFI_OFFSET), 0)
             .coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
-        iosWifiScale = p.getInt(prefix + COL_IOS_WIFI_SCALE, DEFAULT_ICON_SCALE)
+        iosWifiScale = p.getInt(key(COL_IOS_WIFI_SCALE), DEFAULT_ICON_SCALE)
             .coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
-        iosCellOffset = p.getInt(prefix + COL_IOS_CELL_OFFSET, 0)
+        iosCellOffset = p.getInt(key(COL_IOS_CELL_OFFSET), 0)
             .coerceIn(MIN_ICON_OFFSET, MAX_ICON_OFFSET),
-        iosCellScale = p.getInt(prefix + COL_IOS_CELL_SCALE, DEFAULT_ICON_SCALE)
+        iosCellScale = p.getInt(key(COL_IOS_CELL_SCALE), DEFAULT_ICON_SCALE)
             .coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
-        simDisplay = normalizeSimDisplay(p.getString(prefix + COL_SIM_DISPLAY, SIM_DISPLAY_AUTO)),
-        iosPercentInside = p.getBoolean(prefix + COL_IOS_PERCENT_INSIDE, false)
+        simDisplay = normalizeSimDisplay(p.getString(key(COL_SIM_DISPLAY), SIM_DISPLAY_AUTO)),
+        iosPercentInside = p.getBoolean(key(COL_IOS_PERCENT_INSIDE), false)
     )
+    }
 
     /** Writes the settings for [orientation] and bumps the revision the module compares against. */
     fun write(
