@@ -582,6 +582,45 @@ background), not because of a bug.
 without the absent `rive` CLI would only break the `.riv` hash gate. The shipped hash remains
 `0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`.
 
+## R9 (measured sizes, separate nub, stroke-skeleton digits)
+
+R9 changes the shared design numbers in `IosGeometry`/`IosDigits` and mirrors them in
+`rive/ios/scene.rml` at the same design units (battery body H = 100). Artboard positions are unchanged
+(`Ios` 0,0; `IosWifi` 260,0; `IosCell` 440,0; `IosDigits` 0,220).
+
+| Artboard | Size | R9 content |
+|---|---|---|
+| `Ios` | **209.2 x 102** | body **189.3 x 100** at (1,1), circular radius **28.6**; separate half-capsule nub **14.3 x 32.1**, flat left at **193.9**, top **34.95**, gap **3.6**; fill/remainder/clip rectangles 189.3 x 100; no outline |
+| `IosCell` | **150.1 x 105.6** (kept) | single **W25 / pitch 39.3 / heights 46.4, 60.7, 75.0, 92.9** / bottom **93.9** / radius **11.75**; dual **W27 / pitch 40.3 / heights 37.9, 46.1, 52.9, 64.3** / row H **64.3** / gap **10** / dots **27 x 29** at y **89.8**; radius 12.69 |
+| `IosWifi` | **129.53 x 96.77** (kept) | centre **(64.809, 95.022)**; outer r **81.2** / stroke **18.6** / trim **0.232575 / 0.884175**; inner r **47.4** / stroke **19.4** / trim **0.220078 / 0.889917**; dot **38 x 28** at (64.809, 81.77); level alphas unchanged (0.3/0.3/0.3/1 and 0.3/0.3/1/1) |
+| `IosDigits` | **663 x 160** | ten stroke skeletons, cap **60.7**, stroke **12.1**, equal advance **64.3**, ink widths **50.8/26.7/43.0/44.0/49.2/44.0/46.1/42.5/45.7/46.8** for 0..9; x offsets 10 + cumulative advance, y 10 |
+
+**Battery bolt.** With digits the charging bolt is a **40 x 59** knockout hole; without digits it is a
+solid system-ink **67 x 92** bolt centred on the body, bound to the neutral tint (`0:1003`) and faded
+by `boltOpacity`, with **no outline**. The battery shape is still the only `boltOpacity` consumer.
+RML has no PorterDuff CLEAR, so the scene's `IosDigits` sample authors the 40 x 59 inline bolt as a
+hole in a small filled patch; the runtime clears the same outline inside the battery fill.
+
+**Percentage digits.** The ten filled even-odd contours are gone. The runtime draws the R9 centre-line
+skeletons with `Paint.Style.STROKE` (`Cap.ROUND`, `Join.ROUND`), so the ink is skeleton + stroke =
+`IosDigits` width and the cap is 60.7. The scene mirrors this with `PointsPath` + `<Stroke
+thickness="12.1" cap="round" join="round">` and no `<Fill>`; arc/cubic segments are flattened offline
+at 5 degrees / 16 segments (the only RML-expressive conversion), while stroke, cap, joins, advance and
+the per-digit ink widths are exact. `IosGeometryParityTest` (8 tests) derives the artboards, body/nub,
+both bolt variants, cell, Wi-Fi and digit stroke/advance/width expectations from the Kotlin constants.
+
+**Scene build.** `rive rive/ios --once` with **Rive 1.8.0** (isolated `RIVE_HOME` whose `update-check`
+minimum is 1.8.0, because the global check now requires 1.9.2) produces **16,436 bytes**, sha256
+`c0fae43ce9245b55a8faea65ac346e47f58b1f8946386d9db477eaba60a2b77e`; a second build is byte-identical
+and `app/src/main/res/raw/ios.riv` is that copy. Rive 1.9.2 `--verify` passes
+(`tools/check-rive-shipped.sh`, pin updated) and the easing gate reports no keyframes.
+
+**Representation limits (not runtime mismatches).** The scene keeps a fixed remainder/nub opacity of
+0.50 (light ink); the dark-ink 0.30 rule has no Rive property and stays runtime-only, as before. The
+inline bolt is a sample hole because RML cannot clear pixels; its 40 x 59 geometry is exact. Curves are
+flattened as noted above; the skeleton endpoints and extrema (so the ink bbox, stroke and advance) are
+exact.
+
 ## UNVERIFIED / caveats
 
 - **Cap at 100 %:** the light reference draws the cap at full neutral ink (alpha 1.0). The owner rule

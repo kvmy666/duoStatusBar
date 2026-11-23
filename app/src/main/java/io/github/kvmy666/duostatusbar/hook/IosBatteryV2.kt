@@ -209,6 +209,19 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         }
         // The icon view does not exist in the constructor: `onFinishInflate` is the retry point.
         hookSafely("oplus-onFinishInflate") { XposedBridge.hookAllMethods(cls, "onFinishInflate", capture) }
+        // R9: the 2.0.5 dump showed installs=0 because the icon child often has no stock intrinsic
+        // when the first constructors/finish-inflate callbacks run. One retry per attach/layout event
+        // installs as soon as the real box exists; once installed this callback returns immediately.
+        hookSafely("oplus-onAttachedToWindow") {
+            XposedBridge.hookAllMethods(cls, "onAttachedToWindow", capture)
+        }
+        hookSafely("oplus-onLayout") {
+            XposedBridge.hookAllMethods(cls, "onLayout", object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    retryOnLayout(param)
+                }
+            })
+        }
         hookSafely("oplus-onDarkChanged") {
             XposedBridge.hookAllMethods(cls, "onDarkChanged", object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
@@ -280,6 +293,18 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     private fun onBatteryViewHook(param: XC_MethodHook.MethodHookParam) {
         try {
             (param.thisObject as? View)?.let { controllerFor(it) }
+        } catch (_: Throwable) {
+            countFailure()
+        }
+    }
+
+    /** One install retry per layout event while the controller is still missing; no scheduled loop. */
+    private fun retryOnLayout(param: XC_MethodHook.MethodHookParam) {
+        try {
+            val view = param.thisObject as? View ?: return
+            if (!active) return
+            if (synchronized(controllers) { controllers.containsKey(view) }) return
+            controllerFor(view)
         } catch (_: Throwable) {
             countFailure()
         }
@@ -724,14 +749,16 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             // stock slot is known (R7 P4); a null settings snapshot keeps the caller's fallback.
             stockWidth = width
             stockHeight = height
-            userTransform = resolveTransform(width, height)
+            userTransform = resolveTransform()
             val next = visualFor()
+            // R9: the layout owns the real size, so the drawable fills its artboard-sized leaf; the
+            // user scale must not be baked into the drawable transform (that was the slider bug).
             val drawable = IosDrawables.create(
                 IosIconKind.BATTERY,
                 next,
                 width,
                 height,
-                relativeSize = true,
+                relativeSize = false,
                 captureColorFilter = true
             )
             original = stock
@@ -744,6 +771,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             image.setImageDrawable(drawable)
             hideBolts()
             installedFlag = true
+            IosSlotLayout.registerBattery(view, image)
             return true
         }
 
@@ -765,12 +793,14 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             this.lowThreshold = lowThreshold
             this.fallbackTransform = fallbackTransform
             userTransform = if (stockWidth > 0 && stockHeight > 0) {
-                resolveTransform(stockWidth, stockHeight)
+                resolveTransform()
             } else {
                 fallbackTransform
             }
             if (!installedFlag) return
             pushVisual()
+            // R9: a live slider tick resizes this registered battery slot; the drawable stays identity.
+            IosSlotLayout.reapply(settings)
         }
 
         /** The system's resolved icon colour; a zero-alpha value is not a colour (M17). */
@@ -807,12 +837,15 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 image.setImageDrawable(drawable)
                 repaired = true
             }
+            // The OEM can rebuild the container params on its own bind; re-assert the R9 slot too.
+            IosSlotLayout.registerBattery(view, image)
             return repaired
         }
 
         /** Returns the exact original drawable/visibility and every bolt visibility; the other half of P4's path. */
         fun restore() {
             if (!installedFlag) return
+            IosSlotLayout.restoreFor(image)
             image.setImageDrawable(original)
             image.visibility = originalVisibility
             restoreBolts()
@@ -850,23 +883,13 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         }
 
         /**
-         * The user's per-icon transform for this battery glyph (R7 P4/P5). A settings snapshot wins
-         * because it is the live source; otherwise the caller's fallback is used. Any failure falls
-         * back to identity, never to a guessed offset (C11).
+         * R9: the layout owns the scale, so the V2 drawable transform is identity. The caller's
+         * fallback is used only when no settings snapshot exists (a test/host seam), never to bake a
+         * user scale into the installed drawable. Any failure falls back to identity (C11).
          */
-        private fun resolveTransform(width: Int, height: Int): IosUserTransform {
-            val live = settings ?: return fallbackTransform
-            return try {
-                val innerWidth = IosGeometry.Relative.sizeFor(
-                    IosIconKind.BATTERY,
-                    width,
-                    height,
-                    dualCell = false
-                ).first
-                live.iosTransform(IosIconKind.BATTERY, innerWidth.toFloat())
-            } catch (_: Throwable) {
-                IosUserTransform.IDENTITY
-            }
+        private fun resolveTransform(): IosUserTransform {
+            if (settings == null) return fallbackTransform
+            return IosUserTransform(scale = IosGeometry.Relative.V2_DRAW_SCALE)
         }
 
         /**

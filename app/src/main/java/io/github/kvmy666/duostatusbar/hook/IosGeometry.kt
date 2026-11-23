@@ -32,44 +32,32 @@ internal object IosGeometry {
 
     const val UNIT_HEIGHT = 100f
 
-    /** Battery: solid rounded body, no outline, cap nub, clipped level fill. Artboard `Ios`. */
+    /** Battery: solid rounded body, no outline, half-capsule nub, clipped level fill. Artboard `Ios`. */
     object Battery {
-        const val BODY_W = 192.5f
+        // R9-design.md §Final geometry: body 189.3 x 100, circular radius 28.6.
+        const val BODY_W = 189.3f
         const val BODY_H = 100f
-        const val BODY_RADIUS = 33f
+        const val BODY_RADIUS = 28.6f
 
-        /**
-         * Measured cap (refs 1/5/6): median 9.5 x 26.0 with a 7.5 gap, same colour as the uncharged
-         * remainder ([CAP_ALPHA]). The earlier annotated 15.2 x 36.8 target is the outlier (55 %
-         * wider / 26 % taller than the light capture) and is superseded by the recovered evidence.
-         */
-        const val CAP_W = 9.5f
-        const val CAP_H = 26.0f
-        const val CAP_GAP = 7.5f
-        /** The measured cap centre sits on the body centre. */
+        // R9-design.md: separate nub 14.3 x 32.1, gap 3.6, half-capsule (flat left, round right).
+        const val CAP_W = 14.3f
+        const val CAP_H = 32.1f
+        const val CAP_GAP = 3.6f
         const val CAP_LIFT = 0f
 
         /**
-         * The cap is the inactive grey, i.e. the same colour as the uncharged remainder. The owner
-         * rule is 0.50; confirmed by the partial-charge refs 1/5 and the dual dark capture. The light
-         * 100 % reference draws the cap at full ink (UNVERIFIED exception, see `docs/ios-geometry.md`).
-         * The runtime applies full ink at 100% per the PM rule while the design scene stays 0.50.
+         * Remainder/nub alpha by the ink luminance rule (R9-design.md §Colour rules): dark ink
+         * (black) uses 0.30, light ink (white) uses 0.50. Kept as named constants so tests and the
+         * Rive builder pin the same numbers.
          */
-        const val CAP_ALPHA = 0.50f
+        const val REMAINDER_ALPHA_DARK_INK = 0.30f
+        const val REMAINDER_ALPHA_LIGHT_INK = 0.50f
 
         /**
-         * The cap is the right-hand half of a superellipse with this exponent, flat on the body side.
-         * The measured refs show the same rounded-triangular/trapezoid shape, just smaller than the
-         * old annotated one.
+         * R9-design.md: artboard 209.2 x 102, body at (1,1). `CAP_*` keeps the historical name for
+         * the separate nub: cap left is the body right + the 3.6-unit gap.
          */
-        const val CAP_SHAPE_N = 1.8f
-
-        /**
-         * Frozen envelope: keep the pre-R2 217.2 x 102 so every runtime/preview/evidence placement
-         * that pins the battery artboard does not move. The smaller cap simply leaves more room on
-         * the right; do not derive the width from [CAP_W] again.
-         */
-        const val ARTBOARD_W = 217.2f
+        const val ARTBOARD_W = 209.2f
         const val ARTBOARD_H = 102f
 
         const val BODY_LEFT = 1f
@@ -78,83 +66,40 @@ internal object IosGeometry {
         const val CAP_TOP = BODY_TOP + (BODY_H - CAP_H) / 2f - CAP_LIFT
 
         /**
-         * The measured cap: the right-hand half of the [CAP_SHAPE_N] superellipse, discretised as a
-         * 25-gon, flat base on the body side. Absolute artboard coordinates, closed, ordered from the
-         * top end to the bottom end; the closing edge is the flat base at x=[CAP_LEFT]. Generated at
-         * [CAP_W] x [CAP_H] (bbox exactly CAP_LEFT..CAP_LEFT+CAP_W / CAP_TOP..CAP_TOP+CAP_H). Both
-         * renderers draw this same polygon.
+         * The separate nub as a 25-gon: flat left edge at [CAP_LEFT] and a right half-ellipse.
+         * Absolute artboard coordinates, closed, ordered from the top end to the bottom end; the
+         * closing edge is the flat base at x=[CAP_LEFT]. Bbox exactly
+         * CAP_LEFT..CAP_LEFT+CAP_W / CAP_TOP..CAP_TOP+CAP_H.
          */
-        val CAP_POINTS: FloatArray = floatArrayOf(
-            201.00f, 38.00f,
-            201.99f, 38.12f,
-            203.12f, 38.49f,
-            204.27f, 39.09f,
-            205.40f, 39.92f,
-            206.47f, 40.95f,
-            207.46f, 42.15f,
-            208.35f, 43.51f,
-            209.10f, 44.98f,
-            209.70f, 46.53f,
-            210.14f, 48.10f,
-            210.41f, 49.65f,
-            210.50f, 51.00f,
-            210.41f, 52.35f,
-            210.14f, 53.90f,
-            209.70f, 55.47f,
-            209.10f, 57.02f,
-            208.35f, 58.49f,
-            207.46f, 59.85f,
-            206.47f, 61.05f,
-            205.40f, 62.08f,
-            204.27f, 62.91f,
-            203.12f, 63.51f,
-            201.99f, 63.88f,
-            201.00f, 64.00f
-        )
-
-        /** The uncharged part of the body is the same colour at half alpha. */
-        const val REMAINDER_ALPHA = 0.50f
+        val CAP_POINTS: FloatArray = FloatArray(50).also { out ->
+            val cy = CAP_TOP + CAP_H / 2f
+            for (i in 0..24) {
+                val angle = (-90.0 + 180.0 * i / 24.0) * (Math.PI / 180.0)
+                out[i * 2] = CAP_LEFT + CAP_W * cos(angle).toFloat()
+                out[i * 2 + 1] = cy + (CAP_H / 2f) * sin(angle).toFloat()
+            }
+        }
 
         /**
-         * The R3B lightning bolt: the measured 21-point polygon from refs 1/2/4, normalised to a
-         * 61 x 96 box at the body centre. Absolute artboard coordinates, in order, closed. The shape
-         * is `66.75 + nx * 61`, `3.0 + ny * 96` from `.pm/ref/out-r3/digits-final.json`; ref 3 draws
-         * it white, so the renderer uses a white fill with a black outline ([BOLT_OUTLINE]).
+         * The R9 large bolt box (67 x 92, centred, solid system ink, no outline). `BOLT_POINTS` is
+         * generated from [IosDigits.BOLT_NORMALIZED] for the Rive parity test; the runtime renderer
+         * asks [IosDigits.largeBoltPath] instead. `BOLT_OUTLINE`/`BOLT_FILL` are kept as deprecated
+         * compile-time shims for that test and are not used by the renderer (R9 removes the white
+         * fill + black outline).
          */
-        val BOLT_POINTS: FloatArray = floatArrayOf(
-            110.26f, 3.00f,
-            110.26f, 12.36f,
-            101.32f, 31.88f,
-            99.69f, 40.02f,
-            100.50f, 43.27f,
-            103.76f, 45.71f,
-            126.53f, 44.89f,
-            127.34f, 47.34f,
-            126.53f, 49.78f,
-            107.01f, 70.93f,
-            94.00f, 88.83f,
-            84.24f, 98.60f,
-            84.24f, 90.46f,
-            93.18f, 70.12f,
-            94.81f, 61.98f,
-            91.56f, 57.91f,
-            68.78f, 57.91f,
-            67.16f, 55.47f,
-            77.73f, 40.83f,
-            83.42f, 35.95f,
-            94.81f, 20.49f
-        )
+        val BOLT_POINTS: FloatArray = FloatArray(42).also { out ->
+            for (i in 0 until 21) {
+                out[i * 2] = BODY_LEFT + BODY_W / 2f + (IosDigits.BOLT_NORMALIZED[i * 2] - 0.5f) *
+                    IosDigits.LARGE_BOLT_W
+                out[i * 2 + 1] = BODY_TOP + BODY_H / 2f +
+                    (IosDigits.BOLT_NORMALIZED[i * 2 + 1] - 0.5f) * IosDigits.LARGE_BOLT_H
+            }
+        }
 
-        /**
-         * Ref 3's ring measures ~4.5 units, but the frozen 102-unit artboard has only 3 units
-         * vertically around the 96-unit white bolt (white y 3..98.6). A [BOLT_OUTLINE] of 3.0 puts
-         * the stroked extent at 0..101.6 and prevents the view-bound clip found in review; the
-         * renderer still draws it as a 2x stroke around the white fill. [BOLT_POINTS]/[BOLT_FILL]
-         * are unchanged.
-         */
-        const val BOLT_OUTLINE = 3.0f
+        @Deprecated("R9: the bolt has no outline.")
+        const val BOLT_OUTLINE = 0f
 
-        /** Ref 3 shows a plain white bolt, not a dynamic tint. */
+        @Deprecated("R9: the bolt is solid system ink, not a static white fill.")
         const val BOLT_FILL = 0xFFFFFFFF.toInt()
 
         /** Fill width for a 0..1 level, clipped by the body path. */
@@ -163,77 +108,68 @@ internal object IosGeometry {
 
     /** Cellular: four capsules in single mode; compressed bars + four dots in dual. Artboard `IosCell`. */
     object Cell {
-        const val BAR_W = 25.1f
-        const val DUAL_BAR_W = 25.3f
-        const val PITCH = 41f
-        /** Measured dark dots: 18.0 px wide x 19.5 px tall at 0.7128 px/unit -> a slight oval. */
-        const val DOT_W = 26f
-        const val DOT_H = 27.4f
+        // R9-design.md §Final geometry.
+        const val BAR_W = 25f
+        const val DUAL_BAR_W = 27f
+        const val PITCH = 39.3f
+        const val DUAL_PITCH = 40.3f
+        const val DOT_W = 27f
+        const val DOT_H = 29f
 
-        /** Inactive bars/dots are the foreground at 25% (measured 0.243). */
+        /** Inactive bars/dots are the foreground at 25% (measured 0.20-0.29). */
         const val INACTIVE_ALPHA = 0.25f
 
-        /**
-         * Measured single bars (ref 6 light/native): 36.0 / 52.8 / 73.0 / 95.5, bottom-aligned at
-         * [SINGLE_BAR_BOTTOM] = 96.5, so bar 4's top is exactly [TOP] (1.0, level with the battery
-         * body top). Supersedes the annotated 48 / 63.4 / 81.2 / 99 mockup, which is the outlier.
-         */
-        val SINGLE_BAR_HEIGHTS = floatArrayOf(36.0f, 52.8f, 73.0f, 95.5f)
+        /** R9-design.md: single 0.47w capsule radius; dual uses the same 0.47 x 27. */
+        const val CORNER_RADIUS = 11.75f
+        const val DUAL_CORNER_RADIUS = 12.69f
 
-        /** Measured dark (compressed dual row): 0.303 / 0.375 / 0.499 / 0.627 (unchanged). */
-        val DUAL_BAR_HEIGHTS = floatArrayOf(30.3f, 37.5f, 49.9f, 62.7f)
+        val SINGLE_BAR_HEIGHTS = floatArrayOf(46.4f, 60.7f, 75.0f, 92.9f)
+        val DUAL_BAR_HEIGHTS = floatArrayOf(37.9f, 46.1f, 52.9f, 64.3f)
 
+        /** Single block 3 * 39.3 + 25 = 142.9; dual block 3 * 40.3 + 27 = 147.9. */
         const val BLOCK_W = 3f * PITCH + BAR_W
-        const val DUAL_ROW_H = 62.7f
-        /** Measured row gap 12.68 units (old 13.5). */
-        const val DUAL_GAP = 12.7f
+        const val DUAL_BLOCK_W = 3f * DUAL_PITCH + DUAL_BAR_W
+        const val DUAL_ROW_H = 64.3f
+        const val DUAL_GAP = 10f
         const val DUAL_BLOCK_H = DUAL_ROW_H + DUAL_GAP + DOT_H
 
         /**
-         * Frozen envelope: the measured dual block is [DUAL_BLOCK_H] = 102.8, but the artboard stays
-         * at the pre-R2 150.1 x 105.6 so the scene/preview/compare placements do not move. Do not
-         * derive the height from [DUAL_BLOCK_H] again.
+         * Keep the measured 150.1 x 105.6 envelope (R9-design.md: "Keep the existing artboard
+         * envelope where possible"); the ink bboxes inside it hit the R9 targets and callers position
+         * by [inkBox].
          */
-        const val ARTBOARD_W = BLOCK_W + 2f
+        const val ARTBOARD_W = 150.1f
         const val ARTBOARD_H = 105.6f
 
         const val LEFT = 1f
         const val TOP = 1f
 
-        /**
-         * The single-bar baseline in the frozen 105.6 artboard. Bar 4's top is exactly [TOP]; the
-         * bottom is 4.5 units above the body bottom, as measured on ref 6.
-         */
-        const val SINGLE_BAR_BOTTOM = TOP + 95.5f
+        /** Bar 4's top is exactly [TOP]; bottom is 4.5 units above the artboard bottom. */
+        const val SINGLE_BAR_BOTTOM = TOP + 92.9f
 
         const val DOT_TOP = TOP + DUAL_ROW_H + DUAL_GAP
 
         /**
-         * Per-view dual-SIM row artboards (the measured replacement map, device dumps, §5; `docs/ios-geometry.md`).
-         *
-         * The Rive scene has no row artboard: [ARTBOARD_W] x [ARTBOARD_H] stays the design source and
-         * still draws the stacked `BOTH` block. The runtime, however, gives each stock mobile slot its
-         * own view, so a row must fill its slot without shrinking the shared glyph. [ROW_ARTBOARD_W] is
-         * the block width plus the same 1-unit margin as [ARTBOARD_W]; [DATA_ROW_ARTBOARD_H] is the
-         * compressed bar row plus that margin; [OTHER_ROW_ARTBOARD_H] is the dot row plus the margin.
+         * Per-view dual-SIM row artboards. The full artboard remains the design source for the
+         * stacked `BOTH` block; a per-slot row fills its own slot with the compressed bar row or the
+         * dot row plus the same 1-unit margin.
          */
-        const val ROW_ARTBOARD_W = BLOCK_W + 2f
+        const val ROW_ARTBOARD_W = DUAL_BLOCK_W + 2f
         const val DATA_ROW_ARTBOARD_H = DUAL_ROW_H + 2f
         const val OTHER_ROW_ARTBOARD_H = DOT_H + 2f
 
-        /**
-         * Artboard-units translation that moves the absolute dot coordinates to [TOP] in the
-         * other-row artboard, so the dot row sits at the top of its own slot.
-         */
+        /** Artboard-units translation that moves the absolute dot coordinates to [TOP]. */
         fun otherRowOffsetY(): Float = -(DOT_TOP - TOP)
 
         fun barLeft(index: Int): Float = LEFT + index * PITCH
+
+        fun dualBarLeft(index: Int): Float = LEFT + index * DUAL_PITCH
 
         fun singleBarHeight(index: Int): Float = SINGLE_BAR_HEIGHTS[index]
 
         fun dualBarHeight(index: Int): Float = DUAL_BAR_HEIGHTS[index]
 
-        fun dotCenterX(index: Int): Float = LEFT + index * PITCH + BAR_W / 2f
+        fun dotCenterX(index: Int): Float = LEFT + index * DUAL_PITCH + DOT_W / 2f
 
         fun dotCenterY(): Float = DOT_TOP + DOT_H / 2f
     }
@@ -257,60 +193,39 @@ internal object IosGeometry {
         const val ARTBOARD_W = 129.53f
         const val ARTBOARD_H = 96.77f
 
-        /** Common arc centre in artboard space (viewBox 63.809, 92.522 + 1 margin). */
+        /** Common arc centre in artboard space; R9 lowers it 1.5 units (owner: slightly high). */
         const val CENTRE_X = 64.809f
-        const val CENTRE_Y = 93.522f
+        const val CENTRE_Y = 95.022f
 
-        /** Outer arc: mid-radius, constant stroke width, round caps. */
-        const val OUTER_RADIUS = 83.843f
-        const val OUTER_STROKE = 16.903f
+        /** Outer arc: mid-radius, constant stroke width, round caps (R9 stroke 18.6). */
+        const val OUTER_RADIUS = 81.2f
+        const val OUTER_STROKE = 18.6f
         const val OUTER_TRIM_END = 0.232575f
         const val OUTER_TRIM_OFFSET = 0.884175f
 
-        /** Inner arc: same centre, its own radius/stroke/span. */
-        const val INNER_RADIUS = 50.053f
-        const val INNER_STROKE = 17.794f
+        /** Inner arc: same centre, its own radius/stroke/span (R9 stroke 19.4). */
+        const val INNER_RADIUS = 47.4f
+        const val INNER_STROKE = 19.4f
         const val INNER_TRIM_END = 0.220078f
         const val INNER_TRIM_OFFSET = 0.889917f
 
+        /** R9 dot 38 x 28, centred on the arc x and the measured dot row. */
+        const val DOT_W = 38f
+        const val DOT_H = 28f
+        const val DOT_CENTRE_X = CENTRE_X
+        const val DOT_CENTRE_Y = 81.77f
+
         /**
-         * The measured dot: a left-right symmetric 32-gon, absolute artboard coordinates (viewBox
-         * vertices + 1 margin); closed. The dot stays at full tint, independent of [wifiLevel].
+         * The measured dot as a left-right symmetric 32-gon (R9: 38 x 28). Absolute artboard
+         * coordinates, closed. The dot stays at full tint, independent of [wifiLevel].
          */
-        val DOT_POINTS: FloatArray = floatArrayOf(
-            80.91f, 82.43f,
-            79.08f, 85.27f,
-            76.87f, 87.42f,
-            74.81f, 89.10f,
-            73.28f, 90.89f,
-            71.49f, 92.41f,
-            69.60f, 93.96f,
-            67.35f, 95.15f,
-            64.82f, 95.77f,
-            62.29f, 95.15f,
-            60.04f, 93.96f,
-            58.15f, 92.41f,
-            56.36f, 90.89f,
-            54.83f, 89.10f,
-            52.77f, 87.42f,
-            50.56f, 85.27f,
-            48.73f, 82.43f,
-            47.50f, 78.98f,
-            48.56f, 75.69f,
-            50.79f, 73.05f,
-            53.94f, 71.54f,
-            56.53f, 70.03f,
-            59.44f, 69.45f,
-            62.19f, 69.20f,
-            64.82f, 69.09f,
-            67.45f, 69.20f,
-            70.20f, 69.45f,
-            73.11f, 70.03f,
-            75.70f, 71.54f,
-            78.85f, 73.05f,
-            81.08f, 75.69f,
-            82.14f, 78.98f
-        )
+        val DOT_POINTS: FloatArray = FloatArray(64).also { out ->
+            for (i in 0 until 32) {
+                val angle = 2.0 * Math.PI * i / 32.0
+                out[i * 2] = DOT_CENTRE_X + (DOT_W / 2f) * cos(angle).toFloat()
+                out[i * 2 + 1] = DOT_CENTRE_Y + (DOT_H / 2f) * sin(angle).toFloat()
+            }
+        }
 
         /** Opacity per Wi-Fi level (0..3), unchanged from the Duo binding rule. */
         val OUTER_ALPHA = floatArrayOf(0.3f, 0.3f, 0.3f, 1f)
@@ -373,25 +288,18 @@ internal object IosGeometry {
         /** Reference cap (px): the flat-letter height (L/T/E/4) in the SF strip. */
         private const val REF_CAP_PX = 36f
 
-        /** Measured ref-1 label cap: the flat 5 top -> baseline 32.93 px x 2.360 units/px = 77.69. */
-        const val CAP_HEIGHT = 77.69f
+        /** R9-design.md: label cap 71.4 units (10 pt). */
+        const val CAP_HEIGHT = 71.4f
 
         /**
-         * Label weight: **15.54 units = 0.200 of [CAP_HEIGHT]**, deliberately the battery digits'
-         * weight. It is [IosDigits.RUN_STROKE] 11.40 (the measured v6 run-stroke at cap 57,
-         * `.pm/ref/out-r3/stroke-r3d.csv`) x [DIGIT_SCALE] 77.69 / 57 = 15.54. R6 item 3 replaced
-         * the R5B 11.1 (0.143 cap) SF label weight so that the 3/4/5, the letters, the plus and the G
-         * all draw at one stroke; the owner saw the measured-cap "5" as bold and "G" as thin.
-         * [IosLabelStrokeWeightTest] pins the rendered strokes and `STROKE == RUN_STROKE * DIGIT_SCALE`.
+         * R9-design.md: label stroke 13.6 units (0.19 cap). The 3/4/5 reuse the digit stroke
+         * skeleton at [DIGIT_SCALE], painted at [STROKE] / [DIGIT_SCALE] before the scale, so their
+         * rendered stroke is 13.6.
          */
-        const val STROKE = 15.54f
+        const val STROKE = 13.6f
 
-        /**
-         * Measured ref-1 cap-box top in the label/Wi-Fi artboard: 14.95 units (the baseline is
-         * [TOP] + [CAP_HEIGHT] = 92.64). The label is TOP-ANCHORED; do not recompute this from the
-         * Wi-Fi centre (that formula would give 9.54 at this cap).
-         */
-        const val TOP = 14.95f
+        /** R9-design.md: TOP 17.4 (cap centre 2 px below the battery centre). */
+        const val TOP = 17.4f
 
         /** [IosDigits] cap 57 scaled to [CAP_HEIGHT]; digits scale through the Canvas, never retyped. */
         val DIGIT_SCALE: Float = CAP_HEIGHT / IosDigits.CAP_HEIGHT
@@ -402,8 +310,8 @@ internal object IosGeometry {
         private const val T_INK_FRACTION = 29f / REF_CAP_PX
         /** Measured reference ink width of E: 24 px / 36. */
         private const val E_INK_FRACTION = 24f / REF_CAP_PX
-        /** Measured reference ink width of G: 34 px / 36 (a near-round bowl, wider than the old 0.66). */
-        private const val G_INK_FRACTION = 34f / REF_CAP_PX
+        /** Measured reference ink width of G: 0.847 cap (R9-design.md: G ink 60.5). */
+        private const val G_INK_FRACTION = 0.847f
         /**
          * Shipped plus width: an equal-arm square at 0.75 cap, the measured reference plus HEIGHT
          * (27 px / 36 = 0.750). The reference width is 28 px / 36 = 0.778; equal arms use the measured
@@ -500,13 +408,14 @@ internal object IosGeometry {
         }
 
         /**
-         * Horizontal advance (pitch) of one label character; `0` for anything unsupported. Digits
-         * carry the measured [IosDigits] advance scaled by [DIGIT_SCALE].
+         * Horizontal advance (pitch) of one label character; `0` for anything unsupported. Every
+         * glyph uses letter spacing: a digit's advance is its scaled [IosDigits] ink width plus
+         * [LETTER_SIDE_BEARING] on both sides, never the battery's tabular [IosDigits.ADVANCE] cell.
          */
         fun advance(ch: Char): Float = when (ch) {
             'L', 'T', 'E', 'G' -> inkWidth(ch) + 2f * LETTER_SIDE_BEARING
             '+' -> inkWidth(ch) + 2f * PLUS_SIDE_BEARING
-            else -> if (isDigit(ch)) IosDigits.glyph(ch).advance * DIGIT_SCALE else 0f
+            else -> if (isDigit(ch)) inkWidth(ch) + 2f * LETTER_SIDE_BEARING else 0f
         }
 
         /** The horizontal bearing that centres a glyph in its advance cell. */
@@ -712,10 +621,11 @@ internal object IosGeometry {
         const val BATTERY_X = WIFI_X + 127.53f + WIFI_BATTERY_GAP
 
         /**
-         * Label artboard origin. The label ink starts at `LABEL_X + Wifi.ARTBOARD_MARGIN`; the gap to
-         * the cell ink is then exactly [CELL_LABEL_GAP].
+         * Label artboard origin. The label strip's cell is the dual glyph (147.9 wide), and the
+         * label ink starts at `LABEL_X + Wifi.ARTBOARD_MARGIN`, so the gap to the cell ink is
+         * exactly [CELL_LABEL_GAP].
          */
-        const val LABEL_X = Cell.BLOCK_W + CELL_LABEL_GAP
+        const val LABEL_X = Cell.DUAL_BLOCK_W + CELL_LABEL_GAP
 
         /**
          * Battery artboard origin for a label strip. The dynamic label artboard is
@@ -746,6 +656,123 @@ internal object IosGeometry {
 
         /** Top alignment: battery, Wi-Fi and single cell share the top; the dual cell is 4.2 units above. */
         const val DUAL_CELL_TOP_OFFSET = -4.2f
+    }
+
+    /** The ink extents of a glyph in artboard units (R9 layout builder input). */
+    data class InkBox(val left: Float, val top: Float, val right: Float, val bottom: Float) {
+        val width: Float get() = right - left
+        val height: Float get() = bottom - top
+    }
+
+    /** True when [colour] is dark ink (the R9 remainder/nub luminance rule). */
+    fun isDarkInk(colour: Int): Boolean {
+        val r = (colour shr 16) and 0xFF
+        val g = (colour shr 8) and 0xFF
+        val b = colour and 0xFF
+        return (0.2126f * r + 0.7152f * g + 0.0722f * b) / 255f < 0.5f
+    }
+
+    /** R9 remainder/nub alpha: dark ink 0.30, light ink 0.50. */
+    fun remainderAlpha(colour: Int): Float =
+        if (isDarkInk(colour)) Battery.REMAINDER_ALPHA_DARK_INK else Battery.REMAINDER_ALPHA_LIGHT_INK
+
+    /**
+     * The tight drawn-ink box of [kind] in artboard units. The R9 layout builder positions each
+     * glyph so this ink starts at G/2 inside its slot; the renderer's CONTAIN fit then uses the same
+     * artboard, so the helper and the pixels cannot disagree about where the ink is.
+     *
+     * [IosWifiSlot.None] returns the full artboard (there is no ink for that occupant).
+     */
+    fun inkBox(kind: IosIconKind, visual: IosVisual): InkBox = when (kind) {
+        IosIconKind.BATTERY -> InkBox(
+            Battery.BODY_LEFT,
+            Battery.BODY_TOP,
+            Battery.CAP_LEFT + Battery.CAP_W,
+            Battery.BODY_TOP + Battery.BODY_H
+        )
+        IosIconKind.CELL -> cellInkBox(visual)
+        IosIconKind.WIFI -> wifiInkBox(visual)
+    }
+
+    private fun cellInkBox(visual: IosVisual): InkBox {
+        val c = Cell
+        if (visual.cellMode == IosCellMode.SINGLE) {
+            return InkBox(c.LEFT, c.TOP, c.LEFT + c.BLOCK_W, c.SINGLE_BAR_BOTTOM)
+        }
+        val left = c.LEFT
+        val right = c.LEFT + c.DUAL_BLOCK_W
+        return when (visual.cellRole) {
+            IosCellRole.DATA -> InkBox(left, c.TOP, right, c.TOP + c.DUAL_ROW_H)
+            IosCellRole.OTHER -> InkBox(
+                c.LEFT,
+                c.TOP,
+                c.LEFT + 3f * c.DUAL_PITCH + c.DOT_W,
+                c.TOP + c.DOT_H
+            )
+            IosCellRole.BOTH -> InkBox(left, c.TOP, right, c.TOP + c.DUAL_BLOCK_H)
+        }
+    }
+
+    private fun wifiInkBox(visual: IosVisual): InkBox {
+        val slot = visual.wifiSlot
+        if (slot is IosWifiSlot.DataType) {
+            val artboard = DataLabel.artboardWidth(slot.label) ?: return wifiGlyphInkBox()
+            return InkBox(
+                Wifi.ARTBOARD_MARGIN,
+                DataLabel.TOP,
+                artboard - Wifi.ARTBOARD_MARGIN,
+                DataLabel.TOP + DataLabel.CAP_HEIGHT
+            )
+        }
+        if (slot == IosWifiSlot.None) {
+            return InkBox(0f, 0f, Wifi.ARTBOARD_W, Wifi.ARTBOARD_H)
+        }
+        return wifiGlyphInkBox()
+    }
+
+    /**
+     * The Wi-Fi glyph ink box. The outer arc is the widest element; its stroke extends
+     * [Wifi.OUTER_STROKE]/2 beyond the mid-radius. The arc endpoints and the 90/270 degree extrema
+     * are included, then the dot box is unioned in.
+     */
+    private fun wifiGlyphInkBox(): InkBox {
+        val w = Wifi
+        val radius = w.OUTER_RADIUS + w.OUTER_STROKE / 2f
+        val startDeg = -90f + w.OUTER_TRIM_OFFSET * 360f
+        val sweepDeg = w.OUTER_TRIM_END * 360f
+        var left = w.DOT_CENTRE_X - w.DOT_W / 2f
+        var top = w.DOT_CENTRE_Y - w.DOT_H / 2f
+        var right = w.DOT_CENTRE_X + w.DOT_W / 2f
+        var bottom = w.DOT_CENTRE_Y + w.DOT_H / 2f
+        for (i in 0..180) {
+            val degrees = startDeg + sweepDeg * i / 180f
+            val radians = degrees * (Math.PI / 180.0)
+            val x = w.CENTRE_X + radius * cos(radians).toFloat()
+            val y = w.CENTRE_Y + radius * sin(radians).toFloat()
+            left = minOf(left, x)
+            top = minOf(top, y)
+            right = maxOf(right, x)
+            bottom = maxOf(bottom, y)
+        }
+        // The round caps extend half a stroke past each arc endpoint in every direction.
+        val cap = w.OUTER_STROKE / 2f
+        val endpointStart = startDeg * (Math.PI / 180.0)
+        val endpointEnd = (startDeg + sweepDeg) * (Math.PI / 180.0)
+        for (radians in listOf(endpointStart, endpointEnd)) {
+            val x = w.CENTRE_X + w.OUTER_RADIUS * cos(radians).toFloat()
+            val y = w.CENTRE_Y + w.OUTER_RADIUS * sin(radians).toFloat()
+            left = minOf(left, x - cap)
+            top = minOf(top, y - cap)
+            right = maxOf(right, x + cap)
+            bottom = maxOf(bottom, y + cap)
+        }
+        // The renderer is clipped by the artboard bounds.
+        return InkBox(
+            left.coerceIn(0f, w.ARTBOARD_W),
+            top.coerceIn(0f, w.ARTBOARD_H),
+            right.coerceIn(0f, w.ARTBOARD_W),
+            bottom.coerceIn(0f, w.ARTBOARD_H)
+        )
     }
 
     /**
@@ -791,6 +818,12 @@ internal object IosGeometry {
         const val WIFI_DRAW_SCALE = 0.627f
         const val CELL_DRAW_SCALE = 0.825f
         const val CELL_DUAL_DRAW_SCALE = 0.836f
+
+        /**
+         * R9-design.md §8: the V2 layout owns the real size, so the drawable transform stays identity.
+         * The existing HOST/preview [drawScale] defaults are deliberately unchanged.
+         */
+        const val V2_DRAW_SCALE = 1f
 
         /** The draw scale for [kind]; a dual-SIM cell uses its own measured scale. */
         fun drawScale(kind: IosIconKind, dualCell: Boolean = false): Float = when (kind) {

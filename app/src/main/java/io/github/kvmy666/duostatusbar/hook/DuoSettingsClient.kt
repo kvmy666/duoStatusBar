@@ -109,7 +109,7 @@ internal data class ModuleSettings(
     val iosMode: Boolean = false,
     /** iOS icon offset as a percent of the icon's drawn width, clamped -25..25. 0 is today's seat. */
     val iosBatteryOffset: Int = 0,
-    /** iOS icon scale as a percent; 100 is today's drawing, clamped 50..150. */
+    /** iOS icon scale as a percent; 100 is today's drawing, clamped 50..200. */
     val iosBatteryScale: Int = DuoPrefs.DEFAULT_ICON_SCALE,
     val iosWifiOffset: Int = 0,
     val iosWifiScale: Int = DuoPrefs.DEFAULT_ICON_SCALE,

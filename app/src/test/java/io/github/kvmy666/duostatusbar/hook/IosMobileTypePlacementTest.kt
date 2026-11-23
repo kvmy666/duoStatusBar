@@ -92,11 +92,13 @@ class IosMobileTypePlacementTest {
     @Before
     fun setUp() {
         IosMobileTypePlacement.deactivate()
+        IosSlotLayout.resetForTest()
     }
 
     @After
     fun tearDown() {
         IosMobileTypePlacement.deactivate()
+        IosSlotLayout.resetForTest()
     }
 
     // ------------------------------------------------------------------------------- placement

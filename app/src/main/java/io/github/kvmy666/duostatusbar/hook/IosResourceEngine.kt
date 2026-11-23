@@ -30,8 +30,9 @@ internal data class ResolvedEntry(
     val heightDp: Float,
     val packageName: String,
     /**
-     * R7 P4: the user's per-icon offset/scale, baked once per map build from [ModuleSettings].
-     * [IosUserTransform.IDENTITY] is exactly the pre-setting pixels (rule 6).
+     * R7 P4/R9: the drawable transform. V2 always uses [IosUserTransform.IDENTITY] because
+     * `IosSlotLayout` owns the per-icon scale by resizing the live stock leaf; HOST/preview keep
+     * their own drawable transform. Identity is exactly the pre-setting pixels (rule 6).
      */
     val transform: IosUserTransform = IosUserTransform.IDENTITY,
     /**
@@ -394,11 +395,10 @@ internal object IosResourceEngine : IosDiagnosticSource {
                         widthDp = widthPx * 160f / densityDpi,
                         heightDp = heightPx * 160f / densityDpi,
                         packageName = pkg,
-                        transform = if (isHidden) {
-                            IosUserTransform.IDENTITY
-                        } else {
-                            userTransformFor(settings, slot, widthPx, heightPx)
-                        },
+                        // R9: the drawable stays identity. IosSlotLayout owns the per-icon scale by
+                        // resizing the live stock leaf (`iosWifiScale`/`iosCellScale` were baked here
+                        // before, so a slider tick never reached an already-installed view).
+                        transform = IosUserTransform.IDENTITY,
                         stockState = stockState,
                         stockWidthPx = if (isHidden) widthPx else 0,
                         stockHeightPx = if (isHidden) heightPx else 0
@@ -430,32 +430,6 @@ internal object IosResourceEngine : IosDiagnosticSource {
         IosResourceKind.LABEL ->
             if (IosGeometry.DataLabel.supports(spec.label)) IosResourceSlot.Label(spec.label) else null
         IosResourceKind.HIDDEN -> IosResourceSlot.Hidden
-    }
-
-    /**
-     * The per-user transform for one entry, computed from the stock intrinsic size the map already
-     * measured (R7 P4). The identity value is returned for a null settings snapshot or any failure,
-     * so a broken provider row can never move a glyph (rule 6, C11).
-     */
-    private fun userTransformFor(
-        settings: ModuleSettings?,
-        slot: IosResourceSlot,
-        widthPx: Int,
-        heightPx: Int
-    ): IosUserTransform {
-        if (settings == null) return IosUserTransform.IDENTITY
-        return try {
-            val kind = drawableKind(slot)
-            val innerWidth = IosGeometry.Relative.sizeFor(
-                kind,
-                widthPx,
-                heightPx,
-                dualCell = false
-            ).first
-            settings.iosTransform(kind, innerWidth.toFloat())
-        } catch (_: Throwable) {
-            IosUserTransform.IDENTITY
-        }
     }
 
     // ------------------------------------------------------------------------------ diagnostics
@@ -624,7 +598,9 @@ internal object IosResourceEngine : IosDiagnosticSource {
             visual,
             widthPx,
             heightPx,
-            relativeSize = true,
+            // R9: the leaf is sized to the artboard by IosSlotLayout; a relative inset would shrink
+            // the glyph inside the new box (and was the second half of the slider bug).
+            relativeSize = false,
             captureColorFilter = true
         )
 

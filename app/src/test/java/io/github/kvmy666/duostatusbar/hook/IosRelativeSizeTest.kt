@@ -55,13 +55,13 @@ class IosRelativeSizeTest {
             IosMapping.battery(
                 100, 20, false, false, BatteryManager.BATTERY_STATUS_DISCHARGING, Color.BLACK
             ),
-            80, 38, 34, 1.100f, 1.1000f
+            80, 38, 34, 1.1111f, 1.1167f
         ),
         Case(
             "wifi",
             IosIconKind.WIFI,
             IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f),
-            80, 50, 31, 1.0384f, 1.0250f
+            80, 50, 31, 1.0027f, 0.9917f
         ),
         Case(
             "cell-single",
@@ -74,7 +74,7 @@ class IosRelativeSizeTest {
                 cellBars = 4f,
                 cellDots = 0f
             ),
-            80, 42, 35, 1.0505f, 1.0583f
+            80, 42, 35, 1.0505f, 1.0250f
         ),
         Case(
             "cell-dual-both",
@@ -87,7 +87,7 @@ class IosRelativeSizeTest {
                 cellBars = 2f,
                 cellDots = 3f
             ),
-            80, 42, 35, 1.1462f, 1.1417f,
+            80, 42, 35, 1.1462f, 1.1500f,
             dualCell = true
         )
     )

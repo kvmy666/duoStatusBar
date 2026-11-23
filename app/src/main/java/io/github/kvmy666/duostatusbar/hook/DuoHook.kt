@@ -585,6 +585,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 stopIosV2Owners()
                 return false
             }
+            // R9: the live layout owns the per-icon scale; publish the snapshot before any owner
+            // installs/reapplies so a bind and a slider tick use the same numbers.
+            IosSlotLayout.reapply(settings)
             IosBatteryV2.activate(
                 ctx,
                 rom,
@@ -635,6 +638,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * decides the route (R7 P5: the HOST fall-through keeps HOST, it does not become NONE).
      */
     private fun stopIosV2Owners() {
+        // R9: put every stock LayoutParams/clip flag/scale type back before the drawables are restored.
+        runCatching { IosSlotLayout.restoreAll() }
         runCatching { IosStackedSim.deactivate() }
         runCatching { IosExtras.deactivate() }
         // Restore the stock order, but do not release: the order hooks are the process-wide owner and

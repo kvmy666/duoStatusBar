@@ -51,6 +51,7 @@ internal object IosExtras {
     private const val WIFI_LEFT = "wifi_left"
     private const val WIFI_INOUT = "wifi_inout"
     private const val DATA_INOUT = "data_inout"
+    private const val WIFI_SIGNAL = "wifi_signal"
 
     private val logOnce = LogOnce()
 
@@ -165,6 +166,8 @@ internal object IosExtras {
             val group = param.args.firstOrNull { it is ViewGroup } as? ViewGroup ?: return
             registerById(group, WIFI_LEFT)
             registerById(group, WIFI_INOUT)
+            // R9: the group's own leaf drives the real slot size; iOS off restores it exactly.
+            imageById(group, WIFI_SIGNAL)?.let { IosSlotLayout.registerWifi(it) }
         } catch (_: Throwable) {
             // Whole body guarded: any unexpected failure leaves the stock extra untouched.
         }
@@ -175,23 +178,28 @@ internal object IosExtras {
             val signal = param.args.firstOrNull() as? ImageView ?: return
             val parent = signal.parent as? ViewGroup ?: return
             registerById(parent, DATA_INOUT)
+            // R9: same chain the placement owner uses; the label is picked up from the measured order.
+            IosSlotLayout.registerMobile(signal)
         } catch (_: Throwable) {
             // Whole body guarded.
         }
     }
 
     private fun registerById(root: ViewGroup, name: String) {
+        imageById(root, name)?.let { register(it) }
+    }
+
+    private fun imageById(root: ViewGroup, name: String): ImageView? {
         val id = idOf(root, name)
         if (id == 0) {
             logOnce.once("ios-extras-id-$name") { L.w("$TAG id '$name' not found; stock kept") }
-            return
+            return null
         }
-        val image = try {
+        return try {
             root.findViewById<View>(id) as? ImageView
         } catch (_: Throwable) {
             null
-        } ?: return
-        register(image)
+        }
     }
 
     private fun idOf(view: View, name: String): Int {

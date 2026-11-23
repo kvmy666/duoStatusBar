@@ -69,22 +69,22 @@ class IosR5LabelStripTest {
             2f
         )
 
-        // Top-anchored cap: 13.95 units below the body top, 8.37 above the body bottom.
+        // R9 top-anchored cap: 16.4 units below the body top, 12.2 above the body bottom.
         assertEquals(
             "label ink top - battery body top",
-            13.95f * scale,
+            16.4f * scale,
             (label.top - body.top).toFloat(),
             1.5f
         )
         assertEquals(
             "battery body bottom - label ink bottom",
-            8.37f * scale,
+            12.2f * scale,
             (body.bottom - label.bottom).toFloat(),
             1.5f
         )
         assertEquals(
             "label ink height (cap)",
-            77.69f * scale,
+            71.4f * scale,
             (label.bottom + 1 - label.top).toFloat(),
             1.5f
         )

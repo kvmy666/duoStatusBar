@@ -14,7 +14,7 @@ import java.io.File
 import java.util.Locale
 
 /**
- * Evidence generator for the v6 digits (R3D): renders the REAL [IosGlyphRenderer] (through
+ * Evidence generator for the R9 stroke digits: renders the REAL [IosGlyphRenderer] (through
  * [IosGlyphDrawable]) on the battery body and, when `IOS_DIGIT_EVIDENCE_OUT` is set, writes the
  * per-state PNGs plus `digits-shipped.json` so the inverse weight-normalised IoU can be recomputed
  * from the shipped contours.
@@ -36,7 +36,7 @@ class IosDigitEvidenceTest {
     }
 
     @Test
-    fun `real renderer draws every v6 digit and the reference strings`() {
+    fun `real renderer draws every R9 digit and the reference strings`() {
         val cases = ArrayList<Triple<String, IosVisual, Int>>()
         for (d in 0..9) {
             cases.add(Triple("digit-$d", battery(d), d))
@@ -140,33 +140,17 @@ class IosDigitEvidenceTest {
         return pixels.count { Color.alpha(it) > 8 }
     }
 
-    /** The shipped contours, 2dp, so the private IoU script scores the runtime data, not the JSON. */
+    /** The R9 stroke metrics, 2dp, so the evidence names the actual runtime source. */
     private fun shippedJson(): String {
         val out = StringBuilder()
-        out.append("{\"cap\":").append(f(IosDigits.CAP_HEIGHT)).append(",\"digits\":[")
+        out.append("{\"cap\":").append(f(IosDigits.CAP_HEIGHT))
+            .append(",\"stroke\":").append(f(IosDigits.STROKE))
+            .append(",\"advance\":").append(f(IosDigits.ADVANCE)).append(",\"digits\":[")
         for (ch in '0'..'9') {
             val glyph = IosDigits.glyph(ch)
             if (ch != '0') out.append(',')
             out.append("{\"d\":").append(ch).append(",\"width\":").append(f(glyph.width))
-                .append(",\"advance\":").append(f(glyph.advance)).append(",\"contours\":[")
-            for ((ci, contour) in glyph.contours.withIndex()) {
-                if (ci > 0) out.append(',')
-                out.append('[')
-                var i = 0
-                while (i < contour.size) {
-                    if (i > 0) out.append(',')
-                    out.append('[').append(f(contour[i])).append(',').append(f(contour[i + 1]))
-                        .append(']')
-                    i += 2
-                }
-                out.append(']')
-            }
-            out.append("],\"roles\":[")
-            for (ci in glyph.contours.indices) {
-                if (ci > 0) out.append(',')
-                out.append(if (ci == 0) "\"outer\"" else "\"hole\"")
-            }
-            out.append("]}")
+                .append(",\"advance\":").append(f(glyph.advance)).append("}")
         }
         out.append("]}")
         return out.toString()

@@ -298,12 +298,14 @@ class IosDrawablesTest {
 
     @Test
     fun `partial battery cap stays at the inactive half alpha`() {
-        // level 99 is below a full battery, so the cap keeps CAP_ALPHA (0.50), never full ink.
+        // level 99 is below a full battery, so the nub keeps the R9 luminance alpha (0.30 for
+        // dark ink), never full ink.
         val visual = batteryVisual(level = 99, tint = Color.BLACK)
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
 
         val c = render(drawable, BATTERY_W, BATTERY_H).getPixel(206, 51)
-        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
+        // R9 luminance rule: black ink -> 0.30 alpha.
+        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 72..82)
     }
 
     @Test
@@ -319,7 +321,8 @@ class IosDrawablesTest {
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
 
         val c = render(drawable, BATTERY_W, BATTERY_H).getPixel(206, 51)
-        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
+        // R9 luminance rule: black ink -> 0.30 alpha.
+        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 72..82)
         val spread = maxOf(Color.red(c), Color.green(c), Color.blue(c)) -
             minOf(Color.red(c), Color.green(c), Color.blue(c))
         assertTrue("cap channels differ by $spread", spread <= 3)
@@ -339,7 +342,7 @@ class IosDrawablesTest {
         val seat = digitSeat("69")
         assertEquals(0, countTransparent(bitmap, seat[0], seat[1], seat[2], seat[3]))
         assertEquals(0, countBackgroundInk(bitmap, seat[0], seat[1], seat[2], seat[3]))
-        val fill = bitmap.getPixel(60, 45)
+        val fill = bitmap.getPixel(25, 20)
         assertEquals("stroke seat alpha", 255, Color.alpha(fill))
         assertTrue("stroke seat red ${Color.red(fill)}", Color.red(fill) <= 2)
         assertTrue("stroke seat green ${Color.green(fill)}", Color.green(fill) <= 2)
@@ -356,8 +359,8 @@ class IosDrawablesTest {
         val seat = digitSeat("69")
         val holes = countTransparent(bitmap, seat[0], seat[1], seat[2], seat[3])
         assertTrue("no cleared digit ink inside the body ($holes)", holes > 100)
-        // The body itself is still drawn: a light-mode fill sample at 69 % is opaque.
-        val fill = bitmap.getPixel(50, 45)
+        // The body itself is still drawn: a fill sample away from the digit holes is opaque.
+        val fill = bitmap.getPixel(25, 20)
         assertEquals("body fill alpha", 255, Color.alpha(fill))
     }
 
@@ -452,17 +455,17 @@ class IosDrawablesTest {
     @Test
     fun `user transform dx shifts ink right without resizing it or the bounds`() {
         val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
-        val before = inkBox(render(drawable, 160, 90))
+        val before = inkBox(render(drawable, 400, 220))
 
-        drawable.setBounds(0, 0, 160, 90)
+        drawable.setBounds(0, 0, 400, 220)
         drawable.userTransform = IosUserTransform(dxPx = 3f, scale = 1f)
         // The transform must not write the bounds (C2).
         assertEquals(0, drawable.bounds.left)
         assertEquals(0, drawable.bounds.top)
-        assertEquals(160, drawable.bounds.right)
-        assertEquals(90, drawable.bounds.bottom)
+        assertEquals(400, drawable.bounds.right)
+        assertEquals(220, drawable.bounds.bottom)
 
-        val after = inkBox(render(drawable, 160, 90))
+        val after = inkBox(render(drawable, 400, 220))
         assertEquals("shifted right", 3.0, (after.left - before.left).toDouble(), 1.0)
         assertTrue("width unchanged (${before.width} vs ${after.width})", kotlin.math.abs(before.width - after.width) <= 1)
     }
@@ -475,7 +478,7 @@ class IosDrawablesTest {
         fun box(scale: Float, dx: Float): InkBox {
             val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(level = 60), 0, 0)
             drawable.userTransform = IosUserTransform(dxPx = dx, scale = scale)
-            return inkBox(render(drawable, 160, 90))
+            return inkBox(render(drawable, 900, 460))
         }
 
         val fullBaseline = box(scale = 1f, dx = 0f)

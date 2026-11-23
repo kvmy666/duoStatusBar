@@ -78,11 +78,13 @@ class IosStackedSimTest {
     @Before
     fun setUp() {
         IosStackedSim.deactivate()
+        IosSlotLayout.resetForTest()
     }
 
     @After
     fun tearDown() {
         IosStackedSim.deactivate()
+        IosSlotLayout.resetForTest()
     }
 
     // ------------------------------------------------------------------------------------ plan

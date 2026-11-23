@@ -9,13 +9,14 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -30,6 +31,16 @@ import org.robolectric.annotation.Config
 class IosBatteryV2Test {
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
+
+    @Before
+    fun setUp() {
+        IosSlotLayout.resetForTest()
+    }
+
+    @After
+    fun tearDown() {
+        IosSlotLayout.resetForTest()
+    }
 
     private fun rom(id: String) = RomAdapter(
         id = id,
@@ -143,23 +154,20 @@ class IosBatteryV2Test {
     // ------------------------------------------------------------------ user transform (R7 P4)
 
     @Test
-    fun `install bakes the settings transform from the stock inner size`() {
+    fun `install keeps the drawable transform identity because the layout owns the scale`() {
         val f = fixture()
-        val settings = ModuleSettings.DEFAULT.copy(iosBatteryOffset = 10, iosBatteryScale = 150)
+        val settings = ModuleSettings.DEFAULT.copy(iosBatteryOffset = 10, iosBatteryScale = 200)
         val controller = IosBatteryV2.Controller(
             f.root, f.image, IntArray(0), context, false, 20, settings
         )
 
         assertTrue(controller.install(reading(level = 50), saver = false))
 
-        val inner = IosGeometry.Relative.sizeFor(
-            IosIconKind.BATTERY, 60, 40, dualCell = false
-        ).first
-        val expected = settings.iosTransform(IosIconKind.BATTERY, inner.toFloat())
+        // R9: a V2 drawable never bakes iosBatteryScale into its transform; IosSlotLayout resizes
+        // the real leaf instead, so a slider tick reaches the installed view.
         val actual = controller.visualForTest!!.userTransform
-        assertEquals(expected.scale, actual.scale, 0.0001f)
-        assertEquals(expected.dxPx, actual.dxPx, 0.0001f)
-        assertNotEquals(1f, actual.scale)
+        assertEquals(1f, actual.scale, 0.0001f)
+        assertEquals(0f, actual.dxPx, 0.0001f)
     }
 
     @Test
@@ -174,10 +182,11 @@ class IosBatteryV2Test {
         assertFalse(controller.visualForTest!!.percentInside)
 
         // R7 P5: constructor values used to freeze the settings; a later apply must reach the icon.
-        val b = ModuleSettings.DEFAULT.copy(iosBatteryScale = 150)
+        // R9: the scale now reaches the layout, not the drawable transform.
+        val b = ModuleSettings.DEFAULT.copy(iosBatteryScale = 200)
         controller.applySettings(b, percentInside = true, lowThreshold = 20, IosUserTransform.IDENTITY)
 
-        assertEquals(1.5f, controller.visualForTest!!.userTransform.scale, 0.0001f)
+        assertEquals(1f, controller.visualForTest!!.userTransform.scale, 0.0001f)
         assertTrue(controller.visualForTest!!.percentInside)
     }
 

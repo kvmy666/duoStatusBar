@@ -92,36 +92,25 @@ class IosR6KnockoutEvidenceTest {
     }
 
     @Test
-    fun `the counter of a digit stays body ink`() {
+    fun `the middle of a digit stroke stays body ink`() {
         val off = render(visual(level = 50, inside = false), Bg.PHOTO)
         val on = render(visual(level = 50, inside = true), Bg.PHOTO)
 
-        // Counter centroid of the second glyph ("0"), from its inner contour, in artboard units.
+        // R9 digits are stroke skeletons: the stroke is cleared, but the open interior of the "0"
+        // (its loop centre) must stay body ink, not become a background hole.
         val glyph = IosDigits.glyph('0')
-        require(glyph.contours.size > 1) { "the 0 must have a counter contour" }
-        val counter = glyph.contours[1]
-        var sx = 0f
-        var sy = 0f
-        var n = 0
-        var i = 0
-        while (i < counter.size) {
-            sx += counter[i]
-            sy += counter[i + 1]
-            n++
-            i += 2
-        }
         val origin = penOrigins("50")[1]
-        val ux = origin + sx / n
-        val uy = textTop() + sy / n
+        val ux = origin + glyph.width / 2f
+        val uy = textTop() + IosDigits.CAP_HEIGHT / 2f
         val x = toPxX(on, ux)
         val y = toPxY(on, uy)
 
         val textPixel = on.getPixel(x, y)
         assertTrue(
-            "counter was cleared (on=${hex(textPixel)}, off=${hex(off.getPixel(x, y))})",
+            "digit interior was cleared (on=${hex(textPixel)}, off=${hex(off.getPixel(x, y))})",
             near(textPixel, off.getPixel(x, y), 2)
         )
-        assertTrue("counter is the background, not body ink", !matchesBackground(Bg.PHOTO, on, x, y))
+        assertTrue("digit interior is the background, not body ink", !matchesBackground(Bg.PHOTO, on, x, y))
         off.recycle()
         on.recycle()
     }
@@ -140,7 +129,7 @@ class IosR6KnockoutEvidenceTest {
         val off = render(charging.copy(percentInside = false), Bg.PHOTO)
         val on = render(charging, Bg.PHOTO)
 
-        // The large bolt's top strip is solid body in inside mode (no white bolt, no hole).
+        // The large bolt's top strip is solid body in inside mode (no large bolt, no hole).
         var stripHoles = 0
         for (y in toPxY(on, 4f) until toPxY(on, 18f)) {
             for (x in toPxX(on, 60f) until toPxX(on, 135f)) {
@@ -148,15 +137,16 @@ class IosR6KnockoutEvidenceTest {
             }
         }
         assertEquals("large-bolt strip must not be a hole", 0, stripHoles)
-        // The off mode fills that strip with the large white bolt; inside mode must not.
+        // R9: the no-digit bolt is solid system ink (black here), not a white fill. It is present in
+        // the off render and absent in the digits render.
         assertTrue(
             "reference: the off mode paints the large bolt",
-            countNearWhite(off, 60f, 4f, 135f, 18f) > 50
+            countNearBlack(off, 60f, 4f, 135f, 18f) > 50
         )
         assertEquals(
-            "the large bolt is still painted white in inside mode",
+            "the large bolt is still painted in inside mode",
             0,
-            countNearWhite(on, 60f, 4f, 135f, 18f)
+            countNearBlack(on, 60f, 4f, 135f, 18f)
         )
 
         // The inline bolt after the digits is a hole.
@@ -174,6 +164,52 @@ class IosR6KnockoutEvidenceTest {
         assertTrue("inline bolt is not cleared ($boltHoles)", boltHoles > 50)
         off.recycle()
         on.recycle()
+    }
+
+    @Test
+    fun `red critical digits are solid white while green and yellow are holes`() {
+        // R9-design.md §Colour rules: normal/green/yellow digits are knockout holes; the red
+        // critical state is the one exception and draws solid white digits.
+        val green = IosMapping.battery(
+            60, 20, false, true, BatteryManager.BATTERY_STATUS_CHARGING,
+            Color.BLACK, percentInside = true
+        )
+        val yellow = IosMapping.battery(
+            50, 20, true, false, BatteryManager.BATTERY_STATUS_DISCHARGING,
+            Color.BLACK, percentInside = true
+        )
+        val red = IosMapping.battery(
+            10, 20, false, false, BatteryManager.BATTERY_STATUS_DISCHARGING,
+            Color.BLACK, percentInside = true
+        )
+        val normal = IosMapping.battery(
+            80, 20, false, false, BatteryManager.BATTERY_STATUS_DISCHARGING,
+            Color.BLACK, percentInside = true
+        )
+        for ((name, visual, text) in listOf(
+            Triple("normal", normal, "80"),
+            Triple("green", green, "60"),
+            Triple("yellow", yellow, "50")
+        )) {
+            val bitmap = render(visual, Bg.PHOTO)
+            assertTrue(
+                "$name digits must be background holes",
+                countBackgroundInDigitSeat(bitmap, text) > 50
+            )
+            bitmap.recycle()
+        }
+
+        val redBitmap = render(red, Bg.PHOTO)
+        assertEquals(
+            "red critical digits must not be background holes",
+            0,
+            countBackgroundInDigitSeat(redBitmap, "10")
+        )
+        assertTrue(
+            "red critical digits must be solid white",
+            countNearWhiteInDigitSeat(redBitmap, "10") > 50
+        )
+        redBitmap.recycle()
     }
 
     @Test
@@ -414,7 +450,42 @@ class IosR6KnockoutEvidenceTest {
             kotlin.math.abs(Color.blue(a) - Color.blue(c)) <= tolerance &&
             kotlin.math.abs(Color.alpha(a) - Color.alpha(c)) <= tolerance
 
-    private fun countNearWhite(
+    private fun digitSeatBox(bitmap: Bitmap, text: String): IntArray {
+        val group = IosDigits.groupWidth(text, withBolt = false)
+        val left = b.BODY_LEFT + b.BODY_W / 2f - group / 2f
+        val top = b.BODY_TOP + (b.BODY_H - IosDigits.CAP_HEIGHT) / 2f
+        return intArrayOf(
+            toPxX(bitmap, left),
+            toPxY(bitmap, top),
+            toPxX(bitmap, left + group),
+            toPxY(bitmap, top + IosDigits.CAP_HEIGHT)
+        )
+    }
+
+    private fun countBackgroundInDigitSeat(bitmap: Bitmap, text: String): Int {
+        val box = digitSeatBox(bitmap, text)
+        var count = 0
+        for (y in box[1] until box[3]) {
+            for (x in box[0] until box[2]) {
+                if (matchesBackground(Bg.PHOTO, bitmap, x, y)) count++
+            }
+        }
+        return count
+    }
+
+    private fun countNearWhiteInDigitSeat(bitmap: Bitmap, text: String): Int {
+        val box = digitSeatBox(bitmap, text)
+        var count = 0
+        for (y in box[1] until box[3]) {
+            for (x in box[0] until box[2]) {
+                val c = bitmap.getPixel(x, y)
+                if (Color.red(c) > 240 && Color.green(c) > 240 && Color.blue(c) > 240) count++
+            }
+        }
+        return count
+    }
+
+    private fun countNearBlack(
         bitmap: Bitmap,
         x0: Float,
         y0: Float,
@@ -425,7 +496,7 @@ class IosR6KnockoutEvidenceTest {
         for (y in toPxY(bitmap, y0) until toPxY(bitmap, y1)) {
             for (x in toPxX(bitmap, x0) until toPxX(bitmap, x1)) {
                 val c = bitmap.getPixel(x, y)
-                if (Color.red(c) > 240 && Color.green(c) > 240 && Color.blue(c) > 240) count++
+                if (Color.red(c) < 24 && Color.green(c) < 24 && Color.blue(c) < 24) count++
             }
         }
         return count

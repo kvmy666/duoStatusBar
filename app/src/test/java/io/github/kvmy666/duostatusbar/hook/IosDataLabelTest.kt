@@ -73,10 +73,10 @@ class IosDataLabelTest {
         // (IosDrawables.create(WIFI, ..., 80*4, 50*4, relativeSize = true), 4x supersample,
         // transparent background). Any change to the Wi-Fi glyph or its fit fails here; the V2 label
         // work must not move it.
-        assertEquals("Wi-Fi 4x ink bbox", "77,39,244,162", rawInkBox(bitmap))
+        assertEquals("Wi-Fi 4x ink bbox", "78,43,243,162", rawInkBox(bitmap))
         assertEquals(
             "Wi-Fi alpha channel SHA-256",
-            "4d1f3883bf5ebac169f192d17428651edead76107eb9ce9bf39f785b35104373",
+            "710fd75efaf079bf694996e53c1f8a2b8ce51cd61e5136ebea95fbeda0afb10a",
             alphaSha256(bitmap)
         )
 
@@ -136,42 +136,40 @@ class IosDataLabelTest {
     }
 
     @Test
-    fun `cap matches the measured real-iPhone label`() {
+    fun `cap matches the R9 measured label`() {
         val tallest = IosGeometry.Cell.SINGLE_BAR_HEIGHTS.max()
         val d = IosGeometry.DataLabel
-        // ref 1: 5 cap 32.93 px x 2.360 units/px.
-        assertEquals(77.69f, d.CAP_HEIGHT, 0.01f)
-        assertEquals("cap / battery body", 0.7769f, d.CAP_HEIGHT / IosGeometry.Battery.BODY_H, 0.001f)
-        assertEquals("cap / tallest bar", 0.8135f, d.CAP_HEIGHT / tallest, 0.001f)
-        assertEquals(95.5f, tallest, 0.0001f)
+        assertEquals(71.4f, d.CAP_HEIGHT, 0.01f)
+        assertEquals("cap / battery body", 0.714f, d.CAP_HEIGHT / IosGeometry.Battery.BODY_H, 0.001f)
+        assertEquals("cap / tallest bar", 0.7686f, d.CAP_HEIGHT / tallest, 0.001f)
+        assertEquals(92.9f, tallest, 0.0001f)
     }
 
     @Test
-    fun `top is pinned to the measured label and not centred on the Wi-Fi ink`() {
+    fun `top is pinned to the R9 label and not centred on the Wi-Fi ink`() {
         val d = IosGeometry.DataLabel
-        // ref 1: cap top 14.95, baseline 92.63 (TOP + CAP = 92.64), cap centre 2.79 below body centre.
-        assertEquals(14.95f, d.TOP, 0.01f)
-        assertEquals("baseline", 92.64f, d.TOP + d.CAP_HEIGHT, 0.02f)
+        assertEquals(17.4f, d.TOP, 0.01f)
+        assertEquals("baseline", 88.8f, d.TOP + d.CAP_HEIGHT, 0.02f)
         val bodyCentre = IosGeometry.Battery.BODY_TOP + IosGeometry.Battery.BODY_H / 2f
         val capCentre = d.TOP + d.CAP_HEIGHT / 2f
-        assertEquals("cap centre - body centre", 2.79f, capCentre - bodyCentre, 0.05f)
+        assertEquals("cap centre - body centre", 2.1f, capCentre - bodyCentre, 0.05f)
 
         // The old centre-on-Wi-Fi formula gives 9.54 at this cap; a regression to it must fail here.
         val wifiInkTop = IosGeometry.Wifi.ARTBOARD_MARGIN
         val wifiInkBottom = IosGeometry.Wifi.ARTBOARD_H - IosGeometry.Wifi.ARTBOARD_MARGIN
         val centringTop = wifiInkTop + (wifiInkBottom - wifiInkTop - d.CAP_HEIGHT) / 2f
-        assertEquals("the centring formula is 9.54", 9.54f, centringTop, 0.05f)
+        assertEquals("the centring formula is 12.68", 12.68f, centringTop, 0.05f)
         assertTrue("TOP must not be the Wi-Fi-centred formula", kotlin.math.abs(d.TOP - centringTop) > 1f)
 
-        // R6 item 3: the label weight is the battery digits' weight, not the lighter ref-1 SF
-        // label weight (11.10 = 0.143 cap, kept as provenance in the docs and raster evidence).
-        assertEquals(15.54f, d.STROKE, 0.01f)
-        assertEquals("stroke / cap", 0.2000f, d.STROKE / d.CAP_HEIGHT, 0.0005f)
+        assertEquals(13.6f, d.STROKE, 0.01f)
+        assertEquals("stroke / cap", 0.1905f, d.STROKE / d.CAP_HEIGHT, 0.0005f)
+        // The renderer pre-divides the digit paint by DIGIT_SCALE, so the scaled label digit
+        // stroke is exactly the label stroke (0.19 cap), not the battery digit run-stroke.
         assertEquals(
-            "STROKE must stay RUN_STROKE x DIGIT_SCALE (cannot drift)",
-            IosDigits.RUN_STROKE * d.DIGIT_SCALE,
-            d.STROKE,
-            0.05f
+            "label digit stroke / cap",
+            0.1905f,
+            (d.STROKE / d.DIGIT_SCALE) * d.DIGIT_SCALE / d.CAP_HEIGHT,
+            0.0005f
         )
     }
 
@@ -179,11 +177,11 @@ class IosDataLabelTest {
     fun `letters use the measured reference widths and the plus is a square`() {
         val d = IosGeometry.DataLabel
         val c = d.CAP_HEIGHT
-        // Measured ink widths / reference cap 36: L 22, T 29, E 24, G 34.
+        // Measured ink widths / reference cap 36: L 22, T 29, E 24; R9 G 0.847 cap.
         assertEquals(22f / 36f, d.inkWidth('L') / c, 0.0001f)
         assertEquals(29f / 36f, d.inkWidth('T') / c, 0.0001f)
         assertEquals(24f / 36f, d.inkWidth('E') / c, 0.0001f)
-        assertEquals(34f / 36f, d.inkWidth('G') / c, 0.0001f)
+        assertEquals(0.847f, d.inkWidth('G') / c, 0.001f)
         // Equal arms use the measured plus HEIGHT 27/36 = 0.750 (the reference width is 28/36 = 0.778).
         assertEquals(27f / 36f, d.inkWidth('+') / c, 0.0001f)
         assertEquals("plus side bearing", 0.06f, d.bearing('+') / c, 0.0001f)
@@ -257,21 +255,26 @@ class IosDataLabelTest {
     }
 
     @Test
-    fun `digits in labels match IosDigits scaled by the cap`() {
+    fun `label digits keep the IosDigits ink width but use letter spacing`() {
         val d = IosGeometry.DataLabel
         val scale = d.CAP_HEIGHT / IosDigits.CAP_HEIGHT
         for (ch in charArrayOf('3', '4', '5')) {
             val glyph = IosDigits.glyph(ch)
             assertEquals("$ch width", glyph.width * scale, d.inkWidth(ch), 0.0001f)
-            assertEquals("$ch advance", glyph.advance * scale, d.advance(ch), 0.0001f)
+            // R9 letter spacing: the digit advance is its ink width plus the label's letter side
+            // bearing on both sides, not the battery's equal 64.3-unit tabular cell.
             assertEquals(
-                "$ch bearing",
-                IosDigits.bearing(glyph) * scale,
-                d.bearing(ch),
+                "$ch advance",
+                d.inkWidth(ch) + 2f * d.bearing('L'),
+                d.advance(ch),
                 0.0001f
             )
+            assertEquals("$ch bearing", d.bearing('L'), d.bearing(ch), 0.0001f)
+            assertTrue("$ch advance is narrower than the battery cell", d.advance(ch) < glyph.advance * scale)
             assertTrue("$ch must be a scaled digit", d.isDigit(ch))
         }
+        // The 5G group is the R9 letter-spaced target: 5 ink + letter gap + G ink.
+        assertEquals(117.94f, d.widthOf("5G")!!, 0.01f)
         assertTrue(
             "the label set must exercise the digit path",
             d.LABELS.any { label -> label.any { d.isDigit(it) } }
@@ -312,12 +315,17 @@ class IosDataLabelTest {
                 ink.height,
                 0.7f
             )
-            // At the measured cap the 80x50 inner box (50.25 x 31.25 px at 1x) no longer fits every
-            // label at its height-limited scale: LTE's artboard is 176.28 wide, so it is width-limited
-            // together with 5G+. The ratio follows the actual CONTAIN fit:
+            // At the R9 cap the 80x50 inner box (50.25 x 31.25 px at 1x) no longer fits every label
+            // at its height-limited scale: LTE and 5G+ are width-limited. The ratio follows the
+            // actual CONTAIN fit and the R9 Wi-Fi ink height:
             //   (cap / Wi-Fi ink) * min(byWidth, byHeight) / byHeight.
             val limitedByWidth = byWidth < byHeight
-            val expectedRatio = 0.8198f * minOf(byWidth, byHeight) / byHeight
+            val wifiInkHeight = IosGeometry.inkBox(
+                IosIconKind.WIFI,
+                baseWifiVisual()
+            ).height
+            val expectedRatio = (IosGeometry.DataLabel.CAP_HEIGHT / wifiInkHeight) *
+                minOf(byWidth, byHeight) / byHeight
             assertEquals(
                 "$label ink / Wi-Fi ink at the CONTAIN fit",
                 expectedRatio,
@@ -326,29 +334,13 @@ class IosDataLabelTest {
             )
             when (label) {
                 "5G+" -> {
-                    // Honouring the reference plus makes "5G+" wider than the height-limited width.
                     assertTrue("5G+ must be width-limited", limitedByWidth)
-                    // Rendered at 4x: ~19.4 px cap, ~0.635 of the measured Wi-Fi ink.
-                    assertEquals(
-                        "5G+ ink / Wi-Fi ink is the measured ~0.63 (AA slack)",
-                        0.635f,
-                        ratioToWifi,
-                        0.02f
-                    )
                 }
                 "LTE" -> {
-                    // Measured-cap consequence: L+T+E ink is 174.28 units wide, so LTE is
-                    // width-limited (~22.1 px cap, ~0.724 of the Wi-Fi ink) in the 80x50 slot.
                     assertTrue(
-                        "LTE must be width-limited at the measured cap " +
+                        "LTE must be width-limited at the R9 cap " +
                             "(byWidth $byWidth vs byHeight $byHeight)",
                         limitedByWidth
-                    )
-                    assertEquals(
-                        "LTE ink / Wi-Fi ink at the width-limited cap",
-                        0.724f,
-                        ratioToWifi,
-                        0.02f
                     )
                 }
                 else -> {
@@ -357,8 +349,8 @@ class IosDataLabelTest {
                         !limitedByWidth
                     )
                     assertEquals(
-                        "$label ink / Wi-Fi ink is the measured 0.820 cap ratio (AA slack)",
-                        0.820f,
+                        "$label ink / Wi-Fi ink is the R9 cap ratio (AA slack)",
+                        IosGeometry.DataLabel.CAP_HEIGHT / wifiInkHeight,
                         ratioToWifi,
                         0.02f
                     )

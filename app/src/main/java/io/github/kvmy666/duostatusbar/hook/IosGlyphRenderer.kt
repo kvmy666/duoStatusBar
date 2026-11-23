@@ -140,25 +140,27 @@ internal object IosGlyphRenderer {
         }
         val tint = overrideTint ?: v.tint
 
-        // R6 item 6: `percentInside` is a TRUE knockout. The body, charged fill and cap are painted
-        // into an isolated layer; the digit and inline-bolt contours then CLEAR that layer, so the
-        // real status-bar/photo background shows through. The layer is mandatory: a CLEAR drawn
-        // straight onto the caller's canvas would erase glyphs already drawn beside the battery.
-        // When the switch is off there is no layer and the pixels are exactly the R5B ones.
-        val knockout = v.percentInside
+        // R9 colour rule: remainder/nub use the tint at 0.30 for dark ink and 0.50 for light ink.
+        val remainderAlpha = IosGeometry.remainderAlpha(tint)
+
+        // R6 item 6 / R9: `percentInside` is a TRUE knockout in normal/green/yellow. The red critical
+        // state is the one exception: its digits are solid white (not a hole). A CLEAR stroke must be
+        // drawn into an isolated layer, otherwise it would erase glyphs already drawn beside the
+        // battery.
+        val solidDigits = v.percentInside && v.batteryState == IosBatteryState.LOW
+        val knockout = v.percentInside && !solidDigits
         val layer = if (knockout) canvas.saveLayer(null, null) else -1
         try {
-            // Uncharged remainder: one rounded body at half alpha. It is NEUTRAL ink (the bar tint),
-            // not the fixed state colour: the charged fill keeps the state colour, the remainder
-            // stays grey.
+            // Uncharged remainder: one rounded body at the luminance alpha. It is NEUTRAL ink (the
+            // bar tint), not the fixed state colour.
             val remainder = Path().apply {
                 addRoundRect(body, b.BODY_RADIUS, b.BODY_RADIUS, Path.Direction.CW)
             }
-            fill.color = withAlpha(tint, b.REMAINDER_ALPHA, alpha)
+            fill.color = withAlpha(tint, remainderAlpha, alpha)
             canvas.drawPath(remainder, fill)
 
             // Charged part: clipped by the body, so the left corners stay round and the split is
-            // straight.
+            // straight. Opaque and flush left-to-right (R9).
             canvas.save()
             canvas.clipPath(remainder)
             fill.color = withAlpha(bodyFill, 1f, alpha)
@@ -171,38 +173,25 @@ internal object IosGlyphRenderer {
             )
             canvas.restore()
 
-            // Cap nub: the measured right-hand half of a superellipse (n=1.8), 9.5 x 26.0, not a
-            // circle or capsule. It is NEUTRAL ink like the uncharged remainder (the bar tint), not
-            // the dynamic fill nor the fixed state colour. Its flat base sits against the body.
-            val cap = Path().apply {
+            // Separate half-capsule nub (flat left, round right), same neutral ink as the remainder;
+            // full ink at 100 %.
+            val nub = Path().apply {
                 val points = b.CAP_POINTS
                 moveTo(points[0], points[1])
                 for (i in 2 until points.size step 2) lineTo(points[i], points[i + 1])
                 close()
             }
-            // PM rule (2026-11-22): at a full battery the cap is full ink, not the inactive half
-            // alpha.
-            val capFactor = if (v.batteryLevel >= 1f) 1f else b.CAP_ALPHA
-            fill.color = withAlpha(tint, capFactor, alpha)
-            canvas.drawPath(cap, fill)
+            val nubFactor = if (v.batteryLevel >= 1f) 1f else remainderAlpha
+            fill.color = withAlpha(tint, nubFactor, alpha)
+            canvas.drawPath(nub, fill)
 
-            if (knockout) {
-                // The percentage is cleared last, through both the fill and the remainder. No large
-                // bolt and no outline in this mode; a charging bolt follows the digits inline.
-                drawPercentInside(canvas, v)
+            if (v.percentInside) {
+                // Red critical: solid white digits. Normal/green/yellow: CLEAR stroke holes.
+                drawPercentInside(canvas, v, solid = solidDigits, alpha = alpha)
             } else if (v.boltOpacity > 0f) {
-                // Ref 3 shows a plain white bolt. Draw its outline first (2x the measured 4.5
-                // stroke), then fill white; there is no dynamic tint fill.
-                val bolt = IosDigits.largeBoltPath()
-                val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    style = Paint.Style.STROKE
-                    strokeWidth = 2f * b.BOLT_OUTLINE
-                    strokeJoin = Paint.Join.ROUND
-                    color = withAlpha(Color.BLACK, 0.55f, v.boltOpacity * alpha)
-                }
-                canvas.drawPath(bolt, outline)
-                fill.color = withAlpha(b.BOLT_FILL, v.boltOpacity, alpha)
-                canvas.drawPath(bolt, fill)
+                // R9: no digits -> a solid system-ink bolt (~67 x 92), centred, no outline.
+                fill.color = withAlpha(tint, v.boltOpacity, alpha)
+                canvas.drawPath(IosDigits.largeBoltPath(), fill)
             }
         } finally {
             if (knockout) canvas.restoreToCount(layer)
@@ -210,18 +199,13 @@ internal object IosGlyphRenderer {
     }
 
     /**
-     * Clears the percentage digits and the optional inline bolt out of the battery layer.
+     * Draws the percentage digits as stroke skeletons, plus the optional inline bolt.
      *
-     * The digits are FILLED OUTLINES (v4): each glyph is one even-odd [Path], so its counters are
-     * not part of the cleared shape and stay body ink. All glyph contours and the inline bolt are
-     * added to ONE even-odd [Path] and drawn with a CLEAR xfermode, so no guessed background colour
-     * is ever painted and the caller's real background shows through. Glyph origins use the measured
-     * per-digit advance and bearing; the group is centred on the body exactly as before.
-     *
-     * `boltOpacity` is binary here: production passes 1 or 0, and any value > 0 clears the inline
-     * bolt fully (CLEAR ignores the paint alpha). A fractional value is not a fade; it is a hole.
+     * [solid] is the red-critical rule: solid white digits (no layer). Otherwise the digits and the
+     * inline bolt are CLEAR strokes/holes so the real background shows through, and the digits shift
+     * left to make room for the 40 x 59 bolt at the measured 5-unit gap.
      */
-    private fun drawPercentInside(canvas: Canvas, v: IosVisual) {
+    private fun drawPercentInside(canvas: Canvas, v: IosVisual, solid: Boolean, alpha: Float) {
         val b = IosGeometry.Battery
         val pct = (v.batteryLevel * 100f).roundToInt().coerceIn(0, 100)
         val text = pct.toString()
@@ -233,26 +217,37 @@ internal object IosGlyphRenderer {
         val group = IosDigits.groupWidth(text, withBolt = hasBolt)
         val left = centreX - group / 2f
 
-        val hole = Path().apply { fillType = Path.FillType.EVEN_ODD }
-        // [left] is the first glyph's ink edge, so undo its bearing to get the pen origin.
-        var pen = left - IosDigits.bearing(IosDigits.glyph(text.first()))
-        for (ch in text) {
-            val glyph = IosDigits.glyph(ch)
-            hole.addPath(
-                IosDigits.buildPath(glyph, pen + IosDigits.bearing(glyph), textTop)
-            )
-            pen += glyph.advance
-        }
-        if (hasBolt) {
-            val boltX = left + textWidth + IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W / 2f
-            hole.addPath(IosDigits.inlineBoltPath(boltX, centreY))
+        val digits = Path().apply {
+            var pen = left - IosDigits.bearing(IosDigits.glyph(text.first()))
+            for (ch in text) {
+                val glyph = IosDigits.glyph(ch)
+                addPath(IosDigits.buildPath(glyph, pen + IosDigits.bearing(glyph), textTop))
+                pen += glyph.advance
+            }
         }
 
-        val clear = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = IosDigits.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
         }
-        canvas.drawPath(hole, clear)
+        if (solid) {
+            stroke.color = withAlpha(Color.WHITE, 1f, alpha)
+            canvas.drawPath(digits, stroke)
+            return
+        }
+
+        stroke.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        canvas.drawPath(digits, stroke)
+        if (hasBolt) {
+            val boltX = left + textWidth + IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W / 2f
+            val clear = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            }
+            canvas.drawPath(IosDigits.inlineBoltPath(boltX, centreY), clear)
+        }
     }
 
     // ----------------------------------------------------------------------------------- wifi
@@ -314,8 +309,8 @@ internal object IosGlyphRenderer {
     /**
      * Draws a data-type label ("LTE", "4G", ...) in the Wi-Fi artboard: letters and the plus are
      * filled WINDING outlines (closed, clockwise contours that union without seams), the 3/4/5 digits
-     * are the measured [IosDigits] filled even-odd contours scaled to
-     * [IosGeometry.DataLabel.CAP_HEIGHT]. There is no font and no bitmap. The group ink starts at the
+     * are the R9 [IosDigits] stroke skeletons scaled to [IosGeometry.DataLabel.CAP_HEIGHT] and drawn
+     * with the round-cap digit stroke. There is no font and no bitmap. The group ink starts at the
      * artboard margin and is centred by the caller's CONTAIN fit; the cap box top is
      * [IosGeometry.DataLabel.TOP]. An unsupported label is not drawn here (the dispatch in [drawWifi]
      * checks [IosGeometry.DataLabel.supports] first).
@@ -328,6 +323,15 @@ internal object IosGlyphRenderer {
             style = Paint.Style.FILL
             color = colour
         }
+        val digitStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            // The digit path is scaled by DIGIT_SCALE below; pre-dividing keeps the drawn digit
+            // stroke exactly the label stroke, matching G/L/T/E.
+            strokeWidth = d.STROKE / d.DIGIT_SCALE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            color = colour
+        }
 
         val top = d.TOP
         var pen = IosGeometry.Wifi.ARTBOARD_MARGIN - d.bearing(first)
@@ -338,7 +342,7 @@ internal object IosGlyphRenderer {
                 try {
                     canvas.translate(glyphLeft, top)
                     canvas.scale(d.DIGIT_SCALE, d.DIGIT_SCALE)
-                    canvas.drawPath(IosDigits.buildPath(IosDigits.glyph(ch), 0f, 0f), fill)
+                    canvas.drawPath(IosDigits.buildPath(IosDigits.glyph(ch), 0f, 0f), digitStroke)
                 } finally {
                     canvas.restoreToCount(saved)
                 }
@@ -390,15 +394,19 @@ internal object IosGlyphRenderer {
 
         if (v.cellMode == IosCellMode.SINGLE) {
             // SINGLE draws the four tall bars in the full artboard; the dot row is hidden. The
-            // baseline is the named SINGLE_BAR_BOTTOM (96.5), so bar 4's top is exactly TOP.
-            drawBars(canvas, fill, v, c.SINGLE_BAR_HEIGHTS, c.BAR_W, c.SINGLE_BAR_BOTTOM, tint, alpha)
+            // baseline is the named SINGLE_BAR_BOTTOM (93.9), so bar 4's top is exactly TOP.
+            drawBars(
+                canvas, fill, v, c.SINGLE_BAR_HEIGHTS, c.BAR_W, c.SINGLE_BAR_BOTTOM,
+                c.PITCH, c.CORNER_RADIUS, tint, alpha
+            )
             return
         }
 
         when (v.cellRole) {
             // A per-slot DATA row uses the compressed bar row artboard, with no dots.
             IosCellRole.DATA -> drawBars(
-                canvas, fill, v, c.DUAL_BAR_HEIGHTS, c.DUAL_BAR_W, c.TOP + c.DUAL_ROW_H, tint, alpha
+                canvas, fill, v, c.DUAL_BAR_HEIGHTS, c.DUAL_BAR_W, c.TOP + c.DUAL_ROW_H,
+                c.DUAL_PITCH, c.DUAL_CORNER_RADIUS, tint, alpha
             )
             // A per-slot OTHER row uses the dot row artboard: translate the absolute dot coordinates
             // to the top of that artboard and draw no bars.
@@ -411,7 +419,8 @@ internal object IosGlyphRenderer {
             // The stacked block keeps the full artboard: bars on top, dots below.
             IosCellRole.BOTH -> {
                 drawBars(
-                    canvas, fill, v, c.DUAL_BAR_HEIGHTS, c.DUAL_BAR_W, c.TOP + c.DUAL_ROW_H, tint, alpha
+                    canvas, fill, v, c.DUAL_BAR_HEIGHTS, c.DUAL_BAR_W, c.TOP + c.DUAL_ROW_H,
+                    c.DUAL_PITCH, c.DUAL_CORNER_RADIUS, tint, alpha
                 )
                 drawDots(canvas, fill, v, tint, alpha)
             }
@@ -425,6 +434,8 @@ internal object IosGlyphRenderer {
         heights: FloatArray,
         columnW: Float,
         barBottom: Float,
+        pitch: Float,
+        radius: Float,
         tint: Int,
         alpha: Float
     ) {
@@ -433,9 +444,8 @@ internal object IosGlyphRenderer {
         for (i in 0 until 4) {
             val active = i < bars
             fill.color = withAlpha(tint, if (active) 1f else c.INACTIVE_ALPHA, alpha)
-            val left = c.barLeft(i) + (c.BAR_W - columnW) / 2f
+            val left = c.LEFT + i * pitch
             val top = barBottom - heights[i]
-            val radius = columnW / 2f
             canvas.drawRoundRect(left, top, left + columnW, barBottom, radius, radius, fill)
         }
     }

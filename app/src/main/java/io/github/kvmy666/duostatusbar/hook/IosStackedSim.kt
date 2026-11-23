@@ -262,7 +262,11 @@ internal object IosStackedSim {
     @Synchronized
     fun applySettings(settings: ModuleSettings?) {
         display = displayOf(settings)
-        if (active) reconcileAll()
+        if (active) {
+            reconcileAll()
+            // The stacked BOTH glyph has a different artboard/ink than the single data row.
+            IosSlotLayout.reapply(settings)
+        }
     }
 
     @Synchronized
@@ -539,17 +543,21 @@ internal object IosStackedSim {
         val height = current.intrinsicHeight
         if (width <= 0 || height <= 0) return false
         if (entry.installedDrawable !== current) entry.previousDrawable = current
+        // R9: the layout owns the scale; the stacked drawable stays identity and fills its artboard.
+        val laid = wanted.copy(userTransform = IosUserTransform(scale = IosGeometry.Relative.V2_DRAW_SCALE))
         val next = IosDrawables.create(
             IosIconKind.CELL,
-            wanted,
+            laid,
             width,
             height,
-            userTransform = wanted.userTransform,
+            userTransform = laid.userTransform,
             relativeSize = false,
             captureColorFilter = true
         )
         signal.setImageDrawable(next)
         entry.installedDrawable = next
+        // The BOTH artboard is 150.1 x 105.6, not the single row: size the data slot from it.
+        IosSlotLayout.registerMobile(signal)
         return true
     }
 
@@ -629,6 +637,8 @@ internal object IosStackedSim {
             if (view.layoutParams !== active.params) view.layoutParams = active.params
             view.requestLayout()
         }
+        // The hidden SIM must not be revived by a later live-layout reapply.
+        findCellView(view)?.let { IosSlotLayout.forget(it) }
     }
 
     /**

@@ -436,9 +436,9 @@ object DuoPrefs {
     /** Horizontal offset range for the iOS icons, as a percent of the icon's drawn width. */
     const val MIN_ICON_OFFSET = -25
     const val MAX_ICON_OFFSET = 25
-    /** Scale range for the iOS icons: 50 % smaller, 150 % larger, 100 % is today's drawing. */
+    /** Scale range for the iOS icons: 50 % smaller, 200 % larger, 100 % is today's drawing. */
     const val MIN_ICON_SCALE = 50
-    const val MAX_ICON_SCALE = 150
+    const val MAX_ICON_SCALE = 200
     const val DEFAULT_ICON_SCALE = 100
 
     /** The classic drawing, kept on old installs unless the user picks the new ring. */

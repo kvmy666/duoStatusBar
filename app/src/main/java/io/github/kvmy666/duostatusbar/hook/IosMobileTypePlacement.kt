@@ -172,10 +172,15 @@ internal object IosMobileTypePlacement {
             // R8: the stacked two-SIM owner needs the final signal drawable, and a missing type
             // label must not skip the block.
             IosStackedSim.onSignalIcon(signal)
-            val type = findType(parent, signal) ?: return
+            val type = findType(parent, signal)
             val drawable = signal.drawable
             val iconWidth = drawable?.intrinsicWidth?.takeIf { it > 0 } ?: signal.width
             val iconHeight = drawable?.intrinsicHeight?.takeIf { it > 0 } ?: signal.height
+            if (type == null) {
+                // R9: the real slot owns the cell size even when the label is absent.
+                IosSlotLayout.registerMobile(signal)
+                return
+            }
             place(signal, type, iconWidth, iconHeight)
         } catch (_: Throwable) {
             // Whole body guarded: any unexpected failure leaves the stock layout untouched.
@@ -233,6 +238,9 @@ internal object IosMobileTypePlacement {
         val parent = signal.parent
         if (parent !is FrameLayout) return false
         if (type.parent !== parent) return false
+        // R9: the layout owns the cell/label size and the label margin for our own glyph. The old
+        // extension formula is kept only for a stock drawable (engine not active / test fixture).
+        if (IosSlotLayout.registerMobile(signal, type)) return true
         val gap = gapPx(iconWidthPx, iconHeightPx)
         if (gap <= 0) return false
 

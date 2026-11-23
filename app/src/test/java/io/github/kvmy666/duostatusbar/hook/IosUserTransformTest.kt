@@ -45,7 +45,7 @@ class IosUserTransformTest {
     fun `out-of-range values are clamped to the stored bounds`() {
         val high = iosUserTransform(999, 999, 100f)
         assertEquals(25f, high.dxPx, delta)
-        assertEquals(1.5f, high.scale, delta)
+        assertEquals(2f, high.scale, delta)
 
         val low = iosUserTransform(-999, 0, 100f)
         assertEquals(-25f, low.dxPx, delta)
@@ -58,7 +58,7 @@ class IosUserTransformTest {
 
         val wifi = settings.iosTransform(IosIconKind.WIFI, 100f)
         assertEquals(10f, wifi.dxPx, delta)
-        assertEquals(1.5f, wifi.scale, delta)
+        assertEquals(2f, wifi.scale, delta)
 
         assertEquals(identity, settings.iosTransform(IosIconKind.BATTERY, 100f))
         assertEquals(identity, settings.iosTransform(IosIconKind.CELL, 100f))
