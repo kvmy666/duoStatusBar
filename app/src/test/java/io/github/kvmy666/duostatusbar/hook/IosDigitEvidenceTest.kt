@@ -19,8 +19,10 @@ import java.util.Locale
  * per-state PNGs plus `digits-shipped.json` so the inverse weight-normalised IoU can be recomputed
  * from the shipped contours.
  *
- * The test itself always checks that every state produced ink, so it is a real guard even when no
- * output directory is requested.
+ * R6 item 6 makes `percentInside` a true knockout: on a transparent canvas the digit ink is alpha 0.
+ * The guard therefore checks BOTH the body ink and the cleared holes, and every written PNG is
+ * rendered over a deterministic opaque multicolour background so the holes are visible in the
+ * evidence (not hidden as transparent-on-transparent). It is a real guard even without a directory.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -60,10 +62,14 @@ class IosDigitEvidenceTest {
         for ((name, visual, pct) in cases) {
             val bitmap = render(visual)
             val ink = inkCount(bitmap)
-            assertTrue("$name ($pct %) produced no ink", ink > 500)
+            assertTrue("$name ($pct %) produced no body ink", ink > 500)
+            assertTrue(
+                "$name ($pct %) produced no cleared digit holes",
+                clearedInsideBody(bitmap) > 100
+            )
             bitmap.recycle()
             if (dir != null) {
-                val bitmap2 = render(visual)
+                val bitmap2 = render(visual, opaque = true)
                 File(dir, "r3d-real-$name.png").outputStream().use {
                     bitmap2.compress(Bitmap.CompressFormat.PNG, 100, it)
                 }
@@ -89,12 +95,43 @@ class IosDigitEvidenceTest {
         percentInside = true
     )
 
-    private fun render(visual: IosVisual): Bitmap {
+    private fun render(visual: IosVisual, opaque: Boolean = false): Bitmap {
         val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+        if (opaque) paintPhotoBackground(bitmap)
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, W, H)
         drawable.setBounds(0, 0, W, H)
         drawable.draw(Canvas(bitmap))
         return bitmap
+    }
+
+    /** A deterministic multi-colour "photo" so a knockout hole is visibly the background. */
+    private fun paintPhotoBackground(bitmap: Bitmap) {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                val r = (x * 7 + y * 3 + 40) and 0xFF
+                val g = (x * 3 + y * 11 + 90) and 0xFF
+                val b = (x * 13 + y * 5 + 150) and 0xFF
+                pixels[y * bitmap.width + x] = Color.rgb(r, g, b)
+            }
+        }
+        bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+    }
+
+    /** Fully cleared pixels inside the battery body at this 4x scale. */
+    private fun clearedInsideBody(bitmap: Bitmap): Int {
+        val b = IosGeometry.Battery
+        val left = (b.BODY_LEFT * SCALE).toInt()
+        val top = (b.BODY_TOP * SCALE).toInt()
+        val right = ((b.BODY_LEFT + b.BODY_W) * SCALE).toInt() - 1
+        val bottom = ((b.BODY_TOP + b.BODY_H) * SCALE).toInt() - 1
+        var count = 0
+        for (y in top..bottom) {
+            for (x in left..right) {
+                if (Color.alpha(bitmap.getPixel(x, y)) == 0) count++
+            }
+        }
+        return count
     }
 
     private fun inkCount(bitmap: Bitmap): Int {

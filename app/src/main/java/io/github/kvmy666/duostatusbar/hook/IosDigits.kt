@@ -1,6 +1,5 @@
 package io.github.kvmy666.duostatusbar.hook
 
-import android.graphics.Color
 import android.graphics.Path
 
 /**
@@ -25,6 +24,15 @@ import android.graphics.Path
 internal object IosDigits {
 
     const val CAP_HEIGHT = 57f
+
+    /**
+     * Measured run-stroke of the v6 percentage digits at [CAP_HEIGHT]: the 3, 4 and 5 measure
+     * 11.38, 11.38 and 11.44 design units (`.pm/ref/out-r3/stroke-r3d.csv`, the R3D `run_stroke`
+     * column: median ink run across rows and columns), so the weight is **11.40 / 57 = 0.200 cap**.
+     * R6 item 3 uses this one measured number as the data-label weight; it does not retype the
+     * digits, whose contours stay the untouched v6 data.
+     */
+    const val RUN_STROKE = 11.40f
 
     const val INLINE_BOLT_W = 40f
     const val INLINE_BOLT_H = 59f
@@ -599,16 +607,6 @@ internal object IosDigits {
     /** [textInkWidth] plus the inline bolt when [withBolt] is set. */
     fun groupWidth(text: String, withBolt: Boolean): Float =
         textInkWidth(text) + if (withBolt) INLINE_BOLT_GAP + INLINE_BOLT_W else 0f
-
-    /**
-     * The colour the percentage is drawn in: the status-bar background, so the filled contours
-     * knock out of both the charged fill and the neutral remainder. A light tint implies a dark
-     * bar and vice versa.
-     */
-    fun backgroundColour(tint: Int): Int {
-        val luminance = (Color.red(tint) * 299 + Color.green(tint) * 587 + Color.blue(tint) * 114) / 1000
-        return if (luminance > 127) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
-    }
 
     /**
      * A closed bolt from [BOLT_NORMALIZED], scaled to [w] x [h] and centred at ([cx], [cy]).
