@@ -14,11 +14,14 @@ internal object IosR8Report : IosDiagnosticSource {
         val dataSub = runCatching { IosStackedSim.dataSubId }.getOrDefault(0)
         val hiddenSub = runCatching { IosStackedSim.hiddenSubId }.getOrDefault(0)
         val order = runCatching { IosIconOrder.source }.getOrDefault("stock")
+        val orderMoves = runCatching { IosIconOrder.moves }.getOrDefault(0)
+        val orderPasses = runCatching { IosIconOrder.passes }.getOrDefault(0)
         val extras = runCatching { IosExtras.hiddenCount() }.getOrDefault(0)
         val extrasViews = runCatching { IosExtras.hiddenViewCount }.getOrDefault(0)
         return listOf(
             "ios v2 r8: stacked=${if (stacked) "on" else "off"} dataSub=$dataSub " +
-                "hiddenSub=$hiddenSub order=$order extrasHidden=$extras extrasViews=$extrasViews"
+                "hiddenSub=$hiddenSub order=$order orderMoves=$orderMoves orderPasses=$orderPasses " +
+                "extrasHidden=$extras extrasViews=$extrasViews"
         )
     }
 }

@@ -276,4 +276,52 @@ class IosIconOrderRobolectricTest {
 
         assertOrder(listOf(mobile, wifi), order(container))
     }
+
+    @Test
+    fun `the first layout adopts a container once and later layouts schedule no passes`() {
+        IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
+        val container = stockContainer()
+        val before = order(container)
+        val expected = listOf(before[1], before[2], before[0], before[3], before[4])
+
+        // No container is registered when activation happens; the first layout adopts it and
+        // schedules exactly one pass.
+        IosIconOrder.activate()
+        IosIconOrder.onContainerLayoutForTest(container)
+        IosIconOrder.flushForTest()
+
+        assertOrder(expected, order(container))
+        assertEquals(1, IosIconOrder.containerCountForTest())
+        assertEquals(1, IosIconOrder.passesForTest())
+        assertEquals(1, IosIconOrder.movesForTest())
+        val line = IosR8Report.diagnosticLines().single()
+        assertTrue(line, line.contains("orderMoves=1"))
+        assertTrue(line, line.contains("orderPasses=1"))
+
+        // The proof: an already-adopted, already-ordered container does no work per layout.
+        IosIconOrder.resetCountersForTest()
+        repeat(25) {
+            IosIconOrder.onContainerLayoutForTest(container)
+            IosIconOrder.flushForTest()
+        }
+        assertEquals(0, IosIconOrder.passesForTest())
+        assertEquals(0, IosIconOrder.movesForTest())
+        assertOrder(expected, order(container))
+    }
+
+    @Test
+    fun `the constructor sighting registers without scheduling`() {
+        IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
+        val container = stockContainer()
+        val stockOrder = order(container)
+
+        IosIconOrder.activate()
+        IosIconOrder.onContainerSeenForTest(container)
+        IosIconOrder.flushForTest()
+
+        assertEquals(1, IosIconOrder.containerCountForTest())
+        assertEquals(0, IosIconOrder.passesForTest())
+        assertEquals(0, IosIconOrder.movesForTest())
+        assertOrder(stockOrder, order(container))
+    }
 }

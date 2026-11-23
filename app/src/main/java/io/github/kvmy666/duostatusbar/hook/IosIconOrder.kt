@@ -9,6 +9,7 @@ import io.github.kvmy666.duostatusbar.L
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * R3 A3: the iOS icon order (`mobile -> wifi -> battery`) applied to the live status bar.
@@ -31,6 +32,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Every step is optional and guarded. If the slot list or container class cannot be resolved, the
  * stock order is left untouched and the reason is logged once. Nothing here guesses a class or an id:
  * the names are the measured ones from the device's SystemUI.
+ *
+ * A container is seen by a constructor, the existing `addView` hook, or its first `onLayout`. Only
+ * that first layout may schedule anything; every later layout is a single weak-set lookup, so an
+ * already-ordered container does no per-frame work. Moves are scheduled only from the `addView` hook,
+ * a slot-list capture/permutation change, or [activate]/[restore].
  */
 internal object IosIconOrder {
 
@@ -64,6 +70,21 @@ internal object IosIconOrder {
     private val containers: MutableSet<ViewGroup> =
         Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>()))
 
+    /**
+     * Containers whose first `onLayout` has been adopted. A missing entry means the constructor or
+     * the `addView` hook saw the container but no layout has run yet; an entry means every later
+     * layout is a single lookup and returns without scheduling.
+     */
+    private val layoutAdopted: MutableSet<ViewGroup> =
+        Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>()))
+
+    /** Diagnostics: child move passes that actually moved Wi-Fi (session total). */
+    private val moveCount = AtomicInteger(0)
+
+    /** Diagnostics: `applyTo` passes that ran (session total). */
+    private val passCount = AtomicInteger(0)
+
+
     /** Containers scheduled for the next frame, so a move never runs inside a layout pass. */
     private val pending: MutableSet<ViewGroup> =
         Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>()))
@@ -96,6 +117,12 @@ internal object IosIconOrder {
             "stock"
         }
 
+    /** Diagnostics: how many layout passes actually moved Wi-Fi this session. */
+    internal val moves: Int get() = moveCount.get()
+
+    /** Diagnostics: how many move passes ran this session. */
+    internal val passes: Int get() = passCount.get()
+
     /**
      * Hooks the measured `StatusBarIconList` and `StatusIconContainer` classes once per process.
      *
@@ -124,15 +151,22 @@ internal object IosIconOrder {
             for (name in CONTAINER_CLASSES) {
                 val cls = findClass(name, classLoader) ?: continue
                 containerClasses++
-                val register = object : XC_MethodHook() {
+                // Constructor: register only, never schedule.
+                val seen = object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
-                        (param.thisObject as? ViewGroup)?.let { onIconAdded(it) }
+                        (param.thisObject as? ViewGroup)?.let { onContainerSeen(it) }
                     }
                 }
-                hookSafely { XposedBridge.hookAllConstructors(cls, register) }
-                // Existing containers are adopted on their next layout pass; the move itself is
-                // posted, so this never changes the tree inside the layout callback.
-                hookSafely { XposedBridge.hookAllMethods(cls, "onLayout", register) }
+                // Existing containers are adopted on their FIRST layout pass; every later layout is
+                // a weak-set lookup and returns without scheduling. The move itself is posted, so
+                // this never changes the tree inside the layout callback.
+                val laidOut = object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        (param.thisObject as? ViewGroup)?.let { onContainerLayout(it) }
+                    }
+                }
+                hookSafely { XposedBridge.hookAllConstructors(cls, seen) }
+                hookSafely { XposedBridge.hookAllMethods(cls, "onLayout", laidOut) }
             }
             if (listClasses == 0) {
                 logOnce.once("ios-order-no-slot-class") {
@@ -157,7 +191,11 @@ internal object IosIconOrder {
      */
     fun activate() {
         val wasActive = active.getAndSet(true)
-        if (!wasActive) loggedActive = false
+        if (!wasActive) {
+            loggedActive = false
+            moveCount.set(0)
+            passCount.set(0)
+        }
         if (synchronized(slotLists) { slotLists.isEmpty() }) {
             // Without the slot list, moving the children alone would desynchronise the indices.
             logOnce.once("ios-order-no-slots") {
@@ -207,7 +245,10 @@ internal object IosIconOrder {
         synchronized(pending) { pending.clear() }
         synchronized(posted) { posted.clear() }
         synchronized(containers) { containers.clear() }
+        synchronized(layoutAdopted) { layoutAdopted.clear() }
         synchronized(slotLists) { slotLists.clear() }
+        moveCount.set(0)
+        passCount.set(0)
         val snapshot = synchronized(unhooks) { unhooks.toList().also { unhooks.clear() } }
         for (unhook in snapshot) {
             try {
@@ -228,6 +269,25 @@ internal object IosIconOrder {
         synchronized(containers) { containers.add(container) }
         // Our own remove/add during a reorder must not queue another pass.
         if (applying.get()) return
+        if (!active.get() || synchronized(slotLists) { slotLists.isEmpty() }) return
+        schedule(container)
+    }
+
+    /** Constructor path: remember the container for activate()/scheduleAll(); never schedules. */
+    fun onContainerSeen(container: ViewGroup) {
+        if (!installed.get()) return
+        synchronized(containers) { containers.add(container) }
+    }
+
+    /**
+     * `StatusIconContainer.onLayout` path: the FIRST layout of a container adopts it (register + at
+     * most one schedule). Every later layout returns after one weak-set lookup: no post, no tree walk,
+     * no slot read.
+     */
+    fun onContainerLayout(container: ViewGroup) {
+        if (!installed.get()) return
+        if (!layoutAdopted.add(container)) return
+        synchronized(containers) { containers.add(container) }
         if (!active.get() || synchronized(slotLists) { slotLists.isEmpty() }) return
         schedule(container)
     }
@@ -469,6 +529,7 @@ internal object IosIconOrder {
     /** One idempotent move pass for [container]; never called from inside a layout callback. */
     private fun applyTo(container: ViewGroup) {
         if (!applying.compareAndSet(false, true)) return
+        passCount.incrementAndGet()
         val animate = hasAnimationSetter(container)
         val previousAnimation = readAnimation(container)
         if (animate) setAnimation(container, false)
@@ -500,6 +561,7 @@ internal object IosIconOrder {
         val clamp = target.coerceIn(0, children.size - 1)
         if (current == clamp) return
         // Move the same instance: identity, visibility and drawable are untouched.
+        moveCount.incrementAndGet()
         container.removeView(wifi)
         container.addView(wifi, target.coerceIn(0, container.childCount))
     }
@@ -649,6 +711,24 @@ internal object IosIconOrder {
         }
     }
 
+    /** Production constructor sighting, for the Robolectric tests. */
+    internal fun onContainerSeenForTest(container: ViewGroup) = onContainerSeen(container)
+
+    /** Production first-layout adoption path, for the Robolectric tests. */
+    internal fun onContainerLayoutForTest(container: ViewGroup) = onContainerLayout(container)
+
+    /** Move passes that actually moved Wi-Fi (test seam). */
+    internal fun movesForTest(): Int = moves
+
+    /** Move passes that ran (test seam). */
+    internal fun passesForTest(): Int = passes
+
+    /** Zeroes only the diagnostics counters, leaving containers and slots in place (test seam). */
+    internal fun resetCountersForTest() {
+        moveCount.set(0)
+        passCount.set(0)
+    }
+
     /** Clears all process-wide state between tests; never used by the module. */
     internal fun clearForTest() {
         active.set(false)
@@ -656,9 +736,12 @@ internal object IosIconOrder {
         installed.set(false)
         loggedActive = false
         synchronized(containers) { containers.clear() }
+        synchronized(layoutAdopted) { layoutAdopted.clear() }
         synchronized(pending) { pending.clear() }
         synchronized(posted) { posted.clear() }
         synchronized(slotLists) { slotLists.clear() }
         synchronized(unhooks) { unhooks.clear() }
+        moveCount.set(0)
+        passCount.set(0)
     }
 }
