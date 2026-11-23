@@ -57,3 +57,16 @@ internal fun iosRoute(
     IosV2Profile.engineFamily(familyId) && engineInstalled && batteryInstalled -> IosRoute.V2
     else -> IosRoute.HOST
 }
+
+/**
+ * Zero double-ownership invariant (R7 P4): while [route] is [IosRoute.V2] no pre-R7 host may exist.
+ *
+ * The V2 path never calls `ensureIosMain`/`ensureIosExtra`, so `iosMainHost` stays null and
+ * `iosExtraHosts` stays empty; a non-zero count here is a routing bug that would let two owners
+ * fight for the same icon. Pure, so the P4 tests pin it without a SystemUI process.
+ */
+internal fun iosV2HasNoHosts(
+    route: IosRoute,
+    iosMainHostPresent: Boolean,
+    extraHostCount: Int
+): Boolean = route != IosRoute.V2 || (!iosMainHostPresent && extraHostCount == 0)

@@ -25,7 +25,12 @@ internal data class ResolvedEntry(
     val slot: IosResourceSlot,
     val widthDp: Float,
     val heightDp: Float,
-    val packageName: String
+    val packageName: String,
+    /**
+     * R7 P4: the user's per-icon offset/scale, baked once per map build from [ModuleSettings].
+     * [IosUserTransform.IDENTITY] is exactly the pre-setting pixels (rule 6).
+     */
+    val transform: IosUserTransform = IosUserTransform.IDENTITY
 )
 
 /**
@@ -129,8 +134,16 @@ internal object IosResourceEngine : IosDiagnosticSource {
      * Publishes a map for [rom]. No-op (and deactivates) unless the hook is installed and the family
      * is a v2 engine family. With [synchronous] the map is built inline on the boot path before the
      * first inflation; otherwise a single daemon thread builds it and a stale build is discarded.
+     *
+     * [settings] supplies each glyph's per-icon offset/scale (R7 P4). It is read at build time, so a
+     * settings change rebuilds the map through the normal per-apply [activate]; null is identity.
      */
-    fun activate(context: android.content.Context, rom: RomAdapter, synchronous: Boolean = false) {
+    fun activate(
+        context: android.content.Context,
+        rom: RomAdapter,
+        settings: ModuleSettings? = null,
+        synchronous: Boolean = false
+    ) {
         var gen = 0L
         synchronized(stateLock) {
             if (!installedFlag || !IosV2Profile.engineFamily(rom.id)) {
@@ -142,7 +155,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
             resetCountersLocked()
         }
         val work = {
-            val built = buildMap(context, rom)
+            val built = buildMap(context, rom, settings)
             synchronized(stateLock) {
                 if (gen == generation) snapshot = built
             }
@@ -234,10 +247,17 @@ internal object IosResourceEngine : IosDiagnosticSource {
     // ----------------------------------------------------------------------------------- build
 
     /** Test seam: build a map without publishing or activating it. */
-    internal fun buildForTest(context: android.content.Context, rom: RomAdapter): Snapshot? =
-        buildMap(context, rom)
+    internal fun buildForTest(
+        context: android.content.Context,
+        rom: RomAdapter,
+        settings: ModuleSettings? = null
+    ): Snapshot? = buildMap(context, rom, settings)
 
-    private fun buildMap(context: android.content.Context, rom: RomAdapter): Snapshot? {
+    private fun buildMap(
+        context: android.content.Context,
+        rom: RomAdapter,
+        settings: ModuleSettings?
+    ): Snapshot? {
         // The stock-intrinsic probes load through the same hook; on the building thread the guard
         // makes those loads return the stock drawable (other threads keep the published map).
         val wasGuarded = guard.get() == true
@@ -286,7 +306,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
                         slot = slot,
                         widthDp = widthPx * 160f / densityDpi,
                         heightDp = heightPx * 160f / densityDpi,
-                        packageName = pkg
+                        packageName = pkg,
+                        transform = userTransformFor(settings, slot, widthPx, heightPx)
                     )
                 )
             }
@@ -313,6 +334,32 @@ internal object IosResourceEngine : IosDiagnosticSource {
         IosResourceKind.CELL -> IosResourceSlot.Cell(spec.value)
         IosResourceKind.LABEL ->
             if (IosGeometry.DataLabel.supports(spec.label)) IosResourceSlot.Label(spec.label) else null
+    }
+
+    /**
+     * The per-user transform for one entry, computed from the stock intrinsic size the map already
+     * measured (R7 P4). The identity value is returned for a null settings snapshot or any failure,
+     * so a broken provider row can never move a glyph (rule 6, C11).
+     */
+    private fun userTransformFor(
+        settings: ModuleSettings?,
+        slot: IosResourceSlot,
+        widthPx: Int,
+        heightPx: Int
+    ): IosUserTransform {
+        if (settings == null) return IosUserTransform.IDENTITY
+        return try {
+            val kind = drawableKind(slot)
+            val innerWidth = IosGeometry.Relative.sizeFor(
+                kind,
+                widthPx,
+                heightPx,
+                dualCell = false
+            ).first
+            settings.iosTransform(kind, innerWidth.toFloat())
+        } catch (_: Throwable) {
+            IosUserTransform.IDENTITY
+        }
     }
 
     // ------------------------------------------------------------------------------ diagnostics
@@ -410,7 +457,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
             val heightPx = (entry.heightDp * dpi / 160f).roundToInt().coerceAtLeast(1)
             return IosResourceEngine.CachedState(
                 IosResourceEngine.drawableKind(entry.slot),
-                IosResourceEngine.visualFor(entry.slot),
+                IosResourceEngine.visualFor(entry.slot).copy(userTransform = entry.transform),
                 widthPx,
                 heightPx
             )

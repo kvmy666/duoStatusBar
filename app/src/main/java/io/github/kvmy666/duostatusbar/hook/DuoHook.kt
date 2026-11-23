@@ -123,6 +123,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private var iosMainHost: IosReplaceHost? = null
     private val iosExtraHosts = HashMap<String, IosReplaceHost>()
 
+    /**
+     * R7 P4: how iOS mode is delivered right now. [IosRoute.V2] is the system-native resource engine
+     * + battery hook (no host); [IosRoute.HOST] is the pre-R7 replace host; [IosRoute.NONE] is iOS
+     * off. Every old-host entry point checks this so exactly one owner ever touches an icon.
+     */
+    private var iosRoute: IosRoute = IosRoute.NONE
+
     /** One size owner for the main and extra iOS bars, so the keyguard/shade glyph matches the home bar (M15). */
     private val iosSizeOwner = IosSizeOwner()
 
@@ -224,9 +231,30 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 }
                 // Mutual exclusivity (rule 7, A6): no Duo host, monitor, hook or listener survives.
                 stopDuoRuntime()
-                val iosSettings = snapshot
-                val iosMain = ensureIosMain(ctx)
                 installHooksOnce()
+                val iosSettings = snapshot
+                iosRoute = resolveIosRoute(next)
+                if (iosRoute == IosRoute.V2) {
+                    // R7 P4: a live host/order from a previous HOST session owns the stock icons. Restore
+                    // them before the native owners attach so no icon is drawn by two owners.
+                    if (iosMainHost != null || iosExtraHosts.isNotEmpty() || IosIconOrder.isActive) {
+                        teardownIosHosts(next)
+                    }
+                    if (activateIosV2(ctx, iosSettings, synchronous = false)) {
+                        IosBatteryV2.refresh()
+                        applyDuoRegistrations()
+                        settingsRereadAttempt = 0
+                        reporter.report(ctx, stage, iosSettings)
+                        return@guard
+                    }
+                    // Activation failed: fall back to the host below with the stock bar restored.
+                    iosRoute = IosRoute.HOST
+                    IosRouteDiagnostics.update(iosRoute, rom.id)
+                }
+                // HOST families keep the pre-R7 path exactly as today; a stale v2 owner from a prior
+                // configuration is released first (defensive, so exactly one owner remains).
+                deactivateIosV2()
+                val iosMain = ensureIosMain(ctx)
                 // R3 A3: install only while iOS owns the bar (A6: no iOS work when it is off).
                 IosIconOrder.install(lp.classLoader)
                 IosIconOrder.activate()
@@ -249,8 +277,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // C11: decide the action before touching the live iOS attachment. An unreachable provider
             // reads as DEFAULT (owner NONE), and the old order tore the iOS host down for that - exactly
             // the "unreachable looks like off" regression. A live iOS host counts as an element here so
-            // the existing keep-and-retry branch also protects it.
-            val iosLive = iosMainHost != null || iosExtraHosts.isNotEmpty() || IosIconOrder.isActive
+            // the existing keep-and-retry branch also protects it. R7 P4: a live native owner counts too,
+            // so an unreachable read cannot silently release the resource map/battery.
+            val iosLive = iosMainHost != null || iosExtraHosts.isNotEmpty() || IosIconOrder.isActive ||
+                IosResourceEngine.isActive || IosBatteryV2.isActive ||
+                IosMobileTypePlacement.isActive
             val action = settingsApplyAction(
                 stage,
                 override != null,
@@ -352,6 +383,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
             IosResourceEngine.install(lp.classLoader)
+            IosBatteryV2.install(lp.classLoader)
+            IosMobileTypePlacement.install(lp.classLoader)
+            IosDiagnostics.register(IosRouteDiagnostics)
             // The window hook goes in *now*, not from Application.onCreate. On HyperOS 16 and One UI the
             // Application is created before LSPosed injects the module, so an Application.onCreate hook
             // fires too late (or never) and the status-bar window - already added - was never seen. The
@@ -496,6 +530,63 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             )
         }
 
+    // ----------------------------------------------------------------------------- v2 routing
+
+    /**
+     * The one route decision per settings apply (R7 P4). Pure [iosRoute] plus the process-wide hook
+     * flags; the diagnostics line is refreshed from here so a dump always names the live route.
+     */
+    private fun resolveIosRoute(next: FeatureSet): IosRoute {
+        val route = io.github.kvmy666.duostatusbar.hook.iosRoute(
+            next.iosRuntime,
+            rom.id,
+            IosResourceEngine.installed,
+            IosBatteryV2.installed
+        )
+        IosRouteDiagnostics.update(route, rom.id)
+        return route
+    }
+
+    /**
+     * Starts the system-native path: the resource map, the battery owner and the OxygenOS placement.
+     *
+     * Requires [iosRoute] to already be [IosRoute.V2] (set by [resolveIosRoute]); anything thrown
+     * deactivates and returns false so the caller can fall back to the host with stock restored.
+     */
+    private fun activateIosV2(ctx: Context, settings: ModuleSettings, synchronous: Boolean): Boolean {
+        if (iosRoute != IosRoute.V2) return false
+        return try {
+            IosResourceEngine.activate(ctx, rom, settings, synchronous)
+            IosBatteryV2.activate(
+                ctx,
+                rom,
+                settings.iosPercentInside,
+                IosMapping.FALLBACK_LOW_THRESHOLD,
+                settings
+            )
+            IosMobileTypePlacement.activate(
+                if (IosV2Profile.typePlacementFamily(rom.id)) rom.id else null
+            )
+            iosRoute = IosRoute.V2
+            IosRouteDiagnostics.update(iosRoute, rom.id)
+            logOnce.once("ios-v2-active") { L.i("iOS v2 active: family=${rom.id}") }
+            true
+        } catch (t: Throwable) {
+            L.w("iOS v2 activate failed: ${t.javaClass.simpleName}")
+            deactivateIosV2()
+            false
+        }
+    }
+
+    /** Stops the v2 owners and restores the stock drawables; the host route is left to its own teardown. */
+    private fun deactivateIosV2() {
+        runCatching { IosMobileTypePlacement.deactivate() }
+        runCatching { IosBatteryV2.deactivate() }
+        runCatching { IosResourceEngine.deactivate() }
+        iosRoute = IosRoute.NONE
+        IosRouteDiagnostics.update(iosRoute, rom.id)
+    }
+
     /**
      * The OnePlus vendor QS cluster, handed to the iOS shade-header host.
      *
@@ -516,6 +607,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     ): Boolean {
         val ctx = app ?: cluster.context
         if (!features.iosRuntime) return false
+        // R7 P4: the native route owns the icons; the host must never attach on top of it.
+        if (iosRoute == IosRoute.V2) return false
         return try {
             // R5: the vendor hook fires before the cluster has a box. Attaching then tears the host
             // down and lets stock draw first, so the same attach waits for the first laid-out frame.
@@ -553,6 +646,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** Repaints every live iOS host. No-op when the mode is off and no host was ever created. */
     private fun iosRefreshAll() {
+        // R7 P4: the v2 route has no host; the battery re-reads its own sticky state and the resource
+        // map is already published, so the only refresh that matters is the battery.
+        if (iosRoute == IosRoute.V2) {
+            IosBatteryV2.refresh()
+            return
+        }
         iosMainHost?.refresh()
         iosExtraHosts.values.forEach { it.refresh() }
     }
@@ -562,6 +661,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * refreshes stay immediate; only the appearance burst is debounced.
      */
     private fun iosRefreshAllSoon() {
+        // R7 P4: v2 owns tint through the battery hook's own onDarkChanged; no host repaint to coalesce.
+        if (iosRoute == IosRoute.V2) return
         if (iosRefreshPending) return
         iosRefreshPending = true
         try {
@@ -580,6 +681,17 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * nothing owns the bar afterwards (D).
      */
     private fun iosTeardown(next: FeatureSet = features) {
+        // R7 P4: leaving iOS restores the battery drawable/bolt visibility and clears the resource map
+        // before the host/order teardown, so no stock icon is left half-replaced.
+        deactivateIosV2()
+        teardownIosHosts(next)
+    }
+
+    /**
+     * The pre-R7 host teardown alone (no v2 deactivation). The HOST -> V2 transition uses this to
+     * restore the stock icons before the native owners attach.
+     */
+    private fun teardownIosHosts(next: FeatureSet = features) {
         iosMainHost?.teardown()
         iosMainHost = null
         iosExtraHosts.values.forEach { it.teardown() }
@@ -602,6 +714,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun resetIosAttachMemos() {
         // F: header construction/inflate runs on every boot; iOS-off must not touch iOS state.
         if (!features.iosRuntime) return
+        // R7 P4: the v2 route has no surface memos to reset (and no host to retry).
+        if (iosRoute == IosRoute.V2) return
         iosShadeGate.reset()
         iosHeaderFailed = null
         iosHeaderFailedAt = 0L
@@ -805,6 +919,18 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // Shared boot hooks are installed for both owners; the Duo/iOS-only work is branched.
             installHooksOnce()
             if (features.iosRuntime) {
+                // R7 P4: the native route is activated synchronously on the boot path so the very
+                // first inflation already sees our map; it installs no host, order or attach timer.
+                iosRoute = resolveIosRoute(features)
+                if (iosRoute == IosRoute.V2 && activateIosV2(ctx, settings, synchronous = true)) {
+                    applyDuoRegistrations()
+                    return@guard
+                }
+                if (iosRoute == IosRoute.V2) {
+                    // Activation failed: fall back to the host with the stock bar restored.
+                    iosRoute = IosRoute.HOST
+                    IosRouteDiagnostics.update(iosRoute, rom.id)
+                }
                 // Boot/initial attach with iOS already on: order before the first icon pass.
                 IosIconOrder.install(lp.classLoader)
                 IosIconOrder.activate()
@@ -1060,6 +1186,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // the module is injected late the Application may never have been captured.
                 val ctx = app ?: root.context
                 if (features.iosRuntime) {
+                    // R7 P4: the native route has no host to attach and no retry to run.
+                    if (iosRoute == IosRoute.V2) return@guard
                     // iOS has its own lifecycle. If the drawing is unavailable, `attach` returns false
                     // and touches nothing, so a false result is the expected state - never retry it and
                     // never report it as a Duo attach failure.
@@ -1520,6 +1648,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * why the lock screen and the shade looked untouched until they were handled.
      */
     private fun attachExtraBars(shade: View) {
+        // R7 P4: no host attach on the native route (one owner per icon).
+        if (iosRoute == IosRoute.V2) return
         // iOS owns the bar in its own mode; each surface gets its own host, all sharing one size owner.
         val iosCtx = app ?: shade.context
         if (features.iosRuntime) {
@@ -1585,6 +1715,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun attachIosShadeHeader(header: View): Boolean {
         val ctx = app ?: header.context
         if (!features.iosRuntime) return false
+        // R7 P4: the native route owns every stock icon; no header host may attach.
+        if (iosRoute == IosRoute.V2) return false
         return try {
             val host = ensureIosExtra(ctx, "shade header")
             // A live host on this window already owns the header surface; attaching again would tear
@@ -1624,6 +1756,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun attachIosShadeWindow(window: View): Boolean {
         val ctx = app ?: window.context
         if (!features.iosRuntime) return false
+        // R7 P4: the native route owns every stock icon; no shade-window host may attach.
+        if (iosRoute == IosRoute.V2) return false
         return try {
             // A separate surface from the notification header: both strips can be live in one shade.
             val host = ensureIosExtra(ctx, "qs header")
@@ -1689,11 +1823,14 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // R3 A3: the container is the object addView was called on. Registration is
                         // additive; the existing host notifications below stay exactly as they were.
                         val container = param.thisObject as? ViewGroup
-                        if (container != null) IosIconOrder.onIconAdded(container)
+                        // R7 P4: icon-order and host notifications belong to the pre-R7 route only.
+                        if (iosRoute != IosRoute.V2 && container != null) {
+                            IosIconOrder.onIconAdded(container)
+                        }
                         // R6 item 4: style the main bar on the first laid-out frame instead of the
                         // 2.5 s retry. The keyguard/shade containers share this class, so only the
                         // captured status-bar root may take this path.
-                        if (features.iosRuntime && container != null &&
+                        if (iosRoute != IosRoute.V2 && features.iosRuntime && container != null &&
                             IosImmediateAttach.isMainBarContainer(container, statusBarRoot)
                         ) {
                             attachIosMainFirstFrame(container)
@@ -1703,7 +1840,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // it is off, but the explicit gate keeps a slow async callback from reaching a
                         // host created for the other mode during a live switch.
                         if (features.duoRuntime) host?.onStatusIconAdded(child)
-                        if (features.iosRuntime) {
+                        if (iosRoute != IosRoute.V2 && features.iosRuntime) {
                             iosMainHost?.onStockIconAdded(child)
                             iosExtraHosts.values.toList().forEach { it.onStockIconAdded(child) }
                         }
@@ -1732,6 +1869,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * log is emitted once per process and says which outcome was chosen.
      */
     private fun attachIosMainFirstFrame(container: ViewGroup) {
+        // R7 P4: the native route has no main host to attach on a pre-draw.
+        if (iosRoute == IosRoute.V2) return
         val laidOut = IosFirstFrameAttach.isLaidOut(container)
         val accepted = IosFirstFrameAttach.whenLaidOut(
             container,
@@ -2081,3 +2220,27 @@ internal fun refreshIosHostSettings(settings: ModuleSettings, hosts: Iterable<Io
  */
 internal fun keepIosOnUnreachable(owner: BarOwner, action: SettingsApplyAction): Boolean =
     owner == BarOwner.NONE && action == SettingsApplyAction.KEEP_UNREACHABLE
+
+/**
+ * R7 P4: the one additive dump line that names the live delivery route.
+ *
+ * It is a separate [IosDiagnosticSource] so the existing engine/battery lines and their parsers are
+ * untouched; the line appears even before the first activation (`route=none family=<rom>`).
+ */
+internal object IosRouteDiagnostics : IosDiagnosticSource {
+    @Volatile
+    private var route: IosRoute = IosRoute.NONE
+
+    @Volatile
+    private var family: String = "none"
+
+    fun update(route: IosRoute, family: String) {
+        this.route = route
+        this.family = family.ifBlank { "none" }
+    }
+
+    override fun diagnosticLines(): List<String> =
+        listOf("ios v2 route=${route.name.lowercase()} family=$family")
+
+    internal fun resetForTest() = update(IosRoute.NONE, "none")
+}

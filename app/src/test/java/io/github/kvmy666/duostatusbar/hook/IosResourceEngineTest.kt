@@ -70,6 +70,22 @@ class IosResourceEngineTest {
         assertTrue(drawable.intrinsicHeight > 0)
     }
 
+    // ------------------------------------------------------------------ user transform (R7 P4)
+
+    @Test
+    fun `a map entry carries its user transform into the drawable visual`() {
+        val settings = ModuleSettings.DEFAULT.copy(iosWifiOffset = 10, iosWifiScale = 150)
+        val inner = IosGeometry.Relative.sizeFor(
+            IosIconKind.WIFI, 20, 16, dualCell = false
+        ).first
+        val transform = settings.iosTransform(IosIconKind.WIFI, inner.toFloat())
+        val snapshot = buildSnapshot(listOf(entry().copy(transform = transform)), 160)
+
+        val drawable = snapshot.newDrawable(0, context().resources, 160, false) as IosGlyphDrawable
+        assertEquals(transform, drawable.userTransform)
+        assertTrue(transform.scale > 1f)
+    }
+
     // ----------------------------------------------------------------------------- diagnostics
 
     @Test
