@@ -169,6 +169,9 @@ internal object IosMobileTypePlacement {
             if (activeFamily != FAMILY) return
             val signal = param.args.firstOrNull() as? ImageView ?: return
             val parent = signal.parent as? FrameLayout ?: return
+            // R8: the stacked two-SIM owner needs the final signal drawable, and a missing type
+            // label must not skip the block.
+            IosStackedSim.onSignalIcon(signal)
             val type = findType(parent, signal) ?: return
             val drawable = signal.drawable
             val iconWidth = drawable?.intrinsicWidth?.takeIf { it > 0 } ?: signal.width
@@ -329,7 +332,7 @@ internal object IosMobileTypePlacement {
             IosIconKind.CELL,
             iconWidthPx,
             iconHeightPx,
-            dualCell = false
+            dualCell = glyph.visualForTest?.cellMode == IosCellMode.DUAL
         ).first
         if (innerWidth <= 0) return 0
         val transform = glyph.userTransform
