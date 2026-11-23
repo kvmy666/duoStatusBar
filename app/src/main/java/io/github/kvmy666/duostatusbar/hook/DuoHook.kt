@@ -237,16 +237,19 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 val previousRoute = iosRoute
                 iosRoute = resolveIosRoute(next)
                 if (iosRoute == IosRoute.V2) {
+                    // R8: after V2 activates the order, a live order is ours, not a leftover HOST;
+                    // counting it would make every later V2 apply tear down synchronously.
                     val oldHostsLive = iosMainHost != null || iosExtraHosts.isNotEmpty() ||
-                        IosIconOrder.isActive
+                        (previousRoute != IosRoute.V2 && IosIconOrder.isActive)
                     // R7 P5: HOST -> V2 may not tear the host down before a map is live, or a failed
                     // async build leaves no owner at all. Activate synchronously first when this is
                     // not an already-live V2 session (V2 -> V2 may keep its old map and stay async).
                     val synchronousActivation = previousRoute != IosRoute.V2 || oldHostsLive
                     if (activateIosV2(ctx, iosSettings, synchronous = synchronousActivation)) {
                         // R7 P4: only a successful activation may release a live host/order from a
-                        // previous HOST session, so no icon is ever drawn by two owners.
-                        if (oldHostsLive) teardownIosHosts(next)
+                        // previous HOST session, so no icon is ever drawn by two owners. R8: the order
+                        // just activated belongs to V2, so the teardown must not restore/release it.
+                        if (oldHostsLive) teardownIosHosts(next, releaseOrder = false)
                         // R7 P5: the zero-double-ownership invariant is the post-condition here. After
                         // the teardown and activation a V2 route must have no host left; a host that
                         // survived the teardown would fight V2 for the same icon, so log once and keep
@@ -593,6 +596,29 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 if (IosV2Profile.typePlacementFamily(rom.id)) rom.id else null,
                 rom.systemUiPackage
             )
+            // R8 owners are installed only on the iOS path; a Duo user pays nothing for them. The boot
+            // activate is synchronous (before first inflation), so these hooks are in place before the
+            // first bind; a late V2 switch installs them here and the next bind reconciles.
+            IosStackedSim.install(lp.classLoader)
+            IosExtras.install(lp.classLoader, rom.systemUiPackage)
+            // R8: only OxygenOS has both measured order containers. On a family with the slot list
+            // but no container, permuting the slots without moving the child desynchronises the
+            // slot/view indices, so leave its stock order alone (restore is a no-op when inactive).
+            if (IosV2Profile.orderFamily(rom.id)) {
+                // Repeat the idempotent install in case a previous teardown released the hooks.
+                IosIconOrder.install(lp.classLoader)
+                IosIconOrder.activate()
+            } else {
+                IosIconOrder.restore()
+            }
+            // A repeat apply must not reset the swap counter, so a live owner takes the settings path.
+            if (IosStackedSim.isActive) {
+                IosStackedSim.applySettings(settings)
+            } else {
+                IosStackedSim.activate(ctx, settings)
+            }
+            IosExtras.apply(settings.hideExtras)
+            IosDiagnostics.register(IosR8Report)
             iosRoute = IosRoute.V2
             IosRouteDiagnostics.update(iosRoute, rom.id)
             logOnce.once("ios-v2-active") { L.i("iOS v2 active: family=${rom.id}") }
@@ -609,6 +635,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * decides the route (R7 P5: the HOST fall-through keeps HOST, it does not become NONE).
      */
     private fun stopIosV2Owners() {
+        runCatching { IosStackedSim.deactivate() }
+        runCatching { IosExtras.deactivate() }
+        // Restore the stock order, but do not release: the order hooks are the process-wide owner and
+        // release belongs to the final iOS teardown.
+        runCatching { IosIconOrder.restore() }
+        runCatching { IosDiagnostics.unregister(IosR8Report) }
         runCatching { IosMobileTypePlacement.deactivate() }
         runCatching { IosBatteryV2.deactivate() }
         runCatching { IosResourceEngine.deactivate() }
@@ -726,8 +758,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     /**
      * The pre-R7 host teardown alone (no v2 deactivation). The HOST -> V2 transition uses this to
      * restore the stock icons before the native owners attach.
+     *
+     * [releaseOrder] `false` keeps the process-wide [IosIconOrder] active for the V2 route (the
+     * HOST -> V2 transition has just activated it); every other caller restores and releases.
      */
-    private fun teardownIosHosts(next: FeatureSet = features) {
+    private fun teardownIosHosts(next: FeatureSet = features, releaseOrder: Boolean = true) {
         iosMainHost?.teardown()
         iosMainHost = null
         iosExtraHosts.values.forEach { it.teardown() }
@@ -737,10 +772,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         IosDiagnostics.clearAttempts()
         // R3 A3: leaving iOS (or the module being switched off) is the only event that restores the
         // stock order. A QS-header teardown while iOS stays on never reaches this method.
-        IosIconOrder.restore()
-        // C: the order hooks are process-wide and retained. Release them with the session so a later
-        // iOS enable installs a fresh set and no callback mutates a container while iOS is off.
-        IosIconOrder.release()
+        if (releaseOrder) {
+            IosIconOrder.restore()
+            // C: the order hooks are process-wide and retained. Release them with the session so a
+            // later iOS enable installs a fresh set and no callback mutates a container while iOS is
+            // off.
+            IosIconOrder.release()
+        }
         // Do not leave the process-wide ImageView push/tint hooks registered with zero views.
         IosPushHooks.releaseWhenEmpty()
         if (!keepShadeLayoutListener(next)) detachShadeLayoutListener()
@@ -1860,13 +1898,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // R3 A3: the container is the object addView was called on. Registration is
                         // additive; the existing host notifications below stay exactly as they were.
                         val container = param.thisObject as? ViewGroup
-                        // R7 P4: icon-order and host notifications belong to the pre-R7 route only.
-                        if (iosRoute != IosRoute.V2 && container != null) {
+                        // R8: the order owner is notified on every route; it is inert unless it is
+                        // installed and active, so V2 (which now owns the order) is covered too.
+                        if (container != null) {
                             IosIconOrder.onIconAdded(container)
                         }
                         // R6 item 4: style the main bar on the first laid-out frame instead of the
                         // 2.5 s retry. The keyguard/shade containers share this class, so only the
-                        // captured status-bar root may take this path.
+                        // captured status-bar root may take this path. First-frame attach remains
+                        // pre-R7 only; V2 is covered by its constructor/onLayout hooks.
                         if (iosRoute != IosRoute.V2 && features.iosRuntime && container != null &&
                             IosImmediateAttach.isMainBarContainer(container, statusBarRoot)
                         ) {

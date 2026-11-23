@@ -86,6 +86,17 @@ internal object IosIconOrder {
     val isActive: Boolean get() = active.get()
 
     /**
+     * Diagnostics: `"slot-list"` only while the order is active and at least one slot list was
+     * captured (only a captured list can be permuted); `"stock"` otherwise.
+     */
+    internal val source: String
+        get() = if (active.get() && synchronized(slotLists) { slotLists.isNotEmpty() }) {
+            "slot-list"
+        } else {
+            "stock"
+        }
+
+    /**
      * Hooks the measured `StatusBarIconList` and `StatusIconContainer` classes once per process.
      *
      * Constructors capture new instances; a method hook on an instance method captures lists and
@@ -147,7 +158,7 @@ internal object IosIconOrder {
     fun activate() {
         val wasActive = active.getAndSet(true)
         if (!wasActive) loggedActive = false
-        if (slotLists.isEmpty()) {
+        if (synchronized(slotLists) { slotLists.isEmpty() }) {
             // Without the slot list, moving the children alone would desynchronise the indices.
             logOnce.once("ios-order-no-slots") {
                 L.w("iOS order: status icon slots not captured - order stays stock")
@@ -217,7 +228,7 @@ internal object IosIconOrder {
         synchronized(containers) { containers.add(container) }
         // Our own remove/add during a reorder must not queue another pass.
         if (applying.get()) return
-        if (!active.get() || slotLists.isEmpty()) return
+        if (!active.get() || synchronized(slotLists) { slotLists.isEmpty() }) return
         schedule(container)
     }
 
@@ -463,7 +474,7 @@ internal object IosIconOrder {
         if (animate) setAnimation(container, false)
         try {
             if (active.get()) {
-                if (slotLists.isEmpty()) return
+                if (synchronized(slotLists) { slotLists.isEmpty() }) return
                 moveWifi(container, afterMobile = true)
                 logActiveIfNeeded()
             } else {
@@ -497,7 +508,7 @@ internal object IosIconOrder {
         if (loggedActive) return
         loggedActive = true
         val surfaces = synchronized(containers) { containers.size }
-        val slots = if (slotLists.isEmpty()) {
+        val slots = if (synchronized(slotLists) { slotLists.isEmpty() }) {
             "stock"
         } else synchronized(slotLists) {
             if (slotLists.any { !sameOrder(it.list, it.stock) }) "permuted" else "stock"

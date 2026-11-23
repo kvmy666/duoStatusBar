@@ -64,6 +64,16 @@ class IosRouteTest {
     }
 
     @Test
+    fun `the icon order is owned only on the measured oxygenos family`() {
+        // Samsung resolves the slot list but not the measured container; activating the order there
+        // would permute slots without moving the child and desynchronise the indices.
+        assertTrue(IosV2Profile.orderFamily("oxygenos"))
+        for (id in IosV2Profile.FAMILIES.filter { it != "oxygenos" }) {
+            assertFalse(id, IosV2Profile.orderFamily(id))
+        }
+    }
+
+    @Test
     fun `v2 never leaves a pre-r7 host attached`() {
         assertTrue(iosV2HasNoHosts(IosRoute.V2, iosMainHostPresent = false, extraHostCount = 0))
         assertFalse(iosV2HasNoHosts(IosRoute.V2, iosMainHostPresent = true, extraHostCount = 0))

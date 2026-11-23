@@ -39,6 +39,13 @@ internal object IosV2Profile {
 
     /** Data-type placement (OxygenOS `mobile_type` child) is measured only here. */
     fun typePlacementFamily(id: String): Boolean = id == "oxygenos"
+
+    /**
+     * The `mobile -> wifi` slot permutation needs both a measured `StatusBarIconList` **and** a
+     * measured `StatusIconContainer`; only OxygenOS has both. Permuting the slots without moving the
+     * same child would desynchronise slot/view indices, so every other V2 family keeps stock order.
+     */
+    fun orderFamily(id: String): Boolean = id == "oxygenos"
 }
 
 /**
