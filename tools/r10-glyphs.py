@@ -3,7 +3,7 @@
 
 Reads rive/ios/glyphs-r10.json and emits either:
   kotlin  app/src/main/java/io/github/kvmy666/duostatusbar/hook/R10Glyphs.kt
-  rml     rive/ios/generated-r10-digits.rml (the battery digit artboard section)
+  rml     rive/generated-r10-digits.rml (the battery digit artboard section)
 
 Usage (from the repository root):
   python3 tools/r10-glyphs.py kotlin          # write Kotlin to stdout
@@ -11,12 +11,16 @@ Usage (from the repository root):
   python3 tools/r10-glyphs.py kotlin --check  # regenerate to /tmp and byte-diff
   python3 tools/r10-glyphs.py rml --check     # the committed files
   python3 tools/r10-glyphs.py kotlin > app/src/main/java/io/github/kvmy666/duostatusbar/hook/R10Glyphs.kt
-  python3 tools/r10-glyphs.py rml    > rive/ios/generated-r10-digits.rml
+  python3 tools/r10-glyphs.py rml    > rive/generated-r10-digits.rml
 
 This is the repo-pathed copy of .pm/out-r10/trace/gen_r10_glyphs.py.  The generated
 header keeps the provenance path of the original measurement generator; the data
 itself is the committed rive/ios/glyphs-r10.json.  `--check` writes under
 /tmp/r10a-d/gen-check and never writes into the repository.
+
+The rml output is expected data for `--check`, not a compilable scene: it has no
+<Rive> root, so it is kept in rive/ (outside the compiled rive/ios directory, which
+`rive rive/ios` compiles in full) and is never written under rive/ios/.
 
 Rive encoding used by `rml` (exact attribute names from the installed 1.9.1
 docs, ~/.rive/versions/1.9.1/docs/drawing.md, and the shipped `text_rain`
@@ -45,9 +49,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_JSON = ROOT / "rive/ios/glyphs-r10.json"
+RIVE_IOS_DIR = ROOT / "rive/ios"
 GENERATED = {
     "kotlin": ROOT / "app/src/main/java/io/github/kvmy666/duostatusbar/hook/R10Glyphs.kt",
-    "rml": ROOT / "rive/ios/generated-r10-digits.rml",
+    "rml": ROOT / "rive/generated-r10-digits.rml",
 }
 CHECK_DIR = Path("/tmp/r10a-d/gen-check")
 DIGIT_ORDER = "0123456789"
@@ -234,6 +239,10 @@ def main(argv: list[str]) -> int:
         sys.stderr.write("usage: r10-glyphs.py {kotlin|rml} [--check] [--input PATH]\n")
         return 2
     mode = argv[1]
+    if mode == "rml" and GENERATED["rml"].parent == RIVE_IOS_DIR:
+        raise RuntimeError(
+            "the RML fragment is expected data, not a scene; keep it outside rive/ios"
+        )
     check = "--check" in argv[2:]
     inp = DEFAULT_JSON
     if "--input" in argv:

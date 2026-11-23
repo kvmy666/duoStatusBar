@@ -632,8 +632,9 @@ table (no battery digits in labels). Provenance:
 1.8.0 and an isolated `RIVE_BASE_URL`) produces **39,759 bytes**, sha256
 `fe5034a4c735072b40c56a5cf808cde1c0a886f2fa2a4d682b72df77ca3bdf1b`; a second build is
 byte-identical and `app/src/main/res/raw/ios.riv` is that copy. The standalone
-`generated-r10-digits.rml` is a fragment, so it is kept out of the project directory during the
-directory build (the scene already contains its content). Rive 1.9.1 `--verify` passes
+`rive/generated-r10-digits.rml` is a fragment (no `<Rive>` root), so it is kept outside the
+compiled `rive/ios/` directory — where `rive rive/ios` compiles every `.rml` — and a clean checkout
+builds without moving it aside (the scene already contains its content). Rive 1.9.1 `--verify` passes
 (`tools/check-rive-shipped.sh`, pin updated) and the easing gate reports 0 keyframes. The
 `IosDigits` artboard width is 535.641 (20 + 515.641) and its height stays 160.
 
