@@ -962,11 +962,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     applyDuoRegistrations()
                     return@guard
                 }
-                if (iosRoute == IosRoute.V2) {
-                    // Activation failed: fall back to the host with the stock bar restored.
-                    iosRoute = IosRoute.HOST
-                    IosRouteDiagnostics.update(iosRoute, rom.id)
-                }
+                // Activation failed: fall back to the host with the stock bar restored. The failure may
+                // have left NONE behind (a thrown activation calls deactivateIosV2) or V2 (the engine
+                // refused a map); the HOST block below owns the bar in both cases, so the route is HOST
+                // unconditionally - mirroring the settings-apply fall-through.
+                iosRoute = bootFallbackRoute(iosRoute)
+                IosRouteDiagnostics.update(iosRoute, rom.id)
                 // Boot/initial attach with iOS already on: order before the first icon pass.
                 IosIconOrder.install(lp.classLoader)
                 IosIconOrder.activate()

@@ -316,6 +316,41 @@ class IosBatteryV2Test {
     }
 
     @Test
+    fun `reassert makes a GONE icon visible and restore returns the captured visibility`() {
+        val f = fixture()
+        val controller = f.controller()
+        assertTrue(controller.install(reading(level = 50), saver = false))
+        val ours = f.image.drawable
+        assertEquals(View.VISIBLE, f.image.visibility)
+
+        // `bind$hideBatteryIcon` sets the icon ImageView to 8 and clears its drawable after install.
+        f.image.visibility = View.GONE
+        f.image.setImageDrawable(null)
+        assertTrue(controller.reassert())
+        assertEquals(View.VISIBLE, f.image.visibility)
+        assertSame(ours, f.image.drawable)
+
+        controller.restore()
+        // The visibility captured at install is VISIBLE, not the GONE the binder wrote afterwards.
+        assertEquals(View.VISIBLE, f.image.visibility)
+        assertSame(f.original, f.image.drawable)
+    }
+
+    @Test
+    fun `install captures a hidden icon and restore returns that visibility`() {
+        val f = fixture()
+        // The measured binder can hide the leaf before our first install on a reused view.
+        f.image.visibility = View.GONE
+        val controller = f.controller()
+        assertTrue(controller.install(reading(level = 50), saver = false))
+        assertEquals(View.VISIBLE, f.image.visibility)
+
+        controller.restore()
+        assertEquals(View.GONE, f.image.visibility)
+        assertSame(f.original, f.image.drawable)
+    }
+
+    @Test
     fun `reassert hides a bolt the binder made visible again`() {
         val f = fixture()
         val forward = ImageView(context).apply {

@@ -82,4 +82,13 @@ class IosRouteTest {
         assertEquals(IosRoute.V2, routeAfterStoppingV2Owners(IosRoute.V2))
         assertEquals(IosRoute.NONE, routeAfterStoppingV2Owners(IosRoute.NONE))
     }
+
+    @Test
+    fun `a failed v2 boot activation always falls through to host`() {
+        // R7 P5: a thrown activation calls deactivateIosV2 and leaves NONE behind; an engine refusal
+        // leaves V2. The boot HOST block runs in both cases and must report HOST, never the NONE the
+        // teardown wrote (the previous `if (iosRoute == V2)` skipped the HOST write in the thrown case).
+        assertEquals(IosRoute.HOST, bootFallbackRoute(IosRoute.NONE))
+        assertEquals(IosRoute.HOST, bootFallbackRoute(IosRoute.V2))
+    }
 }

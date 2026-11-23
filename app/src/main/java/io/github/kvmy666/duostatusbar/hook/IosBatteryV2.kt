@@ -333,6 +333,11 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         reasserts = 0
         // `failures` is process-lifetime on purpose: a class/method that was absent at install time
         // must stay visible in the dump after the first activation resets the volume counters.
+        // R7 P5: an in-place re-activation must not install from the previous session's reading if
+        // the sticky read fails now. Existing controllers keep their last level via update(null, ...);
+        // a new controller stays stock until a real reading arrives.
+        lastReading = null
+        lastSaver = false
         active = true
         registerReceiver(app)
         // R7 P5: the sticky read decides whether an install is allowed at all (a null reading keeps
@@ -663,6 +668,14 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         private var original: Drawable? = null
         private var ours: IosGlyphDrawable? = null
         private var visual: IosVisual? = null
+
+        /**
+         * The stock icon visibility captured at [install]. The measured OxygenOS
+         * `bind$hideBatteryIcon` sets the ImageView visibility to 8 and clears its drawable
+         * (`A-oxygenos-names.md:380,392`), so our glyph must be made visible and the captured value
+         * restored on [restore].
+         */
+        private var originalVisibility = View.VISIBLE
         private var reading: IosBatteryReading? = null
         private var saver = false
         private var tint = BarTint.fgColor(context)
@@ -722,6 +735,10 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 captureColorFilter = true
             )
             original = stock
+            // `bind$hideBatteryIcon` can leave the leaf GONE with no drawable; capture the stock
+            // visibility for restore, then make the icon visible for our glyph.
+            originalVisibility = image.visibility
+            if (image.visibility != View.VISIBLE) image.visibility = View.VISIBLE
             ours = drawable
             visual = next
             image.setImageDrawable(drawable)
@@ -774,21 +791,30 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         }
 
         /**
-         * Re-installs our drawable when the OEM binder replaced it, and re-hides the OEM bolt that the
+         * Re-installs our drawable when the OEM binder replaced it, makes the icon visible again
+         * (`bind$hideBatteryIcon` sets it to 8) and re-hides the OEM bolt that the
          * `bind$updateChargingView` push made visible again (R7 P5). True only on a real repair.
          */
         fun reassert(): Boolean {
             val drawable = ours ?: return false
             hideBolts()
-            if (image.drawable === drawable) return false
-            image.setImageDrawable(drawable)
-            return true
+            var repaired = false
+            if (image.visibility != View.VISIBLE) {
+                image.visibility = View.VISIBLE
+                repaired = true
+            }
+            if (image.drawable !== drawable) {
+                image.setImageDrawable(drawable)
+                repaired = true
+            }
+            return repaired
         }
 
-        /** Returns the exact original drawable and every bolt visibility; the other half of P4's path. */
+        /** Returns the exact original drawable/visibility and every bolt visibility; the other half of P4's path. */
         fun restore() {
             if (!installedFlag) return
             image.setImageDrawable(original)
+            image.visibility = originalVisibility
             restoreBolts()
             original = null
             ours = null

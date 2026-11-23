@@ -68,6 +68,16 @@ internal fun iosRoute(
 internal fun routeAfterStoppingV2Owners(route: IosRoute): IosRoute = route
 
 /**
+ * R7 P5: the boot path's route when the synchronous v2 activation did not take.
+ *
+ * [routeAfterActivationFailure] is what the failed activation left behind: [IosRoute.NONE] after a
+ * thrown activation (`deactivateIosV2`), or [IosRoute.V2] after the engine refused to build a map.
+ * The boot HOST block that follows starts the pre-R7 owner in both cases, so the route - and the
+ * diagnostics line - is always HOST; reporting the leftover NONE was the bug this pins.
+ */
+internal fun bootFallbackRoute(routeAfterActivationFailure: IosRoute): IosRoute = IosRoute.HOST
+
+/**
  * Zero double-ownership invariant (R7 P4): while [route] is [IosRoute.V2] no pre-R7 host may exist.
  *
  * The V2 path never calls `ensureIosMain`/`ensureIosExtra`, so `iosMainHost` stays null and
