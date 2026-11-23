@@ -213,6 +213,41 @@ class IosR6KnockoutEvidenceTest {
     }
 
     @Test
+    fun `red critical inline bolt is solid white when present and absent otherwise`() {
+        // R9: the red critical state draws solid white digits; a present bolt must be solid white at
+        // the same 40 x 59 seat, not dropped and not a knockout.
+        val red = IosMapping.battery(
+            10, 20, false, false, BatteryManager.BATTERY_STATUS_DISCHARGING,
+            Color.BLACK, percentInside = true
+        )
+        val text = "10"
+        val group = IosDigits.groupWidth(text, withBolt = true)
+        val left = b.BODY_LEFT + b.BODY_W / 2f - group / 2f
+        val boltLeft = left + IosDigits.textInkWidth(text) + IosDigits.INLINE_BOLT_GAP
+        val boltTop = b.BODY_TOP + (b.BODY_H - IosDigits.INLINE_BOLT_H) / 2f
+        // The right half of the bolt is clear of the centred no-bolt digit group, so this box
+        // isolates the bolt seat.
+        val x0 = boltLeft + IosDigits.INLINE_BOLT_W * 0.55f
+        val x1 = boltLeft + IosDigits.INLINE_BOLT_W * 0.95f
+        val y0 = boltTop + IosDigits.INLINE_BOLT_H * 0.1f
+        val y1 = boltTop + IosDigits.INLINE_BOLT_H * 0.9f
+
+        val withBolt = render(red.copy(boltOpacity = 1f), Bg.PHOTO)
+        val withoutBolt = render(red.copy(boltOpacity = 0f), Bg.PHOTO)
+        assertTrue(
+            "LOW + percentInside + bolt must draw solid white bolt ink",
+            countNearWhite(withBolt, x0, y0, x1, y1) > 50
+        )
+        assertEquals(
+            "LOW without a bolt must not paint white ink at the bolt seat",
+            0,
+            countNearWhite(withoutBolt, x0, y0, x1, y1)
+        )
+        withBolt.recycle()
+        withoutBolt.recycle()
+    }
+
+    @Test
     fun `every state and tint draws body ink and holes`() {
         for (tint in listOf(Color.BLACK, Color.WHITE)) {
             for (case in states(tint)) {
@@ -497,6 +532,23 @@ class IosR6KnockoutEvidenceTest {
             for (x in toPxX(bitmap, x0) until toPxX(bitmap, x1)) {
                 val c = bitmap.getPixel(x, y)
                 if (Color.red(c) < 24 && Color.green(c) < 24 && Color.blue(c) < 24) count++
+            }
+        }
+        return count
+    }
+
+    private fun countNearWhite(
+        bitmap: Bitmap,
+        x0: Float,
+        y0: Float,
+        x1: Float,
+        y1: Float
+    ): Int {
+        var count = 0
+        for (y in toPxY(bitmap, y0) until toPxY(bitmap, y1)) {
+            for (x in toPxX(bitmap, x0) until toPxX(bitmap, x1)) {
+                val c = bitmap.getPixel(x, y)
+                if (Color.red(c) > 240 && Color.green(c) > 240 && Color.blue(c) > 240) count++
             }
         }
         return count

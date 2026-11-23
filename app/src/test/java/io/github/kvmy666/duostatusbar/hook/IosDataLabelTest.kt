@@ -24,8 +24,9 @@ import java.security.MessageDigest
  *
  * Ref 1 (`.pm/ref/r5/1-real-iphone-5g-dual.jpg`, sha256 `0e009673…`, dark, dual-SIM) is the first
  * real iOS capture of the label (5G). It fixes the cap (77.69), the top-anchored [TOP] (14.95), the
- * baseline (92.64) and the R5B provenance weight (11.1). R6 item 3 deliberately raises the label
- * weight to 15.54 (0.200 cap) so every glyph matches the battery digits; the SF strip
+ * baseline (92.64) and the R5B provenance weight (11.1). R6 item 3 raised the label weight to 15.54
+ * (0.200 cap) so every glyph matched the battery digits; R9 sets the shipping stroke to 13.6
+ * (0.19 cap). The SF strip
  * `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the shape/width authority.
  */
 @RunWith(RobolectricTestRunner::class)

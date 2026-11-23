@@ -249,13 +249,12 @@ internal object IosGeometry {
      * to the measurement. Ref 1's cap centre is 2.79 units below the battery body centre.
      *
      * The SF strip `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the authority for the glyph
-     * SHAPES, ink widths and internal spacing. **R6 item 3 makes every label glyph one weight:** the
-     * letters, the plus and the G use [STROKE] = 15.54 units (0.200 cap), deliberately equal to the
-     * battery digits' measured run-stroke ([IosDigits.RUN_STROKE] 11.40 x [DIGIT_SCALE]). The R5B
-     * ref-1 SF label weight of 11.1 units (0.143 cap) remains provenance for the measurement only;
-     * it is no longer a glyph constant, because it made the owner-visible "5" bold and "G" thin.
-     * The 3/4/5 digits stay the untouched measured [IosDigits] glyphs — never retyped or thinned —
-     * and the G ink fraction and every letter width are unchanged.
+     * SHAPES, ink widths and internal spacing. **R9 keeps every label glyph at one weight:** the
+     * letters, the plus and the G use [STROKE] = 13.6 units (0.19 cap). The R5B ref-1 SF label
+     * weight of 11.1 units (0.143 cap) and the R6 digit-weight value remain provenance for the
+     * measurement only; they are no longer glyph constants. The 3/4/5 digits stay the untouched
+     * measured [IosDigits] glyphs — never retyped or thinned — and the G ink fraction and every
+     * letter width are unchanged.
      *
      * Every letter and the plus are FILLED OUTLINES: one or more closed contours, consistently
      * clockwise, filled with [android.graphics.Path.FillType.WINDING] so overlapping shapes union
@@ -278,8 +277,9 @@ internal object IosGeometry {
      * slanted bottom (0.975/0.920 C). The counter opens through the upper-right aperture, so there is
      * no closed hole and the glyph reads as G, not a C with a glued corner. All G strokes scale
      * with one weight from the measured reference (weight 1) to the label stroke
-     * ([G_PRODUCTION_WEIGHT] = [STROKE] / [DataLabel.G_REFERENCE_STEM_STROKE] = ~1.407), so the
-     * right stem is the 0.200-cap label stroke and the measured bowl/bar proportions are kept.
+     * ([G_PRODUCTION_WEIGHT] = [STROKE] / [DataLabel.G_REFERENCE_STEM_STROKE] = 13.6 /
+     * [DataLabel.G_REFERENCE_STEM_STROKE]), so the right stem is the 0.19-cap label stroke and the
+     * measured bowl/bar proportions are kept.
      */
     object DataLabel {
         /** Supported labels, in reader/reporting order. */
@@ -345,7 +345,7 @@ internal object IosGeometry {
          * R6 item 3 keeps the R5B measured G construction. The G's weight metric is its RIGHT STEM
          * (the same `G stem` measurement used by the R5B reference), and the stem is set by STROKE
          * for any inner-radius choice. Production scales the measured band, bar and stem thicknesses
-         * together by G_PRODUCTION_WEIGHT, so the right stem is 15.54 (0.200 cap) while the measured
+         * together by G_PRODUCTION_WEIGHT, so the right stem is 13.6 (0.19 cap) while the measured
          * bowl/bar proportions (bar ~0.88x, bowl top ~0.85x, bowl side ~1.19x of the stem) stay.
          */
         /** Reference-weight inner bowl radii (the band thickness is `outer - inner` per axis). */
@@ -371,7 +371,7 @@ internal object IosGeometry {
         /** Reference-weight stem thickness, the weight baseline: `STROKE / this` is the weight. */
         internal val G_REFERENCE_STEM_STROKE: Float =
             (1f - G_STEM_LEFT_FRACTION) * G_INK_FRACTION * CAP_HEIGHT
-        /** Weight that renders the measured G at the digit stroke ([STROKE] 15.54 / 11.04 = ~1.407). */
+        /** Weight that renders the measured G at the label stroke ([STROKE] = 13.6). */
         internal val G_PRODUCTION_WEIGHT: Float = STROKE / G_REFERENCE_STEM_STROKE
 
         /**
@@ -785,7 +785,7 @@ internal object IosGeometry {
      * battery 1.23 -> 1.00 = 0.81, Wi-Fi 1.67 -> 0.944 = 0.57, cell single 1.267 -> 0.955 = 0.754
      * (0.75; the older 1.32 -> 0.726 held before bar 4 became 95.5 units), cell dual 1.38 -> 1.042 =
      * 0.76. [CELL_DUAL_H] = 1.042 is the measured ref target; the shipped design block is
-     * [Cell.DUAL_BLOCK_H] = 102.8 (1.028 of the battery body) because the dual bar heights are
+     * [Cell.DUAL_BLOCK_H] = 103.3 (1.033 of the battery body) because the dual bar heights are
      * unchanged, and the 0.76 scale is calibrated against the ref-7 on-device 1.377 ratio, not this
      * envelope. The cell scales are medium confidence (the logging phone showed the known
      * side-by-side dual bug).

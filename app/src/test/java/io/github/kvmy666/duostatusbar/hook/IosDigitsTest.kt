@@ -80,8 +80,6 @@ class IosDigitsTest {
         val r = IosDigits.STROKE / 2f
         assertEquals(10f + r, bounds.left, 0.8f)
         assertEquals(20f + r, bounds.top, 0.8f)
-        // There is no filled-contour API: the old `contours` property is an empty shim.
-        assertTrue("R9 digits are stroke skeletons, not contours", glyph.contours.isEmpty())
     }
 
     @Test

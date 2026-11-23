@@ -201,9 +201,10 @@ internal object IosGlyphRenderer {
     /**
      * Draws the percentage digits as stroke skeletons, plus the optional inline bolt.
      *
-     * [solid] is the red-critical rule: solid white digits (no layer). Otherwise the digits and the
-     * inline bolt are CLEAR strokes/holes so the real background shows through, and the digits shift
-     * left to make room for the 40 x 59 bolt at the measured 5-unit gap.
+     * [solid] is the red-critical rule: solid white digits and, when present, the inline bolt is
+     * solid white too (no layer). Otherwise the digits and the inline bolt are CLEAR strokes/holes so
+     * the real background shows through, and the digits shift left to make room for the 40 x 59 bolt
+     * at the measured 5-unit gap.
      */
     private fun drawPercentInside(canvas: Canvas, v: IosVisual, solid: Boolean, alpha: Float) {
         val b = IosGeometry.Battery
@@ -235,6 +236,15 @@ internal object IosGlyphRenderer {
         if (solid) {
             stroke.color = withAlpha(Color.WHITE, 1f, alpha)
             canvas.drawPath(digits, stroke)
+            if (hasBolt) {
+                // Red critical keeps the inline bolt too, as solid white at the same measured seat.
+                val boltX = left + textWidth + IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W / 2f
+                val white = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.FILL
+                    color = withAlpha(Color.WHITE, 1f, alpha)
+                }
+                canvas.drawPath(IosDigits.inlineBoltPath(boltX, centreY), white)
+            }
             return
         }
 

@@ -109,6 +109,14 @@ internal object IosSlotLayout {
     private val originalScaleType: MutableMap<ImageView, ImageView.ScaleType> =
         Collections.synchronizedMap(WeakHashMap<ImageView, ImageView.ScaleType>())
 
+    /**
+     * Target `[width, height]` this module installed on a view. [fitContainer] sums these instead of
+     * reading a live child width, so MATCH_PARENT / weighted siblings (which have no intrinsic width)
+     * can never grow the container on a repeated apply.
+     */
+    private val targets: MutableMap<View, IntArray> =
+        Collections.synchronizedMap(WeakHashMap<View, IntArray>())
+
     /** Monotonic re-entry guard: a layout request from inside our write must not start a second pass. */
     private var applying = false
 
@@ -401,10 +409,11 @@ internal object IosSlotLayout {
         }
     }
 
-    /** One write per view, only when a value differs. */
+    /** One write per view, only when a value differs; the target is recorded for [fitContainer]. */
     private fun applyBox(view: View, width: Int, height: Int) {
         val params = view.layoutParams ?: return
         capture(view, params)
+        targets[view] = intArrayOf(width, height)
         if (params.width == width && params.height == height) return
         params.width = width
         params.height = height
@@ -466,28 +475,32 @@ internal object IosSlotLayout {
         }
     }
 
-    /** Sizes [container] to max(stock, visible children) so no slot is clipped by an old box. */
+    /**
+     * Sizes [container] to max(stock, visible children) so no slot is clipped by an old box.
+     *
+     * A child contributes its recorded target, else only a positive fixed `params.width`/`height`.
+     * `MATCH_PARENT` (-1), weighted (`0` + weight), and not-yet-laid-out children contribute nothing:
+     * reading a live `child.width` here made the container grow on every reassert once such a child
+     * had been measured. With immutable inputs a second apply writes the same width/height.
+     */
     private fun fitContainer(container: ViewGroup) {
         var width = 0
         var height = 0
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i) ?: continue
             if (child.visibility == View.GONE) continue
-            val params = child.layoutParams ?: continue
-            val w = if (params.width > 0) params.width else child.width
-            val h = if (params.height > 0) params.height else child.height
+            val target = targets[child]
+            val params = child.layoutParams
+            val w = target?.get(0) ?: params?.width?.takeIf { it > 0 } ?: 0
+            val h = target?.get(1) ?: params?.height?.takeIf { it > 0 } ?: 0
             if (w > 0) width += w
             if (h > height) height = h
         }
         if (width <= 0 || height <= 0) return
         val stock = originals[container]
         val params = container.layoutParams
-        val minWidth = stock?.width?.takeIf { it > 0 }
-            ?: params?.width?.takeIf { it > 0 }
-            ?: container.width
-        val minHeight = stock?.height?.takeIf { it > 0 }
-            ?: params?.height?.takeIf { it > 0 }
-            ?: container.height
+        val minWidth = stock?.width?.takeIf { it > 0 } ?: params?.width?.takeIf { it > 0 } ?: 0
+        val minHeight = stock?.height?.takeIf { it > 0 } ?: params?.height?.takeIf { it > 0 } ?: 0
         applyBox(container, max(minWidth, width), max(minHeight, height))
     }
 
@@ -508,7 +521,8 @@ internal object IosSlotLayout {
 
     /**
      * iOS off: every stock LayoutParams, clip flag and scale type returns to the exact captured value.
-     * A view whose params instance the OEM replaced is left alone (its own values win).
+     * An OEM may replace the params instance while we run, so the captured values are written to the
+     * CURRENT instance (and to the original one when it is a different object), never dropped.
      */
     @Synchronized
     fun restoreAll() {
@@ -519,6 +533,7 @@ internal object IosSlotLayout {
         }
         for (slot in slotList) restoreSlot(slot)
         slots.clear()
+        targets.clear()
         restoreCaptured()
         applying = false
     }
@@ -533,28 +548,17 @@ internal object IosSlotLayout {
 
     private fun restoreView(view: View?) {
         val target = view ?: return
+        targets.remove(target)
         val original = originals.remove(target)
         if (original == null) {
             originalScaleType.remove(target)
             return
         }
-        if (target.layoutParams === original.params) {
-            original.params.width = original.width
-            original.params.height = original.height
-            val margins = original.params as? ViewGroup.MarginLayoutParams
-            if (margins != null) {
-                margins.leftMargin = original.leftMargin
-                margins.topMargin = original.topMargin
-                margins.rightMargin = original.rightMargin
-                margins.bottomMargin = original.bottomMargin
-                margins.marginStart = original.marginStart
-                margins.marginEnd = original.marginEnd
-            }
-            if (original.params is FrameLayout.LayoutParams) {
-                original.params.gravity = original.gravity
-            }
-            target.requestLayout()
-        }
+        // The OEM may have swapped the params instance; restore the current one, and keep the
+        // captured instance stock too in case it is reused.
+        target.layoutParams?.let { applyOriginal(it, original) }
+        if (original.params !== target.layoutParams) applyOriginal(original.params, original)
+        target.requestLayout()
         val group = target as? ViewGroup
         if (group != null) {
             val clipChildren = original.clipChildren
@@ -570,6 +574,22 @@ internal object IosSlotLayout {
             val image = target as? ImageView
             if (image != null && image.scaleType != scaleType) image.scaleType = scaleType
         }
+    }
+
+    /** Writes the captured stock size/margins/gravity onto [params]. */
+    private fun applyOriginal(params: ViewGroup.LayoutParams, original: Original) {
+        params.width = original.width
+        params.height = original.height
+        val margins = params as? ViewGroup.MarginLayoutParams
+        if (margins != null) {
+            margins.leftMargin = original.leftMargin
+            margins.topMargin = original.topMargin
+            margins.rightMargin = original.rightMargin
+            margins.bottomMargin = original.bottomMargin
+            margins.marginStart = original.marginStart
+            margins.marginEnd = original.marginEnd
+        }
+        if (params is FrameLayout.LayoutParams) params.gravity = original.gravity
     }
 
     private fun restoreCaptured() {
@@ -681,6 +701,7 @@ internal object IosSlotLayout {
         slots.clear()
         originals.clear()
         originalScaleType.clear()
+        targets.clear()
         currentSettings = null
         screenWidthOverrideForTest = null
         applying = false
@@ -688,4 +709,8 @@ internal object IosSlotLayout {
 
     /** Test seam: number of registered slots. */
     internal val registeredForTest: Int get() = synchronized(slots) { slots.size }
+
+    /** Test seam: the target size recorded for [view], or null when nothing was applied to it. */
+    internal fun targetForTest(view: View): IntArray? =
+        synchronized(targets) { targets[view]?.copyOf() }
 }

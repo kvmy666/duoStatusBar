@@ -130,12 +130,12 @@ counts and the canonical digest.
 | Bar row -> dot row gap | 12.7 | measured 12.68 (old 13.5) |
 | Inactive alpha | 0.25 | measured 0.257-0.268 |
 | Block width | 148.1 | 3*pitch + width |
-| Dual block height | 102.8 | 62.7 + 12.7 + 27.4 |
+| Dual block height | 103.3 | 64.3 + 10 + 29 |
 | Artboard height | 105.6 | frozen envelope, not `DUAL_BLOCK_H + 2` |
 
 Single mode draws the four tall bars inside the same artboard, bottom-aligned at `SINGLE_BAR_BOTTOM`
 = 96.5 (bar 4 top = 1.0, level with the battery body top; bar 4 bottom 4.5 units above the body
-bottom); the dot row is hidden. `DUAL_BLOCK_H` is 102.8 but the artboard stays 105.6 so the
+bottom); the dot row is hidden. `DUAL_BLOCK_H` is 103.3 but the artboard stays 105.6 so the
 scene/preview/compare placements do not move.
 
 Dual mode has two runtime paths (IOS-REPLACE Revision 3):
@@ -199,7 +199,7 @@ and internal spacing only; its 36 px cap is the fraction denominator below.
 | Cap-box top | 14.96 (Wi-Fi-centred) | **14.95 (pinned, top-anchored)** | `DataLabel.TOP` | cap top 5.90 px below body top; artboard top = body top - 1 |
 | Baseline | 81.81 | **92.64** | `TOP + CAP_HEIGHT` | measured 92.63 |
 | Label stroke | 13.37 (0.200 cap) | **11.1 (0.143 cap, R5B shipped, now provenance)** | R5B shipped stroke, not the live constant | median of 5 stem 9.87 / G stem 12.33 |
-| Label stroke (R6 item 3) | 11.1 (0.143 cap) | **15.54 (0.200 cap)** | `DataLabel.STROKE` (shipping) | `IosDigits.RUN_STROKE` 11.40 x `DIGIT_SCALE`; the measured battery-digit weight, so every label glyph is one weight |
+| Label stroke (R6 item 3) | 11.1 (0.143 cap) | **15.54 (0.200 cap)** | `DataLabel.STROKE` (R6; R9 supersedes with 13.6 / 0.19 cap) | `IosDigits.RUN_STROKE` 11.40 x `DIGIT_SCALE`; the measured battery-digit weight, so every label glyph is one weight |
 | Cell -> Wi-Fi gap | 57.5 | 57.5 (kept) | `Strip.CELL_WIFI_GAP` | ref 6 light, ink-to-ink |
 | Wi-Fi -> battery gap | 59.77 | 59.77 (kept) | `Strip.WIFI_BATTERY_GAP` | ref 6 light, ink-to-ink |
 | Cell -> label ink gap | 57.5 (Wi-Fi rule) | **52.07** | `Strip.CELL_LABEL_GAP` (new) | cell ink right -> label ink left 22.06 px |
@@ -244,7 +244,7 @@ The shipped constants:
 | Quantity | Value | Source |
 |---|---:|---|
 | Cap height | 77.69 | measured ref-1 5 cap 32.93 px x 2.360 (0.777 of the body, 0.814 of the tallest bar) |
-| Stroke | 15.54 | R6 item 3: `IosDigits.RUN_STROKE` 11.40 x `DIGIT_SCALE` (77.69 / 57) = 0.200 cap, the measured battery-digit weight. The R5B ref-1 SF label weight 11.10 (0.143 cap) is provenance only |
+| Stroke | 13.6 | R9 design: 0.19 cap. The R6 digit-weight 15.54 (0.200 cap) and the R5B ref-1 SF label weight 11.10 (0.143 cap) are provenance only |
 | Cap-box top | 14.95 | measured ref-1 cap top; baseline 92.64 (top-anchored) |
 | L / T / E / G width | 47.48 / 62.58 / 51.79 / 73.37 | measured SF 0.611 / 0.806 / 0.667 / 0.944 x cap |
 | + width | 58.27 | 0.750 x cap square (measured SF height; SF width 0.778) |
@@ -317,9 +317,9 @@ The shipped shape is a union of three clockwise contours (WINDING):
   stem-to-bowl joint). This is the visible right stem the old shape lacked.
 
 `G_REFERENCE_STEM_STROKE = (1 - 0.84951) x 34/36 x cap = 11.04` design units. Production scales every
-G stroke by `G_PRODUCTION_WEIGHT = STROKE / 11.04 = 1.407`, so the right stem is exactly the shipping
-label `STROKE` (15.54). The G's weight metric is that right stem (the same `G stem` measurement as the
-R5B reference); the band and bar keep the measured letterform proportions (bar ~0.88x, bowl top
+G stroke by `G_PRODUCTION_WEIGHT = STROKE / G_REFERENCE_STEM_STROKE = 13.6 / 11.04`, so the right stem
+is exactly the shipping label `STROKE` (13.6). The G's weight metric is that right stem (the same `G stem`
+measurement as the R5B reference); the band and bar keep the measured letterform proportions (bar ~0.88x, bowl top
 ~0.85x, bowl side ~1.19x of the stem) and are not the G stroke metric. The same builder at weight 1
 reproduces the measured reference letterform used for the IoU evidence. The counter opens through the
 upper-right aperture (0 closed holes: the `IosDataLabelTest` flood-fill requires no enclosed
@@ -381,8 +381,8 @@ when `IOS_RENDER_OUT` is set) and the side-by-side `r5b-compare-ref1-vs-ours.png
 **UNVERIFIED / known limits.** The cap, top, baseline and label gaps are measured from ref 1
 (±1.18 u); the G v3 shape and the per-glyph IoU above remain measured against the SF strip. The
 vertical placement and the on-device size still need owner/device review. The R5B SF label weight
-(11.10 = 0.143 cap) is lighter than the shipping 15.54 (0.200 cap); R6 item 3 chose the digit weight
-so every label glyph is one weight, and the rendered guard/table is `IosLabelStrokeWeightTest` /
+(11.10 = 0.143 cap) and the R6 digit weight (15.54 = 0.200 cap) are provenance; the shipping stroke is
+13.6 (0.19 cap), so every label glyph is one weight, and the rendered guard/table is `IosLabelStrokeWeightTest` /
 `stroke-table.md`, with the side-by-side `label-weight.png`. The G ink
 fraction (0.944 shipped vs 0.874 measured here) and the shorter cell bars are outside this change.
 Honouring the measured plus makes "5G+" width-limited at the slot (a slot constraint, not a geometry
@@ -643,10 +643,9 @@ exact.
 - **Clock metric:** the union of the digits is 30 px but flat digits measure 28-29 px, a ±1 px (±3 %)
   uncertainty. The target ratios carry that tolerance.
 - **Data-type label (R5B / R6):** the cap (77.69), top (14.95), baseline (92.64) and label gaps
-  (52.07 / 54.04) are measured from ref 1 with ±1.18 u uncertainty. The R5B SF label weight 11.10
-  (0.143 cap) is provenance; the shipping stroke is 15.54 (0.200 cap), the measured battery-digit
-  weight, so every label glyph (including the untouched 3/4/5) is one weight — this supersedes the
-  R5B digit-weight limitation. `Cell.INACTIVE_ALPHA` stays 0.25 **UNVERIFIED** (ref 1 has all bars
+  (52.07 / 54.04) are measured from ref 1 with ±1.18 u   uncertainty. The R5B SF label weight 11.10 (0.143 cap) and the R6 digit weight 15.54 (0.200 cap)
+  are provenance; the shipping stroke is 13.6 (0.19 cap), so every label glyph (including the
+  untouched 3/4/5) is one weight — this supersedes the R5B digit-weight limitation. `Cell.INACTIVE_ALPHA` stays 0.25 **UNVERIFIED** (ref 1 has all bars
   and dots active; ref 2 is only weakly consistent at ~0.36-0.37). The battery cap W/H measure
   13.7 / 34.3 versus the frozen 9.5 / 26.0 (low confidence, unchanged). The G ink fraction is 0.874
   measured vs 0.944 shipped, and the shorter cell bars measure 35.7/43.4/53.8/63.9 vs

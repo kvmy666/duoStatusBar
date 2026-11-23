@@ -201,7 +201,13 @@ internal object IosResourceEngine : IosDiagnosticSource {
         return previousLive
     }
 
-    /** Restores stock behaviour: the next load returns the stock drawable. */
+    /**
+     * Restores stock behaviour: the next load returns the stock drawable.
+     *
+     * Known boundary: this stops future replacements only; it does not revert an
+     * [IosGlyphDrawable] already installed on a live view. [IosSlotLayout.restoreAll] restores the
+     * real LayoutParams for the views this module resized.
+     */
     fun deactivate() {
         synchronized(stateLock) {
             generation++

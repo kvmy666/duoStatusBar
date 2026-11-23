@@ -145,6 +145,43 @@ class IosResourceEngineTest {
     }
 
     @Test
+    fun `V2 200 percent keeps one layout scale and an identity drawable transform`() {
+        // R9-review evidence: the V2 map entry is IDENTITY and relativeSize=false, so the slider's
+        // only scale is the layout (IosSlotLayout), never a second drawable transform.
+        val wifiEntry = entry().copy(
+            slot = IosResourceSlot.Wifi(3),
+            transform = IosUserTransform.IDENTITY
+        )
+        val cellEntry = entry().copy(
+            id = 0x7f010002,
+            slot = IosResourceSlot.Cell(4),
+            transform = IosUserTransform.IDENTITY
+        )
+        val snapshot = buildSnapshot(listOf(wifiEntry, cellEntry), 160)
+        val resources = context().resources
+
+        val wifiDrawable = snapshot.newDrawable(0, resources, 160, false) as IosGlyphDrawable
+        val cellDrawable = snapshot.newDrawable(1, resources, 160, false) as IosGlyphDrawable
+        assertEquals(IosUserTransform.IDENTITY, wifiDrawable.userTransform)
+        assertEquals(IosUserTransform.IDENTITY, cellDrawable.userTransform)
+
+        val wifiVisual = IosVisual(part = IosPart.WIFI, wifiLevel = 3f)
+        val cellVisual = IosVisual(part = IosPart.CELL, cellBars = 4f)
+        val wifi100 = IosSlotLayout.metrics(IosIconKind.WIFI, wifiVisual, 1272, 100, 0, 63)
+        val wifi200 = IosSlotLayout.metrics(IosIconKind.WIFI, wifiVisual, 1272, 200, 0, 63)
+        val cell100 = IosSlotLayout.metrics(IosIconKind.CELL, cellVisual, 1272, 100, 0, 63)
+        val cell200 = IosSlotLayout.metrics(IosIconKind.CELL, cellVisual, 1272, 200, 0, 63)
+
+        // Exactly one scale: the 200 % leaf is 2x the 100 % leaf (the drawable transform above is 1x).
+        assertEquals((wifi100.leaf.width * 2).toFloat(), wifi200.leaf.width.toFloat(), 1f)
+        assertEquals((wifi100.leaf.height * 2).toFloat(), wifi200.leaf.height.toFloat(), 1f)
+        assertEquals((cell100.leaf.width * 2).toFloat(), cell200.leaf.width.toFloat(), 1f)
+        assertEquals((cell100.leaf.height * 2).toFloat(), cell200.leaf.height.toFloat(), 1f)
+        assertTrue(wifi200.outerWidth > wifi100.outerWidth)
+        assertTrue(cell200.outerWidth > cell100.outerWidth)
+    }
+
+    @Test
     fun `the snapshot seeds its default tint instead of hard-coded white`() {
         // R7 P5: the activation passes BarTint.fgColor(context); this seam pins that the visual uses
         // it (a system tint list/filter still overrides it in the drawable).

@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -10,6 +11,8 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -171,6 +174,97 @@ class IosSlotLayoutRobolectricTest {
             assertEquals(a.topMargin, b.topMargin)
             assertEquals(a.marginStart, b.marginStart)
         }
+    }
+
+    @Test
+    fun `container with MATCH_PARENT and weighted children is stable across re-applies`() {
+        val tree = Tree(context)
+        val matchParent = FrameLayout(context)
+        val weighted = FrameLayout(context)
+        tree.container.addView(
+            matchParent,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 63)
+        )
+        tree.container.addView(weighted, LinearLayout.LayoutParams(0, 63, 1f))
+
+        assertTrue(IosSlotLayout.registerMobile(tree.signal, null))
+        assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
+
+        val mobile = IosSlotLayout.metrics(
+            IosIconKind.CELL,
+            IosVisual(part = IosPart.CELL, cellBars = 4f),
+            1272, 100, 0, 63
+        )
+        val wifi = IosSlotLayout.metrics(
+            IosIconKind.WIFI,
+            IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+            1272, 100, 0, 63
+        )
+        val expected = mobile.outerWidth + wifi.outerWidth
+        // The negative-width and weighted children add nothing; only the registered slots count.
+        assertEquals(expected, lp(tree.container).width)
+        assertEquals(84, mobile.outerWidth)
+        assertEquals(77, wifi.outerWidth)
+
+        // Lay the tree out so a MATCH_PARENT/weighted child would have a live width if we read it.
+        layout(tree.root)
+        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+        assertEquals("second apply grew the container", expected, lp(tree.container).width)
+
+        layout(tree.root)
+        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+        assertEquals("third apply grew the container", expected, lp(tree.container).width)
+        assertNotNull(IosSlotLayout.targetForTest(tree.container))
+    }
+
+    @Test
+    fun `restoreAll clears every recorded target`() {
+        val tree = Tree(context)
+        assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
+        assertNotNull(IosSlotLayout.targetForTest(tree.wifiOuter))
+        assertNotNull(IosSlotLayout.targetForTest(tree.container))
+
+        IosSlotLayout.restoreAll()
+
+        assertNull(IosSlotLayout.targetForTest(tree.wifiOuter))
+        assertNull(IosSlotLayout.targetForTest(tree.container))
+    }
+
+    @Test
+    fun `restore applies stock params when the OEM replaced the LayoutParams instance`() {
+        val tree = Tree(context)
+        val stockScale = tree.wifiSignal.scaleType
+        val stockGravity = (tree.wifiSignal.layoutParams as FrameLayout.LayoutParams).gravity
+        assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
+
+        // The OEM swaps in a new params object while the layout is active.
+        tree.wifiSignal.layoutParams = FrameLayout.LayoutParams(999, 999).apply {
+            leftMargin = 21
+            topMargin = 13
+            rightMargin = 7
+            bottomMargin = 5
+            marginStart = 21
+            marginEnd = 7
+            gravity = Gravity.BOTTOM or Gravity.END
+        }
+        tree.wifiCombo.layoutParams = FrameLayout.LayoutParams(999, 999)
+
+        IosSlotLayout.restoreAll()
+
+        val signal = tree.wifiSignal.layoutParams as FrameLayout.LayoutParams
+        assertEquals(70, signal.width)
+        assertEquals(51, signal.height)
+        assertEquals(0, signal.leftMargin)
+        assertEquals(0, signal.topMargin)
+        assertEquals(0, signal.rightMargin)
+        assertEquals(0, signal.bottomMargin)
+        assertEquals(0, signal.marginStart)
+        assertEquals(0, signal.marginEnd)
+        assertEquals(stockGravity, signal.gravity)
+        assertEquals(stockScale, tree.wifiSignal.scaleType)
+        assertEquals(70, lp(tree.wifiCombo).width)
+        assertEquals(51, lp(tree.wifiCombo).height)
+        assertTrue(tree.wifiCombo.clipChildren)
     }
 
     @Test

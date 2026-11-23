@@ -13,9 +13,7 @@ import android.graphics.RectF
  * width is `skeleton width + stroke`.
  *
  * The runtime uses [buildPath] everywhere: the battery knockout (CLEAR stroke), the data-label digits
- * (tint stroke) and the preview. The [Glyph.contours] property is a deprecated, empty compile-time
- * shim for `IosGeometryParityTest` (the Rive scene is rebuilt by another builder); there is no
- * filled-contour glyph API.
+ * (tint stroke) and the preview. There is no filled-contour glyph API.
  */
 internal object IosDigits {
 
@@ -52,8 +50,6 @@ internal object IosDigits {
     class Glyph(
         val width: Float,
         val advance: Float,
-        @Deprecated("R9: digits are stroke skeletons; kept for the Rive parity test only.")
-        val contours: List<FloatArray>,
         internal val builder: (Path, Float) -> Unit
     )
 
@@ -124,7 +120,7 @@ internal object IosDigits {
     )
 
     private fun glyph(width: Float, builder: (Path, Float) -> Unit): Glyph =
-        Glyph(width, ADVANCE, emptyList(), builder)
+        Glyph(width, ADVANCE, builder)
 
     /**
      * The bolt normalised to its own 0..1 box. The same points drive the large solid bolt and the
