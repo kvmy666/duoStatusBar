@@ -259,6 +259,43 @@ class IosIconOrderRobolectricTest {
     }
 
     @Test
+    fun `a repeat activate recovers a container reordered without an addView`() {
+        IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile"))
+        val container = stockContainer()
+        val stock = order(container)
+        val iosOrder = listOf(stock[1], stock[2], stock[0], stock[3], stock[4])
+
+        IosIconOrder.onIconAdded(container)
+        IosIconOrder.activate()
+        IosIconOrder.flushForTest()
+        assertEquals(1, IosIconOrder.passesForTest())
+        assertEquals(1, IosIconOrder.movesForTest())
+        assertOrder(iosOrder, order(container))
+
+        // The ROM rebuilds the children in stock order without going through addView, so no icon
+        // hook fires and no later layout follows. The slot list is unchanged.
+        IosIconOrder.resetCountersForTest()
+        container.removeView(stock[0])
+        container.addView(stock[0], 0)
+        assertOrder(stock, order(container))
+
+        IosIconOrder.activate()
+        IosIconOrder.flushForTest()
+
+        assertOrder(iosOrder, order(container))
+        assertEquals("exactly one recovery pass", 1, IosIconOrder.passesForTest())
+        assertEquals("exactly one recovery move", 1, IosIconOrder.movesForTest())
+
+        // The recovered bar is correct now, so the next apply adds no work at all.
+        IosIconOrder.resetCountersForTest()
+        IosIconOrder.activate()
+        IosIconOrder.flushForTest()
+        assertEquals(0, IosIconOrder.passesForTest())
+        assertEquals(0, IosIconOrder.movesForTest())
+        assertOrder(iosOrder, order(container))
+    }
+
+    @Test
     fun `release unregisters containers and a later install accepts them again`() {
         IosIconOrder.markInstalledForTest()
         val container = stockContainer()

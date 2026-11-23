@@ -187,6 +187,63 @@ class IosSlotLayoutTest {
     }
 
     @Test
+    fun `200 percent outers grow and every leaf stays centred in its own outer`() {
+        val cellVisual = IosVisual(part = IosPart.CELL, cellBars = 4f)
+        val labelVisual = IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
+
+        // The cell artboard is 105.6 units, so 200 % is 94 px and fills its own outer.
+        val cell200 = IosSlotLayout.metrics(IosIconKind.CELL, cellVisual, screenW, 200, 0, stockRowH)
+        assertEquals(94, cell200.outerHeight)
+        assertEquals(133, cell200.leaf.width)
+        assertEquals(94, cell200.leaf.height)
+        assertEquals(0, cell200.leaf.top)
+        assertCentred(cell200.leaf, cell200.outerHeight)
+
+        // The battery artboard is 102 units: 45 px at 100 %, 91 px at 200 % (above R9's 63 px row).
+        val battery200 = battery(scale = 200)
+        assertEquals(91, battery200.outerHeight)
+        assertEquals(186, battery200.leaf.width)
+        assertEquals(91, battery200.leaf.height)
+        assertEquals(0, battery200.leaf.top)
+        assertCentred(battery200.leaf, battery200.outerHeight)
+
+        // The realistic dump mix: 200 % cell, 98 % label (Wi-Fi slot), 100 % battery.
+        val mobile = IosSlotLayout.mobileMetrics(cellVisual, labelVisual, screenW, 200, 0, 98, 0, stockRowH)
+        assertEquals(94, mobile.outerHeight)
+        assertEquals(133, mobile.leaf.width)
+        assertEquals(94, mobile.leaf.height)
+        assertEquals(0, mobile.leaf.top)
+        val label = mobile.label!!
+        assertEquals(52, label.width)
+        assertEquals(42, label.height)
+        assertEquals(26, label.top)
+        assertCentred(mobile.leaf, mobile.outerHeight)
+        assertCentred(label, mobile.outerHeight)
+
+        val battery100 = battery()
+        assertEquals(63, battery100.outerHeight)
+        assertEquals(93, battery100.leaf.width)
+        assertEquals(45, battery100.leaf.height)
+        assertEquals(9, battery100.leaf.top)
+        assertCentred(battery100.leaf, battery100.outerHeight)
+
+        val wifi98 = wifi(98)
+        assertEquals(63, wifi98.outerHeight)
+        assertEquals(56, wifi98.leaf.width)
+        assertEquals(42, wifi98.leaf.height)
+        assertEquals(11, wifi98.leaf.top)
+        assertCentred(wifi98.leaf, wifi98.outerHeight)
+    }
+
+    /** `top = round((outerH - leafH) / 2)`, so the doubled top plus the leaf height matches within 1 px. */
+    private fun assertCentred(leaf: IosSlotBox, outerHeight: Int) {
+        assertTrue(
+            "leaf ${leaf.height}px at top ${leaf.top} is centred in $outerHeight",
+            abs((leaf.top * 2 + leaf.height) - outerHeight) <= 1
+        )
+    }
+
+    @Test
     fun `label mode with a scaled cell keeps the label at one gap after the scaled ink`() {
         val slot = labelMode(cellScale = 200)
         val cellInk = IosGeometry.inkBox(IosIconKind.CELL, IosVisual(part = IosPart.CELL)).width * s * 2f

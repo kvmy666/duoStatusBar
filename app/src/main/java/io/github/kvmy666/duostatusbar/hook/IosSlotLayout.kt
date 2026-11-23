@@ -143,6 +143,11 @@ internal object IosSlotLayout {
      * is the artboard box, positioned so the ink starts at `gap / 2` inside the outer. The user
      * offset is clamped inside the slot, never past a neighbour.
      *
+     * The leaf is artboard-sized, and every artboard has a 1-unit margin, so the artboard centre is
+     * the ink centre within 1 px. Above ~142% the artboard is taller than the 63 px row, so
+     * [outerHeight] follows R9's `max(63, artboard * scale)` and the stock parent (which centres its
+     * children vertically) keeps every leaf on the one row centre line.
+     *
      * [stockRowHeight] is the R9 design row ([rowHeight]), passed as the same value for every kind;
      * it is kept as a parameter so the pure rule stays unit-testable at any screen width.
      */
@@ -184,6 +189,11 @@ internal object IosSlotLayout {
      * The label-mode mobile slot: the outer holds the cell then the data-type label with one [gap]
      * between their inks. The label uses the Wi-Fi slot's scale/offset because it replaces that slot.
      * [stockRowHeight] is the one R9 design row, exactly as for [metrics].
+     *
+     * Both leaves are artboard boxes (1-unit margin, so artboard-centre == ink-centre within 1 px)
+     * and each is centred in [IosSlotMetrics.outerHeight] with `top = round((outerH - leafH) / 2)`.
+     * A cell above ~142% therefore makes the outer taller than the row, and the stock parent's
+     * vertical centring keeps the cell and the label on the same centre line as the battery.
      */
     fun mobileMetrics(
         cellVisual: IosVisual,

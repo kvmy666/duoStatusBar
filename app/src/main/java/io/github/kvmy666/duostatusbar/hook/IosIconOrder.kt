@@ -205,8 +205,14 @@ internal object IosIconOrder {
         }
         val changed = applySlotPermutation()
         // A repeated settings apply on an unchanged, already-adopted bar must schedule nothing; the
-        // first activation still schedules because the views may not have been moved yet.
-        if (shouldScheduleOnActivate(wasActive, changed)) scheduleAll()
+        // first activation still schedules because the views may not have been moved yet. The one
+        // exception is a container the ROM re-ordered without an addView (no hook fired) and with no
+        // later first layout: a read-only target check recovers exactly those containers.
+        if (shouldScheduleOnActivate(wasActive, changed)) {
+            scheduleAll()
+        } else {
+            scheduleMisordered()
+        }
     }
 
     /**
@@ -517,6 +523,21 @@ internal object IosIconOrder {
         snapshot.forEach { schedule(it) }
     }
 
+    /**
+     * Queues only the registered containers whose Wi-Fi child is not already at the iOS target index.
+     *
+     * This is the repeat-activation recovery: a container can be re-ordered into stock order without
+     * an `addView` (so no hook fires) and without another layout, leaving the views wrong even though
+     * the slot list is unchanged. An already-correct container is not queued, so a normal settings
+     * apply still adds no pass.
+     */
+    private fun scheduleMisordered() {
+        val snapshot = synchronized(containers) { containers.toList() }
+        snapshot.forEach { container ->
+            if (needsMove(container, afterMobile = true)) schedule(container)
+        }
+    }
+
     /** Queue one move pass for the next frame; repeated calls coalesce per container. */
     private fun schedule(container: ViewGroup) {
         synchronized(pending) { pending.add(container) }
@@ -561,19 +582,41 @@ internal object IosIconOrder {
     }
 
     private fun moveWifi(container: ViewGroup, afterMobile: Boolean) {
-        val children = ArrayList<View>(container.childCount)
-        for (i in 0 until container.childCount) children.add(container.getChildAt(i))
-        val wifi = children.firstOrNull { StockIconKey.slotTagOf(it).isToken(WIFI) } ?: return
-        val slots = children.map { StockIconKey.slotTagOf(it) }
-        val target = (if (afterMobile) movedIndex(slots) else restoredIndex(slots)) ?: return
-        val current = container.indexOfChild(wifi)
-        val clamp = target.coerceIn(0, children.size - 1)
+        val plan = wifiTarget(container, afterMobile) ?: return
+        val current = container.indexOfChild(plan.wifi)
+        val clamp = plan.index.coerceIn(0, container.childCount - 1)
         if (current == clamp) return
         // Move the same instance: identity, visibility and drawable are untouched.
         moveCount.incrementAndGet()
-        container.removeView(wifi)
-        container.addView(wifi, target.coerceIn(0, container.childCount))
+        container.removeView(plan.wifi)
+        container.addView(plan.wifi, plan.index.coerceIn(0, container.childCount))
     }
+
+    /** The Wi-Fi child of [container] and the index it belongs at, or null when unresolvable. */
+    private fun wifiTarget(container: ViewGroup, afterMobile: Boolean): WifiTarget? {
+        val children = ArrayList<View>(container.childCount)
+        for (i in 0 until container.childCount) children.add(container.getChildAt(i))
+        val wifi = children.firstOrNull { StockIconKey.slotTagOf(it).isToken(WIFI) } ?: return null
+        val slots = children.map { StockIconKey.slotTagOf(it) }
+        val index = (if (afterMobile) movedIndex(slots) else restoredIndex(slots)) ?: return null
+        return WifiTarget(wifi, index)
+    }
+
+    /**
+     * Read-only form of [moveWifi]: true when the Wi-Fi child is not at its target index. Every read
+     * is guarded, so an odd tree is reported as "no move" rather than throwing inside System UI.
+     */
+    private fun needsMove(container: ViewGroup, afterMobile: Boolean): Boolean {
+        return try {
+            val plan = wifiTarget(container, afterMobile) ?: return false
+            val current = container.indexOfChild(plan.wifi)
+            current != plan.index.coerceIn(0, container.childCount - 1)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private class WifiTarget(val wifi: View, val index: Int)
 
     private fun logActiveIfNeeded() {
         if (loggedActive) return

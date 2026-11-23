@@ -515,6 +515,128 @@ class IosSlotLayoutRobolectricTest {
         assertEquals("label->battery ink gap", gap, batteryInkLeft - labelInkRight, 1f)
     }
 
+    @Test
+    fun `at 200 percent every leaf centre stays on the stock row centre`() {
+        val cellVisual = IosVisual(part = IosPart.CELL, cellBars = 4f)
+        val labelVisual = IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
+        val batteryVisual = IosVisual(part = IosPart.BATTERY, batteryLevel = 1f)
+        val mobile = IosSlotLayout.mobileMetrics(
+            cellVisual, labelVisual, 1272, 200, 0, 98, 0, 63
+        )
+        val battery = IosSlotLayout.metrics(IosIconKind.BATTERY, batteryVisual, 1272, 100, 0, 63)
+
+        // The dump mix: label-mode mobile outer 94, a GONE Wi-Fi slot, battery outer 63.
+        val labelRow = row(94)
+        val mobileOuter = FrameLayout(context)
+        val wifiOuter = FrameLayout(context)
+        val batteryOuter = FrameLayout(context)
+        labelRow.addView(mobileOuter, LinearLayout.LayoutParams(mobile.outerWidth, mobile.outerHeight))
+        labelRow.addView(wifiOuter, LinearLayout.LayoutParams(78, 63))
+        labelRow.addView(batteryOuter, LinearLayout.LayoutParams(battery.outerWidth, battery.outerHeight))
+        wifiOuter.visibility = View.GONE
+        val cellLeaf = addLeaf(mobileOuter, mobile.leaf)
+        val labelLeaf = addLeaf(mobileOuter, mobile.label!!)
+        val batteryLeaf = addLeaf(batteryOuter, battery.leaf)
+        layoutRow(labelRow, 94)
+
+        assertEquals("the 200 % cell outer fills the row", 0, mobileOuter.top)
+        assertTrue(abs(batteryOuter.top - (94 - battery.outerHeight) / 2f) <= 1f)
+        assertEquals(94, cellLeaf.height)
+        assertEquals(42, labelLeaf.height)
+        assertEquals(63, batteryOuter.height)
+        assertOnRowCentre(
+            labelRow,
+            mobileOuter to cellLeaf,
+            mobileOuter to labelLeaf,
+            batteryOuter to batteryLeaf
+        )
+
+        // The three-outers row: cell 200 % (outer 94), Wi-Fi 98 % and battery 100 % (outer 63 each).
+        val wifi = IosSlotLayout.metrics(
+            IosIconKind.WIFI,
+            IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+            1272, 98, 0, 63
+        )
+        val singleMobile = IosSlotLayout.metrics(IosIconKind.CELL, cellVisual, 1272, 200, 0, 63)
+        val threeRow = row(94)
+        val singleMobileOuter = FrameLayout(context)
+        val wifiLeafOuter = FrameLayout(context)
+        val singleBatteryOuter = FrameLayout(context)
+        threeRow.addView(
+            singleMobileOuter,
+            LinearLayout.LayoutParams(singleMobile.outerWidth, singleMobile.outerHeight)
+        )
+        threeRow.addView(wifiLeafOuter, LinearLayout.LayoutParams(wifi.outerWidth, wifi.outerHeight))
+        threeRow.addView(
+            singleBatteryOuter,
+            LinearLayout.LayoutParams(battery.outerWidth, battery.outerHeight)
+        )
+        val singleCellLeaf = addLeaf(singleMobileOuter, singleMobile.leaf)
+        val wifiLeaf = addLeaf(wifiLeafOuter, wifi.leaf)
+        val singleBatteryLeaf = addLeaf(singleBatteryOuter, battery.leaf)
+        layoutRow(threeRow, 94)
+
+        assertEquals(94, singleMobileOuter.height)
+        assertEquals(63, wifiLeafOuter.height)
+        assertEquals(63, singleBatteryOuter.height)
+        assertOnRowCentre(
+            threeRow,
+            singleMobileOuter to singleCellLeaf,
+            wifiLeafOuter to wifiLeaf,
+            singleBatteryOuter to singleBatteryLeaf
+        )
+    }
+
+    private fun row(height: Int): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, height)
+    }
+
+    private fun addLeaf(outer: FrameLayout, box: IosSlotBox): ImageView {
+        val leaf = ImageView(context)
+        outer.addView(
+            leaf,
+            FrameLayout.LayoutParams(box.width, box.height).apply {
+                leftMargin = box.left
+                topMargin = box.top
+                gravity = Gravity.START or Gravity.TOP
+            }
+        )
+        return leaf
+    }
+
+    private fun layoutRow(row: LinearLayout, height: Int) {
+        row.measure(
+            View.MeasureSpec.makeMeasureSpec(2000, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+        )
+        row.layout(0, 0, row.measuredWidth, row.measuredHeight)
+    }
+
+    /** The leaf's absolute vertical centre, including every ancestor's top down to [row]. */
+    private fun leafCentreInRow(row: View, leaf: View): Float {
+        var centre = leaf.top + leaf.height / 2f
+        var cursor: View = leaf
+        while (cursor !== row) {
+            val parent = cursor.parent as View
+            centre += parent.top
+            cursor = parent
+        }
+        return centre
+    }
+
+    private fun assertOnRowCentre(row: LinearLayout, vararg pairs: Pair<View, View>) {
+        val rowCentre = row.height / 2f
+        for ((_, leaf) in pairs) {
+            val centre = leafCentreInRow(row, leaf)
+            assertTrue(
+                "${leaf.javaClass.simpleName} centre $centre vs row centre $rowCentre",
+                abs(centre - rowCentre) <= 1f
+            )
+        }
+    }
+
     private fun assertCentred(top: Int, leafH: Int, outerH: Int) {
         assertTrue(
             "leaf centre ${top + leafH / 2f} vs outer centre ${outerH / 2f}",
