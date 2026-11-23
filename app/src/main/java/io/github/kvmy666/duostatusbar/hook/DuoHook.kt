@@ -128,6 +128,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * + battery hook (no host); [IosRoute.HOST] is the pre-R7 replace host; [IosRoute.NONE] is iOS
      * off. Every old-host entry point checks this so exactly one owner ever touches an icon.
      */
+    @Volatile
     private var iosRoute: IosRoute = IosRoute.NONE
 
     /** One size owner for the main and extra iOS bars, so the keyguard/shade glyph matches the home bar (M15). */
@@ -233,27 +234,35 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 stopDuoRuntime()
                 installHooksOnce()
                 val iosSettings = snapshot
+                val previousRoute = iosRoute
                 iosRoute = resolveIosRoute(next)
                 if (iosRoute == IosRoute.V2) {
-                    // R7 P4: a live host/order from a previous HOST session owns the stock icons. Restore
-                    // them before the native owners attach so no icon is drawn by two owners.
-                    if (iosMainHost != null || iosExtraHosts.isNotEmpty() || IosIconOrder.isActive) {
-                        teardownIosHosts(next)
-                    }
-                    if (activateIosV2(ctx, iosSettings, synchronous = false)) {
+                    val oldHostsLive = iosMainHost != null || iosExtraHosts.isNotEmpty() ||
+                        IosIconOrder.isActive
+                    // R7 P5: HOST -> V2 may not tear the host down before a map is live, or a failed
+                    // async build leaves no owner at all. Activate synchronously first when this is
+                    // not an already-live V2 session (V2 -> V2 may keep its old map and stay async).
+                    val synchronousActivation = previousRoute != IosRoute.V2 || oldHostsLive
+                    if (activateIosV2(ctx, iosSettings, synchronous = synchronousActivation)) {
+                        // R7 P4: only a successful activation may release a live host/order from a
+                        // previous HOST session, so no icon is ever drawn by two owners.
+                        if (oldHostsLive) teardownIosHosts(next)
                         IosBatteryV2.refresh()
                         applyDuoRegistrations()
                         settingsRereadAttempt = 0
                         reporter.report(ctx, stage, iosSettings)
                         return@guard
                     }
-                    // Activation failed: fall back to the host below with the stock bar restored.
+                    // Activation left no live map: keep HOST with the stock icons and the old owner.
                     iosRoute = IosRoute.HOST
                     IosRouteDiagnostics.update(iosRoute, rom.id)
                 }
                 // HOST families keep the pre-R7 path exactly as today; a stale v2 owner from a prior
-                // configuration is released first (defensive, so exactly one owner remains).
-                deactivateIosV2()
+                // configuration is released first (defensive, so exactly one owner remains). R7 P5:
+                // stopping the owners must not clobber the route we just selected (HOST).
+                stopIosV2Owners()
+                iosRoute = routeAfterStoppingV2Owners(IosRoute.HOST)
+                IosRouteDiagnostics.update(iosRoute, rom.id)
                 val iosMain = ensureIosMain(ctx)
                 // R3 A3: install only while iOS owns the bar (A6: no iOS work when it is off).
                 IosIconOrder.install(lp.classLoader)
@@ -556,7 +565,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun activateIosV2(ctx: Context, settings: ModuleSettings, synchronous: Boolean): Boolean {
         if (iosRoute != IosRoute.V2) return false
         return try {
-            IosResourceEngine.activate(ctx, rom, settings, synchronous)
+            val engineReady = IosResourceEngine.activate(ctx, rom, settings, synchronous)
+            if (!engineReady) {
+                // R7 P5: no map (async without a previous snapshot, or an empty build) means the caller
+                // must keep the HOST owner; cancel any scheduled build and touch no view.
+                stopIosV2Owners()
+                return false
+            }
             IosBatteryV2.activate(
                 ctx,
                 rom,
@@ -565,7 +580,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 settings
             )
             IosMobileTypePlacement.activate(
-                if (IosV2Profile.typePlacementFamily(rom.id)) rom.id else null
+                if (IosV2Profile.typePlacementFamily(rom.id)) rom.id else null,
+                rom.systemUiPackage
             )
             iosRoute = IosRoute.V2
             IosRouteDiagnostics.update(iosRoute, rom.id)
@@ -578,11 +594,21 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
-    /** Stops the v2 owners and restores the stock drawables; the host route is left to its own teardown. */
-    private fun deactivateIosV2() {
+    /**
+     * Stops the v2 owners and restores the stock drawables, without touching the route. The caller
+     * decides the route (R7 P5: the HOST fall-through keeps HOST, it does not become NONE).
+     */
+    private fun stopIosV2Owners() {
         runCatching { IosMobileTypePlacement.deactivate() }
         runCatching { IosBatteryV2.deactivate() }
         runCatching { IosResourceEngine.deactivate() }
+        iosRoute = routeAfterStoppingV2Owners(iosRoute)
+        IosRouteDiagnostics.update(iosRoute, rom.id)
+    }
+
+    /** Leaves iOS mode: stops the v2 owners and records the NONE route. */
+    private fun deactivateIosV2() {
+        stopIosV2Owners()
         iosRoute = IosRoute.NONE
         IosRouteDiagnostics.update(iosRoute, rom.id)
     }

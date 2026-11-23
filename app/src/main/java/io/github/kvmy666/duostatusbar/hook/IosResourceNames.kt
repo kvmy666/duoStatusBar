@@ -22,11 +22,16 @@ internal data class IosResourceSpec(
     val kind: IosResourceKind,
     val value: Int,
     val label: String = "",
-    val packageName: String = DEFAULT_PACKAGE,
+    val packageName: String = "",
     val rawId: Int = 0
 ) {
     companion object {
-        const val DEFAULT_PACKAGE = "com.android.systemui"
+        /**
+         * Blank means "resolve in the live ROM's SystemUI package" (R7 P5). A hard-coded
+         * `com.android.systemui` would pre-empt `rom.systemUiPackage` on ROMs that report another
+         * package (HyperOS reports `system`), even though only the v2 families build a map today.
+         */
+        const val DEFAULT_PACKAGE = ""
     }
 }
 
@@ -224,7 +229,8 @@ internal object IosResourceNames {
 
     private fun samsung(): List<IosResourceSpec> = buildList {
         addAll(wifiLevels("stat_sys_wifi_signal_", 0, 4, top = 4))
-        addAll(wifiLevels("stat_sys_wifi_captive_", 0, 4, top = 4))
+        // R7 P5: `stat_sys_wifi_captive_0..4` stays stock. Replacing it would remove Samsung's own
+        // captive-portal indication instead of merely restyling the bars.
 
         addAll(cellLevels("stat_sys_signal_", 0, 4, top = 4))
         addAll(cellLevels("stat_sys_signal_5level_", 0, 5, top = 5))

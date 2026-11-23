@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.view.Gravity
+import android.view.View
 import android.graphics.drawable.Drawable
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -8,6 +9,8 @@ import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import io.github.kvmy666.duostatusbar.L
+import java.util.Collections
+import java.util.WeakHashMap
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -48,9 +51,6 @@ internal object IosMobileTypePlacement {
     /** The label id is build-specific (16.00.14 `0x7f0a0823`, 16.99.12 `0x7f0a0856`), so resolve by name. */
     private const val TYPE_ID_NAME = "mobile_type"
 
-    /** Spec fixes this package for the child-id lookup; the call site has no `RomAdapter`. */
-    private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
-
     @Volatile
     private var installedFlag = false
 
@@ -60,14 +60,32 @@ internal object IosMobileTypePlacement {
     @Volatile
     private var activeFamily: String = ""
 
+    /** R7 P5: the live ROM's SystemUI package, passed by the caller (no hard-coded package, m4). */
+    @Volatile
+    private var activePackage: String = ""
+
     /** True only while OxygenOS owns the placement. */
     val isActive: Boolean get() = activeFamily == FAMILY
 
     private var installDone = false
 
-    /** Resolved once per process; 0 until the first successful lookup, so the index fallback still runs. */
+    /** Resolved once per process/package; 0 until the first successful lookup, so the index fallback runs. */
     @Volatile
     private var cachedTypeId: Int = 0
+
+    @Volatile
+    private var cachedTypePackage: String = ""
+
+    /**
+     * R7 P5: the stock `LayoutParams` instance per view, captured on our first write. A weak key
+     * because the bar/shade may drop a view; a dropped view needs no restore.
+     */
+    private val originalParams: MutableMap<View, FrameLayout.LayoutParams> =
+        Collections.synchronizedMap(WeakHashMap<View, FrameLayout.LayoutParams>())
+
+    /** The `LayoutParams` instance we installed; only this instance is ours to replace on deactivate. */
+    private val installedParams: MutableMap<View, FrameLayout.LayoutParams> =
+        Collections.synchronizedMap(WeakHashMap<View, FrameLayout.LayoutParams>())
 
     // ---------------------------------------------------------------------------------- install
 
@@ -109,8 +127,16 @@ internal object IosMobileTypePlacement {
 
     // --------------------------------------------------------------------------------- activate
 
-    /** [familyId] `null` or a non-OxygenOS id turns placement off. */
-    fun activate(familyId: String?) {
+    /**
+     * [familyId] `null` or a non-OxygenOS id turns placement off. [systemUiPackage] is the live ROM's
+     * SystemUI package, resolved from `RomAdapter` (R7 P5: never a hard-coded package, m4).
+     */
+    fun activate(familyId: String?, systemUiPackage: String) {
+        activePackage = systemUiPackage
+        if (cachedTypePackage != systemUiPackage) {
+            cachedTypeId = 0
+            cachedTypePackage = systemUiPackage
+        }
         activeFamily = if (familyId != null && IosV2Profile.typePlacementFamily(familyId)) {
             familyId
         } else {
@@ -118,9 +144,19 @@ internal object IosMobileTypePlacement {
         }
     }
 
+    /**
+     * Stops placement and restores the two stock `LayoutParams` instances we replaced.
+     *
+     * Only a view whose current params are still the instance we installed is restored, so a later
+     * OEM write is never overwritten with a stale copy.
+     */
     fun deactivate() {
         activeFamily = ""
+        restoreLayouts()
     }
+
+    /** R7 P5 test seam: the package the next name lookup would use. */
+    internal val packageForTest: String get() = activePackage
 
     // ------------------------------------------------------------------------------------- hook
 
@@ -160,14 +196,19 @@ internal object IosMobileTypePlacement {
     }
 
     private fun typeIdOf(signal: ImageView): Int {
+        val pkg = activePackage
+        if (pkg.isEmpty()) return 0
         val cached = cachedTypeId
-        if (cached != 0) return cached
+        if (cached != 0 && cachedTypePackage == pkg) return cached
         val id = try {
-            signal.resources.getIdentifier(TYPE_ID_NAME, "id", SYSTEM_UI_PACKAGE)
+            signal.resources.getIdentifier(TYPE_ID_NAME, "id", pkg)
         } catch (_: Throwable) {
             0
         }
-        if (id != 0) cachedTypeId = id
+        if (id != 0) {
+            cachedTypeId = id
+            cachedTypePackage = pkg
+        }
         return id
     }
 
@@ -205,16 +246,49 @@ internal object IosMobileTypePlacement {
             copy.gravity = gravity
             copy.marginStart = 0
             copy.marginEnd = 0
-            signal.layoutParams = copy
+            installParams(signal, signalLp, copy)
         }
 
         if (typeLp.gravity != gravity || typeLp.marginStart != typeMarginStart) {
             val copy = FrameLayout.LayoutParams(typeLp)
             copy.gravity = gravity
             copy.marginStart = typeMarginStart
-            type.layoutParams = copy
+            installParams(type, typeLp, copy)
         }
         return true
+    }
+
+    /**
+     * Writes [copy] and records the stock instance the first time this view is touched (R7 P5).
+     * A view that already carries our installed instance keeps the first captured original.
+     */
+    private fun installParams(view: View, current: FrameLayout.LayoutParams, copy: FrameLayout.LayoutParams) {
+        synchronized(installedParams) {
+            if (!installedParams.containsKey(view)) originalParams[view] = current
+            installedParams[view] = copy
+        }
+        view.layoutParams = copy
+    }
+
+    /**
+     * Puts every stock `LayoutParams` instance back, but only where our instance is still the live one.
+     * A concurrent OEM write wins, and its own params are left alone.
+     */
+    private fun restoreLayouts() {
+        val live: List<Pair<View, FrameLayout.LayoutParams>> = synchronized(installedParams) {
+            installedParams.entries.map { entry -> entry.key to entry.value }
+        }
+        for ((view, ours) in live) {
+            if (view.layoutParams !== ours) continue
+            val original = synchronized(originalParams) { originalParams[view] } ?: continue
+            try {
+                view.layoutParams = original
+            } catch (_: Throwable) {
+                // A view that cannot accept its old params is left as the system has it.
+            }
+        }
+        synchronized(installedParams) { installedParams.clear() }
+        synchronized(originalParams) { originalParams.clear() }
     }
 
     /**

@@ -86,6 +86,16 @@ class IosResourceEngineTest {
         assertTrue(transform.scale > 1f)
     }
 
+    @Test
+    fun `the snapshot seeds its default tint instead of hard-coded white`() {
+        // R7 P5: the activation passes BarTint.fgColor(context); this seam pins that the visual uses
+        // it (a system tint list/filter still overrides it in the drawable).
+        val seeded = 0xFF00FF00.toInt()
+        val snapshot = buildSnapshot(listOf(entry()), baseDensity = 160, defaultTint = seeded)
+        val drawable = snapshot.newDrawable(0, context().resources, 160, false) as IosGlyphDrawable
+        assertEquals(seeded, drawable.visualForTest!!.tint)
+    }
+
     // ----------------------------------------------------------------------------- diagnostics
 
     @Test
@@ -108,8 +118,9 @@ class IosResourceEngineTest {
 
     @Test
     fun `activate ignores a non-v2 family and stays inactive`() {
-        IosResourceEngine.activate(context(), rom("aosp"), synchronous = true)
+        assertFalse(IosResourceEngine.activate(context(), rom("aosp"), synchronous = true))
         assertFalse(IosResourceEngine.isActive)
+        assertEquals(0, IosResourceEngine.mapSize)
         assertTrue(IosResourceEngine.diagnosticLines().single().contains("family=none"))
     }
 

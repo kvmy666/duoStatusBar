@@ -70,6 +70,16 @@ class IosRouteTest {
         assertFalse(iosV2HasNoHosts(IosRoute.V2, iosMainHostPresent = false, extraHostCount = 1))
         // Host and NONE routes are not constrained by this invariant.
         assertTrue(iosV2HasNoHosts(IosRoute.HOST, iosMainHostPresent = true, extraHostCount = 2))
+        assertTrue(iosV2HasNoHosts(IosRoute.HOST, iosMainHostPresent = false, extraHostCount = 0))
         assertTrue(iosV2HasNoHosts(IosRoute.NONE, iosMainHostPresent = false, extraHostCount = 0))
+    }
+
+    @Test
+    fun `stopping the v2 owners keeps the selected route`() {
+        // R7 P5: the HOST fall-through stops the v2 owners but must stay HOST; only the explicit
+        // deactivate path writes NONE. A route rewrite here used to leave HOST reports saying NONE.
+        assertEquals(IosRoute.HOST, routeAfterStoppingV2Owners(IosRoute.HOST))
+        assertEquals(IosRoute.V2, routeAfterStoppingV2Owners(IosRoute.V2))
+        assertEquals(IosRoute.NONE, routeAfterStoppingV2Owners(IosRoute.NONE))
     }
 }

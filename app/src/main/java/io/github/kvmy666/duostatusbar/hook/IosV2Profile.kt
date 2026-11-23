@@ -59,6 +59,15 @@ internal fun iosRoute(
 }
 
 /**
+ * R7 P5: the route after the v2 owners are stopped without leaving iOS mode.
+ *
+ * Stopping the owners is not the same event as a teardown: the HOST fall-through releases the
+ * resource map/battery/placement and then keeps serving iOS through the pre-R7 host. Only an explicit
+ * [IosRoute.NONE] write (leaving iOS) may clear the route, so this is the identity.
+ */
+internal fun routeAfterStoppingV2Owners(route: IosRoute): IosRoute = route
+
+/**
  * Zero double-ownership invariant (R7 P4): while [route] is [IosRoute.V2] no pre-R7 host may exist.
  *
  * The V2 path never calls `ensureIosMain`/`ensureIosExtra`, so `iosMainHost` stays null and

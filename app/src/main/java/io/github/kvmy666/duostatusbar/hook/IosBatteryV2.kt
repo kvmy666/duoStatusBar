@@ -154,23 +154,31 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         IosDiagnostics.register(this)
         try {
             val oplus = findClass(OPLUS_VIEW_CLASS, classLoader)
-            if (oplus != null) {
+            val oplusHooked = if (oplus != null) {
                 oplusClass = oplus
                 hookOplusView(oplus)
             } else {
                 countFailure()
+                false
             }
 
             val binder = findClass(OPLUS_BINDER_CLASS, classLoader)
             if (binder != null) hookOplusBinder(binder, oplus) else countFailure()
 
             val aosp = findClass(AOSP_VIEW_CLASS, classLoader)
-            if (aosp != null) hookAospView(aosp) else countFailure()
+            val aospHooked = if (aosp != null) {
+                hookAospView(aosp)
+            } else {
+                countFailure()
+                false
+            }
 
-            installedFlag = oplus != null || aosp != null
+            // R7 P5: a resolved class is not a working hook. V2 may only be selected when at least
+            // one constructor hook was actually installed; otherwise the host stays the owner.
+            installedFlag = batteryHookInstalled(oplusHooked, aospHooked)
             if (!installedFlag) {
                 logOnce.once("ios-battery-no-class") {
-                    L.w("$TAG no battery view class found - battery stays stock")
+                    L.w("$TAG no battery view hook installed - battery stays stock")
                 }
             } else {
                 L.i("install step: ios-battery-v2")
@@ -190,13 +198,15 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         null
     }
 
-    private fun hookOplusView(cls: Class<*>) {
+    private fun hookOplusView(cls: Class<*>): Boolean {
         val capture = object : XC_MethodHook() {
             override fun afterHookedMethod(param: MethodHookParam) {
                 onBatteryViewHook(param)
             }
         }
-        hookSafely("oplus-constructors") { XposedBridge.hookAllConstructors(cls, capture) }
+        val constructors = hookSafely("oplus-constructors") {
+            XposedBridge.hookAllConstructors(cls, capture)
+        }
         // The icon view does not exist in the constructor: `onFinishInflate` is the retry point.
         hookSafely("oplus-onFinishInflate") { XposedBridge.hookAllMethods(cls, "onFinishInflate", capture) }
         hookSafely("oplus-onDarkChanged") {
@@ -206,6 +216,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 }
             })
         }
+        return constructors
     }
 
     private fun hookOplusBinder(cls: Class<*>, oplus: Class<*>?) {
@@ -227,13 +238,15 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         }
     }
 
-    private fun hookAospView(cls: Class<*>) {
+    private fun hookAospView(cls: Class<*>): Boolean {
         val capture = object : XC_MethodHook() {
             override fun afterHookedMethod(param: MethodHookParam) {
                 onBatteryViewHook(param)
             }
         }
-        hookSafely("aosp-constructors") { XposedBridge.hookAllConstructors(cls, capture) }
+        val constructors = hookSafely("aosp-constructors") {
+            XposedBridge.hookAllConstructors(cls, capture)
+        }
         hookSafely("aosp-onAttachedToWindow") {
             XposedBridge.hookAllMethods(cls, "onAttachedToWindow", capture)
         }
@@ -248,16 +261,18 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 }
             })
         }
+        return constructors
     }
 
-    private inline fun hookSafely(what: String, block: () -> Unit) {
-        try {
-            block()
+    private inline fun hookSafely(what: String, block: () -> Collection<*>): Boolean {
+        return try {
+            block().isNotEmpty()
         } catch (t: Throwable) {
             countFailure()
             logOnce.once("ios-battery-hook-$what") {
                 L.w("$TAG hook $what failed: ${t.javaClass.simpleName}")
             }
+            false
         }
     }
 
@@ -320,6 +335,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         // must stay visible in the dump after the first activation resets the volume counters.
         active = true
         registerReceiver(app)
+        // R7 P5: the sticky read decides whether an install is allowed at all (a null reading keeps
+        // the stock icon), so read first, install the recorded views, then push the level.
+        refresh()
         installRecordedViews()
         refresh()
     }
@@ -418,6 +436,10 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         batteryIconId = 0
         batteryIconPackage = ""
         boltIds = IntArray(0)
+        // A fresh activation must read the sticky state again; a stale reading from the previous
+        // session could otherwise install a glyph before the bar has a level.
+        lastReading = null
+        lastSaver = false
     }
 
     private fun unregisterReceiver() {
@@ -461,6 +483,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 countFailure()
             }
         }
+        // R7 P5: a view recorded while the sticky read was missing was deliberately left stock.
+        // Now that a reading exists, the install it refused is retried.
+        if (lastReading != null) installRecordedViews()
     }
 
     // ------------------------------------------------------------------------------ controllers
@@ -490,34 +515,48 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 transform = transformRef
             )
         }
+        // R7 P5: never install an invisible glyph. A missing sticky reading leaves the stock icon.
+        if (state.reading == null) return null
 
-        val existing = controllers[view]
-        if (existing != null) {
-            // The OEM binder may have pushed its drawable on configuration/attach; repair in place.
-            if (existing.reassert()) reasserts++
-            return existing
-        }
+        // One synchronized block for the check-and-create, so two hook callbacks cannot both install
+        // a controller for the same view (the loser would overwrite the winner's original drawable).
+        return synchronized(controllers) {
+            val existing = controllers[view]
+            if (existing != null) {
+                // R7 P5: the constructor values are no longer the live settings; apply them on every
+                // re-activation/apply so a scale/toggle change reaches an already-installed icon.
+                existing.applySettings(
+                    state.settings,
+                    state.percentInside,
+                    state.lowThreshold,
+                    state.transform
+                )
+                // The OEM binder may have pushed its drawable on configuration/attach; repair in place.
+                if (existing.reassert()) reasserts++
+                return@synchronized existing
+            }
 
-        val image = imageFor(view, state.context, state.rom) ?: return null
-        val controller = Controller(
-            view,
-            image,
-            state.bolts,
-            state.context,
-            state.percentInside,
-            state.lowThreshold,
-            state.settings,
-            state.transform
-        )
-        if (!controller.install()) {
-            countFailure()
-            return null
+            val image = imageFor(view, state.context, state.rom) ?: return@synchronized null
+            val controller = Controller(
+                view,
+                image,
+                state.bolts,
+                state.context,
+                state.percentInside,
+                state.lowThreshold,
+                state.settings,
+                state.transform
+            )
+            if (!controller.install()) {
+                countFailure()
+                return@synchronized null
+            }
+            installs++
+            controllers[view] = controller
+            if (state.tint != 0) controller.setTint(state.tint)
+            if (state.reading != null) controller.update(state.reading, state.saver)
+            controller
         }
-        installs++
-        controllers[view] = controller
-        if (state.tint != 0) controller.setTint(state.tint)
-        if (state.reading != null) controller.update(state.reading, state.saver)
-        return controller
     }
 
     /** One activation's immutable controller inputs, copied under [stateLock]. */
@@ -614,10 +653,10 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         private val image: ImageView,
         private val boltIds: IntArray = IntArray(0),
         private val context: Context,
-        private val percentInside: Boolean,
-        private val lowThreshold: Int,
-        private val settings: ModuleSettings? = null,
-        private val transform: IosUserTransform = IosUserTransform.IDENTITY
+        percentInside: Boolean,
+        lowThreshold: Int,
+        settings: ModuleSettings? = null,
+        transform: IosUserTransform = IosUserTransform.IDENTITY
     ) {
 
         private var original: Drawable? = null
@@ -628,6 +667,16 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         private var tint = BarTint.fgColor(context)
         private val boltVisibility = ArrayList<Pair<View, Int>>()
         private var installedFlag = false
+
+        /** R7 P4/P5: live settings, mutable so a re-activation reaches an installed icon. */
+        private var percentInside = percentInside
+        private var lowThreshold = lowThreshold
+        private var settings = settings
+        private var fallbackTransform = transform
+
+        /** The stock slot size captured at [install], the input to the live transform recompute. */
+        private var stockWidth = 0
+        private var stockHeight = 0
 
         /** R7 P4: the per-icon transform applied to every visual after [install]. */
         private var userTransform: IosUserTransform = transform
@@ -640,10 +689,12 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 
         /**
          * Captures the stock drawable and size, swaps in our glyph and hides the OEM bolt(s).
-         * Returns false (and changes nothing) when the stock size is unusable (C2: never guess).
+         * Returns false (and changes nothing) when there is no battery reading yet (R7 P5: keep the
+         * stock icon rather than install an invisible glyph) or the stock size is unusable (C2).
          */
         fun install(): Boolean {
             if (installedFlag) return true
+            if (reading == null) return false
             val stock = image.drawable
             val width = stock?.intrinsicWidth?.takeIf { it > 0 } ?: image.width
             val height = stock?.intrinsicHeight?.takeIf { it > 0 } ?: image.height
@@ -651,6 +702,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 
             // The transform depends on the glyph's actual inner box, so it is resolved here once the
             // stock slot is known (R7 P4); a null settings snapshot keeps the caller's fallback.
+            stockWidth = width
+            stockHeight = height
             userTransform = resolveTransform(width, height)
             val next = visualFor()
             val drawable = IosDrawables.create(
@@ -670,15 +723,39 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             return true
         }
 
+        /**
+         * R7 P5: adopt the current settings on an already-installed controller.
+         *
+         * `percentInside`/`lowThreshold`/the transform were constructor values in P2, so a settings
+         * change after the icon was installed never reached it. Recompute from the stock size captured
+         * at install and push a fresh visual; before install only the fields are updated.
+         */
+        fun applySettings(
+            settings: ModuleSettings?,
+            percentInside: Boolean,
+            lowThreshold: Int,
+            fallbackTransform: IosUserTransform
+        ) {
+            this.settings = settings
+            this.percentInside = percentInside
+            this.lowThreshold = lowThreshold
+            this.fallbackTransform = fallbackTransform
+            userTransform = if (stockWidth > 0 && stockHeight > 0) {
+                resolveTransform(stockWidth, stockHeight)
+            } else {
+                fallbackTransform
+            }
+            if (!installedFlag) return
+            pushVisual()
+        }
+
         /** The system's resolved icon colour; a zero-alpha value is not a colour (M17). */
         fun setTint(color: Int) {
             if (color == 0 || Color.alpha(color) == 0) return
             if (color == tint) return
             tint = color
             if (!installedFlag) return
-            val next = visualFor()
-            visual = next
-            ours?.update(next)
+            pushVisual()
         }
 
         /** Pushes a new battery snapshot; a null [reading] keeps the last known level. */
@@ -686,14 +763,16 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             if (reading != null) this.reading = reading
             this.saver = saver
             if (!installedFlag) return
-            val next = visualFor()
-            visual = next
-            ours?.update(next)
+            pushVisual()
         }
 
-        /** Re-installs our drawable when the OEM binder replaced it. True only on a real repair. */
+        /**
+         * Re-installs our drawable when the OEM binder replaced it, and re-hides the OEM bolt that the
+         * `bind$updateChargingView` push made visible again (R7 P5). True only on a real repair.
+         */
         fun reassert(): Boolean {
             val drawable = ours ?: return false
+            hideBolts()
             if (image.drawable === drawable) return false
             image.setImageDrawable(drawable)
             return true
@@ -730,13 +809,20 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             ).copy(userTransform = userTransform)
         }
 
+        /** Recomputes the visual from the live fields and hands it to the installed drawable. */
+        private fun pushVisual() {
+            val next = visualFor()
+            visual = next
+            ours?.update(next)
+        }
+
         /**
-         * The user's per-icon transform for this battery glyph (R7 P4). A settings snapshot wins
-         * because it is the live source; otherwise the caller's [transform] is used. Any failure
-         * falls back to identity, never to a guessed offset (C11).
+         * The user's per-icon transform for this battery glyph (R7 P4/P5). A settings snapshot wins
+         * because it is the live source; otherwise the caller's fallback is used. Any failure falls
+         * back to identity, never to a guessed offset (C11).
          */
         private fun resolveTransform(width: Int, height: Int): IosUserTransform {
-            val live = settings ?: return transform
+            val live = settings ?: return fallbackTransform
             return try {
                 val innerWidth = IosGeometry.Relative.sizeFor(
                     IosIconKind.BATTERY,
@@ -750,6 +836,10 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             }
         }
 
+        /**
+         * Hides every OEM bolt and records its original visibility once, so [reassert] is idempotent
+         * and [restore] can never restore a GONE we wrote ourselves.
+         */
         private fun hideBolts() {
             if (boltIds.isEmpty()) return
             for (id in boltIds) {
@@ -759,8 +849,11 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                     null
                 }
                 if (bolt == null) continue
-                boltVisibility.add(bolt to bolt.visibility)
-                bolt.visibility = View.GONE
+                val recorded = boltVisibility.firstOrNull { it.first === bolt }
+                if (recorded == null) {
+                    boltVisibility.add(bolt to bolt.visibility)
+                }
+                if (bolt.visibility != View.GONE) bolt.visibility = View.GONE
             }
         }
 
@@ -775,3 +868,10 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         }
     }
 }
+
+/**
+ * R7 P5: the battery owner exists only when a constructor hook was really installed. A class that was
+ * merely found is not enough; otherwise the V2 route could be picked with a battery that never binds.
+ */
+internal fun batteryHookInstalled(oplusConstructorHook: Boolean, aospConstructorHook: Boolean): Boolean =
+    oplusConstructorHook || aospConstructorHook

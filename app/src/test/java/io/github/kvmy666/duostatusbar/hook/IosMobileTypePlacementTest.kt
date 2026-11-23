@@ -137,6 +137,31 @@ class IosMobileTypePlacementTest {
     }
 
     @Test
+    fun `deactivate restores the exact original LayoutParams instances and values`() {
+        val f = fixture()
+        val signalBefore = f.signal.layoutParams as FrameLayout.LayoutParams
+        val typeBefore = f.type.layoutParams as FrameLayout.LayoutParams
+        signalBefore.gravity = Gravity.END
+        signalBefore.marginStart = 3
+        typeBefore.gravity = Gravity.TOP
+        typeBefore.marginStart = 7
+
+        assertTrue(IosMobileTypePlacement.place(f.signal, f.type, 60, 51))
+        assertFalse(f.signal.layoutParams === signalBefore)
+        assertFalse(f.type.layoutParams === typeBefore)
+
+        // R7 P5: the stock instances are captured on the first write and put back on deactivate.
+        IosMobileTypePlacement.deactivate()
+
+        assertSame(signalBefore, f.signal.layoutParams)
+        assertSame(typeBefore, f.type.layoutParams)
+        assertEquals(Gravity.END, signalBefore.gravity)
+        assertEquals(3, signalBefore.marginStart)
+        assertEquals(Gravity.TOP, typeBefore.gravity)
+        assertEquals(7, typeBefore.marginStart)
+    }
+
+    @Test
     fun `place uses the explicit type when the mobile_type id is absent`() {
         // Robolectric has no SystemUI resource table, so the name lookup cannot resolve; the measured
         // XML order (signal at 0, type at 1) is the fallback and the explicit type is what it yields.
@@ -223,14 +248,16 @@ class IosMobileTypePlacementTest {
 
     @Test
     fun `only oxygenos activates placement`() {
-        IosMobileTypePlacement.activate(null)
+        IosMobileTypePlacement.activate(null, "com.android.systemui")
         assertFalse(IosMobileTypePlacement.isActive)
 
-        IosMobileTypePlacement.activate("samsung")
+        IosMobileTypePlacement.activate("samsung", "com.android.systemui")
         assertFalse(IosMobileTypePlacement.isActive)
 
-        IosMobileTypePlacement.activate("oxygenos")
+        IosMobileTypePlacement.activate("oxygenos", "com.example.systemui")
         assertTrue(IosMobileTypePlacement.isActive)
+        // R7 P5: the caller's package is used for the mobile_type lookup, never a hard-coded one.
+        assertEquals("com.example.systemui", IosMobileTypePlacement.packageForTest)
 
         IosMobileTypePlacement.deactivate()
         assertFalse(IosMobileTypePlacement.isActive)

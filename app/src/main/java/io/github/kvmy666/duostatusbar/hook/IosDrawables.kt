@@ -55,6 +55,10 @@ internal abstract class IosGlyphDrawable(
 ) : Drawable() {
 
     private var visual: IosVisual? = initialVisual
+
+    /** R7 P5 test seam: the snapshot currently drawn (never used by production code paths). */
+    internal val visualForTest: IosVisual? get() = visual
+
     private var fallbackUserTransform: IosUserTransform = initialUserTransform
     private var drawableAlpha = 255
     private var capturedTint: Int? = null

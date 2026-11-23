@@ -58,9 +58,6 @@ internal object IosResourceEngine : IosDiagnosticSource {
     /** Bounded per-snapshot cache for densities other than the build density. */
     private const val MAX_CACHE = 256
 
-    /** `tint = WHITE`: the system's ImageView/colorFilter supplies the real colour (M17). */
-    private const val WHITE = 0xFFFFFFFF.toInt()
-
     private val logOnce = LogOnce()
     private val guard = ThreadLocal<Boolean>()
 
@@ -93,6 +90,9 @@ internal object IosResourceEngine : IosDiagnosticSource {
     private var maxMissNanos: Long = 0L
 
     val isActive: Boolean get() = installedFlag && snapshot != null
+
+    /** Entries in the live map (0 while inactive, building or after an empty build). */
+    val mapSize: Int get() = snapshot?.size ?: 0
 
     // ---------------------------------------------------------------------------------- install
 
@@ -131,9 +131,13 @@ internal object IosResourceEngine : IosDiagnosticSource {
     // --------------------------------------------------------------------------------- activate
 
     /**
-     * Publishes a map for [rom]. No-op (and deactivates) unless the hook is installed and the family
+     * Publishes a map for [rom]. No-op (and returns false) unless the hook is installed and the family
      * is a v2 engine family. With [synchronous] the map is built inline on the boot path before the
      * first inflation; otherwise a single daemon thread builds it and a stale build is discarded.
+     *
+     * @return true when a non-empty map is live now (`synchronous`), or when the previous map stays
+     * live while an asynchronous rebuild runs. False means there is no map to draw and the caller
+     * must keep the HOST route (R7 P5: a HOST->V2 switch may not tear the host down first).
      *
      * [settings] supplies each glyph's per-icon offset/scale (R7 P4). It is read at build time, so a
      * settings change rebuilds the map through the normal per-apply [activate]; null is identity.
@@ -143,31 +147,36 @@ internal object IosResourceEngine : IosDiagnosticSource {
         rom: RomAdapter,
         settings: ModuleSettings? = null,
         synchronous: Boolean = false
-    ) {
+    ): Boolean {
         var gen = 0L
+        var previousLive = false
         synchronized(stateLock) {
             if (!installedFlag || !IosV2Profile.engineFamily(rom.id)) {
                 deactivate()
-                return
+                return false
             }
             gen = ++generation
             activeFamily = rom.id
             resetCountersLocked()
+            previousLive = (snapshot?.size ?: 0) > 0
         }
         val work = {
             val built = buildMap(context, rom, settings)
             synchronized(stateLock) {
-                if (gen == generation) snapshot = built
+                // Never publish an empty/failed build over a live map: V2->V2 keeps drawing the old
+                // snapshot until a successful rebuild replaces it.
+                if (gen == generation && built != null && built.size > 0) snapshot = built
             }
         }
         if (synchronous) {
             work()
-        } else {
-            Thread({ work() }, "duo-ios-res").apply {
-                isDaemon = true
-                start()
-            }
+            return mapSize > 0
         }
+        Thread({ work() }, "duo-ios-res").apply {
+            isDaemon = true
+            start()
+        }
+        return previousLive
     }
 
     /** Restores stock behaviour: the next load returns the stock drawable. */
@@ -218,22 +227,64 @@ internal object IosResourceEngine : IosDiagnosticSource {
                 badPackage += 1
                 return
             }
-            if (guard.get() == true) return
-            guard.set(true)
-            try {
-                val density = args[3] as? Int ?: 0
-                param.result = snap.newDrawable(index, wrapper, density, nightOf(wrapper))
+            val result = replace(snap, index, wrapper, args[3] as? Int ?: 0, nightOf(wrapper))
+            if (result != null) {
+                param.result = result
                 hits += 1L
-            } catch (t: Throwable) {
-                failures += 1
-                logOnce.once("ios-resource-replacement") {
-                    L.w("$TAG replacement failed: ${t.javaClass.simpleName}")
-                }
-            } finally {
-                guard.set(false)
             }
         } catch (_: Throwable) {
             // Whole body guarded: any unexpected failure leaves the stock load path untouched.
+        }
+    }
+
+    /**
+     * R7 P5 test seam: the same decision/replacement the hook body makes, without an Xposed method
+     * parameter. [guarded] simulates our own drawable creation re-entering `loadDrawable`.
+     */
+    internal fun handleForTest(
+        snapshotForTest: Snapshot,
+        resources: Resources,
+        id: Int,
+        density: Int,
+        night: Boolean,
+        guarded: Boolean = false
+    ): Drawable? {
+        val index = snapshotForTest.indexOf(id)
+        if (index < 0) return null
+        val pkg = try {
+            resources.getResourcePackageName(id)
+        } catch (_: Throwable) {
+            return null
+        }
+        if (!snapshotForTest.accepts(index, pkg)) return null
+        if (guarded) guard.set(true)
+        return try {
+            replace(snapshotForTest, index, resources, density, night)
+        } finally {
+            if (guarded) guard.set(false)
+        }
+    }
+
+    /** The replacement half of the hook; a miss path never calls this. */
+    private fun replace(
+        snap: Snapshot,
+        index: Int,
+        wrapper: Resources,
+        density: Int,
+        night: Boolean
+    ): Drawable? {
+        if (guard.get() == true) return null
+        guard.set(true)
+        return try {
+            snap.newDrawable(index, wrapper, density, night)
+        } catch (t: Throwable) {
+            failures += 1
+            logOnce.once("ios-resource-replacement") {
+                L.w("$TAG replacement failed: ${t.javaClass.simpleName}")
+            }
+            null
+        } finally {
+            guard.set(false)
         }
     }
 
@@ -266,6 +317,10 @@ internal object IosResourceEngine : IosDiagnosticSource {
         try {
             val resources = context.resources
             val densityDpi = resources.displayMetrics.densityDpi.let { if (it > 0) it else 160 }
+            // R7 P5: seed the glyph ink from the bar foreground. If the system never pushes a tint
+            // list/colour filter (some ROM leaves do not), a hard-coded white would vanish on a light
+            // bar. The system's own tint still overrides this through setTintList/captureColorFilter.
+            val defaultTint = BarTint.fgColor(context)
             val specs = IosResourceNames.specs(rom.id)
             val seen = HashSet<Int>(specs.size * 2)
             val resolved = ArrayList<ResolvedEntry>(specs.size)
@@ -311,7 +366,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     )
                 )
             }
-            val built = buildSnapshot(resolved, densityDpi)
+            val built = buildSnapshot(resolved, densityDpi, defaultTint)
             val buildMs = (System.nanoTime() - startedAt) / 1_000_000L
             L.i(
                 "iOS v2 resource map: family=${rom.id} specs=${specs.size} " +
@@ -386,7 +441,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
     internal class Snapshot(
         internal val ids: IntArray,
         internal val entries: Array<ResolvedEntry>,
-        internal val baseDensity: Int
+        internal val baseDensity: Int,
+        private val defaultTint: Int = 0xFFFFFFFF.toInt()
     ) {
         val size: Int get() = ids.size
 
@@ -457,29 +513,29 @@ internal object IosResourceEngine : IosDiagnosticSource {
             val heightPx = (entry.heightDp * dpi / 160f).roundToInt().coerceAtLeast(1)
             return IosResourceEngine.CachedState(
                 IosResourceEngine.drawableKind(entry.slot),
-                IosResourceEngine.visualFor(entry.slot).copy(userTransform = entry.transform),
+                IosResourceEngine.visualFor(entry.slot, defaultTint).copy(userTransform = entry.transform),
                 widthPx,
                 heightPx
             )
         }
     }
 
-    private fun visualFor(slot: IosResourceSlot): IosVisual = when (slot) {
+    private fun visualFor(slot: IosResourceSlot, tint: Int): IosVisual = when (slot) {
         is IosResourceSlot.Wifi -> IosVisual(
             part = IosPart.WIFI,
-            tint = WHITE,
+            tint = tint,
             wifiLevel = slot.dots.toFloat()
         )
         is IosResourceSlot.Cell -> IosVisual(
             part = IosPart.CELL,
-            tint = WHITE,
+            tint = tint,
             cellMode = IosCellMode.SINGLE,
             cellRole = IosCellRole.DATA,
             cellBars = slot.dots.toFloat()
         )
         is IosResourceSlot.Label -> IosVisual(
             part = IosPart.WIFI,
-            tint = WHITE,
+            tint = tint,
             wifiSlot = IosWifiSlot.DataType(slot.text)
         )
     }
@@ -515,9 +571,15 @@ internal object IosResourceEngine : IosDiagnosticSource {
 /** Builds the immutable [IosResourceEngine.Snapshot] from resolved entries (also the test seam). */
 internal fun buildSnapshot(
     entries: List<ResolvedEntry>,
-    baseDensity: Int
+    baseDensity: Int,
+    defaultTint: Int = 0xFFFFFFFF.toInt()
 ): IosResourceEngine.Snapshot {
     val sorted = entries.sortedBy { it.id }
     val ids = IntArray(sorted.size) { sorted[it].id }
-    return IosResourceEngine.Snapshot(ids, sorted.toTypedArray(), if (baseDensity > 0) baseDensity else 160)
+    return IosResourceEngine.Snapshot(
+        ids,
+        sorted.toTypedArray(),
+        if (baseDensity > 0) baseDensity else 160,
+        defaultTint
+    )
 }

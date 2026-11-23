@@ -103,10 +103,28 @@ class IosResourceNamesTest {
     }
 
     @Test
+    fun `samsung keeps its captive wifi indication stock`() {
+        val samsung = IosResourceNames.specs("samsung")
+        assertTrue(samsung.none { it.name.startsWith("stat_sys_wifi_captive_") })
+        // The normal Wi-Fi bars are still mapped.
+        assertNotNull(samsung.firstOrNull { it.name == "stat_sys_wifi_signal_4" })
+    }
+
+    @Test
+    fun `a spec without an explicit package resolves through the rom package`() {
+        // R7 P5: the default is blank so the engine can use `rom.systemUiPackage` (m4).
+        val specs = IosResourceNames.specs("oxygenos")
+        assertTrue(specs.all { it.packageName.isEmpty() })
+        assertEquals("", IosResourceSpec.DEFAULT_PACKAGE)
+        // The measured Motorola framework ids are the only explicit package.
+        assertTrue(IosResourceNames.specs("motorola").any { it.packageName == "android" })
+    }
+
+    @Test
     fun `family coverage matches the measured tables`() {
         // Exact counts keep a future edit from silently dropping a measured entry.
         assertEquals(94, IosResourceNames.specs("oxygenos").size)
-        assertEquals(113, IosResourceNames.specs("samsung").size)
+        assertEquals(108, IosResourceNames.specs("samsung").size)
         assertEquals(38, IosResourceNames.specs("hyperos").size)
         assertEquals(25, IosResourceNames.specs("nothing").size)
         assertEquals(21, IosResourceNames.specs("motorola").size)
