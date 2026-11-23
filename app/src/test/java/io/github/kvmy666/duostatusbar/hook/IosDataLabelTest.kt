@@ -125,6 +125,8 @@ class IosDataLabelTest {
     @Test
     fun `supports accepts only the measured labels`() {
         val d = IosGeometry.DataLabel
+        assertEquals(listOf("LTE", "4G", "5G", "5G+", "3G", "E", "G"), d.LABELS)
+        assertTrue("G is the measured outline and must be supported", d.supports("G"))
         for (label in d.LABELS) assertTrue(label, d.supports(label))
         for (label in listOf("", "L", "WIFI", "lte", "5G++", "NR", "H+")) {
             assertFalse("$label must be unsupported", d.supports(label))

@@ -5,6 +5,9 @@ import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.Drawable
 import android.os.BatteryManager
 import androidx.test.core.app.ApplicationProvider
@@ -132,6 +135,30 @@ class IosDrawablesTest {
         val cell = IosDrawables.create(IosIconKind.CELL, cellSnapshot, 0, 0)
         cell.setTint(white)
         assertEquals(white, sample(cell, cellSnapshot, CELL_W, CELL_H, 136.55f, 50f))
+    }
+
+    @Test
+    fun `captureColorFilter takes a PorterDuff colour and ignores anything else`() {
+        val visual = wifiVisual(tint = Color.BLACK)
+
+        // The v2 engine opts in; a system PorterDuff filter becomes the dynamic colour.
+        val captured = IosDrawables.create(
+            IosIconKind.WIFI, visual, 0, 0, captureColorFilter = true
+        )
+        captured.setColorFilter(PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN))
+        assertEquals(Color.WHITE, sample(captured, visual, WIFI_W, WIFI_H, 64.82f, 82.4f))
+
+        // Any other ColorFilter is not a resolved colour and must be ignored.
+        val ignored = IosDrawables.create(
+            IosIconKind.WIFI, visual, 0, 0, captureColorFilter = true
+        )
+        ignored.setColorFilter(object : ColorFilter() {})
+        assertEquals(Color.BLACK, sample(ignored, visual, WIFI_W, WIFI_H, 64.82f, 82.4f))
+
+        // Default false keeps the old host's behaviour exactly.
+        val legacy = IosDrawables.create(IosIconKind.WIFI, visual, 0, 0)
+        legacy.setColorFilter(PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN))
+        assertEquals(Color.BLACK, sample(legacy, visual, WIFI_W, WIFI_H, 64.82f, 82.4f))
     }
 
     @Test

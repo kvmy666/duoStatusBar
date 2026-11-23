@@ -6,8 +6,26 @@ import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.PixelFormat
 import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.Drawable
 import kotlin.math.roundToInt
+
+/**
+ * `PorterDuffColorFilter.getColor()` is `@hide`, so the captured colour is read from the framework's
+ * private `mColor` field. The lookup is resolved once; a missing field simply disables the capture
+ * and the renderer keeps its visual tint (fail silent).
+ */
+private object PorterDuffColourField {
+    private val field: java.lang.reflect.Field? by lazy {
+        try {
+            PorterDuffColorFilter::class.java.getDeclaredField("mColor").apply { isAccessible = true }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    fun get(): java.lang.reflect.Field? = field
+}
 
 /**
  * A stock status-bar glyph replaced in place by the shared iOS vector renderer.
@@ -27,7 +45,13 @@ internal abstract class IosGlyphDrawable(
     private var stockWidth: Int,
     private var stockHeight: Int,
     initialUserTransform: IosUserTransform = IosUserTransform(),
-    private val relativeSize: Boolean = false
+    private val relativeSize: Boolean = false,
+    /**
+     * When true, a `PorterDuffColorFilter` pushed by the system is captured as the dynamic colour
+     * instead of filtering our pixels (the v2 resource engine hands the drawable to an ImageView that
+     * tints via `setColorFilter`). Default false keeps the old host behaviour exactly.
+     */
+    private val captureColorFilter: Boolean = false
 ) : Drawable() {
 
     private var visual: IosVisual? = initialVisual
@@ -184,7 +208,15 @@ internal abstract class IosGlyphDrawable(
     }
 
     override fun setColorFilter(colorFilter: ColorFilter?) {
-        // Fixed state colours must survive; the captured tint is the only dynamic colour.
+        if (!captureColorFilter) return
+        // Only a resolved ARGB colour (M17); any other filter is ignored, never applied to our pixels.
+        val filter = colorFilter as? PorterDuffColorFilter ?: return
+        val colour = try {
+            PorterDuffColourField.get()?.getInt(filter)
+        } catch (_: Throwable) {
+            null
+        } ?: return
+        captureTint(colour)
     }
 
     override fun getColorFilter(): ColorFilter? = null
@@ -220,9 +252,11 @@ internal class IosBatteryDrawable(
     intrinsicWidth: Int,
     intrinsicHeight: Int,
     userTransform: IosUserTransform = IosUserTransform(),
-    relativeSize: Boolean = false
+    relativeSize: Boolean = false,
+    captureColorFilter: Boolean = false
 ) : IosGlyphDrawable(
-    IosIconKind.BATTERY, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize
+    IosIconKind.BATTERY, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize,
+    captureColorFilter
 )
 
 /** The Wi-Fi glyph as a drawable; see [IosGlyphDrawable]. */
@@ -231,9 +265,11 @@ internal class IosWifiDrawable(
     intrinsicWidth: Int,
     intrinsicHeight: Int,
     userTransform: IosUserTransform = IosUserTransform(),
-    relativeSize: Boolean = false
+    relativeSize: Boolean = false,
+    captureColorFilter: Boolean = false
 ) : IosGlyphDrawable(
-    IosIconKind.WIFI, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize
+    IosIconKind.WIFI, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize,
+    captureColorFilter
 )
 
 /** The cellular glyph as a drawable; see [IosGlyphDrawable]. */
@@ -242,9 +278,11 @@ internal class IosCellDrawable(
     intrinsicWidth: Int,
     intrinsicHeight: Int,
     userTransform: IosUserTransform = IosUserTransform(),
-    relativeSize: Boolean = false
+    relativeSize: Boolean = false,
+    captureColorFilter: Boolean = false
 ) : IosGlyphDrawable(
-    IosIconKind.CELL, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize
+    IosIconKind.CELL, initialVisual, intrinsicWidth, intrinsicHeight, userTransform, relativeSize,
+    captureColorFilter
 )
 
 /** Creates the drawable for [kind], from the same renderer the Canvas fallback uses. */
@@ -255,13 +293,20 @@ internal object IosDrawables {
         intrinsicW: Int,
         intrinsicH: Int,
         userTransform: IosUserTransform = IosUserTransform(),
-        relativeSize: Boolean = false
+        relativeSize: Boolean = false,
+        captureColorFilter: Boolean = false
     ): IosGlyphDrawable = when (kind) {
         IosIconKind.BATTERY ->
-            IosBatteryDrawable(visual, intrinsicW, intrinsicH, userTransform, relativeSize)
+            IosBatteryDrawable(
+                visual, intrinsicW, intrinsicH, userTransform, relativeSize, captureColorFilter
+            )
         IosIconKind.WIFI ->
-            IosWifiDrawable(visual, intrinsicW, intrinsicH, userTransform, relativeSize)
+            IosWifiDrawable(
+                visual, intrinsicW, intrinsicH, userTransform, relativeSize, captureColorFilter
+            )
         IosIconKind.CELL ->
-            IosCellDrawable(visual, intrinsicW, intrinsicH, userTransform, relativeSize)
+            IosCellDrawable(
+                visual, intrinsicW, intrinsicH, userTransform, relativeSize, captureColorFilter
+            )
     }
 }

@@ -351,6 +351,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 return@guard
             }
             L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
+            IosResourceEngine.install(lp.classLoader)
             // The window hook goes in *now*, not from Application.onCreate. On HyperOS 16 and One UI the
             // Application is created before LSPosed injects the module, so an Application.onCreate hook
             // fires too late (or never) and the status-bar window - already added - was never seen. The

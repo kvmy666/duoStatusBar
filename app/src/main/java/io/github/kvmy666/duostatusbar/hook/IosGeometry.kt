@@ -368,7 +368,7 @@ internal object IosGeometry {
      */
     object DataLabel {
         /** Supported labels, in reader/reporting order. */
-        val LABELS = listOf("LTE", "4G", "5G", "5G+", "3G", "E")
+        val LABELS = listOf("LTE", "4G", "5G", "5G+", "3G", "E", "G")
 
         /** Reference cap (px): the flat-letter height (L/T/E/4) in the SF strip. */
         private const val REF_CAP_PX = 36f
