@@ -177,6 +177,8 @@ The full fit and the dark cross-check are in the B4 measurement notes (kept outs
 
 ## Data-type label (R5B)
 
+> **HISTORICAL:** the R5B/R6 label quantities below (cap 77.69, TOP 14.95, stroke 11.10, R6 one-weight 15.54) are provenance. R9 changed the label to cap 71.4 / TOP 17.4 / stroke 13.6; R10A replaced every label glyph with regular-weight traced filled contours (no stroke constant, no `DIGIT_SCALE`, label digits independent of `IosDigits`). The live values are in the R10A section.
+
 R10A supersedes the stroked R5B/R6 label construction described in this section: the shipping
 labels are now traced filled cubic contours at cap 71.4 (see R9 / R10A above).
 
@@ -242,12 +244,12 @@ The ref-1 label is slightly **tighter** than the Wi-Fi slot: its two ink gaps ar
 57.5 / 59.77, and its cell->body span is 238.58 u versus the ref-6-derived 244.8 u. The measured gaps
 are adopted for the label strip only; the Wi-Fi constants are unchanged.
 
-The shipped constants:
+The R5B shipped constants (historical; superseded by R9 and R10A):
 
 | Quantity | Value | Source |
 |---|---:|---|
 | Cap height | 77.69 | measured ref-1 5 cap 32.93 px x 2.360 (0.777 of the body, 0.814 of the tallest bar) |
-| Stroke | 13.6 | R9 design: 0.19 cap. The R6 digit-weight 15.54 (0.200 cap) and the R5B ref-1 SF label weight 11.10 (0.143 cap) are provenance only |
+| Stroke | 13.6 | R9 design: 0.19 cap; also superseded by R10A's regular-weight traced filled contours (no stroke constant). The R6 digit-weight 15.54 (0.200 cap) and the R5B ref-1 SF label weight 11.10 (0.143 cap) are provenance only |
 | Cap-box top | 14.95 | measured ref-1 cap top; baseline 92.64 (top-anchored) |
 | L / T / E / G width | 47.48 / 62.58 / 51.79 / 73.37 | measured SF 0.611 / 0.806 / 0.667 / 0.944 x cap |
 | + width | 58.27 | 0.750 x cap square (measured SF height; SF width 0.778) |
@@ -257,9 +259,9 @@ The shipped constants:
 | Cap / Wi-Fi ink | 0.820 | 77.69 / 94.77 |
 | Artboard | dynamic, `ink width + 2 x 1` | the group ink starts at the 1-unit margin; height stays 96.77 |
 | Labels | LTE, 4G, 5G, 5G+, 3G, E | reader/reporting order |
-| Digits 3/4/5 | `IosDigits` widths, advances and even-odd contours x (77.69 / 57) | fixed bold battery glyphs (0.20 cap); never retyped or thinned |
-| Vertical placement | cap top = 14.95, top-anchored | measured ref 1 |
-| Horizontal placement | ink group starts at the 1-unit margin | group layout `sum(advances) - firstBearing - lastBearing` |
+| Digits 3/4/5 | `IosDigits` widths, advances and even-odd contours x (77.69 / 57) | R5B provenance; R10A label digits are traced separately from the label sheet, independent of `IosDigits` |
+| Vertical placement | cap top = 14.95, top-anchored | R5B measured ref 1; the live R9/R10A cap-top is 17.4 |
+| Horizontal placement | ink group starts at the 1-unit margin | R5B group layout `sum(advances) - firstBearing - lastBearing`; the live R10A layout uses ink-left advances |
 
 **One weight for every label glyph (R6 item 3; supersedes the R5B digit-weight limitation).** Ref 1's
 SF label measured 0.143 cap (11.10 u), but the 3/4/5 are the measured bold `IosDigits` battery glyphs at
@@ -525,6 +527,8 @@ drift. R10A later rebuilt the scene (see R9 / R10A).
 ## R6 (TRUE knockout + equal label weight)
 
 ### Item 3 — one label weight (0.200 cap)
+
+**HISTORICAL:** `DataLabel.STROKE` and `DIGIT_SCALE` were removed in R10A; the R6 weight table below is provenance for the R6 build, not the live constants.
 
 R5B shipped the measured SF label weight 11.10 units (0.143 cap), which made the owner-visible "5"
 (the measured `IosDigits` battery glyph at 0.200 cap) bold and "G" thin. R6 item 3 sets
