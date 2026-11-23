@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.hook.DuoSettingsClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -31,7 +32,8 @@ class IosIconSettingsTest {
         DuoPrefs.COL_IOS_CELL_OFFSET,
         DuoPrefs.COL_IOS_CELL_SCALE,
         DuoPrefs.COL_SIM_DISPLAY,
-        DuoPrefs.COL_IOS_PERCENT_INSIDE
+        DuoPrefs.COL_IOS_PERCENT_INSIDE,
+        DuoPrefs.COL_HIDE_EXTRAS
     )
 
     private fun rowWithout(settings: DuoSettings, drop: List<String>): Pair<Array<String>, List<Any>> {
@@ -57,6 +59,7 @@ class IosIconSettingsTest {
         assertEquals(100, defaults.iosCellScale)
         assertEquals(DuoPrefs.SIM_DISPLAY_AUTO, defaults.simDisplay)
         assertFalse(defaults.iosPercentInside)
+        assertTrue(defaults.hideExtras)
     }
 
     @Test
@@ -181,14 +184,18 @@ class IosIconSettingsTest {
             DuoPrefs.SIM_DISPLAY_AUTO,
             row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SIM_DISPLAY)]
         )
-        // The landscape copy is the tail of the row; the R3 percentage-inside pair is appended last.
+        // The landscape copy is the tail of the row; the R8 hide-extras pair is appended last.
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_PERCENT_INSIDE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDE_EXTRAS,
             DuoPrefs.COLUMNS.last()
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIM_DISPLAY,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_PERCENT_INSIDE,
             DuoPrefs.COLUMNS[DuoPrefs.COLUMNS.lastIndex - 1]
+        )
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIM_DISPLAY,
+            DuoPrefs.COLUMNS[DuoPrefs.COLUMNS.lastIndex - 2]
         )
         assertEquals(
             DuoPrefs.SIM_DISPLAY_AUTO,
@@ -213,6 +220,8 @@ class IosIconSettingsTest {
         assertEquals(DuoPrefs.DEFAULT_ICON_SCALE, read.iosCellScale)
         assertEquals(DuoPrefs.SIM_DISPLAY_AUTO, read.simDisplay)
         assertFalse(read.iosPercentInside)
+        // hide-extras is a true-by-default toggle: a missing column must never turn it off.
+        assertTrue(read.hideExtras)
     }
 
     @Test

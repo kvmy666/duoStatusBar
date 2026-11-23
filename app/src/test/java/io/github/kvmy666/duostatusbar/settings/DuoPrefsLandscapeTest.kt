@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.settings
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -39,6 +40,7 @@ class DuoPrefsLandscapeTest {
             .putInt(DuoPrefs.COL_IOS_BATTERY_SCALE, 130)
             .putInt(DuoPrefs.COL_IOS_WIFI_SCALE, 120)
             .putString(DuoPrefs.COL_SIM_DISPLAY, DuoPrefs.SIM_DISPLAY_DUAL)
+            .putBoolean(DuoPrefs.COL_HIDE_EXTRAS, false)
             .commit()
 
         val read = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
@@ -47,6 +49,7 @@ class DuoPrefsLandscapeTest {
         assertEquals(130, read.iosBatteryScale)
         assertEquals(120, read.iosWifiScale)
         assertEquals(DuoPrefs.SIM_DISPLAY_DUAL, read.simDisplay)
+        assertFalse("a missing appended hide-extras column follows portrait", read.hideExtras)
     }
 
     @Test
@@ -57,12 +60,14 @@ class DuoPrefsLandscapeTest {
             .putInt(DuoPrefs.COL_IOS_BATTERY_SCALE, 130)
             .putInt(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_BATTERY_SCALE, 90)
             .putBoolean(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE, false)
+            .putBoolean(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDE_EXTRAS, false)
             .commit()
 
         val read = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
 
         assertEquals(90, read.iosBatteryScale)
         assertEquals(false, read.iosMode)
+        assertFalse(read.hideExtras)
     }
 
     @Test

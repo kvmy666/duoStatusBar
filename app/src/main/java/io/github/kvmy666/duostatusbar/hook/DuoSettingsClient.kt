@@ -118,7 +118,9 @@ internal data class ModuleSettings(
     /** "auto", "single" or "dual"; a missing column is the automatic choice. */
     val simDisplay: String = DuoPrefs.SIM_DISPLAY_AUTO,
     /** Whether the iOS battery draws the level inside it; missing keeps today's battery. */
-    val iosPercentInside: Boolean = false
+    val iosPercentInside: Boolean = false,
+    /** Whether the iOS icons hide the Wi-Fi 6 badge and the data arrows; missing keeps them shown. */
+    val hideExtras: Boolean = true
 ) {
     /** Whether Do Not Disturb may take the middle of the ring. */
     val showDnd: Boolean get() = DuoPrefs.dndInMiddle(dndMode)
@@ -185,7 +187,8 @@ internal data class ModuleSettings(
             iosCellOffset = 0,
             iosCellScale = DuoPrefs.DEFAULT_ICON_SCALE,
             simDisplay = DuoPrefs.SIM_DISPLAY_AUTO,
-            iosPercentInside = false
+            iosPercentInside = false,
+            hideExtras = true
         )
     }
 }
@@ -588,7 +591,9 @@ internal object DuoSettingsClient {
             cursor.optionalString(DuoPrefs.COL_SIM_DISPLAY, DuoPrefs.SIM_DISPLAY_AUTO)
         ),
         // Optional: an older settings app has no percentage-inside column, which keeps today's battery.
-        iosPercentInside = cursor.optionalBool(DuoPrefs.COL_IOS_PERCENT_INSIDE, false)
+        iosPercentInside = cursor.optionalBool(DuoPrefs.COL_IOS_PERCENT_INSIDE, false),
+        // Optional: an older settings app has no hide-extras column, which keeps the current iOS drawing.
+        hideExtras = cursor.optionalBool(DuoPrefs.COL_HIDE_EXTRAS, true)
         )
     }
 
@@ -693,7 +698,8 @@ internal object DuoSettingsClient {
             simDisplay = DuoPrefs.normalizeSimDisplay(
                 str(DuoPrefs.COL_SIM_DISPLAY, portrait.simDisplay)
             ),
-            iosPercentInside = bool(DuoPrefs.COL_IOS_PERCENT_INSIDE, portrait.iosPercentInside)
+            iosPercentInside = bool(DuoPrefs.COL_IOS_PERCENT_INSIDE, portrait.iosPercentInside),
+            hideExtras = bool(DuoPrefs.COL_HIDE_EXTRAS, portrait.hideExtras)
         )
     }
 

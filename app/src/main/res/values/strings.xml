@@ -319,6 +319,8 @@
     <string name="ios_icon_cell">Cellular</string>
     <string name="settings_ios_percent_inside">Percentage inside battery</string>
     <string name="settings_ios_percent_inside_detail">Puts the battery number inside the icon.</string>
+    <string name="settings_ios_hide_extras">Hide extra icons</string>
+    <string name="settings_ios_hide_extras_detail">Hides Wi-Fi 6 badge and data arrows</string>
 
     <!-- SIM &amp; signal -->
     <string name="section_sim">SIM &amp; signal</string>

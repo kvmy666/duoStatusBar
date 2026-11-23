@@ -219,49 +219,50 @@ class SettingsChannelTest {
     @Test
     fun `the iOS columns are appended last without moving design style or hidden stock icons`() {
         // Append-only: existing installs read the old positions, so the new columns may never move.
-        assertEquals(105, DuoPrefs.COLUMNS.size)
-        assertEquals(53, DuoPrefs.PORTRAIT_COLUMNS.size)
-        assertEquals(52, DuoPrefs.LANDSCAPE_COLUMNS.size)
-        assertEquals(DuoPrefs.COL_IOS_PERCENT_INSIDE, DuoPrefs.PORTRAIT_COLUMNS.last())
-        assertEquals(DuoPrefs.COL_SIM_DISPLAY, DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 1])
+        assertEquals(107, DuoPrefs.COLUMNS.size)
+        assertEquals(54, DuoPrefs.PORTRAIT_COLUMNS.size)
+        assertEquals(53, DuoPrefs.LANDSCAPE_COLUMNS.size)
+        assertEquals(DuoPrefs.COL_HIDE_EXTRAS, DuoPrefs.PORTRAIT_COLUMNS.last())
+        assertEquals(DuoPrefs.COL_IOS_PERCENT_INSIDE, DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 1])
+        assertEquals(DuoPrefs.COL_SIM_DISPLAY, DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 2])
         assertEquals(
             DuoPrefs.COL_IOS_CELL_SCALE,
-            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 2]
-        )
-        assertEquals(
-            DuoPrefs.COL_IOS_CELL_OFFSET,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 3]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_WIFI_SCALE,
+            DuoPrefs.COL_IOS_CELL_OFFSET,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 4]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_WIFI_OFFSET,
+            DuoPrefs.COL_IOS_WIFI_SCALE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 5]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_BATTERY_SCALE,
+            DuoPrefs.COL_IOS_WIFI_OFFSET,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 6]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_BATTERY_OFFSET,
+            DuoPrefs.COL_IOS_BATTERY_SCALE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 7]
         )
         assertEquals(
-            DuoPrefs.COL_IOS_MODE,
+            DuoPrefs.COL_IOS_BATTERY_OFFSET,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 8]
         )
         assertEquals(
-            DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.COL_IOS_MODE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 9]
         )
         assertEquals(
-            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.COL_DESIGN_STYLE,
             DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 10]
         )
+        assertEquals(
+            DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.PORTRAIT_COLUMNS[DuoPrefs.PORTRAIT_COLUMNS.lastIndex - 11]
+        )
         assertArrayEquals(
-            "the iOS tuning columns and the R3 toggle stay in append-only order after COL_IOS_MODE",
+            "the iOS tuning columns and the R3/R8 toggles stay in append-only order after COL_IOS_MODE",
             arrayOf(
                 DuoPrefs.COL_IOS_MODE,
                 DuoPrefs.COL_IOS_BATTERY_OFFSET,
@@ -271,58 +272,63 @@ class SettingsChannelTest {
                 DuoPrefs.COL_IOS_CELL_OFFSET,
                 DuoPrefs.COL_IOS_CELL_SCALE,
                 DuoPrefs.COL_SIM_DISPLAY,
-                DuoPrefs.COL_IOS_PERCENT_INSIDE
+                DuoPrefs.COL_IOS_PERCENT_INSIDE,
+                DuoPrefs.COL_HIDE_EXTRAS
             ),
             DuoPrefs.PORTRAIT_COLUMNS.copyOfRange(
-                DuoPrefs.PORTRAIT_COLUMNS.size - 9,
+                DuoPrefs.PORTRAIT_COLUMNS.size - 10,
                 DuoPrefs.PORTRAIT_COLUMNS.size
             )
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_PERCENT_INSIDE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDE_EXTRAS,
             DuoPrefs.LANDSCAPE_COLUMNS.last()
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIM_DISPLAY,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_PERCENT_INSIDE,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 1]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_CELL_SCALE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIM_DISPLAY,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 2]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_CELL_OFFSET,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_CELL_SCALE,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 3]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_WIFI_SCALE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_CELL_OFFSET,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 4]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_WIFI_OFFSET,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_WIFI_SCALE,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 5]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_BATTERY_SCALE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_WIFI_OFFSET,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 6]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_BATTERY_OFFSET,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_BATTERY_SCALE,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 7]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_BATTERY_OFFSET,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 8]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 9]
         )
         assertEquals(
-            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_DESIGN_STYLE,
             DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 10]
         )
-        assertEquals(105, DuoSettingsProvider.rowFor(DuoSettings(), 1L).size)
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDDEN_STOCK_ICONS,
+            DuoPrefs.LANDSCAPE_COLUMNS[DuoPrefs.LANDSCAPE_COLUMNS.lastIndex - 11]
+        )
+        assertEquals(107, DuoSettingsProvider.rowFor(DuoSettings(), 1L).size)
 
         val oldOrder = arrayOf(
             DuoPrefs.COL_ENABLED, DuoPrefs.COL_USE_RIVE, DuoPrefs.COL_SHOW_PERCENT,
@@ -374,34 +380,57 @@ class SettingsChannelTest {
             iosCellOffset = -4,
             iosCellScale = 110,
             simDisplay = DuoPrefs.SIM_DISPLAY_SINGLE,
-            iosPercentInside = false
+            iosPercentInside = false,
+            hideExtras = false
         )
 
         val standard = DuoSettingsProvider.rowFor(portrait, 42L, landscape)
         val bridge = DuoSettingsProvider.bridgeRowFor(portrait, 42L, landscape)
 
-        assertEquals(105, bridge.size)
+        assertEquals(107, bridge.size)
         assertEquals(
             89,
             DuoPrefs.LEGACY_PORTRAIT_COUNT + DuoPrefs.LEGACY_LANDSCAPE_COUNT
         )
-        // 0..44 is the pre-R2 portrait prefix; 45..88 is the pre-R2 landscape prefix (standard 53..96).
+        // 0..44 is the pre-R2 portrait prefix; 45..88 is the pre-R2 landscape prefix (standard 54..97).
         assertArrayEquals(standard.copyOfRange(0, 45), bridge.copyOfRange(0, 45))
-        assertArrayEquals(standard.copyOfRange(53, 97), bridge.copyOfRange(45, 89))
-        // 89..95 is the R2 portrait tail; 96..102 is the R2 landscape tail (standard 97..103). Together
+        assertArrayEquals(standard.copyOfRange(54, 98), bridge.copyOfRange(45, 89))
+        // 89..95 is the R2 portrait tail; 96..102 is the R2 landscape tail (standard 98..104). Together
         // these are the first 103 values, byte-layout-identical to what an R2 module reads and truncates.
         assertArrayEquals(standard.copyOfRange(45, 52), bridge.copyOfRange(89, 96))
-        assertArrayEquals(standard.copyOfRange(97, 104), bridge.copyOfRange(96, 103))
+        assertArrayEquals(standard.copyOfRange(98, 105), bridge.copyOfRange(96, 103))
+        // Positional anchors: an insertion or reorder anywhere in the legacy prefixes moves one of
+        // these names, even though the "first 103 unchanged" copies above would still match.
+        assertEquals(DuoPrefs.COL_ENABLED, DuoPrefs.BRIDGE_COLUMNS[0])
+        assertEquals(DuoPrefs.COL_IOS_MODE, DuoPrefs.BRIDGE_COLUMNS[44])
+        // Index 45 is the first landscape legacy column, not the battery offset (that anchor is 89):
+        // the requested [45] = COL_IOS_BATTERY_OFFSET cannot hold, since 45 starts LANDSCAPE_COLUMNS.
+        assertEquals(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_ENABLED, DuoPrefs.BRIDGE_COLUMNS[45])
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_MODE,
+            DuoPrefs.BRIDGE_COLUMNS[88]
+        )
+        assertEquals(DuoPrefs.COL_IOS_BATTERY_OFFSET, DuoPrefs.BRIDGE_COLUMNS[89])
+        // 103/104 are the R7 prefix, unchanged: the R3 percent pair (portrait then landscape). 105/106
+        // are the R8 hide pair. Every post-R2 generation is a portrait+landscape pair in append order.
         assertEquals(DuoPrefs.COL_IOS_PERCENT_INSIDE, DuoPrefs.BRIDGE_COLUMNS[103])
         assertEquals(
             DuoPrefs.LAND_PREFIX + DuoPrefs.COL_IOS_PERCENT_INSIDE,
             DuoPrefs.BRIDGE_COLUMNS[104]
         )
-        // 103/104 are the R3 append: the new portrait value, then its landscape copy.
+        assertEquals(DuoPrefs.COL_HIDE_EXTRAS, DuoPrefs.BRIDGE_COLUMNS[105])
+        assertEquals(
+            DuoPrefs.LAND_PREFIX + DuoPrefs.COL_HIDE_EXTRAS,
+            DuoPrefs.BRIDGE_COLUMNS[106]
+        )
         assertEquals(1, bridge[103])
         assertEquals(0, bridge[104])
+        assertEquals(1, bridge[105])
+        assertEquals(0, bridge[106])
         assertArrayEquals(standard.copyOfRange(52, 53), bridge.copyOfRange(103, 104))
-        assertArrayEquals(standard.copyOfRange(104, 105), bridge.copyOfRange(104, 105))
+        assertArrayEquals(standard.copyOfRange(105, 106), bridge.copyOfRange(104, 105))
+        assertArrayEquals(standard.copyOfRange(53, 54), bridge.copyOfRange(105, 106))
+        assertArrayEquals(standard.copyOfRange(106, 107), bridge.copyOfRange(106, 107))
         // Distinctive values, so a portrait/landscape swap at either tail cannot pass.
         assertEquals(11, bridge[89])
         assertEquals(120, bridge[90])
@@ -412,7 +441,7 @@ class SettingsChannelTest {
     }
 
     @Test
-    fun `bridge values map by name for a new 105-value push`() {
+    fun `bridge values map by name for a new 107-value push`() {
         val portrait = DuoSettings(
             enabled = true,
             sizePercent = 130,
@@ -437,7 +466,8 @@ class SettingsChannelTest {
             iosCellOffset = -4,
             iosCellScale = 110,
             simDisplay = DuoPrefs.SIM_DISPLAY_SINGLE,
-            iosPercentInside = false
+            iosPercentInside = false,
+            hideExtras = false
         )
 
         val bridge = DuoSettingsProvider.bridgeRowFor(portrait, 42L, landscape)
@@ -454,6 +484,7 @@ class SettingsChannelTest {
         assertEquals(140, inPortrait.iosCellScale)
         assertEquals(DuoPrefs.SIM_DISPLAY_DUAL, inPortrait.simDisplay)
         assertEquals(true, inPortrait.iosPercentInside)
+        assertEquals(true, inPortrait.hideExtras)
         assertEquals(130, inPortrait.sizePercent)
         assertEquals(-7, inPortrait.offsetX)
         assertEquals(42L, inPortrait.revision)
@@ -467,6 +498,7 @@ class SettingsChannelTest {
         assertEquals(110, inLandscape.iosCellScale)
         assertEquals(DuoPrefs.SIM_DISPLAY_SINGLE, inLandscape.simDisplay)
         assertEquals(false, inLandscape.iosPercentInside)
+        assertEquals(false, inLandscape.hideExtras)
         assertEquals(170, inLandscape.sizePercent)
         assertEquals(-22, inLandscape.offsetX)
         assertEquals(42L, inLandscape.revision)
@@ -474,7 +506,7 @@ class SettingsChannelTest {
         // An older module may still push the pre-R2 89 values; the new tail must read as defaults and
         // the old fields must stay intact.
         val full = DuoSettingsProvider.rowFor(portrait, 42L, landscape)
-        val legacy = full.copyOfRange(0, 45).toList() + full.copyOfRange(53, 97).toList()
+        val legacy = full.copyOfRange(0, 45).toList() + full.copyOfRange(54, 98).toList()
         assertEquals(89, legacy.size)
         val legacyCursor = MatrixCursor(DuoPrefs.COLUMNS).apply {
             addRow(DuoSettingsClient.bridgeValuesToRow(legacy))
@@ -491,6 +523,7 @@ class SettingsChannelTest {
         assertEquals(DuoPrefs.DEFAULT_ICON_SCALE, oldPortrait.iosCellScale)
         assertEquals(DuoPrefs.SIM_DISPLAY_AUTO, oldPortrait.simDisplay)
         assertEquals(false, oldPortrait.iosPercentInside)
+        assertEquals(true, oldPortrait.hideExtras)
         assertEquals(130, oldPortrait.sizePercent)
         assertEquals(-7, oldPortrait.offsetX)
         assertEquals(42L, oldPortrait.revision)
@@ -501,6 +534,7 @@ class SettingsChannelTest {
         assertEquals(DuoPrefs.DEFAULT_ICON_SCALE, oldLandscape.iosBatteryScale)
         assertEquals(DuoPrefs.SIM_DISPLAY_AUTO, oldLandscape.simDisplay)
         assertEquals(false, oldLandscape.iosPercentInside)
+        assertEquals(true, oldLandscape.hideExtras)
         assertEquals(170, oldLandscape.sizePercent)
         assertEquals(-22, oldLandscape.offsetX)
         assertEquals(42L, oldLandscape.revision)

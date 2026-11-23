@@ -218,7 +218,13 @@ data class DuoSettings(
      * Draw the battery percentage inside the iOS battery icon. Off keeps today's battery drawing, so an
      * older install reads the default and its pixels do not change. Appended after [simDisplay].
      */
-    val iosPercentInside: Boolean = false
+    val iosPercentInside: Boolean = false,
+    /**
+     * Hide the iOS extras: the Wi-Fi 6 badge and the data in/out arrows. On is the current iOS drawing,
+     * so an older install reads the default and its pixels do not change. Appended after
+     * [iosPercentInside].
+     */
+    val hideExtras: Boolean = true
 ) {
     companion object {
         /** The classic ring drawing (`res/raw/duo_old.riv`), the pre-existing look. */
@@ -414,6 +420,8 @@ object DuoPrefs {
     const val COL_SIM_DISPLAY = "sim_display"
     /** Whether the iOS battery draws the percentage inside it; appended in R3, never reordered. */
     const val COL_IOS_PERCENT_INSIDE = "ios_percent_inside"
+    /** Whether the iOS icons hide the Wi-Fi 6 badge and the data arrows; appended in R8, never reordered. */
+    const val COL_HIDE_EXTRAS = "hide_extras"
 
     const val SIM_DISPLAY_AUTO = "auto"
     const val SIM_DISPLAY_SINGLE = "single"
@@ -462,7 +470,8 @@ object DuoPrefs {
         COL_HIDDEN_STOCK_ICONS, COL_DESIGN_STYLE, COL_IOS_MODE,
         COL_IOS_BATTERY_OFFSET, COL_IOS_BATTERY_SCALE,
         COL_IOS_WIFI_OFFSET, COL_IOS_WIFI_SCALE,
-        COL_IOS_CELL_OFFSET, COL_IOS_CELL_SCALE, COL_SIM_DISPLAY, COL_IOS_PERCENT_INSIDE
+        COL_IOS_CELL_OFFSET, COL_IOS_CELL_SCALE, COL_SIM_DISPLAY, COL_IOS_PERCENT_INSIDE,
+        COL_HIDE_EXTRAS
     )
 
     /** Landscape columns appended after [PORTRAIT_COLUMNS]. An older module ignores names it does not know. */
@@ -499,8 +508,14 @@ object DuoPrefs {
      * The important property is that the **first 103 values stay byte-layout-compatible with an R2
      * module**: the pre-R2 prefix is [LEGACY_PORTRAIT_COUNT] portrait + [LEGACY_LANDSCAPE_COUNT]
      * landscape columns, followed by [R2_TAIL_COUNT] portrait and [R2_TAIL_COUNT] landscape columns
-     * (45 + 44 + 7 + 7). R3's [COL_IOS_PERCENT_INSIDE] pair comes after that, at 103 and 104, so an R2
-     * module that truncates the push at 103 still finds every value it knows where it expects it.
+     * (45 + 44 + 7 + 7). After that, each generation is appended as a **portrait then landscape pair**,
+     * in append order: 103/104 are R3's [COL_IOS_PERCENT_INSIDE] pair, 105/106 are R8's
+     * [COL_HIDE_EXTRAS] pair. That keeps the R7 prefix (103 = portrait percent, 104 = landscape
+     * percent) exactly where a still-running R7 module expects it, while an R2 module that truncates
+     * the push at 103 still finds every value it knows.
+     *
+     * Any future setting must append a new portrait+landscape pair at the end (portrait first); never
+     * insert one, because every older module reads by position.
      *
      * Only [SettingsBridge] uses this order. The provider row keeps [COLUMNS], and rearranging here
      * means an older module receiving a newer push still finds every old value where it expects it.
@@ -510,8 +525,9 @@ object DuoPrefs {
             LANDSCAPE_COLUMNS.take(LEGACY_LANDSCAPE_COUNT) +
             PORTRAIT_COLUMNS.slice(LEGACY_PORTRAIT_COUNT until POST_R2_PORTRAIT_START) +
             LANDSCAPE_COLUMNS.slice(LEGACY_LANDSCAPE_COUNT until POST_R2_LANDSCAPE_START) +
-            PORTRAIT_COLUMNS.drop(POST_R2_PORTRAIT_START) +
-            LANDSCAPE_COLUMNS.drop(POST_R2_LANDSCAPE_START)).toTypedArray()
+            PORTRAIT_COLUMNS.drop(POST_R2_PORTRAIT_START)
+                .zip(LANDSCAPE_COLUMNS.drop(POST_R2_LANDSCAPE_START))
+                .flatMap { (portrait, landscape) -> listOf(portrait, landscape) }).toTypedArray()
 
     private const val PREFS = "duo_settings"
     private const val KEY_REVISION = "revision"
@@ -665,7 +681,8 @@ object DuoPrefs {
         iosCellScale = p.getInt(key(COL_IOS_CELL_SCALE), DEFAULT_ICON_SCALE)
             .coerceIn(MIN_ICON_SCALE, MAX_ICON_SCALE),
         simDisplay = normalizeSimDisplay(p.getString(key(COL_SIM_DISPLAY), SIM_DISPLAY_AUTO)),
-        iosPercentInside = p.getBoolean(key(COL_IOS_PERCENT_INSIDE), false)
+        iosPercentInside = p.getBoolean(key(COL_IOS_PERCENT_INSIDE), false),
+        hideExtras = p.getBoolean(key(COL_HIDE_EXTRAS), true)
     )
     }
 
@@ -770,6 +787,7 @@ object DuoPrefs {
         putInt(prefix + COL_IOS_CELL_SCALE, settings.iosCellScale)
         putString(prefix + COL_SIM_DISPLAY, normalizeSimDisplay(settings.simDisplay))
         putBoolean(prefix + COL_IOS_PERCENT_INSIDE, settings.iosPercentInside)
+        putBoolean(prefix + COL_HIDE_EXTRAS, settings.hideExtras)
     }
 
     fun revision(context: Context): Long =

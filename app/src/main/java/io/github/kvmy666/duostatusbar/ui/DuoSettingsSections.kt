@@ -139,7 +139,9 @@ internal fun IosModeSection(
             stringResource(R.string.ios_icon_wifi),
             stringResource(R.string.ios_icon_cell),
             stringResource(R.string.settings_ios_percent_inside),
-            stringResource(R.string.settings_ios_percent_inside_detail)
+            stringResource(R.string.settings_ios_percent_inside_detail),
+            stringResource(R.string.settings_ios_hide_extras),
+            stringResource(R.string.settings_ios_hide_extras_detail)
         )
     ) GlassCard(
         shape = RoundedCornerShape(22.dp),
@@ -163,6 +165,12 @@ internal fun IosModeSection(
                 checked = settings.iosPercentInside,
                 enabled = settings.iosMode && available
             ) { onUpdate(settings.copy(iosPercentInside = it)) }
+            SettingSwitch(
+                label = stringResource(R.string.settings_ios_hide_extras),
+                detail = stringResource(R.string.settings_ios_hide_extras_detail),
+                checked = settings.hideExtras,
+                enabled = settings.iosMode && available
+            ) { onUpdate(settings.copy(hideExtras = it)) }
 
             Text(
                 text = stringResource(R.string.settings_ios_icons),

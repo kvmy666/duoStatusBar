@@ -215,7 +215,8 @@ class DuoSettingsProvider : ContentProvider() {
             settings.iosCellOffset.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET),
             settings.iosCellScale.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE),
             DuoPrefs.normalizeSimDisplay(settings.simDisplay),
-            if (settings.iosPercentInside) 1 else 0
+            if (settings.iosPercentInside) 1 else 0,
+            if (settings.hideExtras) 1 else 0
         )
     }
 }
