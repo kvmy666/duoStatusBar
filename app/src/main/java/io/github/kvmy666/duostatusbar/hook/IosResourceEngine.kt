@@ -17,6 +17,9 @@ internal sealed class IosResourceSlot {
     data class Wifi(val dots: Int) : IosResourceSlot()
     data class Cell(val dots: Int) : IosResourceSlot()
     data class Label(val text: String) : IosResourceSlot()
+
+    /** Hide-extras leaf: a 0x0 gate while [IosExtras.hidden], the captured stock drawable otherwise. */
+    object Hidden : IosResourceSlot()
 }
 
 /** One resolved stock id: the slot it becomes, its stock intrinsic size (dp) and its package. */
@@ -30,8 +33,23 @@ internal data class ResolvedEntry(
      * R7 P4: the user's per-icon offset/scale, baked once per map build from [ModuleSettings].
      * [IosUserTransform.IDENTITY] is exactly the pre-setting pixels (rule 6).
      */
-    val transform: IosUserTransform = IosUserTransform.IDENTITY
+    val transform: IosUserTransform = IosUserTransform.IDENTITY,
+    /**
+     * R8 hide-extras: the captured stock `ConstantState` of a [IosResourceSlot.Hidden] leaf, and its
+     * stock intrinsic px. Null/zero for every glyph entry, which never reads these fields.
+     */
+    val stockState: Drawable.ConstantState? = null,
+    val stockWidthPx: Int = 0,
+    val stockHeightPx: Int = 0
 )
+
+/**
+ * R8 hide-extras: a [IosResourceSlot.Hidden] entry can only mint a gate when the stock
+ * `ConstantState` was captured. Without it the gate would be 0x0 in both toggle states, so the
+ * entry is left on the stock drawable instead (rule 6: the default must not change). Pure, so the
+ * build rule is tested without a device resource table.
+ */
+internal fun hiddenCanRestore(stockState: Drawable.ConstantState?): Boolean = stockState != null
 
 /**
  * R7 P1: replaces a small, measured set of status-bar drawables at load time by hooking
@@ -93,6 +111,9 @@ internal object IosResourceEngine : IosDiagnosticSource {
 
     /** Entries in the live map (0 while inactive, building or after an empty build). */
     val mapSize: Int get() = snapshot?.size ?: 0
+
+    /** R8 diagnostics: resolved hide-extras leaves in the live map (0 while inactive). */
+    val hiddenEntries: Int get() = snapshot?.hiddenCount ?: 0
 
     // ---------------------------------------------------------------------------------- install
 
@@ -326,6 +347,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
             val resolved = ArrayList<ResolvedEntry>(specs.size)
             var duplicates = 0
             var noIntrinsic = 0
+            var hiddenNoIntrinsic = 0
+            var hiddenNoRestorable = 0
             for (spec in specs) {
                 val pkg = spec.packageName.ifBlank { rom.systemUiPackage }
                 val id = if (spec.rawId != 0) {
@@ -343,6 +366,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     continue
                 }
                 val slot = slotOf(spec) ?: continue
+                val isHidden = slot is IosResourceSlot.Hidden
                 val stock = try {
                     resources.getDrawable(id, null)
                 } catch (_: Throwable) {
@@ -351,8 +375,16 @@ internal object IosResourceEngine : IosDiagnosticSource {
                 val widthPx = stock.intrinsicWidth
                 val heightPx = stock.intrinsicHeight
                 if (widthPx <= 0 || heightPx <= 0) {
-                    // Never guess a size: an id with no intrinsic would draw in the wrong box.
-                    noIntrinsic++
+                    // Never guess a size: an id with no intrinsic would draw in the wrong box. The
+                    // measured h/r passpoint badges are legitimately empty `<vector/>`s.
+                    if (isHidden) hiddenNoIntrinsic++ else noIntrinsic++
+                    continue
+                }
+                val stockState = if (isHidden) stock.constantState else null
+                if (isHidden && !hiddenCanRestore(stockState)) {
+                    // A gate needs the stock state to put the badge back when the toggle is off. With
+                    // no state it would be 0x0 in BOTH states, so the default (off) would change.
+                    hiddenNoRestorable++
                     continue
                 }
                 resolved.add(
@@ -362,7 +394,14 @@ internal object IosResourceEngine : IosDiagnosticSource {
                         widthDp = widthPx * 160f / densityDpi,
                         heightDp = heightPx * 160f / densityDpi,
                         packageName = pkg,
-                        transform = userTransformFor(settings, slot, widthPx, heightPx)
+                        transform = if (isHidden) {
+                            IosUserTransform.IDENTITY
+                        } else {
+                            userTransformFor(settings, slot, widthPx, heightPx)
+                        },
+                        stockState = stockState,
+                        stockWidthPx = if (isHidden) widthPx else 0,
+                        stockHeightPx = if (isHidden) heightPx else 0
                     )
                 )
             }
@@ -371,6 +410,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
             L.i(
                 "iOS v2 resource map: family=${rom.id} specs=${specs.size} " +
                     "resolved=${resolved.size} duplicates=$duplicates noIntrinsic=$noIntrinsic " +
+                    "hiddenNoIntrinsic=$hiddenNoIntrinsic hiddenNoRestorable=$hiddenNoRestorable " +
                     "buildMs=$buildMs"
             )
             return built
@@ -389,6 +429,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
         IosResourceKind.CELL -> IosResourceSlot.Cell(spec.value)
         IosResourceKind.LABEL ->
             if (IosGeometry.DataLabel.supports(spec.label)) IosResourceSlot.Label(spec.label) else null
+        IosResourceKind.HIDDEN -> IosResourceSlot.Hidden
     }
 
     /**
@@ -445,6 +486,9 @@ internal object IosResourceEngine : IosDiagnosticSource {
         private val defaultTint: Int = 0xFFFFFFFF.toInt()
     ) {
         val size: Int get() = ids.size
+
+        /** R8: resolved hide-extras leaves (each mints a gate drawable, never a [IosGlyphDrawable]). */
+        val hiddenCount: Int = entries.count { it.slot is IosResourceSlot.Hidden }
 
         val packageName: String
             get() = entries.firstOrNull()?.packageName ?: IosResourceSpec.DEFAULT_PACKAGE
@@ -508,6 +552,24 @@ internal object IosResourceEngine : IosDiagnosticSource {
         }
 
         private fun stateFor(entry: ResolvedEntry, density: Int): Drawable.ConstantState {
+            // A hide-extras leaf is a gate, not a glyph: 0x0 while hidden and the captured stock
+            // drawable when the toggle is off. CachedState coerces to >=1px and would leave a gap.
+            if (entry.slot is IosResourceSlot.Hidden) {
+                // The captured stock px were measured at the map's base density; scale them for the
+                // density actually requested so a 2x load restores a 2x stock drawable.
+                val dpi = if (density > 0) density else baseDensity.coerceAtLeast(1)
+                val widthPx = if (entry.stockWidthPx > 0) {
+                    (entry.stockWidthPx * dpi / baseDensity.toFloat()).roundToInt().coerceAtLeast(1)
+                } else {
+                    entry.stockWidthPx
+                }
+                val heightPx = if (entry.stockHeightPx > 0) {
+                    (entry.stockHeightPx * dpi / baseDensity.toFloat()).roundToInt().coerceAtLeast(1)
+                } else {
+                    entry.stockHeightPx
+                }
+                return IosExtras.gateState(entry.stockState, widthPx, heightPx)
+            }
             val dpi = if (density > 0) density else baseDensity.coerceAtLeast(1)
             val widthPx = (entry.widthDp * dpi / 160f).roundToInt().coerceAtLeast(1)
             val heightPx = (entry.heightDp * dpi / 160f).roundToInt().coerceAtLeast(1)
@@ -538,10 +600,12 @@ internal object IosResourceEngine : IosDiagnosticSource {
             tint = tint,
             wifiSlot = IosWifiSlot.DataType(slot.text)
         )
+        // Never drawn: a HIDDEN entry's state is the gate, not a glyph.
+        is IosResourceSlot.Hidden -> IosVisual(part = IosPart.WIFI, tint = tint, wifiLevel = 0f)
     }
 
     private fun drawableKind(slot: IosResourceSlot): IosIconKind = when (slot) {
-        is IosResourceSlot.Wifi, is IosResourceSlot.Label -> IosIconKind.WIFI
+        is IosResourceSlot.Wifi, is IosResourceSlot.Label, is IosResourceSlot.Hidden -> IosIconKind.WIFI
         is IosResourceSlot.Cell -> IosIconKind.CELL
     }
 

@@ -2,8 +2,14 @@ package io.github.kvmy666.duostatusbar.hook
 
 import kotlin.math.ceil
 
-/** Which iOS glyph a stock resource name stands for. */
-internal enum class IosResourceKind { WIFI, CELL, LABEL }
+/**
+ * Which iOS glyph a stock resource name stands for.
+ *
+ * [HIDDEN] is not a glyph: the entry is a Wi-Fi badge or activity arrow that the "Hide extra icons"
+ * toggle collapses with a 0x0 gate drawable (`.pm/R8-P0.md` decision 4). Its stock drawable is
+ * captured and restored when the toggle is off.
+ */
+internal enum class IosResourceKind { WIFI, CELL, LABEL, HIDDEN }
 
 /**
  * One stock drawable resource that the v2 engine replaces.
@@ -70,6 +76,16 @@ internal object IosResourceNames {
         else -> emptyList()
     }
 
+    /**
+     * The [IosResourceKind.HIDDEN] entries of [familyId] (empty for every non-OxygenOS family).
+     *
+     * No-gap proof: these ids land on the `wifi_left`/`wifi_inout`/`data_inout` leaves, which are
+     * `wrap_content` with no min width or padding, so a 0x0 gate collapses the slot
+     * (`.pm/R8-P0.md` decision 4).
+     */
+    fun hiddenSpecs(familyId: String): List<IosResourceSpec> =
+        specs(familyId).filter { it.kind == IosResourceKind.HIDDEN }
+
     /** Test convenience: the iOS label text mapped to a stock resource [name], or null. */
     fun labelFor(name: String): String? {
         for (family in IosV2Profile.FAMILIES) {
@@ -95,6 +111,12 @@ internal object IosResourceNames {
 
     private fun label(name: String, text: String): IosResourceSpec =
         IosResourceSpec(name, IosResourceKind.LABEL, 0, label = text)
+
+    /** A badge/arrow that the hide-extras gate collapses; the engine captures the stock drawable. */
+    private fun hidden(name: String): IosResourceSpec =
+        IosResourceSpec(name, IosResourceKind.HIDDEN, 0)
+
+    private fun hidden(names: List<String>): List<IosResourceSpec> = names.map { hidden(it) }
 
     private fun wifiLevels(prefix: String, from: Int, to: Int, top: Int): List<IosResourceSpec> =
         (from..to).map { wifi("$prefix$it", it, top) }
@@ -221,6 +243,34 @@ internal object IosResourceNames {
                     "stat_sys_data_fully_connected_g"
                 ),
                 "G"
+            )
+        )
+
+        // R8 "Hide extra icons": the measured Wi-Fi 6 badge (`wifi_left`), Wi-Fi activity arrows
+        // (`wifi_inout`) and cell activity arrows (`data_inout`). No `_6_double`/`_7_double` exists.
+        addAll(
+            hidden(
+                listOf(
+                    "stat_signal_wifi_6",
+                    "stat_signal_wifi_6e",
+                    "stat_signal_wifi_7",
+                    "stat_signal_wifi_double",
+                    "stat_signal_wifi_h_passpoint",
+                    "stat_signal_wifi_passpoint",
+                    "stat_signal_wifi_r_passpoint",
+                    "stat_signal_activity_wifi_none",
+                    "stat_signal_activity_wifi_in",
+                    "stat_signal_activity_wifi_out",
+                    "stat_signal_activity_wifi_inout",
+                    "stat_signal_activity_default_public",
+                    "stat_signal_activity_in_public",
+                    "stat_signal_activity_out_public",
+                    "stat_signal_activity_inout_public",
+                    "stat_signal_activity_soft_default_public",
+                    "stat_signal_activity_soft_in_public",
+                    "stat_signal_activity_soft_out_public",
+                    "stat_signal_activity_soft_inout_public"
+                )
             )
         )
     }

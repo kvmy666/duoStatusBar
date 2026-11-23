@@ -68,12 +68,47 @@ class IosResourceNamesTest {
     }
 
     @Test
-    fun `OxygenOS has no activity, arrow or AOSP-dead entries`() {
+    fun `OxygenOS maps activity arrows only as hidden extras`() {
         val oplus = IosResourceNames.specs("oxygenos")
-        assertTrue(oplus.none { it.name.contains("activity") })
+        // R8: activity arrows are HIDDEN leaves, never glyph entries.
+        assertTrue(oplus.filter { it.kind != IosResourceKind.HIDDEN }.none { it.name.contains("activity") })
         assertTrue(oplus.none { it.name.contains("ic_no_internet") })
         assertTrue(oplus.none { it.name.contains("mobiledata") })
         assertTrue(oplus.none { it.name == "stat_signal_soft_roma_lte" })
+    }
+
+    @Test
+    fun `OxygenOS maps exactly the 19 measured hide-extras names`() {
+        val expected = setOf(
+            "stat_signal_wifi_6",
+            "stat_signal_wifi_6e",
+            "stat_signal_wifi_7",
+            "stat_signal_wifi_double",
+            "stat_signal_wifi_h_passpoint",
+            "stat_signal_wifi_passpoint",
+            "stat_signal_wifi_r_passpoint",
+            "stat_signal_activity_wifi_none",
+            "stat_signal_activity_wifi_in",
+            "stat_signal_activity_wifi_out",
+            "stat_signal_activity_wifi_inout",
+            "stat_signal_activity_default_public",
+            "stat_signal_activity_in_public",
+            "stat_signal_activity_out_public",
+            "stat_signal_activity_inout_public",
+            "stat_signal_activity_soft_default_public",
+            "stat_signal_activity_soft_in_public",
+            "stat_signal_activity_soft_out_public",
+            "stat_signal_activity_soft_inout_public"
+        )
+        val hidden = IosResourceNames.hiddenSpecs("oxygenos")
+        assertEquals(19, hidden.size)
+        assertEquals(expected, hidden.map { it.name }.toSet())
+        assertEquals(19, hidden.map { it.name }.toSet().size) // no duplicates
+        assertTrue(hidden.all { it.kind == IosResourceKind.HIDDEN && it.value == 0 })
+        // Only the OxygenOS family gets hide-extras entries.
+        for (family in IosV2Profile.FAMILIES.filter { it != "oxygenos" }) {
+            assertTrue("$family has hide-extras", IosResourceNames.hiddenSpecs(family).isEmpty())
+        }
     }
 
     // -------------------------------------------------------------------------------- all maps
@@ -123,7 +158,7 @@ class IosResourceNamesTest {
     @Test
     fun `family coverage matches the measured tables`() {
         // Exact counts keep a future edit from silently dropping a measured entry.
-        assertEquals(94, IosResourceNames.specs("oxygenos").size)
+        assertEquals(113, IosResourceNames.specs("oxygenos").size) // 94 + 19 R8 hide-extras
         assertEquals(108, IosResourceNames.specs("samsung").size)
         assertEquals(38, IosResourceNames.specs("hyperos").size)
         assertEquals(25, IosResourceNames.specs("nothing").size)

@@ -1,6 +1,8 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import org.junit.Assert.assertEquals
@@ -60,6 +62,62 @@ class IosResourceEngineTest {
         // A ConstantState mints a fresh Drawable, never the same instance.
         assertNotSame(twice, snapshot.newDrawable(0, resources, 320, false))
         assertTrue(twice is IosGlyphDrawable)
+    }
+
+    @Test
+    fun `a resolved hidden entry is a zero-size gate and restores the stock drawable`() {
+        IosExtras.resetForTest()
+        val stock = ColorDrawable(Color.RED)
+        val snapshot = buildSnapshot(
+            listOf(
+                ResolvedEntry(
+                    id = 0x7f010010,
+                    slot = IosResourceSlot.Hidden,
+                    widthDp = 10f,
+                    heightDp = 10f,
+                    packageName = "com.android.systemui",
+                    stockState = stock.constantState,
+                    stockWidthPx = 10,
+                    stockHeightPx = 10
+                )
+            ),
+            baseDensity = 160
+        )
+        assertEquals(1, snapshot.hiddenCount)
+        assertEquals(0, IosResourceEngine.hiddenEntries) // no live map in this JVM
+
+        try {
+            IosExtras.hidden = true
+            val hidden = snapshot.newDrawable(0, context().resources, 160, false)
+            assertEquals(0, hidden.intrinsicWidth)
+            assertEquals(0, hidden.intrinsicHeight)
+            assertFalse(hidden is IosGlyphDrawable) // a gate, not the glyph state
+
+            IosExtras.hidden = false
+            val visible = snapshot.newDrawable(0, context().resources, 160, false)
+            assertEquals(10, visible.intrinsicWidth)
+            assertEquals(10, visible.intrinsicHeight)
+
+            // A 2x density load must restore a 2x stock drawable, not the base-density pixels.
+            val doubled = snapshot.newDrawable(0, context().resources, 320, false)
+            assertEquals(20, doubled.intrinsicWidth)
+            assertEquals(20, doubled.intrinsicHeight)
+
+            // Hidden stays 0x0 at any density.
+            IosExtras.hidden = true
+            val hiddenTwice = snapshot.newDrawable(0, context().resources, 320, false)
+            assertEquals(0, hiddenTwice.intrinsicWidth)
+            assertEquals(0, hiddenTwice.intrinsicHeight)
+        } finally {
+            IosExtras.hidden = false
+        }
+    }
+
+    @Test
+    fun `a hidden entry without a captured stock state cannot restore and stays stock`() {
+        // The build skips such an entry: a gate with no stock state is 0x0 with the toggle off too.
+        assertFalse(hiddenCanRestore(null))
+        assertTrue(hiddenCanRestore(ColorDrawable(Color.RED).constantState))
     }
 
     @Test
