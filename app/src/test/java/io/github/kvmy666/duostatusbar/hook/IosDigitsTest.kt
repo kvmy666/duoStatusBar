@@ -1,6 +1,5 @@
 package io.github.kvmy666.duostatusbar.hook
 
-import android.graphics.Color
 import android.graphics.Path
 import android.graphics.RectF
 import org.junit.Assert.assertEquals
@@ -318,12 +317,4 @@ class IosDigitsTest {
         )
     }
 
-    @Test
-    fun `background colour follows the tint luminance`() {
-        assertEquals(Color.WHITE, IosDigits.backgroundColour(Color.BLACK))
-        assertEquals(Color.BLACK, IosDigits.backgroundColour(Color.WHITE))
-        // 127 stays white, 128 flips to black (the strict > 127 rule).
-        assertEquals(Color.WHITE, IosDigits.backgroundColour(Color.rgb(127, 127, 127)))
-        assertEquals(Color.BLACK, IosDigits.backgroundColour(Color.rgb(128, 128, 128)))
-    }
 }

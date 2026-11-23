@@ -223,8 +223,8 @@ class IosDataLabelRasterTest {
                 "/ `.json`: battery body H = 42.377 px = 100 units (1 px = 2.360 units, +/-0.5 px = " +
                 "+/-1.18 units). Shape/width/spacing authority remains " +
                 "`.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (SF-style \"LTE E 4G 5G 5G+ 345\", " +
-                "light on black). The fixed bold `IosDigits` 3/4/5 are not retyped, so our \"5\" is " +
-                "bolder than ref 1's; the letters and G use the measured 11.1 stroke.\n\n"
+                "light on black). The fixed bold `IosDigits` 3/4/5 are not retyped; R6 item 3 raises " +
+                "the letters, plus and G to the same 0.200-cap digit weight (15.54 u).\n\n"
         )
         val cellToLabel = IosGeometry.Strip.CELL_LABEL_GAP
         val labelToBattery = IosGeometry.Strip.LABEL_BATTERY_GAP
@@ -278,8 +278,13 @@ class IosDataLabelRasterTest {
         sb.append(
             String.format(
                 Locale.US,
-                "| Stroke | %.2f | measured ref-1 label weight, 0.143 cap |\n",
-                d.STROKE
+                "| Stroke | %.2f | R6 item 3: IosDigits.RUN_STROKE %.2f x (%.2f / 57) = %.2f cap, " +
+                    "matching the battery digits; the R5B ref-1 SF label weight 11.10 (0.143 cap) " +
+                    "is provenance only |\n",
+                d.STROKE,
+                IosDigits.RUN_STROKE,
+                d.CAP_HEIGHT,
+                d.STROKE / d.CAP_HEIGHT
             )
         )
         sb.append(
@@ -411,16 +416,18 @@ class IosDataLabelRasterTest {
         sb.append("`r4-label-{lte,4g,5g,5g-plus,3g,e}-dark-v2.png`, ")
         sb.append("`r4-label-family-light-v2.png`, `r4-label-family-dark-v2.png`.\n")
         sb.append(
-            "\nMeasured on ref 1: cap 77.69, top 14.95 (top-anchored), baseline 92.64, stroke 11.1, " +
-                "cell->label / label->battery ink gaps 52.07 / 54.04. The battery remainder (0.4975) " +
-                "and cap (0.5021) alphas confirm 0.50. UNVERIFIED: `Cell.INACTIVE_ALPHA` (ref 1 has " +
-                "all four bars and dots active) and the battery cap W/H (low confidence, outside this " +
-                "change). Known limitation: the 3/4/5 digits stay the fixed bold `IosDigits` glyphs " +
-                "(0.20 cap), so our \"5\" is bolder than ref 1's measured 0.143-cap letters. The plus " +
-                "uses the measured 0.750 height as an equal-arm square, so 5G+ is width-limited at the " +
-                "80x50 slot; at the measured cap LTE is width-limited too, while 4G/5G/3G/E stay " +
-                "height-limited. This is a slot constraint, not a geometry bug. Owner/device review " +
-                "required.\n"
+            "\nMeasured on ref 1: cap 77.69, top 14.95 (top-anchored), baseline 92.64, ref-1 SF label " +
+                "weight 11.10 (0.143 cap, provenance), cell->label / label->battery ink gaps 52.07 / " +
+                "54.04. The battery remainder (0.4975) and cap (0.5021) alphas confirm 0.50. " +
+                "UNVERIFIED: `Cell.INACTIVE_ALPHA` (ref 1 has all four bars and dots active) and the " +
+                "battery cap W/H (low confidence, outside this change). R6 item 3 (supersedes the " +
+                "R5B digit-weight limitation): the shipping stroke is 15.54 = 0.200 cap, " +
+                "deliberately the battery digits' measured run-stroke, so the 3/4/5, the letters, " +
+                "the plus and the G all draw at one weight; `IosLabelStrokeWeightTest` measures the " +
+                "rendered glyphs. The plus uses the measured 0.750 height as an equal-arm square, " +
+                "so 5G+ is width-limited at the 80x50 slot; at the measured cap LTE is width-limited " +
+                "too, while 4G/5G/3G/E stay height-limited. This is a slot constraint, not a " +
+                "geometry bug. Owner/device review required.\n"
         )
         return sb.toString()
     }

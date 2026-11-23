@@ -325,8 +325,8 @@ internal object IosGeometry {
      * `.pm/ref/r5/1-real-iphone-5g-dual.jpg` (sha256 `0e0096738eb3b246…`, 1272x2772, dark, dual-SIM)
      * is the first real iOS status-bar capture that shows it, reading "5G". Its 50 %-threshold
      * measurement (`.pm/ref/out-r5/r5b-measurements.md` / `.json`; battery body H = 42.377 px = 100
-     * units, 1 px = 2.360 units, +/-0.5 px = +/-1.18 units) fixes [CAP_HEIGHT], [TOP] and [STROKE] as
-     * measured values instead of the old bar/weight fallbacks.
+     * units, 1 px = 2.360 units, +/-0.5 px = +/-1.18 units) fixes [CAP_HEIGHT] and [TOP] as measured
+     * values instead of the old bar/weight fallbacks.
      *
      * The label is TOP-ANCHORED: the measured cap top sits 14.95 units below the label/Wi-Fi artboard
      * top and the baseline at 92.63 ([TOP] + [CAP_HEIGHT] = 92.64). The old centre-on-Wi-Fi formula
@@ -334,10 +334,13 @@ internal object IosGeometry {
      * to the measurement. Ref 1's cap centre is 2.79 units below the battery body centre.
      *
      * The SF strip `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the authority for the glyph
-     * SHAPES, ink widths and internal spacing. The digits 3/4/5 remain the fixed bold [IosDigits]
-     * battery glyphs (0.20 cap) and are never retyped or thinned, so our "5" is bolder than ref 1's
-     * while the letters and G use the measured 11.1 stroke (0.143 cap). That digit-weight mismatch is
-     * a known limitation. The G ink fraction and every letter width are unchanged.
+     * SHAPES, ink widths and internal spacing. **R6 item 3 makes every label glyph one weight:** the
+     * letters, the plus and the G use [STROKE] = 15.54 units (0.200 cap), deliberately equal to the
+     * battery digits' measured run-stroke ([IosDigits.RUN_STROKE] 11.40 x [DIGIT_SCALE]). The R5B
+     * ref-1 SF label weight of 11.1 units (0.143 cap) remains provenance for the measurement only;
+     * it is no longer a glyph constant, because it made the owner-visible "5" bold and "G" thin.
+     * The 3/4/5 digits stay the untouched measured [IosDigits] glyphs — never retyped or thinned —
+     * and the G ink fraction and every letter width are unchanged.
      *
      * Every letter and the plus are FILLED OUTLINES: one or more closed contours, consistently
      * clockwise, filled with [android.graphics.Path.FillType.WINDING] so overlapping shapes union
@@ -358,9 +361,10 @@ internal object IosGeometry {
      * 0.612 W x 0.5 C outer radii), a 318.93..20.66 degree band with the open aperture crossing
      * 3 o'clock, a mid-height bar whose inner end is at 0.607 W, and a right stem from the bar to a
      * slanted bottom (0.975/0.920 C). The counter opens through the upper-right aperture, so there is
-     * no closed hole and the glyph reads as G, not a C with a glued corner. All G strokes scale with a
-     * single weight from the measured reference (weight 1) to the measured label stroke
-     * ([G_PRODUCTION_WEIGHT], now ~1.006).
+     * no closed hole and the glyph reads as G, not a C with a glued corner. All G strokes scale
+     * with one weight from the measured reference (weight 1) to the label stroke
+     * ([G_PRODUCTION_WEIGHT] = [STROKE] / [DataLabel.G_REFERENCE_STEM_STROKE] = ~1.407), so the
+     * right stem is the 0.200-cap label stroke and the measured bowl/bar proportions are kept.
      */
     object DataLabel {
         /** Supported labels, in reader/reporting order. */
@@ -373,10 +377,14 @@ internal object IosGeometry {
         const val CAP_HEIGHT = 77.69f
 
         /**
-         * Measured ref-1 label weight: median of the 5 stem 9.87 and G stem 12.33 = 11.1 units
-         * (0.143 of [CAP_HEIGHT]), applied to every letter, the plus and the G.
+         * Label weight: **15.54 units = 0.200 of [CAP_HEIGHT]**, deliberately the battery digits'
+         * weight. It is [IosDigits.RUN_STROKE] 11.40 (the measured v6 run-stroke at cap 57,
+         * `.pm/ref/out-r3/stroke-r3d.csv`) x [DIGIT_SCALE] 77.69 / 57 = 15.54. R6 item 3 replaced
+         * the R5B 11.1 (0.143 cap) SF label weight so that the 3/4/5, the letters, the plus and the G
+         * all draw at one stroke; the owner saw the measured-cap "5" as bold and "G" as thin.
+         * [IosLabelStrokeWeightTest] pins the rendered strokes and `STROKE == RUN_STROKE * DIGIT_SCALE`.
          */
-        const val STROKE = 11.1f
+        const val STROKE = 15.54f
 
         /**
          * Measured ref-1 cap-box top in the label/Wi-Fi artboard: 14.95 units (the baseline is
@@ -425,6 +433,13 @@ internal object IosGeometry {
         private const val G_OUTER_CY_FRACTION = 0.5f
         private const val G_OUTER_RX_FRACTION = 0.61188f
         private const val G_OUTER_RY_FRACTION = 0.5f
+        /*
+         * R6 item 3 keeps the R5B measured G construction. The G's weight metric is its RIGHT STEM
+         * (the same `G stem` measurement used by the R5B reference), and the stem is set by STROKE
+         * for any inner-radius choice. Production scales the measured band, bar and stem thicknesses
+         * together by G_PRODUCTION_WEIGHT, so the right stem is 15.54 (0.200 cap) while the measured
+         * bowl/bar proportions (bar ~0.88x, bowl top ~0.85x, bowl side ~1.19x of the stem) stay.
+         */
         /** Reference-weight inner bowl radii (the band thickness is `outer - inner` per axis). */
         private const val G_INNER_RX_FRACTION = 0.43272f
         private const val G_INNER_RY_FRACTION = 0.37898f
@@ -448,7 +463,7 @@ internal object IosGeometry {
         /** Reference-weight stem thickness, the weight baseline: `STROKE / this` is the weight. */
         internal val G_REFERENCE_STEM_STROKE: Float =
             (1f - G_STEM_LEFT_FRACTION) * G_INK_FRACTION * CAP_HEIGHT
-        /** Weight that renders the measured G at the digit stroke ([STROKE]). */
+        /** Weight that renders the measured G at the digit stroke ([STROKE] 15.54 / 11.04 = ~1.407). */
         internal val G_PRODUCTION_WEIGHT: Float = STROKE / G_REFERENCE_STEM_STROKE
 
         /**
@@ -578,9 +593,12 @@ internal object IosGeometry {
          *    the left, [G_STEM_BOTTOM_RIGHT_FRACTION] on the right), which joins the bowl bottom.
          *
          * [weight] is 1 at the measured reference stroke and [G_PRODUCTION_WEIGHT] at the digit
-         * stroke; it scales the band thickness, bar thickness and stem width together, so the
-         * glyph keeps one letterform at either weight. The bowl opens to the right above the bar,
-         * so the counter is not an enclosed hole and the glyph is visibly a G, not a C.
+         * stroke; it scales the measured band thickness, bar thickness and stem width together, so
+         * the glyph keeps the measured letterform and its measured stroke proportions at either
+         * weight. The G's weight guard metric is the right stem (the R5B `G stem` measurement);
+         * the band and bar are not uniform multiples of the stem and are not measured as the G
+         * stroke. The bowl opens to the right above the bar, so the counter is not an enclosed hole
+         * and the glyph is visibly a G, not a C.
          */
         private fun gOutlines(weight: Float = G_PRODUCTION_WEIGHT): List<FloatArray> {
             val cx = G_OUTER_CX_FRACTION * G_WIDTH

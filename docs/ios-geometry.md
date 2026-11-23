@@ -198,7 +198,8 @@ and internal spacing only; its 36 px cap is the fraction denominator below.
 | Label cap height | 66.85 | **77.69** | `DataLabel.CAP_HEIGHT` | 5 cap 32.93 px x 2.360 |
 | Cap-box top | 14.96 (Wi-Fi-centred) | **14.95 (pinned, top-anchored)** | `DataLabel.TOP` | cap top 5.90 px below body top; artboard top = body top - 1 |
 | Baseline | 81.81 | **92.64** | `TOP + CAP_HEIGHT` | measured 92.63 |
-| Label stroke | 13.37 (0.200 cap) | **11.1 (0.143 cap)** | `DataLabel.STROKE` | median of 5 stem 9.87 / G stem 12.33 |
+| Label stroke | 13.37 (0.200 cap) | **11.1 (0.143 cap, R5B shipped, now provenance)** | R5B shipped stroke, not the live constant | median of 5 stem 9.87 / G stem 12.33 |
+| Label stroke (R6 item 3) | 11.1 (0.143 cap) | **15.54 (0.200 cap)** | `DataLabel.STROKE` (shipping) | `IosDigits.RUN_STROKE` 11.40 x `DIGIT_SCALE`; the measured battery-digit weight, so every label glyph is one weight |
 | Cell -> Wi-Fi gap | 57.5 | 57.5 (kept) | `Strip.CELL_WIFI_GAP` | ref 6 light, ink-to-ink |
 | Wi-Fi -> battery gap | 59.77 | 59.77 (kept) | `Strip.WIFI_BATTERY_GAP` | ref 6 light, ink-to-ink |
 | Cell -> label ink gap | 57.5 (Wi-Fi rule) | **52.07** | `Strip.CELL_LABEL_GAP` (new) | cell ink right -> label ink left 22.06 px |
@@ -243,7 +244,7 @@ The shipped constants:
 | Quantity | Value | Source |
 |---|---:|---|
 | Cap height | 77.69 | measured ref-1 5 cap 32.93 px x 2.360 (0.777 of the body, 0.814 of the tallest bar) |
-| Stroke | 11.10 | measured ref-1 label weight, 0.143 cap |
+| Stroke | 15.54 | R6 item 3: `IosDigits.RUN_STROKE` 11.40 x `DIGIT_SCALE` (77.69 / 57) = 0.200 cap, the measured battery-digit weight. The R5B ref-1 SF label weight 11.10 (0.143 cap) is provenance only |
 | Cap-box top | 14.95 | measured ref-1 cap top; baseline 92.64 (top-anchored) |
 | L / T / E / G width | 47.48 / 62.58 / 51.79 / 73.37 | measured SF 0.611 / 0.806 / 0.667 / 0.944 x cap |
 | + width | 58.27 | 0.750 x cap square (measured SF height; SF width 0.778) |
@@ -257,10 +258,16 @@ The shipped constants:
 | Vertical placement | cap top = 14.95, top-anchored | measured ref 1 |
 | Horizontal placement | ink group starts at the 1-unit margin | group layout `sum(advances) - firstBearing - lastBearing` |
 
-**Known digit-weight limitation.** Ref 1's label is a 0.143-cap weight, but the 3/4/5 are the fixed
-bold `IosDigits` battery glyphs (0.20 cap). Adopting the measured 11.1 stroke lightens every letter,
-the plus and the G, while the digit stays bold: our "5" is therefore heavier than ref 1's. The digit
-widths, advances and `DIGIT_SCALE = cap / 57` are unchanged.
+**One weight for every label glyph (R6 item 3; supersedes the R5B digit-weight limitation).** Ref 1's
+SF label measured 0.143 cap (11.10 u), but the 3/4/5 are the measured bold `IosDigits` battery glyphs at
+0.200 cap, so R5B shipped a label whose "5" was visibly heavier than its "G" (owner report). R6 item 3
+keeps the measured 11.10 as provenance and sets `DataLabel.STROKE = 15.54` = `IosDigits.RUN_STROKE`
+11.40 (the measured v6 run-stroke, `.pm/ref/out-r3/stroke-r3d.csv`) x `DIGIT_SCALE` (77.69 / 57), i.e.
+0.200 cap. Every letter, the plus, the G and the digits now draw at that one weight. The digits are
+not retyped or thinned; their widths, advances and `DIGIT_SCALE` are unchanged. The stroke is measured
+on the rendered pixels, not only in the constants, by `IosLabelStrokeWeightTest` (guard: each glyph
+within +/-5 % of the digit mean, digit mean within 2 % of `RUN_STROKE x DIGIT_SCALE`; evidence table
+`stroke-table.md`).
 
 SF shape/width reference (cap 36 px, flat letters L/T/E/4):
 
@@ -310,26 +317,32 @@ The shipped shape is a union of three clockwise contours (WINDING):
   stem-to-bowl joint). This is the visible right stem the old shape lacked.
 
 `G_REFERENCE_STEM_STROKE = (1 - 0.84951) x 34/36 x cap = 11.04` design units. Production scales every
-G stroke by `G_PRODUCTION_WEIGHT = STROKE / 11.04 = 1.006`, so the stem is exactly the measured label
-`STROKE` (11.1) and the band/bar keep the measured proportions. The same builder is exposed at weight 1 for
-the weight-normalised IoU evidence. The counter opens through the upper-right aperture (0 closed
-holes: the `IosDataLabelTest` flood-fill requires no enclosed background), and the right stem is
-inked below the bar, so the glyph is distinguishable from a C.
+G stroke by `G_PRODUCTION_WEIGHT = STROKE / 11.04 = 1.407`, so the right stem is exactly the shipping
+label `STROKE` (15.54). The G's weight metric is that right stem (the same `G stem` measurement as the
+R5B reference); the band and bar keep the measured letterform proportions (bar ~0.88x, bowl top
+~0.85x, bowl side ~1.19x of the stem) and are not the G stroke metric. The same builder at weight 1
+reproduces the measured reference letterform used for the IoU evidence. The counter opens through the
+upper-right aperture (0 closed holes: the `IosDataLabelTest` flood-fill requires no enclosed
+background), and the right stem is inked below the bar, so the glyph is distinguishable from a C.
 
 **Per-glyph IoU (v3).** Reference: the 50 % mask of the same strip. Alignment: ink bbox + a +/-0.6
 reference-pixel translation search. L/T/E/+/G are rebuilt by the shipping code at each glyph's measured
-reference stroke (L 5.8 px, T/E/+ 5.0 px, G weight 1); the digits are the fixed bold `IosDigits` and
-the reference is dilated to that bold weight. The Android renderer writes the masks
-(`r4-glyph-*-refweight-v3.png`); `compare_v3.py` computes the table and `overlay-g.png`. A lightly
-smoothed trace of the same 50 % boundary reaches 0.945, so ~0.91 is the resolution-limited amplitude of
-the reference, not a geometry failure.
+reference stroke (L 5.8 px, T/E/+ 5.0 px, G weight 1 = the measured reference letterform); the digits
+are the fixed bold `IosDigits` and the reference is dilated to that bold weight. The Android renderer
+writes the masks (`r4-glyph-*-refweight-v3.png`); `compare_v3.py` computes the table and
+`overlay-g.png`. A lightly smoothed trace of the same 50 % boundary reaches 0.945, so ~0.91 is the
+resolution-limited amplitude of the reference, not a geometry failure.
+
+Re-measured with the restored measured G construction: `.pm/ref/out-r6/g-v3-rerun/`
+(`compare_v3_r6.py`, `iou.md`, `overlay-g.png`, masks under `android-render/`). The table is unchanged
+from the earlier run; G returns to **0.908**.
 
 | Glyph | IoU | Weight normalisation |
 |---|---:|---|
 | L | 0.939 | rebuilt at 5.8 px |
 | T | 0.920 | rebuilt at 5.0 px |
 | E | 0.914 | rebuilt at 5.0 px |
-| **G** | **0.908** | rebuilt at weight 1 (measured stem) |
+| **G** | **0.908** | rebuilt at weight 1 (measured reference letterform) |
 | + | 0.902 | rebuilt at 5.0 px |
 | 3 | 0.723 | IosDigits bold; reference dilated to bold |
 | 4 | 0.788 | IosDigits bold; reference dilated to bold |
@@ -365,10 +378,12 @@ fixtures are still written by `IosDataLabelRasterTest`
 R5B adds the end-to-end strip fixture `r5b-ours-strip-dark-4x.png` (written by `IosR5LabelStripTest`
 when `IOS_RENDER_OUT` is set) and the side-by-side `r5b-compare-ref1-vs-ours.png`.
 
-**UNVERIFIED / known limits.** The cap, top, baseline, stroke and label gaps are measured from ref 1
+**UNVERIFIED / known limits.** The cap, top, baseline and label gaps are measured from ref 1
 (±1.18 u); the G v3 shape and the per-glyph IoU above remain measured against the SF strip. The
-vertical placement and the on-device size still need owner/device review. The 3/4/5 digits stay the
-fixed bold `IosDigits` glyphs (0.20 cap), so our "5" is bolder than ref 1's 0.143-cap label; the G ink
+vertical placement and the on-device size still need owner/device review. The R5B SF label weight
+(11.10 = 0.143 cap) is lighter than the shipping 15.54 (0.200 cap); R6 item 3 chose the digit weight
+so every label glyph is one weight, and the rendered guard/table is `IosLabelStrokeWeightTest` /
+`stroke-table.md`, with the side-by-side `label-weight.png`. The G ink
 fraction (0.944 shipped vs 0.874 measured here) and the shorter cell bars are outside this change.
 Honouring the measured plus makes "5G+" width-limited at the slot (a slot constraint, not a geometry
 bug). Owner/device review is required before release.
@@ -502,6 +517,71 @@ without rebuilding would make `ios.riv` stale and break the hash gate. The scene
 `0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`, and there is no scene-parity
 drift.
 
+## R6 (TRUE knockout + equal label weight)
+
+### Item 3 — one label weight (0.200 cap)
+
+R5B shipped the measured SF label weight 11.10 units (0.143 cap), which made the owner-visible "5"
+(the measured `IosDigits` battery glyph at 0.200 cap) bold and "G" thin. R6 item 3 sets
+`DataLabel.STROKE = 15.54` = `IosDigits.RUN_STROKE` 11.40 (the measured v6 run-stroke at cap 57,
+`.pm/ref/out-r3/stroke-r3d.csv`) x `DIGIT_SCALE` (77.69 / 57), so every label glyph draws at the
+battery-digit weight. The digits are not retyped; widths, advances, `DIGIT_SCALE` and the label gaps
+are unchanged, and the measured 11.10 remains provenance. The G's measured outer envelope, aperture,
+bar centre/inner end and stem left/bottom stay, and its measured inner radii/bar half
+(0.43272 W / 0.37898 C, bar half 0.06288 C) are restored: the production weight scales those measured
+thicknesses together, so the right stem — the G weight metric, the same G stem measured in R5B — is
+15.54 while the band/bar keep the measured ~0.85x/0.88x/1.19x proportions. The re-measured
+reference-weight G IoU is 0.908 (see Per-glyph IoU). Measured on the rendered pixels at cap 622 px
+(8x), 50 % mask:
+
+| Glyph | Measured px | Design units | stroke / cap | delta vs digit mean |
+|---|---:|---:|---:|---:|
+| 5 | 124.0 | 15.49 | 0.1994 | +0.0 % |
+| G (right stem) | 124.0 | 15.49 | 0.1994 | +0.0 % |
+| L (stem) | 124.0 | 15.49 | 0.1994 | +0.0 % |
+| T (stem) | 125.0 | 15.61 | 0.2010 | +0.8 % |
+| E (stem) | 124.0 | 15.49 | 0.1994 | +0.0 % |
+| 4 (run_stroke) | 124.0 | 15.49 | 0.1994 | +0.0 % |
+| 3 (run_stroke) | 124.0 | 15.49 | 0.1994 | +0.0 % |
+| + (arm) | 124.0 | 15.49 | 0.1994 | +0.0 % |
+
+Digit mean 0.1994 cap vs expected 0.2000 (-0.3 %). The guard is `IosLabelStrokeWeightTest` (each
+glyph within +/-5 % of the digit mean; the digit mean within 2 % of `RUN_STROKE x DIGIT_SCALE`), with
+`stroke-table.md`, `label-weight-ours.png` and the composed `label-weight.png`.
+
+### Item 6 — true knockout of the percentage digits
+
+`percentInside` no longer paints a guessed white/black digit colour. `drawBattery` paints the neutral
+remainder, the charged fill and the cap inside `Canvas.saveLayer`, adds every digit contour plus the
+inline bolt to ONE even-odd `Path`, and CLEARs it with `PorterDuff.Mode.CLEAR`. The layer is
+mandatory: a CLEAR on the caller's canvas would erase glyphs already drawn beside the battery. The
+even-odd path keeps digit counters as body ink (only the stroke is cleared), and the inline bolt is
+cleared too; the large bolt is not drawn in this mode. `boltOpacity` is binary in production (1 or
+0); any value > 0 clears the inline bolt fully because CLEAR ignores paint alpha, and this is stated
+in the KDoc. The charged fill, remainder, cap, glyph origins, advances and centring are unchanged.
+With `percentInside == false` the off path is unchanged (no layer); `IosR6KnockoutEvidenceTest`
+asserts it has no holes and the digit seat stays body ink (this is a behavioural guard, not a
+byte-identical golden).
+
+The drawable fade is preserved: drawable alpha multiplies the body paints, the layer composites the
+translucent body, and the holes remain fully transparent so the real background shows. The guard
+suite `IosR6KnockoutEvidenceTest` (real assertions, no env gate) covers white and a deterministic
+multi-colour photo background, holes over both fill and remainder at 50 %, the 0 counter staying body
+ink, charging (inline bolt a hole, no large bolt), NORMAL/CHARGING/LOW/SAVER x black/white tint, the
+off-mode regression and a 128-alpha fade. `IosDrawablesTest` percentInside tests, `IosDigitsTest`
+(the removed `backgroundColour` case) and `IosDigitEvidenceTest` (now rendered over an opaque
+background so the holes are visible; body-ink and hole guards) were updated. Evidence under
+`.pm/ref/out-r6/`: `digits-<tone>-<state>-<bg>.png` for tone light/dark, state normal (50 %) /
+charging (50 %) / low (10 %) / saver (50 %) and bg white/black/yellow/photo (32 PNGs: 2 x 4 x 4),
+plus the labelled `digits-matrix.png` and `digits-sha256.txt`. The matrix note records that
+white-on-white and black-on-black cells vanish by design (the true knockout reveals a same-colour
+background), not because of a bug.
+
+`rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` stay untouched: the iOS runtime is Canvas-only
+(`IosRenderers.kt:8-24`), so the scene does not represent the percentage or the labels, and editing it
+without the absent `rive` CLI would only break the `.riv` hash gate. The shipped hash remains
+`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`.
+
 ## UNVERIFIED / caveats
 
 - **Cap at 100 %:** the light reference draws the cap at full neutral ink (alpha 1.0). The owner rule
@@ -523,10 +603,11 @@ drift.
   confidence; the battery and Wi-Fi scales are direct bbox measurements.
 - **Clock metric:** the union of the digits is 30 px but flat digits measure 28-29 px, a ±1 px (±3 %)
   uncertainty. The target ratios carry that tolerance.
-- **Data-type label (R5B):** the cap (77.69), top (14.95), baseline (92.64), stroke (11.1) and label
-  gaps (52.07 / 54.04) are measured from ref 1 with ±1.18 u uncertainty. The 3/4/5 remain the fixed
-  bold `IosDigits` glyphs (0.20 cap), so our "5" is bolder than ref 1's 0.143-cap label — a known
-  mismatch, not a geometry bug. `Cell.INACTIVE_ALPHA` stays 0.25 **UNVERIFIED** (ref 1 has all bars
+- **Data-type label (R5B / R6):** the cap (77.69), top (14.95), baseline (92.64) and label gaps
+  (52.07 / 54.04) are measured from ref 1 with ±1.18 u uncertainty. The R5B SF label weight 11.10
+  (0.143 cap) is provenance; the shipping stroke is 15.54 (0.200 cap), the measured battery-digit
+  weight, so every label glyph (including the untouched 3/4/5) is one weight — this supersedes the
+  R5B digit-weight limitation. `Cell.INACTIVE_ALPHA` stays 0.25 **UNVERIFIED** (ref 1 has all bars
   and dots active; ref 2 is only weakly consistent at ~0.36-0.37). The battery cap W/H measure
   13.7 / 34.3 versus the frozen 9.5 / 26.0 (low confidence, unchanged). The G ink fraction is 0.874
   measured vs 0.944 shipped, and the shorter cell bars measure 35.7/43.4/53.8/63.9 vs

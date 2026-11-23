@@ -303,13 +303,14 @@ class IosDrawablesTest {
 
     @Test
     fun `percentInside off leaves the digit seat free of background ink`() {
-        // At 69 % the body centre is inside the charged fill; with the setting off the "69" seat must
-        // contain only fill/remainder, never the knocked-out background colour.
+        // With the setting off nothing is cut out: the "69" seat is solid body ink (no transparent
+        // pixel) and no guessed white/black knockout is painted.
         val visual = batteryVisual(level = 69, tint = Color.BLACK)
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
         val bitmap = render(drawable, BATTERY_W, BATTERY_H)
 
         val seat = digitSeat("69")
+        assertEquals(0, countTransparent(bitmap, seat[0], seat[1], seat[2], seat[3]))
         assertEquals(0, countBackgroundInk(bitmap, seat[0], seat[1], seat[2], seat[3]))
         val fill = bitmap.getPixel(60, 45)
         assertEquals("stroke seat alpha", 255, Color.alpha(fill))
@@ -319,15 +320,18 @@ class IosDrawablesTest {
     }
 
     @Test
-    fun `percentInside draws the digit colour inside the body`() {
+    fun `percentInside clears the digits through the body`() {
+        // R6 item 6: the digit ink is a hole, so on a transparent canvas those pixels are alpha 0.
         val visual = batteryVisual(level = 69, tint = Color.BLACK).copy(percentInside = true)
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
         val bitmap = render(drawable, BATTERY_W, BATTERY_H)
 
-        // Black tint -> white knockout ink. The seat is derived from the v5 advances/bearings.
         val seat = digitSeat("69")
-        val knockouts = countBackgroundInk(bitmap, seat[0], seat[1], seat[2], seat[3])
-        assertTrue("no digit ink inside the body ($knockouts)", knockouts > 100)
+        val holes = countTransparent(bitmap, seat[0], seat[1], seat[2], seat[3])
+        assertTrue("no cleared digit ink inside the body ($holes)", holes > 100)
+        // The body itself is still drawn: a light-mode fill sample at 69 % is opaque.
+        val fill = bitmap.getPixel(50, 45)
+        assertEquals("body fill alpha", 255, Color.alpha(fill))
     }
 
     @Test
@@ -336,34 +340,25 @@ class IosDrawablesTest {
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
         val bitmap = render(drawable, BATTERY_W, BATTERY_H)
 
-        var minX = Int.MAX_VALUE
-        var minY = Int.MAX_VALUE
-        var maxX = -1
-        var maxY = -1
-        for (y in 0 until bitmap.height) {
-            for (x in 0 until bitmap.width) {
-                val c = bitmap.getPixel(x, y)
-                if (Color.alpha(c) > 200 && Color.red(c) > 245 && Color.green(c) > 245 &&
-                    Color.blue(c) > 245
-                ) {
-                    minX = minOf(minX, x)
-                    minY = minOf(minY, y)
-                    maxX = maxOf(maxX, x)
-                    maxY = maxOf(maxY, y)
-                }
+        val b = IosGeometry.Battery
+        val left = b.BODY_LEFT.roundToInt()
+        val top = b.BODY_TOP.roundToInt()
+        val right = (b.BODY_LEFT + b.BODY_W).roundToInt() - 1
+        val bottom = (b.BODY_TOP + b.BODY_H).roundToInt() - 1
+        var count = 0
+        for (y in top..bottom) {
+            for (x in left..right) {
+                if (Color.alpha(bitmap.getPixel(x, y)) == 0) count++
             }
         }
-        assertTrue("no digit ink", maxX >= 0 && maxY >= 0)
-        assertTrue("digit ink left $minX", minX > 0)
-        assertTrue("digit ink top $minY", minY > 0)
-        assertTrue(
-            "digit ink right $maxX",
-            maxX <= (IosGeometry.Battery.BODY_LEFT + IosGeometry.Battery.BODY_W).roundToInt()
-        )
-        assertTrue(
-            "digit ink bottom $maxY",
-            maxY <= (IosGeometry.Battery.BODY_TOP + IosGeometry.Battery.BODY_H).roundToInt()
-        )
+        assertTrue("no cleared digit ink", count > 100)
+        // The holes are inside the body: its straight left/right edges stay inked (the rounded
+        // corners are outside the body shape, so only the straight middle band is checked).
+        val inset = b.BODY_RADIUS.roundToInt() + 1
+        for (y in (top + inset)..(bottom - inset)) {
+            assertTrue("body left edge cleared at y=$y", Color.alpha(bitmap.getPixel(left, y)) > 0)
+            assertTrue("body right edge cleared at y=$y", Color.alpha(bitmap.getPixel(right, y)) > 0)
+        }
     }
 
     @Test
@@ -378,8 +373,8 @@ class IosDrawablesTest {
         val bitmap = render(drawable, BATTERY_W, BATTERY_H)
 
         // The large bolt (when the setting is off) is white in the top strip; inside mode puts the
-        // small bolt after the digits, so that strip must stay free of white.
-        assertEquals(0, countBackgroundInk(bitmap, 60, 4, 135, 18))
+        // small bolt after the digits, so that strip must stay solid body ink (no hole).
+        assertEquals(0, countTransparent(bitmap, 60, 4, 135, 18))
         // Derive the inline bolt's own box from the measured v4 layout instead of hard-coding a seat.
         val b = IosGeometry.Battery
         val group = IosDigits.groupWidth("60", withBolt = true)
@@ -389,8 +384,8 @@ class IosDrawablesTest {
         val boltTop = b.BODY_TOP + (b.BODY_H - IosDigits.INLINE_BOLT_H) / 2f
         val boltBottom = boltTop + IosDigits.INLINE_BOLT_H
         assertTrue(
-            "no inline bolt after the digits",
-            countBackgroundInk(
+            "no cleared inline bolt after the digits",
+            countTransparent(
                 bitmap,
                 boltLeft.toInt() + 2,
                 boltTop.toInt() + 2,
@@ -730,6 +725,23 @@ class IosDrawablesTest {
             ceil(left + group).toInt(),
             ceil(top + IosDigits.CAP_HEIGHT).toInt()
         )
+    }
+
+    /** Counts fully transparent (alpha 0) pixels in an inclusive-exclusive bitmap rectangle. */
+    private fun countTransparent(
+        bitmap: Bitmap,
+        x0: Int,
+        y0: Int,
+        x1: Int,
+        y1: Int
+    ): Int {
+        var count = 0
+        for (y in y0 until minOf(y1, bitmap.height)) {
+            for (x in x0 until minOf(x1, bitmap.width)) {
+                if (Color.alpha(bitmap.getPixel(x, y)) == 0) count++
+            }
+        }
+        return count
     }
 
     private fun countBackgroundInk(

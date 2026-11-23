@@ -24,9 +24,9 @@ import java.security.MessageDigest
  *
  * Ref 1 (`.pm/ref/r5/1-real-iphone-5g-dual.jpg`, sha256 `0e009673…`, dark, dual-SIM) is the first
  * real iOS capture of the label (5G). It fixes the cap (77.69), the top-anchored [TOP] (14.95), the
- * baseline (92.64) and the stroke (11.1). The SF strip
- * `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the shape/width authority; the fixed bold
- * `IosDigits` 3/4/5 are intentionally not retyped, so our "5" is bolder than ref 1's.
+ * baseline (92.64) and the R5B provenance weight (11.1). R6 item 3 deliberately raises the label
+ * weight to 15.54 (0.200 cap) so every glyph matches the battery digits; the SF strip
+ * `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the shape/width authority.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -161,9 +161,16 @@ class IosDataLabelTest {
         assertEquals("the centring formula is 9.54", 9.54f, centringTop, 0.05f)
         assertTrue("TOP must not be the Wi-Fi-centred formula", kotlin.math.abs(d.TOP - centringTop) > 1f)
 
-        // ref 1: median of the 5 stem (9.87) and G stem (12.33); 0.143 cap.
-        assertEquals(11.1f, d.STROKE, 0.01f)
-        assertEquals("stroke / cap", 0.1429f, d.STROKE / d.CAP_HEIGHT, 0.0005f)
+        // R6 item 3: the label weight is the battery digits' weight, not the lighter ref-1 SF
+        // label weight (11.10 = 0.143 cap, kept as provenance in the docs and raster evidence).
+        assertEquals(15.54f, d.STROKE, 0.01f)
+        assertEquals("stroke / cap", 0.2000f, d.STROKE / d.CAP_HEIGHT, 0.0005f)
+        assertEquals(
+            "STROKE must stay RUN_STROKE x DIGIT_SCALE (cannot drift)",
+            IosDigits.RUN_STROKE * d.DIGIT_SCALE,
+            d.STROKE,
+            0.05f
+        )
     }
 
     @Test
@@ -201,8 +208,8 @@ class IosDataLabelTest {
         assertEquals("G = band + stem + bar", 3, outlines.size)
 
         val rects = outlines.drop(1).map { bbox(it) }
-        // Bar at the measured centre (0.5102 C), thickened from the reference band by the
-        // production weight; its inner end reaches into the counter at 0.60653 W.
+        // Bar at the measured centre (0.5102 C) and measured reference half thickness (0.06288 C),
+        // scaled by the production weight; its inner end reaches into the counter at 0.60653 W.
         val weight = d.STROKE / d.G_REFERENCE_STEM_STROKE
         val bar = rects.maxByOrNull { it.width }!!
         assertEquals("bar centre", 0.5102f * c, (bar.top + bar.bottom) / 2f, 0.01f)
@@ -227,6 +234,7 @@ class IosDataLabelTest {
         assertEquals(0.60653f * w, refBar.left, 0.01f)
         val refStem = reference.maxByOrNull { it.height }!!
         assertEquals(0.84951f * w, refStem.left, 0.01f)
+        assertEquals("reference stem is the reference stroke", d.G_REFERENCE_STEM_STROKE, w - refStem.left, 0.01f)
         assertEquals(0.97497f * c, refStem.bottom, 0.01f)
 
         // The counter is not closed (no holes), the upper-right aperture is open, and the right
