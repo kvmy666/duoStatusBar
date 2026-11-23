@@ -203,8 +203,10 @@ internal object IosIconOrder {
             }
             return
         }
-        applySlotPermutation()
-        scheduleAll()
+        val changed = applySlotPermutation()
+        // A repeated settings apply on an unchanged, already-adopted bar must schedule nothing; the
+        // first activation still schedules because the views may not have been moved yet.
+        if (shouldScheduleOnActivate(wasActive, changed)) scheduleAll()
     }
 
     /**
@@ -293,6 +295,13 @@ internal object IosIconOrder {
     }
 
     // ---- pure rules (unit-tested without Android) ----
+
+    /**
+     * An activation schedules a move pass only when it is the first activation this session (the
+     * views may still be in stock order) or when it actually changed the captured slot order.
+     */
+    internal fun shouldScheduleOnActivate(wasActive: Boolean, changed: Boolean): Boolean =
+        !wasActive || changed
 
     /**
      * `wifi` moves immediately after the last `mobile`, every other slot keeps its relative order.

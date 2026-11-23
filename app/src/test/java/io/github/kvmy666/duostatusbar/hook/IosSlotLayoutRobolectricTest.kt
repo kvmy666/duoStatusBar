@@ -19,6 +19,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * R9 §System-view layout on real Android parents: the stock views are resized by LayoutParams, the
@@ -112,6 +114,98 @@ class IosSlotLayoutRobolectricTest {
         }
     }
 
+    /**
+     * The measured issue dump tree: a 316x94 `StatusIconContainer` row, the visible 224x94 mobile
+     * chain (`mobile_signal` 133x94, the data-type label 52x42), the GONE 0x0 second-SIM outer
+     * (84x47 / 67x47) and the 113x63 battery container with its 93x45 leaf.
+     */
+    private class DumpTree(context: Context) {
+        val row = LinearLayout(context)
+        val container = LinearLayout(context)
+        val mobileOuter = FrameLayout(context)
+        val mobileGroup = LinearLayout(context)
+        val mobileCombo = FrameLayout(context)
+        val signal = ImageView(context)
+        val label = ImageView(context)
+        val hiddenOuter = FrameLayout(context)
+        val hiddenGroup = LinearLayout(context)
+        val hiddenCombo = FrameLayout(context)
+        val hiddenSignal = ImageView(context)
+        val battery = FrameLayout(context)
+        val batteryLeaf = ImageView(context)
+
+        init {
+            row.orientation = LinearLayout.HORIZONTAL
+            row.gravity = Gravity.CENTER_VERTICAL
+            container.orientation = LinearLayout.HORIZONTAL
+            container.gravity = Gravity.CENTER_VERTICAL
+            row.addView(container, LinearLayout.LayoutParams(316, 94))
+            row.addView(battery, LinearLayout.LayoutParams(113, 63))
+
+            mobileOuter.clipChildren = true
+            mobileGroup.gravity = Gravity.CENTER_VERTICAL
+            mobileCombo.clipChildren = true
+            container.addView(mobileOuter, LinearLayout.LayoutParams(224, 94))
+            mobileOuter.addView(mobileGroup, FrameLayout.LayoutParams(224, 94))
+            mobileGroup.addView(mobileCombo, LinearLayout.LayoutParams(224, 94))
+            mobileCombo.addView(
+                signal,
+                FrameLayout.LayoutParams(133, 94).apply { leftMargin = 9 }
+            )
+            mobileCombo.addView(
+                label,
+                FrameLayout.LayoutParams(52, 42).apply {
+                    leftMargin = 162
+                    topMargin = 26
+                }
+            )
+
+            // The hidden second-SIM owner: GONE plus 0x0, still carrying its 84x47 / 67x47 chain.
+            hiddenOuter.visibility = View.GONE
+            container.addView(hiddenOuter, LinearLayout.LayoutParams(0, 0))
+            hiddenOuter.addView(hiddenGroup, FrameLayout.LayoutParams(84, 47))
+            hiddenGroup.addView(hiddenCombo, LinearLayout.LayoutParams(84, 47))
+            hiddenCombo.addView(hiddenSignal, FrameLayout.LayoutParams(67, 47))
+
+            battery.addView(batteryLeaf, FrameLayout.LayoutParams(93, 45))
+
+            signal.setImageDrawable(
+                IosDrawables.create(
+                    IosIconKind.CELL,
+                    IosVisual(
+                        part = IosPart.CELL,
+                        cellMode = IosCellMode.DUAL,
+                        cellRole = IosCellRole.BOTH,
+                        cellBars = 4f,
+                        cellDots = 1f
+                    ),
+                    133, 94, relativeSize = false, captureColorFilter = true
+                )
+            )
+            label.setImageDrawable(
+                IosDrawables.create(
+                    IosIconKind.WIFI,
+                    IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G")),
+                    52, 42, relativeSize = false, captureColorFilter = true
+                )
+            )
+            hiddenSignal.setImageDrawable(
+                IosDrawables.create(
+                    IosIconKind.CELL,
+                    IosVisual(part = IosPart.CELL, cellBars = 4f),
+                    67, 47, relativeSize = false, captureColorFilter = true
+                )
+            )
+            batteryLeaf.setImageDrawable(
+                IosDrawables.create(
+                    IosIconKind.BATTERY,
+                    IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                    93, 45, relativeSize = false, captureColorFilter = true
+                )
+            )
+        }
+    }
+
     @Before
     fun setUp() {
         IosSlotLayout.resetForTest()
@@ -143,10 +237,10 @@ class IosSlotLayoutRobolectricTest {
         val stockScale = tree.wifiSignal.scaleType
 
         assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
-        assertEquals(77, lp(tree.wifiOuter).width)
+        assertEquals(78, lp(tree.wifiOuter).width)
         assertEquals(63, lp(tree.wifiOuter).height)
-        assertEquals(77, lp(tree.wifiGroup).width)
-        assertEquals(77, lp(tree.wifiCombo).width)
+        assertEquals(78, lp(tree.wifiGroup).width)
+        assertEquals(78, lp(tree.wifiCombo).width)
         assertEquals(57, lp(tree.wifiSignal).width)
         assertEquals(43, lp(tree.wifiSignal).height)
         assertEquals(10, (tree.wifiSignal.layoutParams as FrameLayout.LayoutParams).leftMargin)
@@ -204,7 +298,7 @@ class IosSlotLayoutRobolectricTest {
         // The negative-width and weighted children add nothing; only the registered slots count.
         assertEquals(expected, lp(tree.container).width)
         assertEquals(84, mobile.outerWidth)
-        assertEquals(77, wifi.outerWidth)
+        assertEquals(78, wifi.outerWidth)
 
         // Lay the tree out so a MATCH_PARENT/weighted child would have a live width if we read it.
         layout(tree.root)
@@ -274,7 +368,8 @@ class IosSlotLayoutRobolectricTest {
         val drawable = tree.wifiSignal.drawable
 
         IosSlotLayout.reapply(ModuleSettings.DEFAULT.copy(iosWifiScale = 200))
-        assertEquals(133, lp(tree.wifiOuter).width)
+        // Restored 2.0.6 Wi-Fi ink 57.17 px: round(57.17 * 2 + 20.59) = 135.
+        assertEquals(135, lp(tree.wifiOuter).width)
         assertEquals(86, lp(tree.wifiOuter).height)
         assertEquals(115, lp(tree.wifiSignal).width)
         assertEquals(86, lp(tree.wifiSignal).height)
@@ -324,12 +419,107 @@ class IosSlotLayoutRobolectricTest {
         tree.labelMode()
         assertTrue(IosSlotLayout.registerMobile(tree.signal, tree.label))
 
-        assertEquals(157, lp(tree.mobileOuter).width)
+        assertEquals(156, lp(tree.mobileOuter).width)
         assertEquals(67, lp(tree.signal).width)
         assertEquals(53, lp(tree.label).width)
         assertEquals(94, (tree.label.layoutParams as FrameLayout.LayoutParams).leftMargin)
         // GONE wifi must not add a second slot to the container.
-        assertEquals(157, lp(tree.container).width)
+        assertEquals(156, lp(tree.container).width)
+    }
+
+    @Test
+    fun `real dump tree gets the one-row R9 spec at 1272`() {
+        val tree = DumpTree(context)
+        val cellVisual = IosVisual(
+            part = IosPart.CELL,
+            cellMode = IosCellMode.DUAL,
+            cellRole = IosCellRole.BOTH,
+            cellBars = 4f,
+            cellDots = 1f
+        )
+        val labelVisual = IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
+        val batteryVisual = IosVisual(part = IosPart.BATTERY, batteryLevel = 1f)
+
+        assertTrue(IosSlotLayout.registerMobile(tree.signal, tree.label))
+        assertTrue(IosSlotLayout.registerBattery(tree.battery, tree.batteryLeaf))
+        IosSlotLayout.reapply(
+            ModuleSettings.DEFAULT.copy(iosCellScale = 100, iosWifiScale = 98, iosBatteryScale = 100)
+        )
+
+        val s = IosSlotLayout.unit(1272)
+        val gap = IosSlotLayout.gap(1272)
+        assertEquals(20.59f, gap, 0.01f)
+
+        // One 63 px row for the role, not the live 94/63/51/47 stock heights.
+        for (view in listOf(tree.mobileOuter, tree.mobileGroup, tree.mobileCombo, tree.battery)) {
+            assertEquals("${view.javaClass.simpleName} height", 63, lp(view).height)
+        }
+
+        val cellParams = tree.signal.layoutParams as FrameLayout.LayoutParams
+        val labelParams = tree.label.layoutParams as FrameLayout.LayoutParams
+        val batteryParams = tree.batteryLeaf.layoutParams as FrameLayout.LayoutParams
+        val cellInk = IosGeometry.inkBox(IosIconKind.CELL, cellVisual)
+        val labelInk = IosGeometry.inkBox(IosIconKind.WIFI, labelVisual)
+        val batteryInk = IosGeometry.inkBox(IosIconKind.BATTERY, batteryVisual)
+
+        // Leaf sizes: the stacked BOTH cell artboard, the 98 % label artboard and the battery.
+        assertEquals(67, cellParams.width)
+        assertEquals(47, cellParams.height)
+        assertEquals(52, labelParams.width)
+        assertEquals(42, labelParams.height)
+        assertEquals(93, batteryParams.width)
+        assertEquals(45, batteryParams.height)
+
+        // Leaf left margins put the same G/2 pad before each ink.
+        assertEquals(
+            (gap / 2f - cellInk.left * s).roundToInt().coerceAtLeast(0),
+            cellParams.leftMargin
+        )
+        val cellInkW = cellInk.width * s
+        val labelInkW = labelInk.width * s * 0.98f
+        assertEquals(
+            (gap / 2f + cellInkW + gap - labelInk.left * s * 0.98f).roundToInt().coerceAtLeast(0),
+            labelParams.leftMargin
+        )
+        assertEquals(
+            (gap / 2f - batteryInk.left * s).roundToInt().coerceAtLeast(0),
+            batteryParams.leftMargin
+        )
+
+        // Exact R9 outer widths: ink x scale + the equal gap (mobile holds cell + label).
+        val mobileOuterW = (cellInkW + gap + labelInkW + gap).roundToInt()
+        val batteryOuterW = (batteryInk.width * s + gap).roundToInt()
+        assertEquals(mobileOuterW, lp(tree.mobileOuter).width)
+        assertEquals(mobileOuterW, lp(tree.mobileGroup).width)
+        assertEquals(mobileOuterW, lp(tree.mobileCombo).width)
+        assertEquals(158, mobileOuterW)
+        assertEquals(113, lp(tree.battery).width)
+        assertEquals(batteryOuterW, lp(tree.battery).width)
+
+        // Every leaf is vertically centred in its outer: top = round((outerH - leafH) / 2).
+        assertEquals(((63 - cellParams.height) / 2f).roundToInt(), cellParams.topMargin)
+        assertEquals(((63 - labelParams.height) / 2f).roundToInt(), labelParams.topMargin)
+        assertEquals(((63 - batteryParams.height) / 2f).roundToInt(), batteryParams.topMargin)
+        assertCentred(cellParams.topMargin, cellParams.height, 63)
+        assertCentred(labelParams.topMargin, labelParams.height, 63)
+        assertCentred(batteryParams.topMargin, batteryParams.height, 63)
+
+        // Ink gaps: cell -> label and label -> battery are both the equal 20.59 px slot gap.
+        val cellInkLeft = cellParams.leftMargin + cellInk.left * s
+        val cellInkRight = cellInkLeft + cellInkW
+        val labelInkLeft = labelParams.leftMargin + labelInk.left * s * 0.98f
+        val labelInkRight = labelInkLeft + labelInkW
+        val batteryInkLeft =
+            mobileOuterW + batteryParams.leftMargin + batteryInk.left * s
+        assertEquals("cell->label ink gap", gap, labelInkLeft - cellInkRight, 1f)
+        assertEquals("label->battery ink gap", gap, batteryInkLeft - labelInkRight, 1f)
+    }
+
+    private fun assertCentred(top: Int, leafH: Int, outerH: Int) {
+        assertTrue(
+            "leaf centre ${top + leafH / 2f} vs outer centre ${outerH / 2f}",
+            abs((top * 2 + leafH) - outerH) <= 1
+        )
     }
 
     @Test

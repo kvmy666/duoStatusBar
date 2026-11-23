@@ -59,6 +59,13 @@ internal object IosSlotLayout {
     /** Equal ink slot gap: 20.6 px at 1272 (`0.01619 * screenW`). */
     const val GAP_PER_SCREEN_WIDTH = 0.01619f
 
+    /**
+     * R9 design row height: 63 px at the owner's 1272 px width. Every slot kind uses this one row,
+     * never a live stock view/LayoutParams height (a slot's own write used to be re-read as 94/63/51/
+     * 47, so the outers disagreed about the row).
+     */
+    const val ROW_HEIGHT_PER_SCREEN_WIDTH = 63f / 1272f
+
     private val logOnce = LogOnce()
 
     /** The live settings snapshot; set by [reapply] on every settings apply/bind. */
@@ -81,8 +88,7 @@ internal object IosSlotLayout {
         val group: WeakReference<View>?,
         val combo: WeakReference<View>?,
         val leaf: WeakReference<ImageView>,
-        val label: WeakReference<ImageView>?,
-        var stockRowHeight: Int
+        val label: WeakReference<ImageView>?
     )
 
     private class Original(
@@ -128,10 +134,17 @@ internal object IosSlotLayout {
     /** The equal slot gap in px. */
     fun gap(screenW: Int): Float = screenW.coerceAtLeast(1) * GAP_PER_SCREEN_WIDTH
 
+    /** The one R9 row height for [screenW] in whole px (63 at 1272), never a live stock height. */
+    fun rowHeight(screenW: Int): Int =
+        (screenW.coerceAtLeast(1) * ROW_HEIGHT_PER_SCREEN_WIDTH).roundToInt().coerceAtLeast(1)
+
     /**
-     * One icon's real slot. The outer is `ink + gap` wide and at least the stock row high; the leaf
+     * One icon's real slot. The outer is `ink + gap` wide and at least the design row high; the leaf
      * is the artboard box, positioned so the ink starts at `gap / 2` inside the outer. The user
      * offset is clamped inside the slot, never past a neighbour.
+     *
+     * [stockRowHeight] is the R9 design row ([rowHeight]), passed as the same value for every kind;
+     * it is kept as a parameter so the pure rule stays unit-testable at any screen width.
      */
     fun metrics(
         kind: IosIconKind,
@@ -150,8 +163,9 @@ internal object IosSlotLayout {
         val inkW = ink.width * unitPx * k
         val artWpx = artW * unitPx * k
         val artHpx = artH * unitPx * k
+        val leafH = artHpx.roundToInt().coerceAtLeast(1)
         val outerW = (inkW + gapPx).roundToInt().coerceAtLeast(1)
-        val outerH = max(stockRowHeight.coerceAtLeast(0), artHpx.roundToInt()).coerceAtLeast(1)
+        val outerH = max(stockRowHeight.coerceAtLeast(0), leafH).coerceAtLeast(1)
         val dx = (offsetPercent.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET) /
             100f * inkW).coerceIn(-gapPx / 2f, gapPx / 2f)
         return IosSlotMetrics(
@@ -159,9 +173,9 @@ internal object IosSlotLayout {
             outerHeight = outerH,
             leaf = IosSlotBox(
                 width = artWpx.roundToInt().coerceAtLeast(1),
-                height = artHpx.roundToInt().coerceAtLeast(1),
+                height = leafH,
                 left = (gapPx / 2f - ink.left * unitPx * k + dx).roundToInt().coerceAtLeast(0),
-                top = ((outerH - artHpx) / 2f).roundToInt().coerceAtLeast(0)
+                top = ((outerH - leafH) / 2f).roundToInt().coerceAtLeast(0)
             )
         )
     }
@@ -169,6 +183,7 @@ internal object IosSlotLayout {
     /**
      * The label-mode mobile slot: the outer holds the cell then the data-type label with one [gap]
      * between their inks. The label uses the Wi-Fi slot's scale/offset because it replaces that slot.
+     * [stockRowHeight] is the one R9 design row, exactly as for [metrics].
      */
     fun mobileMetrics(
         cellVisual: IosVisual,
@@ -208,26 +223,28 @@ internal object IosSlotLayout {
             100f * labelInkW).coerceIn(-gapPx / 2f, gapPx / 2f)
         val cellArtHpx = cellArtH * unitPx * cellK
         val labelArtHpx = labelArtH * unitPx * labelK
+        val cellLeafH = cellArtHpx.roundToInt().coerceAtLeast(1)
+        val labelLeafH = labelArtHpx.roundToInt().coerceAtLeast(1)
         val outerW = (cellInkW + gapPx + labelInkW + gapPx).roundToInt().coerceAtLeast(1)
         val outerH = max(
-            max(stockRowHeight.coerceAtLeast(0), cellArtHpx.roundToInt()),
-            labelArtHpx.roundToInt()
+            max(stockRowHeight.coerceAtLeast(0), cellLeafH),
+            labelLeafH
         ).coerceAtLeast(1)
         return IosSlotMetrics(
             outerWidth = outerW,
             outerHeight = outerH,
             leaf = IosSlotBox(
                 width = (cellArtW * unitPx * cellK).roundToInt().coerceAtLeast(1),
-                height = cellArtHpx.roundToInt().coerceAtLeast(1),
+                height = cellLeafH,
                 left = (gapPx / 2f - cellInk.left * unitPx * cellK + cellDx).roundToInt().coerceAtLeast(0),
-                top = ((outerH - cellArtHpx) / 2f).roundToInt().coerceAtLeast(0)
+                top = ((outerH - cellLeafH) / 2f).roundToInt().coerceAtLeast(0)
             ),
             label = IosSlotBox(
                 width = (labelArtW * unitPx * labelK).roundToInt().coerceAtLeast(1),
-                height = labelArtHpx.roundToInt().coerceAtLeast(1),
+                height = labelLeafH,
                 left = (gapPx / 2f + cellInkW + gapPx - labelInk.left * unitPx * labelK + labelDx)
                     .roundToInt().coerceAtLeast(0),
-                top = ((outerH - labelArtHpx) / 2f).roundToInt().coerceAtLeast(0)
+                top = ((outerH - labelLeafH) / 2f).roundToInt().coerceAtLeast(0)
             )
         )
     }
@@ -251,8 +268,7 @@ internal object IosSlotLayout {
             WeakReference(group),
             WeakReference(combo),
             WeakReference(signal),
-            null,
-            rowHeightFor(signal, listOf(outer, group, combo))
+            null
         )
         slots[signal] = slot
         applySlot(slot, glyph)
@@ -277,8 +293,7 @@ internal object IosSlotLayout {
             WeakReference(group),
             WeakReference(combo),
             WeakReference(signal),
-            type?.let { WeakReference(it) },
-            rowHeightFor(signal, listOf(outer, group, combo))
+            type?.let { WeakReference(it) }
         )
         slots[signal] = slot
         applySlot(slot, glyph)
@@ -295,8 +310,7 @@ internal object IosSlotLayout {
             null,
             null,
             WeakReference(leaf),
-            null,
-            rowHeightFor(leaf, listOf(container))
+            null
         )
         slots[leaf] = slot
         applySlot(slot, glyph)
@@ -347,6 +361,7 @@ internal object IosSlotLayout {
         val visual = glyph.visualForTest ?: return
         val settings = currentSettings
         val screenW = screenWidth(leaf)
+        val designRowHeight = rowHeight(screenW)
         val slotMetrics = when (slot.kind) {
             Kind.WIFI -> metrics(
                 IosIconKind.WIFI,
@@ -354,7 +369,7 @@ internal object IosSlotLayout {
                 screenW,
                 scalePercent(settings, IosIconKind.WIFI),
                 offsetPercent(settings, IosIconKind.WIFI),
-                slot.stockRowHeight
+                designRowHeight
             )
             Kind.MOBILE -> {
                 val label = slot.label?.get()
@@ -371,7 +386,7 @@ internal object IosSlotLayout {
                     offsetPercent(settings, IosIconKind.CELL),
                     scalePercent(settings, IosIconKind.WIFI),
                     offsetPercent(settings, IosIconKind.WIFI),
-                    slot.stockRowHeight
+                    designRowHeight
                 )
             }
             Kind.BATTERY -> metrics(
@@ -380,7 +395,7 @@ internal object IosSlotLayout {
                 screenW,
                 scalePercent(settings, IosIconKind.BATTERY),
                 offsetPercent(settings, IosIconKind.BATTERY),
-                slot.stockRowHeight
+                designRowHeight
             )
         }
         if (!begin()) return
@@ -667,30 +682,6 @@ internal object IosSlotLayout {
             IosIconKind.CELL -> settings?.iosCellOffset
         } ?: 0
         return value.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET)
-    }
-
-    /**
-     * The stock row height for [leaf]. An existing slot keeps the value captured before our first
-     * write; re-registering must never read back the size this layout already installed.
-     */
-    private fun rowHeightFor(leaf: ImageView, views: List<View>): Int {
-        val captured = slots[leaf]?.stockRowHeight ?: 0
-        return if (captured > 0) captured else stockRowHeight(views)
-    }
-
-    /** The stock row height before our first write: LP height, else the already-measured px. */
-    private fun stockRowHeight(views: List<View>): Int {        var height = 0
-        for (view in views) {
-            val params = view.layoutParams
-            val candidate = when {
-                params != null && params.height > 0 -> params.height
-                view.height > 0 -> view.height
-                view.measuredHeight > 0 -> view.measuredHeight
-                else -> 0
-            }
-            if (candidate > height) height = candidate
-        }
-        return height
     }
 
     // ----------------------------------------------------------------------------------- test seams

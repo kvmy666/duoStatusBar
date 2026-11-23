@@ -175,7 +175,10 @@ internal object IosGeometry {
     }
 
     /**
-     * Wi-Fi: the iOS glyph measured from the light single-SIM reference capture (no longer Duo's).
+     * Wi-Fi: the iOS glyph measured from the light single-SIM reference capture, **restored verbatim
+     * to the 2.0.6 (R10A) geometry**. R9's thicker arcs, lowered centre and elliptical dot are
+     * removed; the renderer (`drawWifi`) never changed, so restoring these constants restores the
+     * 2.0.6 glyph exactly.
      *
      * The reference glyph bbox at light px (243.24, 30.56) is 127.53 x 94.77; the artboard adds a
      * 1-unit margin on every side, so every coordinate below is in artboard space (+1 to the
@@ -193,39 +196,68 @@ internal object IosGeometry {
         const val ARTBOARD_W = 129.53f
         const val ARTBOARD_H = 96.77f
 
-        /** Common arc centre in artboard space; R9 lowers it 1.5 units (owner: slightly high). */
+        /** Common arc centre in artboard space (2.0.6: viewBox 63.809, 92.522 + 1 margin). */
         const val CENTRE_X = 64.809f
-        const val CENTRE_Y = 95.022f
+        const val CENTRE_Y = 93.522f
 
-        /** Outer arc: mid-radius, constant stroke width, round caps (R9 stroke 18.6). */
-        const val OUTER_RADIUS = 81.2f
-        const val OUTER_STROKE = 18.6f
+        /** Outer arc: mid-radius, constant stroke width, round caps (2.0.6). */
+        const val OUTER_RADIUS = 83.843f
+        const val OUTER_STROKE = 16.903f
         const val OUTER_TRIM_END = 0.232575f
         const val OUTER_TRIM_OFFSET = 0.884175f
 
-        /** Inner arc: same centre, its own radius/stroke/span (R9 stroke 19.4). */
-        const val INNER_RADIUS = 47.4f
-        const val INNER_STROKE = 19.4f
+        /** Inner arc: same centre, its own radius/stroke/span (2.0.6). */
+        const val INNER_RADIUS = 50.053f
+        const val INNER_STROKE = 17.794f
         const val INNER_TRIM_END = 0.220078f
         const val INNER_TRIM_OFFSET = 0.889917f
 
-        /** R9 dot 38 x 28, centred on the arc x and the measured dot row. */
-        const val DOT_W = 38f
-        const val DOT_H = 28f
-        const val DOT_CENTRE_X = CENTRE_X
-        const val DOT_CENTRE_Y = 81.77f
+        /**
+         * The dot's measured bounding-box size: [DOT_W] x [DOT_H] are the measured bbox of the
+         * restored 2.0.6 [DOT_POINTS]. `IosGeometryParityTest` compares both the bbox and the
+         * point set against the Rive scene, so the two stay in lockstep.
+         */
+        const val DOT_W = 34.64f
+        const val DOT_H = 26.68f
 
         /**
-         * The measured dot as a left-right symmetric 32-gon (R9: 38 x 28). Absolute artboard
-         * coordinates, closed. The dot stays at full tint, independent of [wifiLevel].
+         * The measured dot: a left-right symmetric 32-gon, absolute artboard coordinates (viewBox
+         * vertices + 1 margin); closed. The dot stays at full tint, independent of [wifiLevel].
          */
-        val DOT_POINTS: FloatArray = FloatArray(64).also { out ->
-            for (i in 0 until 32) {
-                val angle = 2.0 * Math.PI * i / 32.0
-                out[i * 2] = DOT_CENTRE_X + (DOT_W / 2f) * cos(angle).toFloat()
-                out[i * 2 + 1] = DOT_CENTRE_Y + (DOT_H / 2f) * sin(angle).toFloat()
-            }
-        }
+        val DOT_POINTS: FloatArray = floatArrayOf(
+            80.91f, 82.43f,
+            79.08f, 85.27f,
+            76.87f, 87.42f,
+            74.81f, 89.10f,
+            73.28f, 90.89f,
+            71.49f, 92.41f,
+            69.60f, 93.96f,
+            67.35f, 95.15f,
+            64.82f, 95.77f,
+            62.29f, 95.15f,
+            60.04f, 93.96f,
+            58.15f, 92.41f,
+            56.36f, 90.89f,
+            54.83f, 89.10f,
+            52.77f, 87.42f,
+            50.56f, 85.27f,
+            48.73f, 82.43f,
+            47.50f, 78.98f,
+            48.56f, 75.69f,
+            50.79f, 73.05f,
+            53.94f, 71.54f,
+            56.53f, 70.03f,
+            59.44f, 69.45f,
+            62.19f, 69.20f,
+            64.82f, 69.09f,
+            67.45f, 69.20f,
+            70.20f, 69.45f,
+            73.11f, 70.03f,
+            75.70f, 71.54f,
+            78.85f, 73.05f,
+            81.08f, 75.69f,
+            82.14f, 78.98f
+        )
 
         /** Opacity per Wi-Fi level (0..3), unchanged from the Duo binding rule. */
         val OUTER_ALPHA = floatArrayOf(0.3f, 0.3f, 0.3f, 1f)
@@ -236,200 +268,49 @@ internal object IosGeometry {
      * The data-type label that occupies the Wi-Fi slot for a measured cellular network
      * ("LTE", "4G", "5G", ...).
      *
-     * **This label is now measured on a real iPhone.** Reference 1
-     * `.pm/ref/r5/1-real-iphone-5g-dual.jpg` (sha256 `0e0096738eb3b246…`, 1272x2772, dark, dual-SIM)
-     * is the first real iOS status-bar capture that shows it, reading "5G". Its 50 %-threshold
-     * measurement (`.pm/ref/out-r5/r5b-measurements.md` / `.json`; battery body H = 42.377 px = 100
-     * units, 1 px = 2.360 units, +/-0.5 px = +/-1.18 units) fixes [CAP_HEIGHT] and [TOP] as measured
-     * values instead of the old bar/weight fallbacks.
+     * **Provenance:** the glyph shapes and widths are the R10 regular-sheet trace
+     * (`rive/ios/glyphs-r10.json`, `R10Glyphs.LABELS`). The plus shape is taken from the r4 SF strip
+     * and is flagged in the data. `L`, `T`, `5`, `4` and `3` advances are measured; the `G`, `E` and
+     * `+` advances are extrapolated from the median measured side bearing and flagged. The label
+     * digits are independent of the percentage [IosDigits] table (the label `5` has its own traced
+     * contour). [CAP_HEIGHT] = 71.4 and [TOP] = 17.4 keep the R5B/ref-1 measured placement; the label
+     * is TOP-ANCHORED (baseline 88.8 in the Wi-Fi artboard).
      *
-     * The label is TOP-ANCHORED: the measured cap top sits 14.95 units below the label/Wi-Fi artboard
-     * top and the baseline at 92.63 ([TOP] + [CAP_HEIGHT] = 92.64). The old centre-on-Wi-Fi formula
-     * would put the cap top at 9.54 for this cap, which is **not** what ref 1 shows; [TOP] is pinned
-     * to the measurement. Ref 1's cap centre is 2.79 units below the battery body centre.
-     *
-     * The SF strip `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the authority for the glyph
-     * SHAPES, ink widths and internal spacing. **R9 keeps every label glyph at one weight:** the
-     * letters, the plus and the G use [STROKE] = 13.6 units (0.19 cap). The R5B ref-1 SF label
-     * weight of 11.1 units (0.143 cap) and the R6 digit-weight value remain provenance for the
-     * measurement only; they are no longer glyph constants. The 3/4/5 digits stay the untouched
-     * measured [IosDigits] glyphs — never retyped or thinned — and the G ink fraction and every
-     * letter width are unchanged.
-     *
-     * Every letter and the plus are FILLED OUTLINES: one or more closed contours, consistently
-     * clockwise, filled with [android.graphics.Path.FillType.WINDING] so overlapping shapes union
-     * without alpha seams. There is no font and no stroked centre line. Digits reuse the [IosDigits]
-     * widths, advances and filled even-odd contours (scaled by [DIGIT_SCALE]); the letter widths are
-     * the measured reference ink widths as fractions of the reference cap. The group is laid out
-     * exactly like [IosDigits]: `sum(advances) - firstBearing - lastBearing`. The artboard width is
-     * dynamic ([widthOf] + 2 * [Wifi.ARTBOARD_MARGIN]) and its height stays [Wifi.ARTBOARD_H]; the ink
-     * group starts at [Wifi.ARTBOARD_MARGIN] horizontally and at the measured [TOP] vertically.
-     *
-     * The SF reference cap is 36 px and its ink widths (px / 36) are L 0.611, T 0.806, E 0.667,
-     * G 0.944 and plus 0.778 x 0.750. The shipped plus is an equal-arm 0.75-cap square (the measured
-     * height; 1 px inside the measured width). Honouring that reference plus makes "5G+" wider than
-     * the 80x50 production slot's height-limited width, so "5G+" is width-limited (~19.4 px cap,
-     * ~0.63 of the Wi-Fi ink); at the measured cap LTE is too wide as well (~22.1 px cap, ~0.72),
-     * while 4G/5G/3G/E stay height-limited (~25.1 px cap, 0.820 of the Wi-Fi ink). The G is the v3
-     * measured letterform: a right-shifted bowl (0.612 W centre,
-     * 0.612 W x 0.5 C outer radii), a 318.93..20.66 degree band with the open aperture crossing
-     * 3 o'clock, a mid-height bar whose inner end is at 0.607 W, and a right stem from the bar to a
-     * slanted bottom (0.975/0.920 C). The counter opens through the upper-right aperture, so there is
-     * no closed hole and the glyph reads as G, not a C with a glued corner. All G strokes scale
-     * with one weight from the measured reference (weight 1) to the label stroke
-     * ([G_PRODUCTION_WEIGHT] = [STROKE] / [DataLabel.G_REFERENCE_STEM_STROKE] = 13.6 /
-     * [DataLabel.G_REFERENCE_STEM_STROKE]), so the right stem is the 0.19-cap label stroke and the
-     * measured bowl/bar proportions are kept.
+     * All label geometry is delegated to [IosLabelGlyphs]: each glyph is a set of closed cubic
+     * contours in design units, cap top `y = 0`, ink-left `x = 0`, drawn as one
+     * [android.graphics.Path.FillType.EVEN_ODD] path at its pen. The group ink is the ink-left model
+     * (`sum(advances of all but last) + last ink width`), so the first glyph's ink starts at
+     * [Wifi.ARTBOARD_MARGIN] and each pen advances by the measured [advance]. The artboard width is
+     * dynamic ([widthOf] + 2 * [Wifi.ARTBOARD_MARGIN]) and its height stays [Wifi.ARTBOARD_H].
      */
     object DataLabel {
         /** Supported labels, in reader/reporting order. */
         val LABELS = listOf("LTE", "4G", "5G", "5G+", "3G", "E", "G")
 
-        /** Reference cap (px): the flat-letter height (L/T/E/4) in the SF strip. */
-        private const val REF_CAP_PX = 36f
-
-        /** R9-design.md: label cap 71.4 units (10 pt). */
+        /** R10 regular sheet: label cap 71.4 units (10 pt). */
         const val CAP_HEIGHT = 71.4f
 
-        /**
-         * R9-design.md: label stroke 13.6 units (0.19 cap). The 3/4/5 reuse the digit stroke
-         * skeleton at [DIGIT_SCALE], painted at [STROKE] / [DIGIT_SCALE] before the scale, so their
-         * rendered stroke is 13.6.
-         */
-        const val STROKE = 13.6f
-
-        /** R9-design.md: TOP 17.4 (cap centre 2 px below the battery centre). */
+        /** Measured/top-anchored cap top in the Wi-Fi artboard (baseline = [TOP] + [CAP_HEIGHT]). */
         const val TOP = 17.4f
 
-        /** [IosDigits] cap 57 scaled to [CAP_HEIGHT]; digits scale through the Canvas, never retyped. */
-        val DIGIT_SCALE: Float = CAP_HEIGHT / IosDigits.CAP_HEIGHT
-
-        /** Measured reference ink width of L: 22 px / 36. */
-        private const val L_INK_FRACTION = 22f / REF_CAP_PX
-        /** Measured reference ink width of T: 29 px / 36. */
-        private const val T_INK_FRACTION = 29f / REF_CAP_PX
-        /** Measured reference ink width of E: 24 px / 36. */
-        private const val E_INK_FRACTION = 24f / REF_CAP_PX
-        /** Measured reference ink width of G: 0.847 cap (R9-design.md: G ink 60.5). */
-        private const val G_INK_FRACTION = 0.847f
-        /**
-         * Shipped plus width: an equal-arm square at 0.75 cap, the measured reference plus HEIGHT
-         * (27 px / 36 = 0.750). The reference width is 28 px / 36 = 0.778; equal arms use the measured
-         * 0.750 (1 px inside the measured width). Honouring the reference plus makes "5G+" wider than
-         * the 80x50 slot's height-limited width, so "5G+" is width-limited (see the object KDoc).
-         */
-        private const val PLUS_INK_FRACTION = 0.75f
-
-        /** E middle arm is slightly shorter than the full width (reference 23 / 24). */
-        private const val E_MID_ARM_FRACTION = 0.95f
-
-        /*
-         * G v3: measured from the 50 % mask of the three Gs in
-         * `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (cap 36 px, G ink box 33 x 38 px).
-         *
-         * The old G was a symmetric `W/2, C/2` oval band with a bar ending at 0.588 W and a short
-         * stem; at production size it read as a C with a rectangle glued at the right. The v3 bowl
-         * is shifted right (the G's ink box includes the right stem, so the bowl itself is not
-         * centred), the bar starts further right, and the stem runs from the bar to the bottom of
-         * the bowl as a trapezoid, so the upper-right aperture and the right stem are both visible.
-         *
-         * All numbers below are in the G ink box, x in `0..W`, y in `0..C`; they are the weight-1
-         * (reference-weight) shape. [G_PRODUCTION_WEIGHT] scales every stroke (bowl band, bar,
-         * stem) to the measured digit weight, keeping the outer envelope and stroke proportions.
-         */
-        private const val G_OUTER_CX_FRACTION = 0.61188f
-        private const val G_OUTER_CY_FRACTION = 0.5f
-        private const val G_OUTER_RX_FRACTION = 0.61188f
-        private const val G_OUTER_RY_FRACTION = 0.5f
-        /*
-         * R6 item 3 keeps the R5B measured G construction. The G's weight metric is its RIGHT STEM
-         * (the same `G stem` measurement used by the R5B reference), and the stem is set by STROKE
-         * for any inner-radius choice. Production scales the measured band, bar and stem thicknesses
-         * together by G_PRODUCTION_WEIGHT, so the right stem is 13.6 (0.19 cap) while the measured
-         * bowl/bar proportions (bar ~0.88x, bowl top ~0.85x, bowl side ~1.19x of the stem) stay.
-         */
-        /** Reference-weight inner bowl radii (the band thickness is `outer - inner` per axis). */
-        private const val G_INNER_RX_FRACTION = 0.43272f
-        private const val G_INNER_RY_FRACTION = 0.37898f
-        /** Bar centre y and half thickness; measured bar rows y44..48 of the y27..64 G box. */
-        private const val G_BAR_CENTER_FRACTION = 0.5102f
-        private const val G_BAR_HALF_FRACTION = 0.06288f
-        /** Bar inner end: x204 of the 184..217 box (0.607 of the 33 px ink width). */
-        private const val G_BAR_LEFT_FRACTION = 0.60653f
-        /** Stem left edge and its slanted bottom (left y60, right y59 of the measured box). */
-        private const val G_STEM_LEFT_FRACTION = 0.84951f
-        private const val G_STEM_BOTTOM_LEFT_FRACTION = 0.97497f
-        private const val G_STEM_BOTTOM_RIGHT_FRACTION = 0.92007f
-        /**
-         * Open aperture: the band sweeps counter-clockwise from the measured upper-right terminal
-         * (318.93 deg) through the top/left/bottom to the lower-right (20.66 deg). The gap between
-         * those terminals (~62 deg, crossing 3 o'clock) is the aperture; it is not filled by the bar,
-         * which starts below it.
-         */
-        private const val G_ARC_START_DEG = 318.932f
-        private const val G_ARC_END_DEG = 20.661f
-        /** Reference-weight stem thickness, the weight baseline: `STROKE / this` is the weight. */
-        internal val G_REFERENCE_STEM_STROKE: Float =
-            (1f - G_STEM_LEFT_FRACTION) * G_INK_FRACTION * CAP_HEIGHT
-        /** Weight that renders the measured G at the label stroke ([STROKE] = 13.6). */
-        internal val G_PRODUCTION_WEIGHT: Float = STROKE / G_REFERENCE_STEM_STROKE
-
-        /**
-         * Letter side bearing: 0.04 C gives a measured 3 px (0.083 C) T..E gap. The plus bearing is
-         * 0.06 C, so the G..+ gap is 0.10 C, closer to the measured 0.167 C. This honouring of the
-         * reference plus makes "5G+" width-limited in the 80x50 slot (the five other labels stay
-         * height-limited).
-         */
-        private const val LETTER_SIDE_BEARING_FRACTION = 0.04f
-        private const val PLUS_SIDE_BEARING_FRACTION = 0.06f
-
-        private val L_WIDTH: Float = L_INK_FRACTION * CAP_HEIGHT
-        private val T_WIDTH: Float = T_INK_FRACTION * CAP_HEIGHT
-        private val E_WIDTH: Float = E_INK_FRACTION * CAP_HEIGHT
-        private val G_WIDTH: Float = G_INK_FRACTION * CAP_HEIGHT
-        private val PLUS_WIDTH: Float = PLUS_INK_FRACTION * CAP_HEIGHT
-        private val LETTER_SIDE_BEARING: Float = LETTER_SIDE_BEARING_FRACTION * CAP_HEIGHT
-        private val PLUS_SIDE_BEARING: Float = PLUS_SIDE_BEARING_FRACTION * CAP_HEIGHT
-
         /** True only for the exact supported labels; a caller must not draw anything else. */
-        fun supports(label: String): Boolean = label in LABELS
+        fun supports(label: String): Boolean =
+            label in LABELS && label.all { IosLabelGlyphs.supports(it) }
 
-        /** True for the digits rebuilt from [IosDigits]; those are filled even-odd, the rest WINDING. */
-        fun isDigit(ch: Char): Boolean = ch == '3' || ch == '4' || ch == '5'
+        /** Ink width of one label character; `0` for anything unsupported (delegated). */
+        fun inkWidth(ch: Char): Float = IosLabelGlyphs.inkWidth(ch)
 
-        /** Ink width of one label character; `0` for anything unsupported. */
-        fun inkWidth(ch: Char): Float = when (ch) {
-            'L' -> L_WIDTH
-            'T' -> T_WIDTH
-            'E' -> E_WIDTH
-            'G' -> G_WIDTH
-            '+' -> PLUS_WIDTH
-            else -> if (isDigit(ch)) IosDigits.glyph(ch).width * DIGIT_SCALE else 0f
-        }
+        /** Measured ink-left advance (pitch) of one label character (delegated). */
+        fun advance(ch: Char): Float = IosLabelGlyphs.advance(ch)
+
+        /** Ink-left bearing: zero, because the traced glyph starts at its ink-left edge (delegated). */
+        fun bearing(ch: Char): Float = IosLabelGlyphs.bearing(ch)
 
         /**
-         * Horizontal advance (pitch) of one label character; `0` for anything unsupported. Every
-         * glyph uses letter spacing: a digit's advance is its scaled [IosDigits] ink width plus
-         * [LETTER_SIDE_BEARING] on both sides, never the battery's tabular [IosDigits.ADVANCE] cell.
+         * Ink width of [label] in the ink-left model:
+         * `sum(advances of all but last) + last ink width`; `0` if empty/unsupported (delegated).
          */
-        fun advance(ch: Char): Float = when (ch) {
-            'L', 'T', 'E', 'G' -> inkWidth(ch) + 2f * LETTER_SIDE_BEARING
-            '+' -> inkWidth(ch) + 2f * PLUS_SIDE_BEARING
-            else -> if (isDigit(ch)) inkWidth(ch) + 2f * LETTER_SIDE_BEARING else 0f
-        }
-
-        /** The horizontal bearing that centres a glyph in its advance cell. */
-        fun bearing(ch: Char): Float = (advance(ch) - inkWidth(ch)) / 2f
-
-        /** Ink width of [label] (`sum(advances) - firstBearing - lastBearing`), `0` if empty/unsupported. */
-        fun groupInkWidth(label: String): Float {
-            if (label.isEmpty()) return 0f
-            var total = 0f
-            for (ch in label) total += advance(ch)
-            total -= bearing(label.first())
-            total -= bearing(label.last())
-            return total
-        }
+        fun groupInkWidth(label: String): Float = IosLabelGlyphs.groupInkWidth(label)
 
         /** Ink width of a supported [label], or `null` when it is not in [LABELS]. */
         fun widthOf(label: String): Float? = if (supports(label)) groupInkWidth(label) else null
@@ -437,156 +318,6 @@ internal object IosGeometry {
         /** Dynamic artboard width (`ink + 2 * Wifi.ARTBOARD_MARGIN`), or `null` if unsupported. */
         fun artboardWidth(label: String): Float? =
             widthOf(label)?.plus(2f * Wifi.ARTBOARD_MARGIN)
-
-        /**
-         * The filled outlines for a letter or plus, in the label cap box (`x` in
-         * `0..inkWidth(ch)`, `y` in `0..CAP_HEIGHT`). Each [FloatArray] is one closed contour
-         * (`x, y, x, y, ...`, first point not repeated), consistently clockwise; draw them together
-         * with [android.graphics.Path.FillType.WINDING] so overlaps union. Digits return an empty
-         * list because the renderer fills them from [IosDigits].
-         */
-        fun outlines(ch: Char): List<FloatArray> = outlines(ch, STROKE)
-
-        /**
-         * The same outlines rebuilt at [stroke] design units (the vertical stem/arm thickness).
-         * Production passes [STROKE]; the raster evidence passes the measured reference stroke to
-         * remove the bold/lighter weight difference before comparing IoU. G keeps the measured
-         * reference shape and scales all of its strokes by `stroke / [G_REFERENCE_STEM_STROKE]`.
-         */
-        internal fun outlines(ch: Char, stroke: Float): List<FloatArray> = when (ch) {
-            'L' -> listOf(glyphPolygon(
-                0f, 0f, stroke, 0f, stroke, CAP_HEIGHT - stroke, L_WIDTH, CAP_HEIGHT - stroke,
-                L_WIDTH, CAP_HEIGHT, 0f, CAP_HEIGHT
-            ))
-            'T' -> listOf(glyphPolygon(
-                0f, 0f, T_WIDTH, 0f, T_WIDTH, stroke,
-                T_WIDTH / 2f + stroke / 2f, stroke,
-                T_WIDTH / 2f + stroke / 2f, CAP_HEIGHT,
-                T_WIDTH / 2f - stroke / 2f, CAP_HEIGHT,
-                T_WIDTH / 2f - stroke / 2f, stroke,
-                0f, stroke
-            ))
-            'E' -> listOf(
-                glyphRect(0f, 0f, stroke, CAP_HEIGHT),
-                glyphRect(0f, 0f, E_WIDTH, stroke),
-                glyphRect(0f, CAP_HEIGHT / 2f - stroke / 2f, E_MID_ARM_FRACTION * E_WIDTH, CAP_HEIGHT / 2f + stroke / 2f),
-                glyphRect(0f, CAP_HEIGHT - stroke, E_WIDTH, CAP_HEIGHT)
-            )
-            'G' -> gOutlines(stroke / G_REFERENCE_STEM_STROKE)
-            '+' -> listOf(
-                glyphRect(
-                    0f, CAP_HEIGHT / 2f - stroke / 2f,
-                    PLUS_WIDTH, CAP_HEIGHT / 2f + stroke / 2f
-                ),
-                glyphRect(
-                    PLUS_WIDTH / 2f - stroke / 2f, CAP_HEIGHT / 2f - PLUS_WIDTH / 2f,
-                    PLUS_WIDTH / 2f + stroke / 2f, CAP_HEIGHT / 2f + PLUS_WIDTH / 2f
-                )
-            )
-            else -> emptyList()
-        }
-
-        /**
-         * The SF-style G, rebuilt from the measured 50 % mask (see the `G v3` constants block).
-         *
-         * Screen coordinates put 3 o'clock at 0 deg, 6 at +90, 9 at +180 and 12 at +270. The bowl
-         * band sweeps counter-clockwise from the upper-right terminal ([G_ARC_START_DEG] 318.93)
-         * through the top, left and bottom to the lower-right ([G_ARC_END_DEG] 20.66). The gap
-         * between those ends crosses 3 o'clock and is the open upper aperture; it is not filled.
-         *
-         * Three clockwise contours union under WINDING:
-         *  - the bowl band (outer arc forward, inner arc backward), whose outer x is clamped to the
-         *    ink-box right edge because the measured bowl ellipse extends under the stem;
-         *  - the horizontal bar from [G_BAR_LEFT_FRACTION] W to W at the measured mid height;
-         *  - the right stem from the bar down to a slanted bottom ([G_STEM_BOTTOM_LEFT_FRACTION] on
-         *    the left, [G_STEM_BOTTOM_RIGHT_FRACTION] on the right), which joins the bowl bottom.
-         *
-         * [weight] is 1 at the measured reference stroke and [G_PRODUCTION_WEIGHT] at the digit
-         * stroke; it scales the measured band thickness, bar thickness and stem width together, so
-         * the glyph keeps the measured letterform and its measured stroke proportions at either
-         * weight. The G's weight guard metric is the right stem (the R5B `G stem` measurement);
-         * the band and bar are not uniform multiples of the stem and are not measured as the G
-         * stroke. The bowl opens to the right above the bar, so the counter is not an enclosed hole
-         * and the glyph is visibly a G, not a C.
-         */
-        private fun gOutlines(weight: Float = G_PRODUCTION_WEIGHT): List<FloatArray> {
-            val cx = G_OUTER_CX_FRACTION * G_WIDTH
-            val cy = G_OUTER_CY_FRACTION * CAP_HEIGHT
-            val outerRx = G_OUTER_RX_FRACTION * G_WIDTH
-            val outerRy = G_OUTER_RY_FRACTION * CAP_HEIGHT
-            val innerRx =
-                outerRx - (G_OUTER_RX_FRACTION - G_INNER_RX_FRACTION) * G_WIDTH * weight
-            val innerRy =
-                outerRy - (G_OUTER_RY_FRACTION - G_INNER_RY_FRACTION) * CAP_HEIGHT * weight
-            val steps = 160
-            val outer = FloatArray((steps + 1) * 2)
-            val inner = FloatArray((steps + 1) * 2)
-            for (i in 0..steps) {
-                val degrees = G_ARC_START_DEG + (G_ARC_END_DEG - G_ARC_START_DEG) * i / steps
-                val radians = degrees * (Math.PI / 180.0)
-                val c = cos(radians).toFloat()
-                val s = sin(radians).toFloat()
-                // The measured bowl reaches under the stem; clamp it to the ink box so the glyph
-                // never draws past its own advance.
-                outer[i * 2] = (cx + outerRx * c).coerceAtMost(G_WIDTH)
-                outer[i * 2 + 1] = cy + outerRy * s
-                inner[i * 2] = (cx + innerRx * c).coerceAtMost(G_WIDTH)
-                inner[i * 2 + 1] = cy + innerRy * s
-            }
-            val n = (steps + 1) * 2
-            val band = FloatArray(n * 2)
-            System.arraycopy(outer, 0, band, 0, n)
-            for (i in 0..steps) {
-                band[n + i * 2] = inner[(steps - i) * 2]
-                band[n + i * 2 + 1] = inner[(steps - i) * 2 + 1]
-            }
-            val barCenter = G_BAR_CENTER_FRACTION * CAP_HEIGHT
-            val barHalf = G_BAR_HALF_FRACTION * CAP_HEIGHT * weight
-            val stemLeft = G_WIDTH - G_REFERENCE_STEM_STROKE * weight
-            val stemBottomLeft = G_STEM_BOTTOM_LEFT_FRACTION * CAP_HEIGHT
-            val stemBottomRight = G_STEM_BOTTOM_RIGHT_FRACTION * CAP_HEIGHT
-            return listOf(
-                ensureClockwise(band),
-                glyphRect(
-                    G_BAR_LEFT_FRACTION * G_WIDTH, barCenter - barHalf,
-                    G_WIDTH, barCenter + barHalf
-                ),
-                glyphPolygon(
-                    stemLeft, barCenter - barHalf,
-                    G_WIDTH, barCenter - barHalf,
-                    G_WIDTH, stemBottomRight,
-                    stemLeft, stemBottomLeft
-                )
-            )
-        }
-
-        /** A closed rectangle contour, clockwise in screen coordinates. */
-        private fun glyphRect(left: Float, top: Float, right: Float, bottom: Float): FloatArray =
-            glyphPolygon(left, top, right, top, right, bottom, left, bottom)
-
-        /** A closed contour from `x, y, ...` pairs, normalised to clockwise (screen y down). */
-        private fun glyphPolygon(vararg points: Float): FloatArray =
-            ensureClockwise(points.copyOf())
-
-        /**
-         * Reverses [points] when its signed area is negative (counter-clockwise in screen
-         * coordinates, where positive shoelace area is clockwise) so WINDING fills union.
-         */
-        private fun ensureClockwise(points: FloatArray): FloatArray {
-            var area = 0f
-            val count = points.size / 2
-            for (i in 0 until count) {
-                val j = (i + 1) % count
-                area += points[i * 2] * points[j * 2 + 1] - points[j * 2] * points[i * 2 + 1]
-            }
-            if (area >= 0f) return points
-            val reversed = FloatArray(points.size)
-            for (i in 0 until count) {
-                reversed[i * 2] = points[(count - 1 - i) * 2]
-                reversed[i * 2 + 1] = points[(count - 1 - i) * 2 + 1]
-            }
-            return reversed
-        }
     }
 
     /**
@@ -733,17 +464,26 @@ internal object IosGeometry {
     /**
      * The Wi-Fi glyph ink box. The outer arc is the widest element; its stroke extends
      * [Wifi.OUTER_STROKE]/2 beyond the mid-radius. The arc endpoints and the 90/270 degree extrema
-     * are included, then the dot box is unioned in.
+     * are included, then the dot's actual vertex bbox ([Wifi.DOT_POINTS]) is unioned in.
      */
     private fun wifiGlyphInkBox(): InkBox {
         val w = Wifi
         val radius = w.OUTER_RADIUS + w.OUTER_STROKE / 2f
         val startDeg = -90f + w.OUTER_TRIM_OFFSET * 360f
         val sweepDeg = w.OUTER_TRIM_END * 360f
-        var left = w.DOT_CENTRE_X - w.DOT_W / 2f
-        var top = w.DOT_CENTRE_Y - w.DOT_H / 2f
-        var right = w.DOT_CENTRE_X + w.DOT_W / 2f
-        var bottom = w.DOT_CENTRE_Y + w.DOT_H / 2f
+        val points = w.DOT_POINTS
+        var left = points[0]
+        var top = points[1]
+        var right = points[0]
+        var bottom = points[1]
+        var i = 2
+        while (i < points.size) {
+            left = minOf(left, points[i])
+            right = maxOf(right, points[i])
+            top = minOf(top, points[i + 1])
+            bottom = maxOf(bottom, points[i + 1])
+            i += 2
+        }
         for (i in 0..180) {
             val degrees = startDeg + sweepDeg * i / 180f
             val radians = degrees * (Math.PI / 180.0)

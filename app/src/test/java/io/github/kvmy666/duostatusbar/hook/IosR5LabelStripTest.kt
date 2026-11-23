@@ -3,6 +3,8 @@ package io.github.kvmy666.duostatusbar.hook
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Path
+import android.graphics.RectF
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -69,22 +71,24 @@ class IosR5LabelStripTest {
             2f
         )
 
-        // R9 top-anchored cap: 16.4 units below the body top, 12.2 above the body bottom.
+        // R10 top-anchored cap: the traced G overshoots the cap box, so derive the exact ink extents
+        // from the same paths the renderer draws instead of assuming the 0..cap box.
+        val traced = tracedLabelBounds("5G")
         assertEquals(
             "label ink top - battery body top",
-            16.4f * scale,
+            (traced.top - IosGeometry.Battery.BODY_TOP) * scale,
             (label.top - body.top).toFloat(),
             1.5f
         )
         assertEquals(
             "battery body bottom - label ink bottom",
-            12.2f * scale,
+            (IosGeometry.Battery.BODY_TOP + IosGeometry.Battery.BODY_H - traced.bottom) * scale,
             (body.bottom - label.bottom).toFloat(),
             1.5f
         )
         assertEquals(
-            "label ink height (cap)",
-            71.4f * scale,
+            "label ink height (traced)",
+            traced.height() * scale,
             (label.bottom + 1 - label.top).toFloat(),
             1.5f
         )
@@ -207,6 +211,20 @@ class IosR5LabelStripTest {
     }
 
     // ------------------------------------------------------------------------------------ helpers
+
+    /** The exact rendered ink box of [label] in artboard units (traced contours, TOP-anchored). */
+    private fun tracedLabelBounds(label: String): RectF {
+        val union = Path()
+        var pen = IosGeometry.Wifi.ARTBOARD_MARGIN
+        for (ch in label) {
+            val glyph = IosLabelGlyphs.glyph(ch) ?: continue
+            union.addPath(IosLabelGlyphs.buildPath(glyph, pen, IosGeometry.DataLabel.TOP))
+            pen += glyph.advance
+        }
+        val bounds = RectF()
+        union.computeBounds(bounds, true)
+        return bounds
+    }
 
     private fun topPad(): Int = ceil(-IosGeometry.Strip.DUAL_CELL_TOP_OFFSET * scale).toInt() + 2
 

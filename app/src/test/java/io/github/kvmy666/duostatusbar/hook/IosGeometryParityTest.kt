@@ -11,7 +11,8 @@ import java.io.File
  * The Rive scene is text, so the Canvas constants and the scene can drift silently. This test reads
  * `rive/ios/scene.rml` and **derives every expected value from `IosGeometry`/`IosDigits`**, so changing
  * either side alone fails: the four artboards, the battery body/nub/bolt, the cell bars and dots, the
- * measured Wi-Fi arcs and dot, and the R9 stroke-skeleton digits (cap, stroke, advance, widths).
+ * restored 2.0.6 Wi-Fi arcs and dot, and the R10A traced cubic digit contours (anchors, handles,
+ * advances and widths).
  * JVM only.
  */
 class IosGeometryParityTest {
@@ -102,6 +103,70 @@ class IosGeometryParityTest {
         return value!!.groupValues[1].toFloat()
     }
 
+    /** Everything between the `<Artboard ... name="[name]" ...>` and its `</Artboard>`. */
+    private fun artboardBody(name: String): String {
+        val open = Regex("<Artboard[^>]*name=\"${Regex.escape(name)}\"[^>]*>").find(scene)
+        assertNotNull("artboard body $name", open)
+        val start = open!!.range.last + 1
+        val end = scene.indexOf("</Artboard>", start)
+        assertTrue("closing artboard $name", end > start)
+        return scene.substring(start, end)
+    }
+
+    /** A `<CubicDetachedVertex>`: anchor plus the two polar handles. */
+    private data class CubicVertex(
+        val x: Double,
+        val y: Double,
+        val inRotation: Double,
+        val inDistance: Double,
+        val outRotation: Double,
+        val outDistance: Double,
+    )
+
+    private fun cubicVertices(body: String): List<CubicVertex> = Regex(
+        "<CubicDetachedVertex x=\"([-0-9.]+)\" y=\"([-0-9.]+)\" " +
+            "inRotation=\"([-0-9.]+)\" inDistance=\"([-0-9.]+)\" " +
+            "outRotation=\"([-0-9.]+)\" outDistance=\"([-0-9.]+)\""
+    ).findAll(body).map {
+        CubicVertex(
+            it.groupValues[1].toDouble(),
+            it.groupValues[2].toDouble(),
+            it.groupValues[3].toDouble(),
+            it.groupValues[4].toDouble(),
+            it.groupValues[5].toDouble(),
+            it.groupValues[6].toDouble(),
+        )
+    }.toList()
+
+    private fun handleX(vertex: CubicVertex, rotation: Double, distance: Double): Double =
+        vertex.x + distance * kotlin.math.cos(rotation)
+
+    private fun handleY(vertex: CubicVertex, rotation: Double, distance: Double): Double =
+        vertex.y + distance * kotlin.math.sin(rotation)
+
+    /** R10 point order: sx, sy, c1x, c1y, c2x, c2y, ex, ey; closing c2 is the first in-handle. */
+    private fun cubicContours(body: String): List<FloatArray> =
+        Regex("<PointsPath[^>]*>(.*?)</PointsPath>", RegexOption.DOT_MATCHES_ALL)
+            .findAll(body).map { path ->
+                val vertices = cubicVertices(path.groupValues[1])
+                assertTrue("cubic contour vertices", vertices.isNotEmpty())
+                val points = FloatArray(vertices.size * 8)
+                for (i in vertices.indices) {
+                    val vertex = vertices[i]
+                    val next = vertices[(i + 1) % vertices.size]
+                    val at = i * 8
+                    points[at] = vertex.x.toFloat()
+                    points[at + 1] = vertex.y.toFloat()
+                    points[at + 2] = handleX(vertex, vertex.outRotation, vertex.outDistance).toFloat()
+                    points[at + 3] = handleY(vertex, vertex.outRotation, vertex.outDistance).toFloat()
+                    points[at + 4] = handleX(next, next.inRotation, next.inDistance).toFloat()
+                    points[at + 5] = handleY(next, next.inRotation, next.inDistance).toFloat()
+                    points[at + 6] = next.x.toFloat()
+                    points[at + 7] = next.y.toFloat()
+                }
+                points
+            }.toList()
+
     // ------------------------------------------------------------------------------------ tests
 
     @Test
@@ -127,10 +192,11 @@ class IosGeometryParityTest {
         assertEquals(0f.toDouble(), attr(digits, "x").toDouble(), 0.001)
         assertEquals(220f.toDouble(), attr(digits, "y").toDouble(), 0.001)
         assertEquals(160f.toDouble(), attr(digits, "height").toDouble(), 0.001)
-        // Symmetric 10-unit margins around the ten equal advance cells.
+        // 20 units of margin around the ten measured advances (sum 515.641).
         var advances = 0f
         for (ch in '0'..'9') advances += d.advance(ch)
-        assertEquals((20f + advances).toDouble(), attr(digits, "width").toDouble(), 0.01)
+        assertEquals((20f + advances).toDouble(), attr(digits, "width").toDouble(), 0.001)
+        assertEquals(535.641, attr(digits, "width").toDouble(), 0.001)
     }
 
     @Test
@@ -341,22 +407,22 @@ class IosGeometryParityTest {
         val w = IosGeometry.Wifi
 
         val outer = tag("Ellipse", shapeBody("wifiLayer1"))
-        assertEquals(w.CENTRE_X.toDouble(), attr(outer, "x").toDouble(), 0.001)
-        assertEquals(w.CENTRE_Y.toDouble(), attr(outer, "y").toDouble(), 0.001)
-        assertEquals((2f * w.OUTER_RADIUS).toDouble(), attr(outer, "width").toDouble(), 0.01)
-        assertEquals((2f * w.OUTER_RADIUS).toDouble(), attr(outer, "height").toDouble(), 0.01)
+        assertEquals(w.CENTRE_X.toDouble(), attr(outer, "x").toDouble(), 0.00001)
+        assertEquals(w.CENTRE_Y.toDouble(), attr(outer, "y").toDouble(), 0.00001)
+        assertEquals((2f * w.OUTER_RADIUS).toDouble(), attr(outer, "width").toDouble(), 0.00001)
+        assertEquals((2f * w.OUTER_RADIUS).toDouble(), attr(outer, "height").toDouble(), 0.00001)
         val outerStroke = tag("Stroke", shapeBody("wifiLayer1"))
-        assertEquals(w.OUTER_STROKE.toDouble(), attr(outerStroke, "thickness").toDouble(), 0.001)
+        assertEquals(w.OUTER_STROKE.toDouble(), attr(outerStroke, "thickness").toDouble(), 0.00001)
         assertTrue(outerStroke.contains("cap=\"round\""))
         assertTrue(outerStroke.contains("join=\"round\""))
 
         val inner = tag("Ellipse", shapeBody("wifiLayer2"))
-        assertEquals(w.CENTRE_X.toDouble(), attr(inner, "x").toDouble(), 0.001)
-        assertEquals(w.CENTRE_Y.toDouble(), attr(inner, "y").toDouble(), 0.001)
-        assertEquals((2f * w.INNER_RADIUS).toDouble(), attr(inner, "width").toDouble(), 0.01)
-        assertEquals((2f * w.INNER_RADIUS).toDouble(), attr(inner, "height").toDouble(), 0.01)
+        assertEquals(w.CENTRE_X.toDouble(), attr(inner, "x").toDouble(), 0.00001)
+        assertEquals(w.CENTRE_Y.toDouble(), attr(inner, "y").toDouble(), 0.00001)
+        assertEquals((2f * w.INNER_RADIUS).toDouble(), attr(inner, "width").toDouble(), 0.00001)
+        assertEquals((2f * w.INNER_RADIUS).toDouble(), attr(inner, "height").toDouble(), 0.00001)
         val innerStroke = tag("Stroke", shapeBody("wifiLayer2"))
-        assertEquals(w.INNER_STROKE.toDouble(), attr(innerStroke, "thickness").toDouble(), 0.001)
+        assertEquals(w.INNER_STROKE.toDouble(), attr(innerStroke, "thickness").toDouble(), 0.00001)
         assertTrue(innerStroke.contains("cap=\"round\""))
         assertTrue(innerStroke.contains("join=\"round\""))
 
@@ -381,16 +447,16 @@ class IosGeometryParityTest {
         val dot = vertices(dotBody)
         assertEquals(32, dot.size)
         for (i in 0 until 32) {
-            assertEquals("dot vertex $i x", w.DOT_POINTS[i * 2].toDouble(), dot[i].first.toDouble(), 0.001)
+            assertEquals("dot vertex $i x", w.DOT_POINTS[i * 2].toDouble(), dot[i].first.toDouble(), 0.00001)
             assertEquals(
                 "dot vertex $i y",
                 w.DOT_POINTS[i * 2 + 1].toDouble(),
                 dot[i].second.toDouble(),
-                0.001
+                0.00001
             )
         }
-        assertEquals("dot width", w.DOT_W.toDouble(), span(xs(dot)).toDouble(), 0.01)
-        assertEquals("dot height", w.DOT_H.toDouble(), span(ys(dot)).toDouble(), 0.01)
+        assertEquals("dot width", w.DOT_W.toDouble(), span(xs(dot)).toDouble(), 0.00001)
+        assertEquals("dot height", w.DOT_H.toDouble(), span(ys(dot)).toDouble(), 0.00001)
         assertTrue("dot is closed", dotBody.contains("isClosed=\"true\""))
 
         for (level in 0..3) {
@@ -411,53 +477,50 @@ class IosGeometryParityTest {
     }
 
     @Test
-    fun `IosDigits is ten stroke skeletons with the shared cap, stroke, advance and widths`() {
-        val d = IosDigits
-        val artboard = artboard("IosDigits")
-        var advances = 0f
-        for (ch in '0'..'9') advances += d.advance(ch)
-        assertEquals((20f + advances).toDouble(), attr(artboard, "width").toDouble(), 0.01)
+    fun `IosDigits artboard carries the traced R10 cubic contours`() {
+        val digits = artboardBody("IosDigits")
+        assertFalse("R10 digits are filled, not stroked", digits.contains("<Stroke"))
 
-        var offset = 10f
-        var shapes = 0
-        for (ch in '0'..'9') {
-            val name = "digit$ch"
-            val shapeOpen = shapeTag(name)
-            assertEquals("digit$ch offset x", offset.toDouble(), attr(shapeOpen, "x").toDouble(), 0.01)
-            assertEquals("digit$ch offset y", 10f.toDouble(), attr(shapeOpen, "y").toDouble(), 0.001)
+        val nodes = Regex("<Node name=\"digit([0-9])\" x=\"([-0-9.]+)\" y=\"[-0-9.]+\">")
+            .findAll(digits).map { it.groupValues[1][0] to it.groupValues[2].toDouble() }.toList()
+        assertEquals("ten digit nodes", 10, nodes.size)
 
-            val body = shapeBody(name)
-            // The old filled contours are gone: every digit is stroke-only.
-            assertFalse("digit$ch is stroke-only", body.contains("<Fill"))
-            val stroke = tag("Stroke", body)
-            assertEquals("digit$ch stroke", d.STROKE.toDouble(), attr(stroke, "thickness").toDouble(), 0.001)
-            assertTrue("digit$ch round cap", stroke.contains("cap=\"round\""))
-            assertTrue("digit$ch round join", stroke.contains("join=\"round\""))
+        var advance = 0.0
+        for ((ch, nodeX) in nodes) {
+            val glyph = R10Glyphs.DIGITS.getValue(ch)
+            assertEquals("digit $ch is placed at its cumulative advance", advance, nodeX, 0.001)
 
-            val paths = Regex(
-                "<PointsPath[^>]*>(.*?)</PointsPath>",
-                RegexOption.DOT_MATCHES_ALL
-            ).findAll(body).toList()
-            assertTrue("digit$ch has at least one path", paths.isNotEmpty())
-            val points = paths.flatMap { vertices(it.groupValues[1]) }
-            val glyph = d.glyph(ch)
-            // The drawn ink is the skeleton plus one stroke: half a stroke at each end.
-            assertEquals(
-                "digit$ch ink width",
-                glyph.width.toDouble(),
-                (span(xs(points)) + d.STROKE).toDouble(),
-                0.05
+            val open = Regex("<Node name=\"digit$ch\"[^>]*>").find(digits)
+            assertNotNull("digit $ch node", open)
+            val nodeBody = digits.substring(
+                open!!.range.last + 1,
+                digits.indexOf("</Node>", open.range.last + 1)
             )
             assertEquals(
-                "digit$ch ink cap",
-                d.CAP_HEIGHT.toDouble(),
-                (span(ys(points)) + d.STROKE).toDouble(),
-                0.05
+                "digit $ch has one even-odd fill",
+                1,
+                Regex("<Fill fillRule=\"evenOdd\"").findAll(nodeBody).count()
             )
-            shapes++
-            offset += glyph.advance
+
+            val contours = cubicContours(nodeBody)
+            assertEquals("digit $ch contour count", glyph.contours.size, contours.size)
+            for (i in glyph.contours.indices) {
+                val expected = glyph.contours[i]
+                val actual = contours[i]
+                assertEquals("digit $ch contour $i values", expected.size, actual.size)
+                for (j in expected.indices) {
+                    assertEquals(
+                        "digit $ch contour $i value $j",
+                        expected[j].toDouble(),
+                        actual[j].toDouble(),
+                        1e-3
+                    )
+                }
+            }
+            advance += glyph.advance
         }
-        assertEquals(10, shapes)
-        assertFalse("no filled contour digits remain", scene.contains("fillRule=\"evenOdd\""))
+
+        assertEquals(535.641, attr(artboard("IosDigits"), "width").toDouble(), 0.001)
+        assertEquals(160f.toDouble(), attr(artboard("IosDigits"), "height").toDouble(), 0.001)
     }
 }

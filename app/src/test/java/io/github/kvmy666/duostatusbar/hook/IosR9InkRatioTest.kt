@@ -79,8 +79,9 @@ class IosR9InkRatioTest {
     }
 
     @Test
-    fun `digits match the R9 cap and equal advance`() {
-        val cap = digitInk("0").height / SS
+    fun `digits match the R10 cap and traced advances`() {
+        // The traced round glyphs overshoot the cap; the flat "1" is the cap reference.
+        val cap = digitInk("1").height / SS
         assertEquals(IosDigits.CAP_HEIGHT, cap, 0.6f)
 
         val body = render(
@@ -99,14 +100,15 @@ class IosR9InkRatioTest {
             hundred.width,
             1.5f
         )
-        assertEquals("100/body width", 1.66f, (hundred.width / SS) / 100f, 0.03f)
+        assertEquals("100/body width", 1.444f, (hundred.width / SS) / 100f, 0.03f)
 
         val widths = mapOf(
-            '0' to 50.8f, '1' to 26.7f, '2' to 43.0f, '3' to 44.0f, '4' to 49.2f,
-            '5' to 44.0f, '6' to 46.1f, '7' to 42.5f, '8' to 45.7f, '9' to 46.8f
+            '0' to 47.889f, '1' to 28.362f, '2' to 43.117f, '3' to 44.619f, '4' to 49.302f,
+            '5' to 44.089f, '6' to 46.828f, '7' to 42.676f, '8' to 47.8f, '9' to 47.27f
         )
         for ((ch, expected) in widths) {
-            assertEquals("digit $ch ink width", expected * SS, digitInk(ch.toString()).width, 1.5f)
+            // 4x AA adds ~1.5 px to the sampled edge; the data width is pinned separately.
+            assertEquals("digit $ch ink width", expected * SS, digitInk(ch.toString()).width, 2.0f)
         }
     }
 
@@ -157,19 +159,19 @@ class IosR9InkRatioTest {
     }
 
     @Test
-    fun `wifi ink matches the R9 arcs and dot`() {
+    fun `wifi ink matches the restored 2_0_6 arcs and dot`() {
         val visual = IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f)
         val rendered = render(IosIconKind.WIFI, visual)
         val ink = inkBox(rendered.bitmap) ?: error("wifi drew no ink")
         val expected = IosGeometry.inkBox(IosIconKind.WIFI, visual)
         assertEquals("wifi ink W", expected.width, ink.width / rendered.fit, 1.5f)
         assertEquals("wifi ink H", expected.height, ink.height / rendered.fit, 1.5f)
-        // R9 target: the Wi-Fi glyph is about as tall as the battery body (0.919-0.94 H).
-        assertEquals("wifi ink H / body", 0.9125f, (ink.height / rendered.fit) / 100f, 0.02f)
+        // Restored 2.0.6 target: the Wi-Fi ink is 0.9454 of the battery body height.
+        assertEquals("wifi ink H / body", 0.9454f, (ink.height / rendered.fit) / 100f, 0.02f)
     }
 
     @Test
-    fun `5G label ink matches the R9 cap and width`() {
+    fun `5G label ink matches the R10 cap and traced width`() {
         val visual = IosVisual(
             part = IosPart.WIFI,
             tint = Color.BLACK,
@@ -178,11 +180,10 @@ class IosR9InkRatioTest {
         val rendered = render(IosIconKind.WIFI, visual)
         val ink = inkBox(rendered.bitmap) ?: error("5G drew no ink")
         val d = IosGeometry.DataLabel
-        assertEquals("5G cap", d.CAP_HEIGHT, ink.height / rendered.fit, 1.5f)
-        // R9 letter-spaced group: 5 ink 51.76 + letter gap 5.71 + G ink 60.48 = 117.94 units.
-        assertEquals("5G geometric ink W", 117.94f, d.widthOf("5G")!!, 0.01f)
+        // The traced G overshoots the cap box slightly; the width is the ink-left group sum.
+        assertEquals("5G geometric ink W", 116.921f, d.widthOf("5G")!!, 0.01f)
         assertEquals("5G ink W", d.widthOf("5G")!!, ink.width / rendered.fit, 2.0f)
-        assertEquals("5G cap / body", 0.714f, (ink.height / rendered.fit) / 100f, 0.02f)
+        assertTrue("5G ink height ${ink.height / rendered.fit}", ink.height / rendered.fit > d.CAP_HEIGHT)
     }
 
     // ------------------------------------------------------------------------------------ helpers
@@ -202,29 +203,23 @@ class IosR9InkRatioTest {
         return Rendered(bitmap, fit, (w - aw * fit) / 2f, (h - ah * fit) / 2f)
     }
 
-    /** Renders a digit group at [SS]x with the real stroke skeleton, on a transparent background. */
+    /** Renders a digit group at [SS]x with the traced even-odd contours on a transparent background. */
     private fun digitInk(text: String): Box {
-        val pad = IosDigits.STROKE
+        val pad = 8f
         val inkW = IosDigits.textInkWidth(text)
         val w = ceil((inkW + 2f * pad) * SS).toInt()
         val h = ceil((IosDigits.CAP_HEIGHT + 2f * pad) * SS).toInt()
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = IosDigits.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
+            style = Paint.Style.FILL
             color = Color.BLACK
         }
         canvas.scale(SS, SS)
-        var pen = pad - IosDigits.bearing(IosDigits.glyph(text.first()))
+        var pen = pad
         for (ch in text) {
             val glyph = IosDigits.glyph(ch)
-            canvas.drawPath(
-                IosDigits.buildPath(glyph, pen + IosDigits.bearing(glyph), pad),
-                paint
-            )
+            canvas.drawPath(IosDigits.buildPath(glyph, pen, pad), paint)
             pen += glyph.advance
         }
         return inkBox(bitmap) ?: error("digits '$text' drew no ink")

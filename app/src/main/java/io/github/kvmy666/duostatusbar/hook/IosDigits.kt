@@ -1,33 +1,27 @@
 package io.github.kvmy666.duostatusbar.hook
 
-import android.graphics.Matrix
 import android.graphics.Path
-import android.graphics.RectF
 
 /**
- * The R9 percentage digits: OUR OWN stroke skeletons, not a font and not filled contours.
+ * The percentage digits: traced filled contours from the R10 rounded-bold digit sheet
+ * (`.pm/ref/r10/battery-digits-rounded-bold.jpg`, `rive/ios/glyphs-r10.json`, `R10Glyphs.DIGITS`),
+ * not a font and not a stroke skeleton.
  *
- * R9-design.md fixes cap **60.7**, stroke **12.1**, one equal advance **64.3** and per-digit ink
- * widths `50.8/26.7/43.0/44.0/49.2/44.0/46.1/42.5/45.7/46.8` for 0..9. The skeleton is drawn with
- * `Paint.Style.STROKE`, `Cap.ROUND`, `Join.ROUND`, so a terminal is a semicircle and the drawn ink
- * width is `skeleton width + stroke`.
+ * Each glyph is a measured set of closed cubic contours in design units, cap top `y = 0` and
+ * ink-left `x = 0`; the outer contour comes first, then any holes. A glyph is drawn as ONE
+ * [Path.FillType.EVEN_ODD] path at its pen position, so the holes of `0`, `4`, `6`, `8` and `9`
+ * stay unfilled. The cap is [CAP_HEIGHT] = 60.7 and the advances are the measured ink-left advances
+ * from the data; the terminal `7` and `0` advances are extrapolated from the median side bearing and
+ * are flagged by [advanceMeasured]. The battery knockout clears the filled ink band, so a counter is
+ * body ink, not a hole.
  *
- * The runtime uses [buildPath] everywhere: the battery knockout (CLEAR stroke), the data-label digits
- * (tint stroke) and the preview. There is no filled-contour glyph API.
+ * The runtime uses [buildPath] everywhere: the battery knockout/solid-white digits and the preview.
+ * The bolt geometry below is the unchanged R9 bolt contract.
  */
 internal object IosDigits {
 
-    /** R9-design.md: digit cap 60.7 units (0.607 of the battery body). */
+    /** R10 regular sheet: digit cap 60.7 units (0.607 of the battery body). */
     const val CAP_HEIGHT = 60.7f
-
-    /** R9-design.md: digit stroke 12.1 units (0.199 cap). */
-    const val STROKE = 12.1f
-
-    /** Kept for call sites/tests that used the old name; R9's digit stroke is [STROKE]. */
-    const val RUN_STROKE = STROKE
-
-    /** R9-design.md: one equal advance cell for every digit. */
-    const val ADVANCE = 64.3f
 
     const val INLINE_BOLT_W = 40f
     const val INLINE_BOLT_H = 59f
@@ -39,88 +33,6 @@ internal object IosDigits {
 
     /** R9 removes the outline; kept as a compile-time shim for the old tests. */
     const val LARGE_BOLT_OUTLINE = 0f
-
-    /** The skeleton inset (the stroke radius); the ink box is `0..width` / `0..CAP`. */
-    private val R = STROKE / 2f
-
-    /**
-     * One digit: its ink [width], its horizontal [advance] (pitch), and the centre-line [builder].
-     * Callers draw it as a stroked path with round caps/joins.
-     */
-    class Glyph(
-        val width: Float,
-        val advance: Float,
-        internal val builder: (Path, Float) -> Unit
-    )
-
-    private val GLYPHS: Map<Char, Glyph> = mapOf(
-        '0' to glyph(50.8f) { p, w ->
-            p.addRoundRect(RectF(R, R, w - R, CAP_HEIGHT - R), 19f, 19f, Path.Direction.CW)
-        },
-        '1' to glyph(26.7f) { p, w ->
-            p.moveTo(R, R + 18f)
-            p.lineTo(w - R, R)
-            p.lineTo(w - R, CAP_HEIGHT - R)
-        },
-        '2' to glyph(43.0f) { p, w ->
-            p.moveTo(R, R + 18f)
-            p.arcTo(RectF(R, R, w - R, R + 36f), 180f, 180f, false)
-            p.lineTo(R, CAP_HEIGHT - R)
-            p.lineTo(w - R, CAP_HEIGHT - R)
-        },
-        '3' to glyph(44.0f) { p, w ->
-            val mid = w / 2f
-            p.moveTo(R, R + 18f)
-            p.arcTo(RectF(R, R, w - R, R + 36f), 180f, 180f, false)
-            p.cubicTo(w - R, R + 24f, mid + 4f, R + 30.35f, mid, R + 30.35f)
-            p.cubicTo(mid + 4f, R + 30.35f, w - R, R + 36f, w - R, R + 42.7f)
-            p.arcTo(
-                RectF(R, CAP_HEIGHT - R - 36f, w - R, CAP_HEIGHT - R),
-                0f,
-                180f,
-                false
-            )
-        },
-        '4' to glyph(49.2f) { p, w ->
-            val crossY = R + 32f
-            p.moveTo(R, crossY)
-            p.lineTo(w - R - 10f, R)
-            p.moveTo(w - R, R)
-            p.lineTo(w - R, CAP_HEIGHT - R)
-            p.moveTo(R, crossY)
-            p.lineTo(w - R, crossY)
-        },
-        '5' to glyph(44.0f) { p, w ->
-            p.moveTo(w - R, R)
-            p.lineTo(R, R)
-            p.lineTo(R, R + 20f)
-            p.cubicTo(R + 8f, R + 20f, w - R, R + 24f, w - R, R + 34f)
-            p.cubicTo(w - R, R + 44f, R + 16f, CAP_HEIGHT - R, R + 8f, CAP_HEIGHT - R)
-        },
-        '6' to glyph(46.1f) { p, w ->
-            p.moveTo(w - R, R)
-            p.cubicTo(w / 2f, R, R, R + 12f, R, R + 30f)
-            p.addOval(RectF(R, R + 20f, w - R, CAP_HEIGHT - R), Path.Direction.CW)
-        },
-        '7' to glyph(42.5f) { p, w ->
-            p.moveTo(R, R)
-            p.lineTo(w - R, R)
-            p.lineTo(R + 8f, CAP_HEIGHT - R)
-        },
-        '8' to glyph(45.7f) { p, w ->
-            p.addOval(RectF(R, R, w - R, R + 26f), Path.Direction.CW)
-            p.addOval(RectF(R, CAP_HEIGHT - R - 26f, w - R, CAP_HEIGHT - R), Path.Direction.CW)
-        },
-        '9' to glyph(46.8f) { p, w ->
-            p.addOval(RectF(R, R, w - R, R + 36f), Path.Direction.CW)
-            p.moveTo(w - R, R + 18f)
-            p.lineTo(w - R, CAP_HEIGHT - R - 14f)
-            p.cubicTo(w - R, CAP_HEIGHT - R, w / 2f, CAP_HEIGHT - R, R + 10f, CAP_HEIGHT - R)
-        }
-    )
-
-    private fun glyph(width: Float, builder: (Path, Float) -> Unit): Glyph =
-        Glyph(width, ADVANCE, builder)
 
     /**
      * The bolt normalised to its own 0..1 box. The same points drive the large solid bolt and the
@@ -150,41 +62,52 @@ internal object IosDigits {
         0.46f, 0.1822f
     )
 
-    /** The horizontal bearing that centres a glyph in its advance cell. */
-    fun bearing(glyph: Glyph): Float = (glyph.advance - glyph.width) / 2f
-
-    /** The digit for [ch], or `0` when a caller passes something that is not a digit. */
-    fun glyph(ch: Char): Glyph = GLYPHS[ch] ?: GLYPHS.getValue('0')
+    /** The traced digit for [ch], or `0` when a caller passes something that is not a digit. */
+    fun glyph(ch: Char): R10Glyphs.Glyph = R10Glyphs.DIGITS[ch] ?: R10Glyphs.DIGITS.getValue('0')
 
     /** The ink width of [ch]; `0` when it is not a digit. */
-    fun inkWidth(ch: Char): Float = GLYPHS[ch]?.width ?: 0f
+    fun inkWidth(ch: Char): Float = R10Glyphs.DIGITS[ch]?.width ?: 0f
 
-    /** The advance of [ch]; `ADVANCE` for every digit. */
-    fun advance(ch: Char): Float = GLYPHS[ch]?.advance ?: 0f
+    /** The measured ink-left advance of [ch]; `0` when it is not a digit. */
+    fun advance(ch: Char): Float = R10Glyphs.DIGITS[ch]?.advance ?: 0f
+
+    /** True when the advance of [ch] was measured; `false` for extrapolated `7`/`0` or non-digits. */
+    fun advanceMeasured(ch: Char): Boolean = R10Glyphs.DIGITS[ch]?.advanceMeasured ?: false
 
     /**
-     * The centre-line [Path] of [glyph], translated to ([originX], [originY]). Draw it with a
-     * `Style.STROKE` paint whose width is [STROKE] and whose cap/join are round.
+     * One [Path] for [glyph], translated to ([originX], [originY]) and filled with
+     * [Path.FillType.EVEN_ODD]. Each contour is a closed cubic chain: `moveTo` its first segment
+     * start, then `cubicTo` every segment, then `close`.
      */
-    fun buildPath(glyph: Glyph, originX: Float, originY: Float): Path {
+    fun buildPath(glyph: R10Glyphs.Glyph, originX: Float, originY: Float): Path {
         val path = Path()
-        glyph.builder.invoke(path, glyph.width)
-        if (originX != 0f || originY != 0f) {
-            path.transform(Matrix().apply { setTranslate(originX, originY) })
+        path.fillType = Path.FillType.EVEN_ODD
+        for (contour in glyph.contours) {
+            if (contour.size < 8) continue
+            path.moveTo(originX + contour[0], originY + contour[1])
+            var i = 0
+            while (i + 7 < contour.size) {
+                path.cubicTo(
+                    originX + contour[i + 2], originY + contour[i + 3],
+                    originX + contour[i + 4], originY + contour[i + 5],
+                    originX + contour[i + 6], originY + contour[i + 7]
+                )
+                i += 8
+            }
+            path.close()
         }
         return path
     }
 
     /**
-     * Ink width of [text] when every glyph is centred in its own advance cell:
-     * `sum(advances) - firstBearing - lastBearing`.
+     * Ink width of [text] in the ink-left model: the advances of every glyph except the last plus
+     * the last glyph's ink width.
      */
     fun textInkWidth(text: String): Float {
         if (text.isEmpty()) return 0f
         var total = 0f
-        for (ch in text) total += glyph(ch).advance
-        total -= bearing(glyph(text.first()))
-        total -= bearing(glyph(text.last()))
+        for (i in 0 until text.length - 1) total += advance(text[i])
+        total += inkWidth(text.last())
         return total
     }
 

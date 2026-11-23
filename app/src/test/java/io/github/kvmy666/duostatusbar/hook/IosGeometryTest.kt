@@ -114,20 +114,20 @@ class IosGeometryTest {
     }
 
     @Test
-    fun `wifi uses the R9 measured geometry`() {
+    fun `wifi uses the restored 2_0_6 measured geometry`() {
         val w = IosGeometry.Wifi
         assertEquals(129.53f, w.ARTBOARD_W, 0.001f)
         assertEquals(96.77f, w.ARTBOARD_H, 0.001f)
         assertEquals(1f, w.ARTBOARD_MARGIN, 0.0001f)
 
         assertEquals(64.809f, w.CENTRE_X, 0.001f)
-        assertEquals(95.022f, w.CENTRE_Y, 0.001f)
-        assertEquals(81.2f, w.OUTER_RADIUS, 0.001f)
-        assertEquals(18.6f, w.OUTER_STROKE, 0.001f)
+        assertEquals(93.522f, w.CENTRE_Y, 0.001f)
+        assertEquals(83.843f, w.OUTER_RADIUS, 0.001f)
+        assertEquals(16.903f, w.OUTER_STROKE, 0.001f)
         assertEquals(83.727f, w.OUTER_TRIM_END * 360f, 0.01f)
         assertEquals(318.303f, w.OUTER_TRIM_OFFSET * 360f, 0.01f)
-        assertEquals(47.4f, w.INNER_RADIUS, 0.001f)
-        assertEquals(19.4f, w.INNER_STROKE, 0.001f)
+        assertEquals(50.053f, w.INNER_RADIUS, 0.001f)
+        assertEquals(17.794f, w.INNER_STROKE, 0.001f)
         assertEquals(79.228f, w.INNER_TRIM_END * 360f, 0.01f)
         assertEquals(320.370f, w.INNER_TRIM_OFFSET * 360f, 0.01f)
 
@@ -144,13 +144,13 @@ class IosGeometryTest {
             minX = minOf(minX, x); maxX = maxOf(maxX, x)
             minY = minOf(minY, y); maxY = maxOf(maxY, y)
         }
-        assertEquals(45.809f, minX, 0.01f)
-        assertEquals(83.809f, maxX, 0.01f)
-        assertEquals(67.77f, minY, 0.01f)
+        assertEquals(47.50f, minX, 0.01f)
+        assertEquals(82.14f, maxX, 0.01f)
+        assertEquals(69.09f, minY, 0.01f)
         assertEquals(95.77f, maxY, 0.01f)
-        assertEquals(64.809f, (minX + maxX) / 2f, 0.01f)
-        assertEquals(38f, maxX - minX, 0.01f)
-        assertEquals(28f, maxY - minY, 0.01f)
+        assertEquals(64.82f, (minX + maxX) / 2f, 0.01f)
+        assertEquals(34.64f, maxX - minX, 0.01f)
+        assertEquals(26.68f, maxY - minY, 0.01f)
     }
 
     @Test
@@ -213,9 +213,9 @@ class IosGeometryTest {
         val labelInkLeft = s.LABEL_X + IosGeometry.Wifi.ARTBOARD_MARGIN
         assertEquals(s.CELL_LABEL_GAP, labelInkLeft - cellInkRight, 0.0001f)
 
-        // R9: 52.07 + 117.94 (5G ink at cap 71.4) + 54.04 = 224.05, replacing the pre-R9 238.58.
+        // R10: 52.07 + 116.921 (5G traced ink at cap 71.4) + 54.04 = 223.03.
         val span = s.CELL_LABEL_GAP + labelInk + s.LABEL_BATTERY_GAP
-        assertEquals(224.05f, span, 1.5f)
+        assertEquals(223.03f, span, 0.05f)
 
         assertEquals(
             s.LABEL_BATTERY_X_5G + b.BODY_W + b.CAP_GAP + b.CAP_W,
@@ -306,7 +306,7 @@ class IosGeometryTest {
             IosIconKind.WIFI,
             IosVisual(part = IosPart.WIFI, wifiLevel = 3f)
         )
-        assertEquals(0.9125f, wifi.height / IosGeometry.UNIT_HEIGHT, 0.02f)
+        assertEquals(0.9454f, wifi.height / IosGeometry.UNIT_HEIGHT, 0.02f)
         assertTrue("wifi ink ${wifi.width} x ${wifi.height}", wifi.width in 124f..129f)
 
         val label = IosGeometry.inkBox(

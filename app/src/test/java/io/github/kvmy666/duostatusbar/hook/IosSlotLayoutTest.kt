@@ -79,7 +79,8 @@ class IosSlotLayoutTest {
     @Test
     fun `wi-fi and cell slots match the design boxes at 100 percent`() {
         val wifi = wifi()
-        assertEquals(77, wifi.outerWidth)
+        // Restored 2.0.6 Wi-Fi ink 57.17 px at 1272: round(57.17 + 20.59) = 78.
+        assertEquals(78, wifi.outerWidth)
         assertEquals(63, wifi.outerHeight)
         assertEquals(57, wifi.leaf.width)
         assertEquals(43, wifi.leaf.height)
@@ -96,20 +97,20 @@ class IosSlotLayoutTest {
     @Test
     fun `label mode puts the label one full gap after the cell ink`() {
         val slot = labelMode()
-        assertEquals(157, slot.outerWidth)
+        assertEquals(156, slot.outerWidth)
         assertEquals(63, slot.outerHeight)
         assertEquals(67, slot.leaf.width)
         assertEquals(47, slot.leaf.height)
         assertEquals(10, slot.leaf.left)
         val label = slot.label!!
-        // The 5G artboard is the letter-spaced 117.94-unit ink + 2 x 1-unit margin = 119.94 units.
+        // The 5G artboard is the ink-left 116.921-unit ink + 2 x 1-unit margin = 118.921 units.
         assertEquals(53, label.width)
         assertEquals(43, label.height)
         assertEquals(94, label.left)
         assertEquals(10, label.top)
-        // The label leaf ink at 1272 is 117.94 x 0.4438 = 52.34 px (not the old 56.4 px).
+        // The label leaf ink at 1272 is 116.921 x 0.4438 = 51.89 px.
         assertEquals(
-            52.34f,
+            51.89f,
             IosGeometry.inkBox(
                 IosIconKind.WIFI,
                 IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
@@ -195,6 +196,6 @@ class IosSlotLayoutTest {
         ).left * s
         val cellInkLeft = slot.leaf.left + IosGeometry.inkBox(IosIconKind.CELL, IosVisual(part = IosPart.CELL)).left * s * 2f
         assertTrue(abs((labelInkLeft - (cellInkLeft + cellInk)) - gap) <= 1.5f)
-        assertEquals((cellInk + gap + 52.34f + gap).roundToInt(), slot.outerWidth)
+        assertEquals((cellInk + gap + 51.89f + gap).roundToInt(), slot.outerWidth)
     }
 }

@@ -217,15 +217,16 @@
          Coordinates are artboard-space
          (the reference glyph bbox origin 243.24,30.56 is the artboard's 1-unit margin, so every
          viewBox coordinate is +1 here).  Per-shape IoU vs the light reference: outer 0.976,
-         inner 0.982, dot 0.988.  This is no longer Duo's glyph. -->
+         inner 0.982, dot 0.988.  This is no longer Duo's glyph.
+         2.0.6 geometry restored (R10A): 34.64x26.68 teardrop dot, stroke 16.903/17.794. -->
     <Artboard x="260" y="0" width="129.53" height="96.77" name="IosWifi" id="0:1200"
               viewModelId="0:1000" viewModelInstanceId="0:1013" defaultStateMachineId="0:1210">
         <Node name="wifiRoot" id="0:1201">
 
             <Shape name="wifiLayer1" id="0:1202">
-                <Ellipse x="64.809" y="95.022" width="162.4" height="162.4"
+                <Ellipse x="64.809" y="93.522" width="167.686" height="167.686"
                          originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="18.6" cap="round" join="round" name="Stroke">
+                <Stroke thickness="16.903" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color">
                         <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
                     </SolidColor>
@@ -234,9 +235,9 @@
             </Shape>
 
             <Shape name="wifiLayer2" id="0:1203">
-                <Ellipse x="64.809" y="95.022" width="94.8" height="94.8"
+                <Ellipse x="64.809" y="93.522" width="100.106" height="100.106"
                          originX="0.5" originY="0.5" name="Path" />
-                <Stroke thickness="19.4" cap="round" join="round" name="Stroke">
+                <Stroke thickness="17.794" cap="round" join="round" name="Stroke">
                     <SolidColor colorValue="FFFFFFFF" name="Color">
                         <DataBindContext propertyKey="37" sourcePathIds="0:1000-0:1003" />
                     </SolidColor>
@@ -246,38 +247,38 @@
 
             <Shape name="wifiDot" id="0:1204">
                 <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="83.809" y="81.77" />
-                    <StraightVertex x="83.4439" y="84.5013" />
-                    <StraightVertex x="82.3627" y="87.1276" />
-                    <StraightVertex x="80.6069" y="89.548" />
-                    <StraightVertex x="78.244" y="91.6695" />
-                    <StraightVertex x="75.3648" y="93.4106" />
-                    <StraightVertex x="72.08" y="94.7043" />
-                    <StraightVertex x="68.5157" y="95.501" />
-                    <StraightVertex x="64.809" y="95.77" />
-                    <StraightVertex x="61.1023" y="95.501" />
-                    <StraightVertex x="57.538" y="94.7043" />
-                    <StraightVertex x="54.2532" y="93.4106" />
-                    <StraightVertex x="51.374" y="91.6695" />
-                    <StraightVertex x="49.0111" y="89.548" />
-                    <StraightVertex x="47.2553" y="87.1276" />
-                    <StraightVertex x="46.1741" y="84.5013" />
-                    <StraightVertex x="45.809" y="81.77" />
-                    <StraightVertex x="46.1741" y="79.0387" />
-                    <StraightVertex x="47.2553" y="76.4124" />
-                    <StraightVertex x="49.0111" y="73.992" />
-                    <StraightVertex x="51.374" y="71.8705" />
-                    <StraightVertex x="54.2532" y="70.1294" />
-                    <StraightVertex x="57.538" y="68.8357" />
-                    <StraightVertex x="61.1023" y="68.039" />
-                    <StraightVertex x="64.809" y="67.77" />
-                    <StraightVertex x="68.5157" y="68.039" />
-                    <StraightVertex x="72.08" y="68.8357" />
-                    <StraightVertex x="75.3648" y="70.1294" />
-                    <StraightVertex x="78.244" y="71.8705" />
-                    <StraightVertex x="80.6069" y="73.992" />
-                    <StraightVertex x="82.3627" y="76.4124" />
-                    <StraightVertex x="83.4439" y="79.0387" />
+                    <StraightVertex x="80.91" y="82.43" />
+                    <StraightVertex x="79.08" y="85.27" />
+                    <StraightVertex x="76.87" y="87.42" />
+                    <StraightVertex x="74.81" y="89.10" />
+                    <StraightVertex x="73.28" y="90.89" />
+                    <StraightVertex x="71.49" y="92.41" />
+                    <StraightVertex x="69.60" y="93.96" />
+                    <StraightVertex x="67.35" y="95.15" />
+                    <StraightVertex x="64.82" y="95.77" />
+                    <StraightVertex x="62.29" y="95.15" />
+                    <StraightVertex x="60.04" y="93.96" />
+                    <StraightVertex x="58.15" y="92.41" />
+                    <StraightVertex x="56.36" y="90.89" />
+                    <StraightVertex x="54.83" y="89.10" />
+                    <StraightVertex x="52.77" y="87.42" />
+                    <StraightVertex x="50.56" y="85.27" />
+                    <StraightVertex x="48.73" y="82.43" />
+                    <StraightVertex x="47.50" y="78.98" />
+                    <StraightVertex x="48.56" y="75.69" />
+                    <StraightVertex x="50.79" y="73.05" />
+                    <StraightVertex x="53.94" y="71.54" />
+                    <StraightVertex x="56.53" y="70.03" />
+                    <StraightVertex x="59.44" y="69.45" />
+                    <StraightVertex x="62.19" y="69.20" />
+                    <StraightVertex x="64.82" y="69.09" />
+                    <StraightVertex x="67.45" y="69.20" />
+                    <StraightVertex x="70.20" y="69.45" />
+                    <StraightVertex x="73.11" y="70.03" />
+                    <StraightVertex x="75.70" y="71.54" />
+                    <StraightVertex x="78.85" y="73.05" />
+                    <StraightVertex x="81.08" y="75.69" />
+                    <StraightVertex x="82.14" y="78.98" />
                 </PointsPath>
                 <Fill name="Fill">
                     <SolidColor colorValue="FFFFFFFF" name="Color">
@@ -978,727 +979,1101 @@
     </Artboard>
 
     <!-- ========================================================= IOS DIGITS -->
-    <!-- Plain document artboard (no state machine, no view model): the R9 percentage
-         digits as STROKE SKELETONS and the inline charging bolt. The ten skeletons are
-         generated offline from IosDigits.kt (cap 60.7, stroke 12.1, equal advance 64.3)
-         and authored as open/closed PointsPaths under a round-cap/round-join Stroke.
-         There is no Fill: the runtime draws these centre lines with Paint.Style.STROKE,
-         so the terminals are semicircles and the ink width is skeleton + stroke = the
-         IosDigits glyph width (50.8/26.7/43.0/44.0/49.2/44.0/46.1/42.5/45.7/46.8).
-         Arc/cubic segments are flattened at 5 deg / 16 segments, the only RML-
-         expressive conversion; stroke width, cap, joins and advance are exact.
+    <!-- R10A percentage digits: traced filled contours, one PointsPath per contour and
+         one Fill fillRule="evenOdd" per digit (outer first, then holes). Data
+         rive/ios/glyphs-r10.json sha256
+         2c757bc137bebf0b756d59fcad19767ff6ddaede996b9ddc4102e67821caddd8, generated by
+         tools/r10-glyphs.py rml; cap 60.7 design units, y down. Each digit Node sits at
+         its cumulative measured advance (0..9); width 20 + 515.641 = 535.641.
+         Provenance: .pm/out-r10/trace/battery/acceptance.md.
          The inline bolt sample is the 40 x 59 knockout shape; RML has no PorterDuff
          CLEAR, so the sample is a filled patch with the bolt marked as a hole; the runtime
          clears the same outline inside the battery fill. -->
-    <Artboard x="0" y="220" width="663" height="160" name="IosDigits" id="0:1500">
-        <Node name="digitsRoot" id="0:1501">
-            <Shape x="10" y="10" name="digit0" id="0:1510">
-                <PointsPath isClosed="true" name="Path0">
-                    <StraightVertex x="25.05" y="6.05" />
-                    <StraightVertex x="25.75" y="6.05" />
-                    <StraightVertex x="27.41" y="6.12" />
-                    <StraightVertex x="29.05" y="6.34" />
-                    <StraightVertex x="30.67" y="6.7" />
-                    <StraightVertex x="32.25" y="7.2" />
-                    <StraightVertex x="33.78" y="7.83" />
-                    <StraightVertex x="35.25" y="8.6" />
-                    <StraightVertex x="36.65" y="9.49" />
-                    <StraightVertex x="37.96" y="10.5" />
-                    <StraightVertex x="39.19" y="11.61" />
-                    <StraightVertex x="40.3" y="12.84" />
-                    <StraightVertex x="41.31" y="14.15" />
-                    <StraightVertex x="42.2" y="15.55" />
-                    <StraightVertex x="42.97" y="17.02" />
-                    <StraightVertex x="43.6" y="18.55" />
-                    <StraightVertex x="44.1" y="20.13" />
-                    <StraightVertex x="44.46" y="21.75" />
-                    <StraightVertex x="44.68" y="23.39" />
-                    <StraightVertex x="44.75" y="25.05" />
-                    <StraightVertex x="44.75" y="35.65" />
-                    <StraightVertex x="44.68" y="37.31" />
-                    <StraightVertex x="44.46" y="38.95" />
-                    <StraightVertex x="44.1" y="40.57" />
-                    <StraightVertex x="43.6" y="42.15" />
-                    <StraightVertex x="42.97" y="43.68" />
-                    <StraightVertex x="42.2" y="45.15" />
-                    <StraightVertex x="41.31" y="46.55" />
-                    <StraightVertex x="40.3" y="47.86" />
-                    <StraightVertex x="39.19" y="49.09" />
-                    <StraightVertex x="37.96" y="50.2" />
-                    <StraightVertex x="36.65" y="51.21" />
-                    <StraightVertex x="35.25" y="52.1" />
-                    <StraightVertex x="33.78" y="52.87" />
-                    <StraightVertex x="32.25" y="53.5" />
-                    <StraightVertex x="30.67" y="54" />
-                    <StraightVertex x="29.05" y="54.36" />
-                    <StraightVertex x="27.41" y="54.58" />
-                    <StraightVertex x="25.75" y="54.65" />
-                    <StraightVertex x="25.05" y="54.65" />
-                    <StraightVertex x="23.39" y="54.58" />
-                    <StraightVertex x="21.75" y="54.36" />
-                    <StraightVertex x="20.13" y="54" />
-                    <StraightVertex x="18.55" y="53.5" />
-                    <StraightVertex x="17.02" y="52.87" />
-                    <StraightVertex x="15.55" y="52.1" />
-                    <StraightVertex x="14.15" y="51.21" />
-                    <StraightVertex x="12.84" y="50.2" />
-                    <StraightVertex x="11.61" y="49.09" />
-                    <StraightVertex x="10.5" y="47.86" />
-                    <StraightVertex x="9.49" y="46.55" />
-                    <StraightVertex x="8.6" y="45.15" />
-                    <StraightVertex x="7.83" y="43.68" />
-                    <StraightVertex x="7.2" y="42.15" />
-                    <StraightVertex x="6.7" y="40.57" />
-                    <StraightVertex x="6.34" y="38.95" />
-                    <StraightVertex x="6.12" y="37.31" />
-                    <StraightVertex x="6.05" y="35.65" />
-                    <StraightVertex x="6.05" y="25.05" />
-                    <StraightVertex x="6.12" y="23.39" />
-                    <StraightVertex x="6.34" y="21.75" />
-                    <StraightVertex x="6.7" y="20.13" />
-                    <StraightVertex x="7.2" y="18.55" />
-                    <StraightVertex x="7.83" y="17.02" />
-                    <StraightVertex x="8.6" y="15.55" />
-                    <StraightVertex x="9.49" y="14.15" />
-                    <StraightVertex x="10.5" y="12.84" />
-                    <StraightVertex x="11.61" y="11.61" />
-                    <StraightVertex x="12.84" y="10.5" />
-                    <StraightVertex x="14.15" y="9.49" />
-                    <StraightVertex x="15.55" y="8.6" />
-                    <StraightVertex x="17.02" y="7.83" />
-                    <StraightVertex x="18.55" y="7.2" />
-                    <StraightVertex x="20.13" y="6.7" />
-                    <StraightVertex x="21.75" y="6.34" />
-                    <StraightVertex x="23.39" y="6.12" />
-                    <StraightVertex x="25.05" y="6.05" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+    <Artboard x="0" y="220" width="535.641" height="160" name="IosDigits" id="0:1500">
+        <Node name="r10DigitArtboard">
+
+          <!-- digit 0: width 47.889, advance 54.824 (extrapolated), 2 contour(s), 1 hole(s) -->
+          <Node name="digit0" x="0" y="0">
+            <Shape name="digit0Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit0Outer">
+                <CubicDetachedVertex x="16.434" y="60.17" inRotation="-2.771706" inDistance="0.97923" outRotation="0.16458" outDistance="0.86671"/>
+                <CubicDetachedVertex x="18.731" y="60.788" inRotation="-2.819842" inDistance="0.83484" outRotation="0" outDistance="1.093"/>
+                <CubicDetachedVertex x="21.912" y="61.23" inRotation="-2.976444" inDistance="1.05232" outRotation="-0.01727" outDistance="1.67925"/>
+                <CubicDetachedVertex x="26.948" y="61.142" inRotation="3.124312" inDistance="1.67825" outRotation="-0.321329" outDistance="0.75041"/>
+                <CubicDetachedVertex x="29.157" y="60.788" inRotation="3.141593" inDistance="0.812" outRotation="-0.321035" outDistance="0.88417"/>
+                <CubicDetachedVertex x="31.543" y="60.17" inRotation="2.976623" inDistance="0.91948" outRotation="-0.420957" outDistance="1.22604"/>
+                <CubicDetachedVertex x="34.9" y="58.668" inRotation="2.720635" inDistance="1.22604" outRotation="-0.548702" outDistance="0.62119"/>
+                <CubicDetachedVertex x="36.491" y="57.696" inRotation="2.592891" inDistance="0.62119" outRotation="-0.695855" outDistance="0.68794"/>
+                <CubicDetachedVertex x="37.904" y="56.636" inRotation="2.554021" inDistance="0.64401" outRotation="-0.766106" outDistance="1.06298"/>
+                <CubicDetachedVertex x="40.202" y="54.427" inRotation="2.376165" inDistance="1.06229" outRotation="-0.910014" outDistance="1.3426"/>
+                <CubicDetachedVertex x="42.676" y="51.246" inRotation="2.232166" inDistance="1.34321" outRotation="-1.107781" outDistance="0.70749"/>
+                <CubicDetachedVertex x="43.736" y="49.479" inRotation="2.158415" inDistance="0.72333" outRotation="-1.107149" outDistance="0.46063"/>
+                <CubicDetachedVertex x="44.354" y="48.242" inRotation="2.034444" inDistance="0.46063" outRotation="-1.249498" outDistance="0.69981"/>
+                <CubicDetachedVertex x="45.149" y="46.386" inRotation="2.033804" inDistance="0.69855" outRotation="-1.403959" outDistance="0.58411"/>
+                <CubicDetachedVertex x="45.768" y="44.708" inRotation="2.033664" inDistance="0.57333" outRotation="-1.405929" outDistance="0.58493"/>
+                <CubicDetachedVertex x="46.21" y="43.382" inRotation="2.034444" inDistance="0.5702" outRotation="-1.405307" outDistance="0.96519"/>
+                <CubicDetachedVertex x="46.828" y="40.908" inRotation="1.891866" inDistance="0.92844" outRotation="-1.405271" outDistance="0.87395"/>
+                <CubicDetachedVertex x="47.27" y="38.523" inRotation="1.89218" inDistance="0.86109" outRotation="-1.570796" outDistance="1.089"/>
+                <CubicDetachedVertex x="47.712" y="34.9" inRotation="1.892861" inDistance="1.00782" outRotation="-1.537419" outDistance="1.76798"/>
+                <CubicDetachedVertex x="47.889" y="29.599" inRotation="1.604174" inDistance="1.76798" outRotation="-1.618456" outDistance="1.23841"/>
+                <CubicDetachedVertex x="47.712" y="25.888" inRotation="1.523136" inDistance="1.23841" outRotation="-1.735945" outDistance="1.24697"/>
+                <CubicDetachedVertex x="47.27" y="22" inRotation="1.570796" inDistance="1.311" outRotation="-1.893333" outDistance="0.80448"/>
+                <CubicDetachedVertex x="46.828" y="19.703" inRotation="1.406047" inDistance="0.82315" outRotation="-1.891832" outDistance="0.88417"/>
+                <CubicDetachedVertex x="46.21" y="17.229" inRotation="1.405828" inDistance="0.9134" outRotation="-2.03509" outDistance="0.69229"/>
+                <CubicDetachedVertex x="45.415" y="14.844" inRotation="1.406825" inDistance="0.69837" outRotation="-2.035186" outDistance="0.60284"/>
+                <CubicDetachedVertex x="44.796" y="13.342" inRotation="1.406171" inDistance="0.6285" outRotation="-2.046713" outDistance="1.09352"/>
+                <CubicDetachedVertex x="43.294" y="10.426" inRotation="1.094879" inDistance="1.09352" outRotation="-2.158959" outDistance="1.73205"/>
+                <CubicDetachedVertex x="40.202" y="6.273" inRotation="0.875987" inDistance="1.78996" outRotation="-2.376165" outDistance="1.06229"/>
+                <CubicDetachedVertex x="37.904" y="4.064" inRotation="0.766106" inDistance="1.06298" outRotation="-2.55359" outDistance="0.84009"/>
+                <CubicDetachedVertex x="35.872" y="2.651" inRotation="0.694738" inDistance="0.89037" outRotation="-2.677945" outDistance="0.72896"/>
+                <CubicDetachedVertex x="34.017" y="1.59" inRotation="0.589117" inDistance="0.7469" outRotation="-2.977721" outDistance="0.5149"/>
+                <CubicDetachedVertex x="33.133" y="1.237" inRotation="0.463648" inDistance="0.47405" outRotation="-2.819842" outDistance="0.66724"/>
+                <CubicDetachedVertex x="31.366" y="0.53" inRotation="0.463648" inDistance="0.66858" outRotation="3.141593" outDistance="0.786"/>
+                <CubicDetachedVertex x="29.511" y="0.088" inRotation="0.322196" inDistance="0.71056" outRotation="-3.036623" outDistance="0.5631"/>
+                <CubicDetachedVertex x="27.832" y="-0.088" inRotation="0.105156" inDistance="0.5621" outRotation="-2.922524" outDistance="0.54298"/>
+                <CubicDetachedVertex x="26.241" y="-0.442" inRotation="0.218669" inDistance="0.54395" outRotation="-3.11263" outDistance="1.00142"/>
+                <CubicDetachedVertex x="23.237" y="-0.53" inRotation="0.028934" inDistance="1.00242" outRotation="3.061601" outDistance="0.73836"/>
+                <CubicDetachedVertex x="21.029" y="-0.353" inRotation="-0.079992" inDistance="0.73836" outRotation="2.820158" outDistance="1.00023"/>
+                <CubicDetachedVertex x="17.936" y="0.177" inRotation="-0.165787" inDistance="1.03012" outRotation="2.677945" outDistance="0.55007"/>
+                <CubicDetachedVertex x="16.611" y="0.53" inRotation="0" inDistance="0.601" outRotation="2.760696" outDistance="0.95225"/>
+                <CubicDetachedVertex x="13.96" y="1.59" inRotation="-0.379921" inDistance="0.95187" outRotation="2.651166" outDistance="0.50106"/>
+                <CubicDetachedVertex x="12.635" y="2.297" inRotation="-0.488665" inDistance="0.50059" outRotation="2.545795" outDistance="1.10305"/>
+                <CubicDetachedVertex x="9.896" y="4.153" inRotation="-0.595797" inDistance="1.10305" outRotation="2.382321" outDistance="0.81204"/>
+                <CubicDetachedVertex x="8.129" y="5.831" inRotation="-0.759272" inDistance="0.81204" outRotation="2.271864" outDistance="1.23404"/>
+                <CubicDetachedVertex x="5.743" y="8.659" inRotation="-0.870349" inDistance="1.2334" outRotation="2.033753" outDistance="0.64712"/>
+                <CubicDetachedVertex x="4.683" y="10.249" inRotation="-0.876058" inDistance="0.67949" outRotation="1.892984" outDistance="0.72321"/>
+                <CubicDetachedVertex x="3.623" y="12.193" inRotation="-0.983547" inDistance="0.73636" outRotation="1.893365" outDistance="0.77286"/>
+                <CubicDetachedVertex x="2.562" y="14.579" inRotation="-0.982435" inDistance="0.77297" outRotation="1.735635" outDistance="0.53019"/>
+                <CubicDetachedVertex x="2.121" y="15.816" inRotation="-1.108021" inDistance="0.51295" outRotation="1.737024" outDistance="0.7615"/>
+                <CubicDetachedVertex x="1.59" y="17.583" inRotation="-1.248599" inDistance="0.7074" outRotation="1.789146" outDistance="1.35723"/>
+                <CubicDetachedVertex x="0.707" y="21.559" inRotation="-1.352607" inDistance="1.3582" outRotation="1.713826" outDistance="0.62438"/>
+                <CubicDetachedVertex x="0.442" y="23.414" inRotation="-1.429352" inDistance="0.62423" outRotation="1.570796" outDistance="0.949"/>
+                <CubicDetachedVertex x="0.177" y="25.8" inRotation="-1.405839" inDistance="0.85866" outRotation="1.626399" outDistance="1.06164"/>
+                <CubicDetachedVertex x="0" y="28.98" inRotation="-1.515193" inDistance="1.06164" outRotation="1.553829" outDistance="1.70925"/>
+                <CubicDetachedVertex x="0.088" y="34.105" inRotation="-1.587774" inDistance="1.70825" outRotation="1.405806" outDistance="1.03506"/>
+                <CubicDetachedVertex x="0.442" y="37.109" inRotation="-1.570796" inDistance="1.111" outRotation="1.441724" outDistance="0.68369"/>
+                <CubicDetachedVertex x="0.707" y="39.141" inRotation="-1.701509" inDistance="0.68283" outRotation="1.249046" outDistance="0.70835"/>
+                <CubicDetachedVertex x="1.06" y="40.997" inRotation="-1.570796" inDistance="0.781" outRotation="1.248345" outDistance="0.90251"/>
+                <CubicDetachedVertex x="1.767" y="43.647" inRotation="-1.735945" inDistance="0.92458" outRotation="1.107149" outDistance="0.55007"/>
+                <CubicDetachedVertex x="2.209" y="45.061" inRotation="-1.735652" inDistance="0.5606" outRotation="1.106744" outDistance="1.10372"/>
+                <CubicDetachedVertex x="3.534" y="48.242" inRotation="-1.891973" inDistance="1.10237" outRotation="1.051563" outDistance="1.42479"/>
+                <CubicDetachedVertex x="5.655" y="51.953" inRotation="-2.090029" inDistance="1.42479" outRotation="0.938244" outDistance="0.54803"/>
+                <CubicDetachedVertex x="6.627" y="53.278" inRotation="-2.203349" inDistance="0.54803" outRotation="0.848896" outDistance="0.98061"/>
+                <CubicDetachedVertex x="8.57" y="55.487" inRotation="-2.29193" inDistance="0.97995" outRotation="0.67847" outDistance="1.17272"/>
+                <CubicDetachedVertex x="11.309" y="57.696" inRotation="-2.463123" inDistance="1.17272" outRotation="0.534301" outDistance="0.92491"/>
+                <CubicDetachedVertex x="13.695" y="59.11" inRotation="-2.60581" inDistance="0.92456" outRotation="0.368934" outDistance="0.97887"/>
+              </PointsPath>
+              <PointsPath isClosed="true" isClockwise="true" name="digit0Hole1">
+                <CubicDetachedVertex x="34.635" y="39.937" inRotation="-1.106637" inDistance="0.87341" outRotation="1.570796" outDistance="0.781"/>
+                <CubicDetachedVertex x="34.193" y="41.792" inRotation="-1.248595" inDistance="0.70108" outRotation="1.734768" outDistance="0.69837"/>
+                <CubicDetachedVertex x="33.575" y="43.559" inRotation="-0.982396" inDistance="0.69726" outRotation="1.735243" outDistance="0.70248"/>
+                <CubicDetachedVertex x="32.956" y="45.061" inRotation="-1.107149" inDistance="0.65964" outRotation="1.892547" outDistance="0.98663"/>
+                <CubicDetachedVertex x="31.631" y="47.358" inRotation="-0.87581" inDistance="1.03377" outRotation="2.034444" outDistance="1.27679"/>
+                <CubicDetachedVertex x="28.715" y="50.274" inRotation="-0.587568" inDistance="1.2772" outRotation="2.677096" outDistance="0.52682"/>
+                <CubicDetachedVertex x="27.302" y="50.981" inRotation="-0.464497" inDistance="0.52682" outRotation="2.956886" outDistance="0.47915"/>
+                <CubicDetachedVertex x="25.888" y="51.246" inRotation="-0.184707" inDistance="0.47915" outRotation="2.819842" outDistance="1.62541"/>
+                <CubicDetachedVertex x="21.647" y="51.158" inRotation="0.321353" inDistance="1.59252" outRotation="-3.028865" outDistance="0.26669"/>
+                <CubicDetachedVertex x="20.852" y="51.069" inRotation="0.112728" inDistance="0.26669" outRotation="-2.677945" outDistance="2.41719"/>
+                <CubicDetachedVertex x="15.816" y="46.652" inRotation="1.107149" inDistance="2.60278" outRotation="-2.26579" outDistance="1.00253"/>
+                <CubicDetachedVertex x="14.755" y="44.619" inRotation="1.249383" inDistance="0.93698" outRotation="-2.158799" outDistance="0.75717"/>
+                <CubicDetachedVertex x="13.695" y="42.234" inRotation="1.248629" inDistance="0.758" outRotation="-1.570796" outDistance="0.636"/>
+                <CubicDetachedVertex x="13.342" y="40.908" inRotation="1.250751" inDistance="0.55625" outRotation="-1.570796" outDistance="0.75"/>
+                <CubicDetachedVertex x="12.9" y="39.053" inRotation="1.249969" inDistance="0.68495" outRotation="-1.736336" outDistance="1.26226"/>
+                <CubicDetachedVertex x="12.37" y="35.254" inRotation="1.249046" inDistance="1.22696" outRotation="-1.588976" outDistance="1.65027"/>
+                <CubicDetachedVertex x="12.281" y="30.306" inRotation="1.552605" inDistance="1.64927" outRotation="-1.570796" outDistance="1.884"/>
+                <CubicDetachedVertex x="12.635" y="24.474" inRotation="1.892364" inDistance="1.73388" outRotation="-1.570796" outDistance="1.241"/>
+                <CubicDetachedVertex x="13.165" y="20.852" inRotation="1.892821" inDistance="1.15328" outRotation="-1.405819" outDistance="0.96206"/>
+                <CubicDetachedVertex x="13.783" y="18.113" inRotation="1.735437" inDistance="0.97012" outRotation="-1.13671" outDistance="1.33149"/>
+                <CubicDetachedVertex x="15.462" y="14.49" inRotation="2.004201" inDistance="1.33107" outRotation="-0.962951" outDistance="0.82472"/>
+                <CubicDetachedVertex x="16.876" y="12.458" inRotation="2.178642" inDistance="0.82472" outRotation="-0.785398" outDistance="1.03945"/>
+                <CubicDetachedVertex x="19.261" y="10.426" inRotation="2.55359" inDistance="0.98432" outRotation="-0.440227" outDistance="0.5538"/>
+                <CubicDetachedVertex x="20.763" y="9.719" inRotation="2.700595" inDistance="0.5529" outRotation="-0.2783" outDistance="0.42953"/>
+                <CubicDetachedVertex x="22" y="9.366" inRotation="2.864897" inDistance="0.42829" outRotation="-0.165279" outDistance="3.7866"/>
+                <CubicDetachedVertex x="31.101" y="12.458" inRotation="-2.356384" inDistance="3.72857" outRotation="0.974449" outDistance="0.99711"/>
+                <CubicDetachedVertex x="32.78" y="14.932" inRotation="-2.167144" inDistance="0.99711" outRotation="1.161952" outDistance="0.9634"/>
+                <CubicDetachedVertex x="33.928" y="17.583" inRotation="-1.978688" inDistance="0.96301" outRotation="1.404771" outDistance="0.75032"/>
+                <CubicDetachedVertex x="34.459" y="19.438" inRotation="-1.892547" inDistance="0.70835" outRotation="1.405859" outDistance="0.77958"/>
+                <CubicDetachedVertex x="34.989" y="21.559" inRotation="-1.892129" inDistance="0.75673" outRotation="1.570796" outDistance="1.344"/>
+                <CubicDetachedVertex x="35.519" y="25.446" inRotation="-1.736334" inDistance="1.26834" outRotation="1.549861" outDistance="1.3853"/>
+                <CubicDetachedVertex x="35.607" y="29.599" inRotation="-1.591747" inDistance="1.3843" outRotation="1.405648" outDistance="0.6691"/>
+                <CubicDetachedVertex x="35.607" y="31.366" inRotation="-1.405648" inDistance="0.6691" outRotation="1.593169" outDistance="1.29632"/>
+                <CubicDetachedVertex x="35.519" y="35.254" inRotation="-1.548424" inDistance="1.29632" outRotation="1.893458" outDistance="0.6938"/>
+                <CubicDetachedVertex x="35.077" y="37.463" inRotation="-1.405184" inDistance="0.70971" outRotation="1.570796" outDistance="0.938"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="74.3" y="10" name="digit1" id="0:1511">
-                <PointsPath isClosed="false" name="Path0">
-                    <StraightVertex x="6.05" y="24.05" />
-                    <StraightVertex x="20.65" y="6.05" />
-                    <StraightVertex x="20.65" y="54.65" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 1: width 28.362, advance 41.704 (measured), 1 contour(s), 0 hole(s) -->
+          <Node name="digit1" x="54.824" y="0">
+            <Shape name="digit1Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit1Outer">
+                <CubicDetachedVertex x="16.257" y="12.281" inRotation="2.89059" inDistance="0.12078" outRotation="0.785398" outDistance="0.12587"/>
+                <CubicDetachedVertex x="16.522" y="12.546" inRotation="-2.356194" inDistance="0.12445" outRotation="1.570796" outDistance="2.622"/>
+                <CubicDetachedVertex x="16.522" y="20.41" inRotation="-1.570796" inDistance="2.621" outRotation="1.570796" outDistance="8.541"/>
+                <CubicDetachedVertex x="16.522" y="46.033" inRotation="-1.570796" inDistance="8.541" outRotation="1.570796" outDistance="1.973"/>
+                <CubicDetachedVertex x="16.522" y="51.953" inRotation="-1.570796" inDistance="1.973" outRotation="1.570796" outDistance="1.876"/>
+                <CubicDetachedVertex x="16.964" y="57.166" inRotation="-1.892547" inDistance="1.74874" outRotation="1.106607" outDistance="1.65067"/>
+                <CubicDetachedVertex x="20.498" y="60.347" inRotation="-2.976444" inDistance="1.764" outRotation="0.32141" outDistance="1.85815"/>
+                <CubicDetachedVertex x="25.27" y="60.17" inRotation="2.820195" inDistance="1.79175" outRotation="-0.571583" outDistance="0.48987"/>
+                <CubicDetachedVertex x="26.507" y="59.375" inRotation="2.571112" inDistance="0.49071" outRotation="-0.896884" outDistance="0.56566"/>
+                <CubicDetachedVertex x="27.567" y="58.049" inRotation="2.246089" inDistance="0.56629" outRotation="-1.158497" outDistance="0.51408"/>
+                <CubicDetachedVertex x="28.185" y="56.636" inRotation="1.983095" inDistance="0.51408" outRotation="-1.405648" outDistance="2.3297"/>
+                <CubicDetachedVertex x="28.362" y="48.949" inRotation="1.570796" inDistance="2.45" outRotation="-1.570796" outDistance="4.713"/>
+                <CubicDetachedVertex x="28.362" y="34.812" inRotation="1.570796" inDistance="4.712" outRotation="-1.570796" outDistance="6.332"/>
+                <CubicDetachedVertex x="28.362" y="15.816" inRotation="1.570796" inDistance="6.332" outRotation="-1.570796" outDistance="3.64"/>
+                <CubicDetachedVertex x="28.097" y="4.418" inRotation="1.4056" inDistance="3.46011" outRotation="-2.012787" outDistance="0.61954"/>
+                <CubicDetachedVertex x="27.302" y="2.739" inRotation="1.128806" inDistance="0.61954" outRotation="-2.328074" outDistance="0.72932"/>
+                <CubicDetachedVertex x="25.8" y="1.149" inRotation="0.814516" inDistance="0.72863" outRotation="-2.677528" outDistance="1.07242"/>
+                <CubicDetachedVertex x="22.972" y="0.088" inRotation="0.322048" inDistance="1.06158" outRotation="-3.08693" outDistance="0.53079"/>
+                <CubicDetachedVertex x="21.382" y="0" inRotation="0.054662" inDistance="0.53079" outRotation="3.092396" outDistance="0.58971"/>
+                <CubicDetachedVertex x="19.615" y="0.088" inRotation="-0.049196" inDistance="0.58971" outRotation="2.819298" outDistance="0.58091"/>
+                <CubicDetachedVertex x="18.113" y="0.442" inRotation="-0.165422" inDistance="0.60121" outRotation="2.819842" outDistance="0.63878"/>
+                <CubicDetachedVertex x="16.346" y="1.06" inRotation="-0.165149" inDistance="0.65694" outRotation="2.677945" outDistance="0.26386"/>
+                <CubicDetachedVertex x="15.639" y="1.414" inRotation="-0.465348" inDistance="0.26296" outRotation="2.554123" outDistance="1.56065"/>
+                <CubicDetachedVertex x="11.751" y="4.153" inRotation="-0.694495" inDistance="1.58126" outRotation="2.553791" outDistance="1.37954"/>
+                <CubicDetachedVertex x="8.305" y="6.538" inRotation="-0.694288" inDistance="1.42223" outRotation="2.535708" outDistance="0.93066"/>
+                <CubicDetachedVertex x="6.008" y="8.129" inRotation="-0.605273" inDistance="0.93148" outRotation="2.553879" outDistance="1.91899"/>
+                <CubicDetachedVertex x="1.414" y="11.486" inRotation="-0.694738" inDistance="1.99161" outRotation="2.176069" outDistance="0.46574"/>
+                <CubicDetachedVertex x="0.618" y="12.635" inRotation="-0.96376" inDistance="0.46631" outRotation="1.907244" outDistance="0.62398"/>
+                <CubicDetachedVertex x="0" y="14.402" inRotation="-1.234348" inDistance="0.62398" outRotation="1.570796" outDistance="1.575"/>
+                <CubicDetachedVertex x="1.502" y="18.378" inRotation="-2.35575" inDistance="1.59028" outRotation="0.528251" outDistance="0.40871"/>
+                <CubicDetachedVertex x="2.562" y="18.996" inRotation="-2.613342" inDistance="0.40871" outRotation="0.112728" outDistance="0.26669"/>
+                <CubicDetachedVertex x="3.357" y="19.085" inRotation="-3.028865" inDistance="0.26669" outRotation="0.32105" outDistance="0.90315"/>
+                <CubicDetachedVertex x="5.125" y="19.173" inRotation="2.975891" inDistance="0.89121" outRotation="-0.226416" outDistance="0.39201"/>
+                <CubicDetachedVertex x="6.273" y="18.908" inRotation="2.915747" inDistance="0.39298" outRotation="-0.463648" outDistance="1.58537"/>
+                <CubicDetachedVertex x="10.426" y="16.169" inRotation="2.446777" inDistance="1.64937" outRotation="-0.580617" outDistance="1.12663"/>
+                <CubicDetachedVertex x="13.253" y="14.314" inRotation="2.560975" inDistance="1.12663" outRotation="-0.632553" outDistance="1.09607"/>
+                <CubicDetachedVertex x="15.904" y="12.37" inRotation="2.50904" inDistance="1.09607" outRotation="-0.248963" outDistance="0.12175"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="138.6" y="10" name="digit2" id="0:1512">
-                <PointsPath isClosed="false" name="Path0">
-                    <StraightVertex x="6.05" y="24.05" />
-                    <StraightVertex x="6.05" y="24.05" />
-                    <StraightVertex x="6.11" y="22.48" />
-                    <StraightVertex x="6.28" y="20.92" />
-                    <StraightVertex x="6.58" y="19.39" />
-                    <StraightVertex x="6.98" y="17.89" />
-                    <StraightVertex x="7.5" y="16.44" />
-                    <StraightVertex x="8.12" y="15.05" />
-                    <StraightVertex x="8.84" y="13.73" />
-                    <StraightVertex x="9.66" y="12.48" />
-                    <StraightVertex x="10.58" y="11.32" />
-                    <StraightVertex x="11.57" y="10.26" />
-                    <StraightVertex x="12.64" y="9.31" />
-                    <StraightVertex x="13.77" y="8.46" />
-                    <StraightVertex x="14.97" y="7.74" />
-                    <StraightVertex x="16.22" y="7.14" />
-                    <StraightVertex x="17.5" y="6.66" />
-                    <StraightVertex x="18.82" y="6.32" />
-                    <StraightVertex x="20.15" y="6.12" />
-                    <StraightVertex x="21.5" y="6.05" />
-                    <StraightVertex x="22.85" y="6.12" />
-                    <StraightVertex x="24.18" y="6.32" />
-                    <StraightVertex x="25.5" y="6.66" />
-                    <StraightVertex x="26.78" y="7.14" />
-                    <StraightVertex x="28.03" y="7.74" />
-                    <StraightVertex x="29.23" y="8.46" />
-                    <StraightVertex x="30.36" y="9.31" />
-                    <StraightVertex x="31.43" y="10.26" />
-                    <StraightVertex x="32.42" y="11.32" />
-                    <StraightVertex x="33.34" y="12.48" />
-                    <StraightVertex x="34.16" y="13.73" />
-                    <StraightVertex x="34.88" y="15.05" />
-                    <StraightVertex x="35.5" y="16.44" />
-                    <StraightVertex x="36.02" y="17.89" />
-                    <StraightVertex x="36.42" y="19.39" />
-                    <StraightVertex x="36.72" y="20.92" />
-                    <StraightVertex x="36.89" y="22.48" />
-                    <StraightVertex x="36.95" y="24.05" />
-                    <StraightVertex x="6.05" y="54.65" />
-                    <StraightVertex x="36.95" y="54.65" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 2: width 43.117, advance 50.451 (measured), 1 contour(s), 0 hole(s) -->
+          <Node name="digit2" x="96.528" y="0">
+            <Shape name="digit2Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit2Outer">
+                <CubicDetachedVertex x="28.274" y="12.458" inRotation="-2.265906" inDistance="1.38024" outRotation="0.99674" outDistance="0.59664"/>
+                <CubicDetachedVertex x="29.246" y="13.96" inRotation="-2.144853" inDistance="0.59664" outRotation="1.249531" outDistance="0.65238"/>
+                <CubicDetachedVertex x="29.864" y="15.816" inRotation="-1.892062" inDistance="0.65238" outRotation="1.481528" outDistance="0.3253"/>
+                <CubicDetachedVertex x="29.952" y="16.787" inRotation="-1.66034" inDistance="0.3243" outRotation="1.605933" outDistance="0.82551"/>
+                <CubicDetachedVertex x="29.864" y="19.261" inRotation="-1.535617" inDistance="0.82451" outRotation="1.883538" outDistance="1.05308"/>
+                <CubicDetachedVertex x="28.892" y="22.266" inRotation="-1.258055" inDistance="1.05308" outRotation="2.125605" outDistance="0.72706"/>
+                <CubicDetachedVertex x="27.744" y="24.121" inRotation="-1.01788" inDistance="0.72738" outRotation="2.265617" outDistance="3.1113"/>
+                <CubicDetachedVertex x="21.559" y="30.924" inRotation="-0.785398" inDistance="3.22724" outRotation="2.356194" outDistance="1.28693"/>
+                <CubicDetachedVertex x="18.82" y="33.575" inRotation="-0.695136" inDistance="1.28651" outRotation="2.37521" outDistance="6.58223"/>
+                <CubicDetachedVertex x="4.594" y="47.27" inRotation="-0.766383" inDistance="6.58223" outRotation="2.356194" outDistance="1.29118"/>
+                <CubicDetachedVertex x="1.855" y="50.009" inRotation="-0.785398" inDistance="1.29118" outRotation="2.265256" outDistance="0.4594"/>
+                <CubicDetachedVertex x="0.972" y="51.069" inRotation="-0.876337" inDistance="0.4594" outRotation="1.981193" outDistance="0.7394"/>
+                <CubicDetachedVertex x="0.088" y="53.101" inRotation="-1.159859" inDistance="0.73848" outRotation="1.735868" outDistance="2.14212"/>
+                <CubicDetachedVertex x="1.679" y="58.491" inRotation="-2.356194" inDistance="2.10294" outRotation="0.56633" outDistance="0.38394"/>
+                <CubicDetachedVertex x="2.651" y="59.11" inRotation="-2.573068" inDistance="0.38448" outRotation="0.265207" outDistance="0.67148"/>
+                <CubicDetachedVertex x="4.594" y="59.64" inRotation="-2.874556" inDistance="0.67077" outRotation="0" outDistance="8.483"/>
+                <CubicDetachedVertex x="30.041" y="59.64" inRotation="3.141593" inDistance="8.482" outRotation="0" outDistance="1.944"/>
+                <CubicDetachedVertex x="35.872" y="59.64" inRotation="3.141593" inDistance="1.944" outRotation="0" outDistance="1.624"/>
+                <CubicDetachedVertex x="40.467" y="59.286" inRotation="2.819424" inDistance="1.51283" outRotation="-0.550343" outDistance="0.44935"/>
+                <CubicDetachedVertex x="41.615" y="58.579" inRotation="2.589355" inDistance="0.44987" outRotation="-0.87599" outDistance="1.87587"/>
+                <CubicDetachedVertex x="43.029" y="53.455" inRotation="1.405731" inDistance="1.97788" outRotation="-1.892169" outDistance="0.83579"/>
+                <CubicDetachedVertex x="41.615" y="51.246" inRotation="0.785398" inDistance="0.90368" outRotation="-2.589355" outDistance="0.44987"/>
+                <CubicDetachedVertex x="40.467" y="50.539" inRotation="0.552237" inDistance="0.44987" outRotation="-2.928083" outDistance="0.69375"/>
+                <CubicDetachedVertex x="38.434" y="50.097" inRotation="0.214918" inDistance="0.69397" outRotation="3.141593" outDistance="5.919"/>
+                <CubicDetachedVertex x="20.675" y="50.097" inRotation="0" inDistance="5.92" outRotation="3.141593" outDistance="1.325"/>
+                <CubicDetachedVertex x="16.699" y="50.097" inRotation="0" inDistance="1.325" outRotation="-2.36045" outDistance="0.16617"/>
+                <CubicDetachedVertex x="16.346" y="49.744" inRotation="0.785398" inDistance="0.16688" outRotation="-2.373142" outDistance="0.04173"/>
+                <CubicDetachedVertex x="16.257" y="49.656" inRotation="0.768451" inDistance="0.04173" outRotation="-0.785398" outDistance="0.04243"/>
+                <CubicDetachedVertex x="16.346" y="49.567" inRotation="2.356194" inDistance="0.04243" outRotation="-1.570796" outDistance="0.029"/>
+                <CubicDetachedVertex x="16.346" y="49.479" inRotation="1.570796" inDistance="0.029" outRotation="-0.74688" outDistance="1.08338"/>
+                <CubicDetachedVertex x="18.731" y="47.27" inRotation="2.394712" inDistance="1.08338" outRotation="-0.773538" outDistance="1.729"/>
+                <CubicDetachedVertex x="22.442" y="43.647" inRotation="2.368055" inDistance="1.729" outRotation="-0.768422" outDistance="2.49928"/>
+                <CubicDetachedVertex x="27.832" y="38.434" inRotation="2.372883" inDistance="2.49997" outRotation="-0.752021" outDistance="1.25015"/>
+                <CubicDetachedVertex x="30.571" y="35.872" inRotation="2.389572" inDistance="1.25015" outRotation="-0.795548" outDistance="2.02031"/>
+                <CubicDetachedVertex x="34.812" y="31.543" inRotation="2.346044" inDistance="2.02031" outRotation="-0.86227" outDistance="1.0865"/>
+                <CubicDetachedVertex x="36.932" y="29.069" inRotation="2.279223" inDistance="1.08509" outRotation="-0.941939" outDistance="1.20193"/>
+                <CubicDetachedVertex x="39.053" y="26.153" inRotation="2.199654" inDistance="1.20193" outRotation="-1.107149" outDistance="0.71778"/>
+                <CubicDetachedVertex x="40.113" y="24.386" inRotation="2.158421" inDistance="0.73415" outRotation="-1.249046" outDistance="0.87279"/>
+                <CubicDetachedVertex x="41.085" y="22.089" inRotation="2.033932" inDistance="0.87296" outRotation="-1.40518" outDistance="0.70363"/>
+                <CubicDetachedVertex x="41.527" y="20.322" inRotation="1.893015" inDistance="0.67578" outRotation="-1.487538" outDistance="0.70946"/>
+                <CubicDetachedVertex x="41.704" y="18.201" inRotation="1.654055" inDistance="0.70946" outRotation="-1.570796" outDistance="0.824"/>
+                <CubicDetachedVertex x="41.704" y="15.727" inRotation="1.570796" inDistance="0.825" outRotation="-1.736359" outDistance="0.79487"/>
+                <CubicDetachedVertex x="41.527" y="13.342" inRotation="1.570796" inDistance="0.847" outRotation="-1.891986" outDistance="0.56383"/>
+                <CubicDetachedVertex x="41.174" y="11.928" inRotation="1.406203" inDistance="0.592" outRotation="-2.034444" outDistance="0.81616"/>
+                <CubicDetachedVertex x="40.378" y="9.719" inRotation="1.249046" inDistance="0.80954" outRotation="-2.123899" outDistance="1.1764"/>
+                <CubicDetachedVertex x="38.523" y="6.715" inRotation="1.017693" inDistance="1.1764" outRotation="-2.335259" outDistance="0.97956"/>
+                <CubicDetachedVertex x="36.491" y="4.594" inRotation="0.807071" inDistance="0.97887" outRotation="-2.447774" outDistance="0.69588"/>
+                <CubicDetachedVertex x="34.9" y="3.534" inRotation="0.464322" inDistance="0.66322" outRotation="-2.446854" outDistance="1.42147"/>
+                <CubicDetachedVertex x="31.101" y="1.414" inRotation="0.321751" inDistance="1.3661" outRotation="-2.6776" outDistance="1.29603"/>
+                <CubicDetachedVertex x="27.832" y="0.353" inRotation="0.165396" inDistance="1.33015" outRotation="-2.819992" outDistance="2.11651"/>
+                <CubicDetachedVertex x="20.763" y="-0.53" inRotation="0" inDistance="2.278" outRotation="3.07706" outDistance="0.9149"/>
+                <CubicDetachedVertex x="18.024" y="-0.353" inRotation="-0.064532" inDistance="0.9149" outRotation="2.819842" outDistance="0.73049"/>
+                <CubicDetachedVertex x="15.551" y="0" inRotation="0" inDistance="0.789" outRotation="2.820282" outDistance="0.71879"/>
+                <CubicDetachedVertex x="13.518" y="0.442" inRotation="-0.165816" inDistance="0.73914" outRotation="2.677945" outDistance="0.71107"/>
+                <CubicDetachedVertex x="11.575" y="1.149" inRotation="-0.165149" inDistance="0.72993" outRotation="2.6958" outDistance="0.75144"/>
+                <CubicDetachedVertex x="9.542" y="2.121" inRotation="-0.445792" inDistance="0.75144" outRotation="2.608925" outDistance="0.75222"/>
+                <CubicDetachedVertex x="7.599" y="3.269" inRotation="-0.534489" inDistance="0.75186" outRotation="2.486086" outDistance="0.96627"/>
+                <CubicDetachedVertex x="5.301" y="5.036" inRotation="-0.655506" inDistance="0.96627" outRotation="2.316162" outDistance="1.0424"/>
+                <CubicDetachedVertex x="3.181" y="7.333" inRotation="-0.82478" inDistance="1.04167" outRotation="2.143738" outDistance="1.0865"/>
+                <CubicDetachedVertex x="1.414" y="10.072" inRotation="-0.997855" inDistance="1.0865" outRotation="1.735712" outDistance="0.70659"/>
+                <CubicDetachedVertex x="0.618" y="12.193" inRotation="-1.106509" inDistance="0.69899" outRotation="1.734798" outDistance="0.71662"/>
+                <CubicDetachedVertex x="0.265" y="14.314" inRotation="-1.405418" inDistance="0.71678" outRotation="1.570796" outDistance="2.093"/>
+                <CubicDetachedVertex x="2.121" y="18.996" inRotation="-2.356194" inDistance="2.12556" outRotation="0.251003" outDistance="0.12078"/>
+                <CubicDetachedVertex x="2.474" y="19.085" inRotation="-2.89263" inDistance="0.12175" outRotation="0.587649" outDistance="0.78462"/>
+                <CubicDetachedVertex x="4.241" y="19.615" inRotation="3.141593" inDistance="0.827" outRotation="0.321557" outDistance="1.63268"/>
+                <CubicDetachedVertex x="8.482" y="18.996" inRotation="2.67733" inDistance="1.45389" outRotation="-0.785398" outDistance="0.58266"/>
+                <CubicDetachedVertex x="9.719" y="17.759" inRotation="2.354982" inDistance="0.58336" outRotation="-0.982794" outDistance="0.60573"/>
+                <CubicDetachedVertex x="10.691" y="16.346" inRotation="2.266318" inDistance="0.65388" outRotation="-1.127381" outDistance="0.68527"/>
+                <CubicDetachedVertex x="11.575" y="14.49" inRotation="2.015529" inDistance="0.6857" outRotation="-0.956055" outDistance="0.61205"/>
+                <CubicDetachedVertex x="12.635" y="12.988" inRotation="2.185929" inDistance="0.61345" outRotation="-0.745365" outDistance="1.0424"/>
+                <CubicDetachedVertex x="14.932" y="10.868" inRotation="2.396227" inDistance="1.0424" outRotation="-0.463648" outDistance="0.69542"/>
+                <CubicDetachedVertex x="16.787" y="9.807" inRotation="2.553196" inDistance="0.70447" outRotation="-0.320833" outDistance="1.03375"/>
+                <CubicDetachedVertex x="19.703" y="9.101" inRotation="2.977063" inDistance="1.06235" outRotation="0.027352" outDistance="1.0604"/>
+                <CubicDetachedVertex x="22.884" y="9.189" inRotation="-3.113298" inDistance="1.06042" outRotation="0.380896" outDistance="0.47612"/>
+                <CubicDetachedVertex x="24.209" y="9.719" inRotation="-2.759914" inDistance="0.47519" outRotation="0.16551" outDistance="0.45522"/>
+                <CubicDetachedVertex x="25.27" y="10.161" inRotation="-2.554819" inDistance="0.45153" outRotation="0" outDistance="0.088"/>
+                <CubicDetachedVertex x="25.535" y="10.161" inRotation="3.141593" inDistance="0.089" outRotation="0.588003" outDistance="1.27997"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="202.9" y="10" name="digit3" id="0:1513">
-                <PointsPath isClosed="false" name="Path0">
-                    <StraightVertex x="6.05" y="24.05" />
-                    <StraightVertex x="6.05" y="24.05" />
-                    <StraightVertex x="6.11" y="22.48" />
-                    <StraightVertex x="6.29" y="20.92" />
-                    <StraightVertex x="6.59" y="19.39" />
-                    <StraightVertex x="7.01" y="17.89" />
-                    <StraightVertex x="7.54" y="16.44" />
-                    <StraightVertex x="8.19" y="15.05" />
-                    <StraightVertex x="8.93" y="13.73" />
-                    <StraightVertex x="9.78" y="12.48" />
-                    <StraightVertex x="10.72" y="11.32" />
-                    <StraightVertex x="11.75" y="10.26" />
-                    <StraightVertex x="12.85" y="9.31" />
-                    <StraightVertex x="14.02" y="8.46" />
-                    <StraightVertex x="15.26" y="7.74" />
-                    <StraightVertex x="16.54" y="7.14" />
-                    <StraightVertex x="17.87" y="6.66" />
-                    <StraightVertex x="19.23" y="6.32" />
-                    <StraightVertex x="20.61" y="6.12" />
-                    <StraightVertex x="22" y="6.05" />
-                    <StraightVertex x="23.39" y="6.12" />
-                    <StraightVertex x="24.77" y="6.32" />
-                    <StraightVertex x="26.13" y="6.66" />
-                    <StraightVertex x="27.46" y="7.14" />
-                    <StraightVertex x="28.74" y="7.74" />
-                    <StraightVertex x="29.98" y="8.46" />
-                    <StraightVertex x="31.15" y="9.31" />
-                    <StraightVertex x="32.25" y="10.26" />
-                    <StraightVertex x="33.28" y="11.32" />
-                    <StraightVertex x="34.22" y="12.48" />
-                    <StraightVertex x="35.07" y="13.73" />
-                    <StraightVertex x="35.81" y="15.05" />
-                    <StraightVertex x="36.46" y="16.44" />
-                    <StraightVertex x="36.99" y="17.89" />
-                    <StraightVertex x="37.41" y="19.39" />
-                    <StraightVertex x="37.71" y="20.92" />
-                    <StraightVertex x="37.89" y="22.48" />
-                    <StraightVertex x="37.95" y="24.05" />
-                    <StraightVertex x="37.81" y="25.18" />
-                    <StraightVertex x="37.43" y="26.3" />
-                    <StraightVertex x="36.82" y="27.42" />
-                    <StraightVertex x="36.02" y="28.51" />
-                    <StraightVertex x="35.06" y="29.57" />
-                    <StraightVertex x="33.96" y="30.59" />
-                    <StraightVertex x="32.75" y="31.56" />
-                    <StraightVertex x="31.48" y="32.47" />
-                    <StraightVertex x="30.15" y="33.31" />
-                    <StraightVertex x="28.8" y="34.07" />
-                    <StraightVertex x="27.47" y="34.74" />
-                    <StraightVertex x="26.18" y="35.31" />
-                    <StraightVertex x="24.96" y="35.77" />
-                    <StraightVertex x="23.83" y="36.12" />
-                    <StraightVertex x="22.84" y="36.33" />
-                    <StraightVertex x="22" y="36.4" />
-                    <StraightVertex x="22.84" y="36.47" />
-                    <StraightVertex x="23.83" y="36.66" />
-                    <StraightVertex x="24.96" y="36.97" />
-                    <StraightVertex x="26.18" y="37.39" />
-                    <StraightVertex x="27.47" y="37.91" />
-                    <StraightVertex x="28.8" y="38.54" />
-                    <StraightVertex x="30.15" y="39.26" />
-                    <StraightVertex x="31.48" y="40.06" />
-                    <StraightVertex x="32.75" y="40.94" />
-                    <StraightVertex x="33.96" y="41.9" />
-                    <StraightVertex x="35.06" y="42.92" />
-                    <StraightVertex x="36.02" y="43.99" />
-                    <StraightVertex x="36.82" y="45.12" />
-                    <StraightVertex x="37.43" y="46.3" />
-                    <StraightVertex x="37.81" y="47.51" />
-                    <StraightVertex x="37.95" y="48.75" />
-                    <StraightVertex x="37.95" y="36.65" />
-                    <StraightVertex x="37.89" y="38.22" />
-                    <StraightVertex x="37.71" y="39.78" />
-                    <StraightVertex x="37.41" y="41.31" />
-                    <StraightVertex x="36.99" y="42.81" />
-                    <StraightVertex x="36.46" y="44.26" />
-                    <StraightVertex x="35.81" y="45.65" />
-                    <StraightVertex x="35.07" y="46.97" />
-                    <StraightVertex x="34.22" y="48.22" />
-                    <StraightVertex x="33.28" y="49.38" />
-                    <StraightVertex x="32.25" y="50.44" />
-                    <StraightVertex x="31.15" y="51.39" />
-                    <StraightVertex x="29.98" y="52.24" />
-                    <StraightVertex x="28.74" y="52.96" />
-                    <StraightVertex x="27.46" y="53.56" />
-                    <StraightVertex x="26.13" y="54.04" />
-                    <StraightVertex x="24.77" y="54.38" />
-                    <StraightVertex x="23.39" y="54.58" />
-                    <StraightVertex x="22" y="54.65" />
-                    <StraightVertex x="20.61" y="54.58" />
-                    <StraightVertex x="19.23" y="54.38" />
-                    <StraightVertex x="17.87" y="54.04" />
-                    <StraightVertex x="16.54" y="53.56" />
-                    <StraightVertex x="15.26" y="52.96" />
-                    <StraightVertex x="14.03" y="52.24" />
-                    <StraightVertex x="12.85" y="51.39" />
-                    <StraightVertex x="11.75" y="50.44" />
-                    <StraightVertex x="10.72" y="49.38" />
-                    <StraightVertex x="9.78" y="48.22" />
-                    <StraightVertex x="8.93" y="46.97" />
-                    <StraightVertex x="8.19" y="45.65" />
-                    <StraightVertex x="7.54" y="44.26" />
-                    <StraightVertex x="7.01" y="42.81" />
-                    <StraightVertex x="6.59" y="41.31" />
-                    <StraightVertex x="6.29" y="39.78" />
-                    <StraightVertex x="6.11" y="38.22" />
-                    <StraightVertex x="6.05" y="36.65" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 3: width 44.619, advance 51.599 (measured), 1 contour(s), 0 hole(s) -->
+          <Node name="digit3" x="146.979" y="0">
+            <Shape name="digit3Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit3Outer">
+                <CubicDetachedVertex x="16.611" y="33.663" inRotation="-2.820068" inDistance="2.79735" outRotation="0.165149" outDistance="1.60585"/>
+                <CubicDetachedVertex x="21.647" y="33.84" inRotation="3.141593" inDistance="1.693" outRotation="0.049196" outDistance="0.58971"/>
+                <CubicDetachedVertex x="23.414" y="33.928" inRotation="-3.092396" inDistance="0.58971" outRotation="0.322309" outDistance="1.13336"/>
+                <CubicDetachedVertex x="26.683" y="34.9" inRotation="-2.677945" inDistance="1.12474" outRotation="0.197396" outDistance="0.30084"/>
+                <CubicDetachedVertex x="27.567" y="35.077" inRotation="-2.944197" inDistance="0.30084" outRotation="0.53992" outDistance="0.68668"/>
+                <CubicDetachedVertex x="29.334" y="36.137" inRotation="-2.601673" inDistance="0.68668" outRotation="0.785398" outDistance="0.70852"/>
+                <CubicDetachedVertex x="30.836" y="37.639" inRotation="-2.357193" inDistance="0.70781" outRotation="1.046282" outDistance="0.64697"/>
+                <CubicDetachedVertex x="31.808" y="39.318" inRotation="-2.09531" inDistance="0.64697" outRotation="1.292283" outDistance="0.64381"/>
+                <CubicDetachedVertex x="32.338" y="41.174" inRotation="-1.849309" inDistance="0.64381" outRotation="1.405443" outDistance="2.40581"/>
+                <CubicDetachedVertex x="31.101" y="47.447" inRotation="-0.983036" inDistance="2.29036" outRotation="2.158799" outDistance="1.06724"/>
+                <CubicDetachedVertex x="28.804" y="49.567" inRotation="-0.463217" inDistance="1.03843" outRotation="2.447035" outDistance="0.70932"/>
+                <CubicDetachedVertex x="27.302" y="50.539" inRotation="-0.463648" inDistance="0.66635" outRotation="3.141593" outDistance="0.089"/>
+                <CubicDetachedVertex x="27.037" y="50.539" inRotation="0" inDistance="0.088" outRotation="2.55359" outDistance="0.87615"/>
+                <CubicDetachedVertex x="25.093" y="51.158" inRotation="-0.166106" inDistance="0.85882" outRotation="2.820226" outDistance="1.64628"/>
+                <CubicDetachedVertex x="20.145" y="51.599" inRotation="0" inDistance="1.771" outRotation="-2.971132" outDistance="0.86656"/>
+                <CubicDetachedVertex x="17.583" y="51.158" inRotation="0.170461" inDistance="0.86656" outRotation="-2.787527" outDistance="0.59703"/>
+                <CubicDetachedVertex x="15.904" y="50.539" inRotation="0.352494" inDistance="0.59669" outRotation="-2.57915" outDistance="0.66197"/>
+                <CubicDetachedVertex x="14.225" y="49.479" inRotation="0.562442" inDistance="0.66197" outRotation="-2.356194" outDistance="1.25582"/>
+                <CubicDetachedVertex x="11.751" y="46.917" inRotation="0.875542" inDistance="1.24106" outRotation="-2.098431" outDistance="0.81829"/>
+                <CubicDetachedVertex x="10.514" y="44.796" inRotation="1.042106" inDistance="0.81879" outRotation="-2.203349" outDistance="0.54803"/>
+                <CubicDetachedVertex x="9.542" y="43.471" inRotation="0.938244" inDistance="0.54803" outRotation="-2.439453" outDistance="0.50166"/>
+                <CubicDetachedVertex x="8.394" y="42.499" inRotation="0.70214" inDistance="0.50166" outRotation="-2.806627" outDistance="0.7179"/>
+                <CubicDetachedVertex x="6.362" y="41.792" inRotation="0.335424" inDistance="0.71696" outRotation="3.141593" outDistance="0.678"/>
+                <CubicDetachedVertex x="4.329" y="41.792" inRotation="0" inDistance="0.678" outRotation="2.871035" outDistance="0.55001"/>
+                <CubicDetachedVertex x="2.739" y="42.234" inRotation="-0.270558" inDistance="0.55001" outRotation="2.59125" outDistance="0.44935"/>
+                <CubicDetachedVertex x="1.59" y="42.941" inRotation="-0.552237" inDistance="0.44987" outRotation="2.356194" outDistance="2.35891"/>
+                <CubicDetachedVertex x="0.177" y="48.33" inRotation="-1.736017" inDistance="2.26788" outRotation="1.405765" outDistance="2.80613"/>
+                <CubicDetachedVertex x="5.213" y="56.017" inRotation="-2.446854" inDistance="2.93665" outRotation="0.619974" outDistance="1.26675"/>
+                <CubicDetachedVertex x="8.305" y="58.226" inRotation="-2.52116" inDistance="1.26594" outRotation="0.463216" outDistance="1.03619"/>
+                <CubicDetachedVertex x="11.133" y="59.551" inRotation="-2.67837" inDistance="1.05185" outRotation="0.264694" outDistance="1.46399"/>
+                <CubicDetachedVertex x="15.374" y="60.7" inRotation="-2.877077" inDistance="1.46495" outRotation="0" outDistance="0.893"/>
+                <CubicDetachedVertex x="18.024" y="61.142" inRotation="-2.81908" inDistance="0.82978" outRotation="0.019305" outDistance="1.50228"/>
+                <CubicDetachedVertex x="22.531" y="61.23" inRotation="-3.122287" inDistance="1.50228" outRotation="-0.048843" outDistance="1.20844"/>
+                <CubicDetachedVertex x="26.153" y="61.053" inRotation="3.09275" inDistance="1.20844" outRotation="-0.321327" outDistance="0.74725"/>
+                <CubicDetachedVertex x="28.45" y="60.7" inRotation="3.141593" inDistance="0.808" outRotation="-0.322159" outDistance="0.77381"/>
+                <CubicDetachedVertex x="30.394" y="60.258" inRotation="2.975621" inDistance="0.79898" outRotation="-0.321751" outDistance="0.70519"/>
+                <CubicDetachedVertex x="32.25" y="59.64" inRotation="2.977106" inDistance="0.74506" outRotation="-0.588498" outDistance="0.56025"/>
+                <CubicDetachedVertex x="33.398" y="59.198" inRotation="2.97674" inDistance="0.55452" outRotation="-0.418924" outDistance="0.58017"/>
+                <CubicDetachedVertex x="34.989" y="58.491" inRotation="2.722668" inDistance="0.58017" outRotation="-0.563484" outDistance="1.32364"/>
+                <CubicDetachedVertex x="38.346" y="56.371" inRotation="2.578747" inDistance="1.3231" outRotation="-0.785398" outDistance="0.79196"/>
+                <CubicDetachedVertex x="40.025" y="54.692" inRotation="2.357088" inDistance="0.79125" outRotation="-0.742588" outDistance="0.47915"/>
+                <CubicDetachedVertex x="41.085" y="53.72" inRotation="2.399004" inDistance="0.47915" outRotation="-0.968734" outDistance="1.14418"/>
+                <CubicDetachedVertex x="43.029" y="50.893" inRotation="2.173354" inDistance="1.14336" outRotation="-1.262998" outDistance="0.67996"/>
+                <CubicDetachedVertex x="43.647" y="48.949" inRotation="1.878594" inDistance="0.67996" outRotation="-1.14231" outDistance="0.3562"/>
+                <CubicDetachedVertex x="44.089" y="47.977" inRotation="1.996726" inDistance="0.35579" outRotation="-1.465826" outDistance="0.5631"/>
+                <CubicDetachedVertex x="44.266" y="46.298" inRotation="1.675766" inDistance="0.5631" outRotation="-1.326484" outDistance="0.3638"/>
+                <CubicDetachedVertex x="44.531" y="45.238" inRotation="1.815108" inDistance="0.3638" outRotation="-1.538003" outDistance="0.88448"/>
+                <CubicDetachedVertex x="44.619" y="42.587" inRotation="1.60359" inDistance="0.88448" outRotation="-1.641069" outDistance="0.41302"/>
+                <CubicDetachedVertex x="44.531" y="41.35" inRotation="1.500693" inDistance="0.41402" outRotation="-1.892105" outDistance="0.71562"/>
+                <CubicDetachedVertex x="44.089" y="39.23" inRotation="1.405648" inDistance="0.73601" outRotation="-1.892547" outDistance="0.37315"/>
+                <CubicDetachedVertex x="43.736" y="38.169" inRotation="1.249046" inDistance="0.37315" outRotation="-2.034444" outDistance="1.15158"/>
+                <CubicDetachedVertex x="41.969" y="35.165" inRotation="0.983504" inDistance="1.17125" outRotation="-2.298375" outDistance="0.70971"/>
+                <CubicDetachedVertex x="40.555" y="33.575" inRotation="0.844271" inDistance="0.70904" outRotation="-2.486086" outDistance="0.96627"/>
+                <CubicDetachedVertex x="38.258" y="31.808" inRotation="0.655506" inDistance="0.96627" outRotation="3.141593" outDistance="0.089"/>
+                <CubicDetachedVertex x="37.993" y="31.808" inRotation="0" inDistance="0.088" outRotation="-2.638684" outDistance="0.67223"/>
+                <CubicDetachedVertex x="36.226" y="30.836" inRotation="0.502908" inDistance="0.67223" outRotation="-2.819474" outDistance="0.85919"/>
+                <CubicDetachedVertex x="33.84" y="30.041" inRotation="0.463648" inDistance="0.86312" outRotation="-2.976002" outDistance="1.11627"/>
+                <CubicDetachedVertex x="30.571" y="29.422" inRotation="0.322041" inDistance="1.09004" outRotation="-2.21158" outDistance="0.1472"/>
+                <CubicDetachedVertex x="30.306" y="29.069" inRotation="0.930013" inDistance="0.1472" outRotation="-0.646207" outDistance="0.1478"/>
+                <CubicDetachedVertex x="30.659" y="28.804" inRotation="2.500809" inDistance="0.1472" outRotation="-0.260884" outDistance="0.91496"/>
+                <CubicDetachedVertex x="33.31" y="28.097" inRotation="2.880709" inDistance="0.91496" outRotation="-0.463648" outDistance="0.78039"/>
+                <CubicDetachedVertex x="35.43" y="27.125" inRotation="2.819437" inDistance="0.78013" outRotation="-0.613083" outDistance="0.97325"/>
+                <CubicDetachedVertex x="37.816" y="25.446" inRotation="2.527918" inDistance="0.97243" outRotation="-0.754544" outDistance="0.68764"/>
+                <CubicDetachedVertex x="39.318" y="24.033" inRotation="2.387049" inDistance="0.68764" outRotation="-0.947345" outDistance="0.90778"/>
+                <CubicDetachedVertex x="40.908" y="21.824" inRotation="2.194891" inDistance="0.90697" outRotation="-1.137892" outDistance="0.84384"/>
+                <CubicDetachedVertex x="41.969" y="19.526" inRotation="2.003701" inDistance="0.84384" outRotation="-1.337272" outDistance="0.63524"/>
+                <CubicDetachedVertex x="42.41" y="17.671" inRotation="1.803957" inDistance="0.63622" outRotation="-1.459932" outDistance="0.53327"/>
+                <CubicDetachedVertex x="42.587" y="16.081" inRotation="1.681661" inDistance="0.53327" outRotation="-1.570796" outDistance="0.53"/>
+                <CubicDetachedVertex x="42.587" y="14.49" inRotation="1.570796" inDistance="0.53" outRotation="-1.703645" outDistance="0.89085"/>
+                <CubicDetachedVertex x="42.234" y="11.84" inRotation="1.437948" inDistance="0.89085" outRotation="-1.892147" outDistance="0.79152"/>
+                <CubicDetachedVertex x="41.527" y="9.542" inRotation="1.406469" inDistance="0.80079" outRotation="-2.053672" outDistance="0.69778"/>
+                <CubicDetachedVertex x="40.555" y="7.687" inRotation="1.08792" inDistance="0.69778" outRotation="-2.158799" outDistance="0.42546"/>
+                <CubicDetachedVertex x="39.848" y="6.627" inRotation="0.981487" inDistance="0.42462" outRotation="-2.371337" outDistance="1.35426"/>
+                <CubicDetachedVertex x="36.932" y="3.799" inRotation="0.770256" inDistance="1.35426" outRotation="-2.577212" outDistance="1.04507"/>
+                <CubicDetachedVertex x="34.282" y="2.121" inRotation="0.564381" inDistance="1.04507" outRotation="-2.819141" outDistance="0.90251"/>
+                <CubicDetachedVertex x="31.72" y="1.06" inRotation="0.464143" inDistance="0.90248" outRotation="-2.97784" outDistance="0.58888"/>
+                <CubicDetachedVertex x="30.483" y="0.618" inRotation="0.46524" inDistance="0.5617" outRotation="-2.821538" outDistance="0.55941"/>
+                <CubicDetachedVertex x="28.892" y="0.353" inRotation="0.166307" inDistance="0.56783" outRotation="-2.819842" outDistance="0.78741"/>
+                <CubicDetachedVertex x="27.037" y="0" inRotation="0" inDistance="0.877" outRotation="-2.910279" outDistance="0.51471"/>
+                <CubicDetachedVertex x="25.535" y="-0.353" inRotation="0.229864" inDistance="0.51351" outRotation="-3.096099" outDistance="1.29734"/>
+                <CubicDetachedVertex x="21.647" y="-0.53" inRotation="0.045493" inDistance="1.29734" outRotation="3.115682" outDistance="1.11938"/>
+                <CubicDetachedVertex x="18.29" y="-0.442" inRotation="-0.02591" inDistance="1.11938" outRotation="2.820212" outDistance="0.85476"/>
+                <CubicDetachedVertex x="15.816" y="0" inRotation="0" inDistance="0.926" outRotation="2.820839" outDistance="0.63435"/>
+                <CubicDetachedVertex x="14.137" y="0.442" inRotation="-0.165397" inDistance="0.66203" outRotation="2.820598" outDistance="0.83674"/>
+                <CubicDetachedVertex x="11.84" y="1.149" inRotation="-0.165337" inDistance="0.87493" outRotation="2.678946" outDistance="0.89398"/>
+                <CubicDetachedVertex x="9.542" y="2.209" inRotation="-0.322101" inDistance="0.90346" outRotation="2.553395" outDistance="1.42558"/>
+                <CubicDetachedVertex x="6.008" y="4.683" inRotation="-0.694386" inDistance="1.45488" outRotation="2.356194" outDistance="0.66609"/>
+                <CubicDetachedVertex x="4.594" y="6.097" inRotation="-0.785398" inDistance="0.66751" outRotation="2.222019" outDistance="0.77702"/>
+                <CubicDetachedVertex x="3.181" y="7.952" inRotation="-0.920353" inDistance="0.77782" outRotation="2.09531" outDistance="0.64697"/>
+                <CubicDetachedVertex x="2.209" y="9.631" inRotation="-1.046282" inDistance="0.64697" outRotation="1.970278" outDistance="0.60678"/>
+                <CubicDetachedVertex x="1.502" y="11.309" inRotation="-1.171315" inDistance="0.60678" outRotation="1.735722" outDistance="0.737"/>
+                <CubicDetachedVertex x="1.149" y="13.342" inRotation="-1.249913" inDistance="0.72922" outRotation="1.736171" outDistance="0.72895"/>
+                <CubicDetachedVertex x="1.414" y="15.285" inRotation="-1.893446" inDistance="0.70329" outRotation="1.570796" outDistance="0.815"/>
+                <CubicDetachedVertex x="2.121" y="17.053" inRotation="-2.158799" inDistance="0.75717" outRotation="1.107576" outDistance="1.04737"/>
+                <CubicDetachedVertex x="3.888" y="18.555" inRotation="-2.819842" inDistance="1.04988" outRotation="0.463417" outDistance="1.93733"/>
+                <CubicDetachedVertex x="9.542" y="17.936" inRotation="2.677694" inDistance="1.78349" outRotation="-0.784186" outDistance="0.58336"/>
+                <CubicDetachedVertex x="10.779" y="16.699" inRotation="2.356194" inDistance="0.58266" outRotation="-1.079119" outDistance="1.43612"/>
+                <CubicDetachedVertex x="12.811" y="12.9" inRotation="2.06186" inDistance="1.43565" outRotation="-0.876295" outDistance="1.08281"/>
+                <CubicDetachedVertex x="15.02" y="10.514" inRotation="2.355575" inDistance="1.14056" outRotation="-0.588003" outDistance="1.83162"/>
+                <CubicDetachedVertex x="19.88" y="8.659" inRotation="2.976623" inDistance="1.83897" outRotation="-0.046263" outDistance="0.64869"/>
+                <CubicDetachedVertex x="21.824" y="8.57" inRotation="3.095329" inDistance="0.64869" outRotation="0.046263" outDistance="0.64869"/>
+                <CubicDetachedVertex x="23.768" y="8.659" inRotation="-3.095329" inDistance="0.64869" outRotation="0.322182" outDistance="0.7327"/>
+                <CubicDetachedVertex x="25.888" y="9.189" inRotation="-2.975788" inDistance="0.7513" outRotation="0.464045" outDistance="1.12608"/>
+                <CubicDetachedVertex x="28.715" y="11.133" inRotation="-2.355613" inDistance="1.21693" outRotation="0.785398" outDistance="1.46371"/>
+                <CubicDetachedVertex x="30.483" y="14.225" inRotation="-1.736656" inDistance="1.38703" outRotation="1.108257" outDistance="0.80677"/>
+                <CubicDetachedVertex x="30.836" y="16.257" inRotation="-1.570796" inDistance="0.857" outRotation="1.405814" outDistance="1.97279"/>
+                <CubicDetachedVertex x="29.334" y="21.647" inRotation="-0.983098" inDistance="1.82524" outRotation="2.356194" outDistance="0.79196"/>
+                <CubicDetachedVertex x="27.655" y="23.326" inRotation="-0.785398" inDistance="0.79196" outRotation="2.55359" outDistance="1.02037"/>
+                <CubicDetachedVertex x="25.005" y="24.739" inRotation="-0.463202" inDistance="1.00265" outRotation="2.906903" outDistance="0.63645"/>
+                <CubicDetachedVertex x="23.149" y="25.181" inRotation="-0.233161" inDistance="0.63622" outRotation="3.064721" outDistance="0.76827"/>
+                <CubicDetachedVertex x="20.852" y="25.358" inRotation="-0.076872" inDistance="0.76827" outRotation="3.141593" outDistance="1.031"/>
+                <CubicDetachedVertex x="17.759" y="25.358" inRotation="0" inDistance="1.031" outRotation="3.052324" outDistance="0.3253"/>
+                <CubicDetachedVertex x="16.787" y="25.446" inRotation="-0.089268" inDistance="0.3253" outRotation="2.718809" outDistance="0.64587"/>
+                <CubicDetachedVertex x="15.02" y="26.241" inRotation="-0.422783" inDistance="0.64587" outRotation="2.169437" outDistance="0.67788"/>
+                <CubicDetachedVertex x="13.872" y="27.92" inRotation="-0.970105" inDistance="0.67762" outRotation="1.735945" outDistance="2.71899"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="267.2" y="10" name="digit4" id="0:1514">
-                <PointsPath isClosed="false" name="Path0">
-                    <StraightVertex x="6.05" y="38.05" />
-                    <StraightVertex x="33.15" y="6.05" />
-                </PointsPath>
-                <PointsPath isClosed="false" name="Path1">
-                    <StraightVertex x="43.15" y="6.05" />
-                    <StraightVertex x="43.15" y="54.65" />
-                </PointsPath>
-                <PointsPath isClosed="false" name="Path2">
-                    <StraightVertex x="6.05" y="38.05" />
-                    <StraightVertex x="43.15" y="38.05" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 4: width 49.302, advance 56.194 (measured), 2 contour(s), 1 hole(s) -->
+          <Node name="digit4" x="198.578" y="0">
+            <Shape name="digit4Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit4Outer">
+                <CubicDetachedVertex x="29.157" y="48.949" inRotation="-2.976268" inDistance="0.93576" outRotation="0.785398" outDistance="0.08344"/>
+                <CubicDetachedVertex x="29.334" y="49.125" inRotation="-2.364741" inDistance="0.08273" outRotation="1.570796" outDistance="0.796"/>
+                <CubicDetachedVertex x="29.334" y="51.511" inRotation="-1.570796" inDistance="0.795" outRotation="1.570796" outDistance="3.232"/>
+                <CubicDetachedVertex x="31.808" y="59.728" inRotation="-2.55359" inDistance="3.37119" outRotation="0.588314" outDistance="0.89196"/>
+                <CubicDetachedVertex x="34.282" y="60.7" inRotation="3.141593" inDistance="0.945" outRotation="0" outDistance="0.795"/>
+                <CubicDetachedVertex x="36.667" y="60.7" inRotation="3.141593" inDistance="0.795" outRotation="-0.366474" outDistance="0.41024"/>
+                <CubicDetachedVertex x="37.816" y="60.258" inRotation="2.775119" inDistance="0.41024" outRotation="-0.558027" outDistance="0.55523"/>
+                <CubicDetachedVertex x="39.23" y="59.375" inRotation="2.584518" inDistance="0.55608" outRotation="-0.876374" outDistance="0.80945"/>
+                <CubicDetachedVertex x="40.555" y="57.608" inRotation="2.159519" inDistance="0.77076" outRotation="-1.300724" outDistance="0.55097"/>
+                <CubicDetachedVertex x="40.997" y="56.017" inRotation="1.841354" inDistance="0.55001" outRotation="-1.551491" outDistance="1.50228"/>
+                <CubicDetachedVertex x="41.085" y="51.511" inRotation="1.590102" inDistance="1.50228" outRotation="-1.611792" outDistance="0.70759"/>
+                <CubicDetachedVertex x="40.997" y="49.391" inRotation="1.529743" inDistance="0.7066" outRotation="-0.877727" outDistance="0.23008"/>
+                <CubicDetachedVertex x="41.439" y="48.86" inRotation="2.267199" inDistance="0.23072" outRotation="-0.463648" outDistance="0.06485"/>
+                <CubicDetachedVertex x="41.615" y="48.772" inRotation="2.671188" inDistance="0.06619" outRotation="0.165359" outDistance="1.5613"/>
+                <CubicDetachedVertex x="46.74" y="48.419" inRotation="2.820061" inDistance="1.44611" outRotation="-0.530361" outDistance="0.40922"/>
+                <CubicDetachedVertex x="47.8" y="47.8" inRotation="2.613342" inDistance="0.40871" outRotation="-0.876058" outDistance="1.94475"/>
+                <CubicDetachedVertex x="49.214" y="42.499" inRotation="1.405488" inDistance="2.054" outRotation="-2.073705" outDistance="0.67223"/>
+                <CubicDetachedVertex x="48.242" y="40.732" inRotation="1.067888" inDistance="0.67223" outRotation="-2.446311" outDistance="0.70715"/>
+                <CubicDetachedVertex x="46.652" y="39.671" inRotation="0.588813" inDistance="0.68422" outRotation="-2.977697" outDistance="0.65579"/>
+                <CubicDetachedVertex x="44.884" y="39.23" inRotation="0.321751" inDistance="0.63562" outRotation="-3.116743" outDistance="1.20737"/>
+                <CubicDetachedVertex x="41.262" y="39.141" inRotation="0.02485" inDistance="1.20737" outRotation="-2.161417" outDistance="0.10595"/>
+                <CubicDetachedVertex x="41.085" y="38.876" inRotation="0.985391" inDistance="0.10678" outRotation="-1.570796" outDistance="2.15"/>
+                <CubicDetachedVertex x="41.085" y="32.426" inRotation="1.570796" inDistance="2.15" outRotation="-1.574252" outDistance="8.39305"/>
+                <CubicDetachedVertex x="40.997" y="7.245" inRotation="1.567341" inDistance="8.39405" outRotation="-1.893" outDistance="0.69791"/>
+                <CubicDetachedVertex x="40.467" y="5.39" inRotation="1.406321" inDistance="0.73289" outRotation="-2.09029" outDistance="0.71308"/>
+                <CubicDetachedVertex x="39.406" y="3.534" inRotation="1.051302" inDistance="0.71308" outRotation="-2.356194" outDistance="0.70711"/>
+                <CubicDetachedVertex x="37.904" y="2.032" inRotation="0.785398" inDistance="0.70852" outRotation="-2.566625" outDistance="0.5958"/>
+                <CubicDetachedVertex x="36.402" y="1.06" inRotation="0.574057" inDistance="0.59664" outRotation="-2.97736" outDistance="0.53824"/>
+                <CubicDetachedVertex x="35.077" y="0.618" inRotation="0.463648" inDistance="0.521" outRotation="-2.887252" outDistance="0.6995"/>
+                <CubicDetachedVertex x="33.045" y="0.088" inRotation="0.255723" inDistance="0.69976" outRotation="-3.111766" outDistance="0.97243"/>
+                <CubicDetachedVertex x="30.129" y="0" inRotation="0.029827" inDistance="0.97243" outRotation="2.981955" outDistance="0.92476"/>
+                <CubicDetachedVertex x="27.39" y="0.442" inRotation="-0.159638" inDistance="0.92476" outRotation="2.74363" outDistance="0.60639"/>
+                <CubicDetachedVertex x="25.711" y="1.149" inRotation="-0.398842" inDistance="0.6077" outRotation="2.552729" outDistance="0.64456"/>
+                <CubicDetachedVertex x="24.121" y="2.121" inRotation="-0.588909" inDistance="0.61211" outRotation="2.428882" outDistance="0.5842"/>
+                <CubicDetachedVertex x="22.796" y="3.269" inRotation="-0.715126" inDistance="0.5841" outRotation="2.26257" outDistance="1.33876"/>
+                <CubicDetachedVertex x="20.233" y="6.362" inRotation="-0.879023" inDistance="1.33876" outRotation="2.19139" outDistance="1.01287"/>
+                <CubicDetachedVertex x="18.466" y="8.836" inRotation="-0.950776" inDistance="1.01368" outRotation="2.132217" outDistance="0.93916"/>
+                <CubicDetachedVertex x="16.964" y="11.221" inRotation="-1.008475" inDistance="0.93969" outRotation="2.158477" outDistance="1.72068"/>
+                <CubicDetachedVertex x="14.048" y="15.639" inRotation="-1.107149" inDistance="1.68376" outRotation="2.265413" outDistance="1.05298"/>
+                <CubicDetachedVertex x="12.193" y="18.466" inRotation="-1.107149" inDistance="1.01741" outRotation="2.265535" outDistance="1.24183"/>
+                <CubicDetachedVertex x="9.896" y="22" inRotation="-1.107149" inDistance="1.20971" outRotation="2.158714" outDistance="3.27966"/>
+                <CubicDetachedVertex x="4.683" y="30.217" inRotation="-0.982624" inDistance="3.26219" outRotation="1.892547" outDistance="0.65775"/>
+                <CubicDetachedVertex x="3.623" y="32.073" inRotation="-0.983615" inDistance="0.67507" outRotation="2.09531" outDistance="0.64697"/>
+                <CubicDetachedVertex x="2.651" y="33.752" inRotation="-1.046282" inDistance="0.64697" outRotation="2.034444" outDistance="0.72449"/>
+                <CubicDetachedVertex x="1.679" y="35.695" inRotation="-1.106531" inDistance="0.72359" outRotation="2.034444" outDistance="0.51653"/>
+                <CubicDetachedVertex x="1.06" y="37.021" inRotation="-0.982282" inDistance="0.54222" outRotation="1.859726" outDistance="1.13713"/>
+                <CubicDetachedVertex x="0.088" y="40.29" inRotation="-1.281866" inDistance="1.13713" outRotation="1.600623" outDistance="0.97243"/>
+                <CubicDetachedVertex x="0" y="43.206" inRotation="-1.54097" inDistance="0.97243" outRotation="1.248196" outDistance="0.3722"/>
+                <CubicDetachedVertex x="0.353" y="44.266" inRotation="-1.890846" inDistance="0.37188" outRotation="1.404995" outDistance="1.26028"/>
+                <CubicDetachedVertex x="2.386" y="47.27" inRotation="-2.356194" inDistance="1.32653" outRotation="0.525289" outDistance="0.64611"/>
+                <CubicDetachedVertex x="4.064" y="48.242" inRotation="-2.616303" inDistance="0.64611" outRotation="0.291924" outDistance="0.61502"/>
+                <CubicDetachedVertex x="5.831" y="48.772" inRotation="-2.849669" inDistance="0.61502" outRotation="0.005887" outDistance="5.09609"/>
+                <CubicDetachedVertex x="21.117" y="48.86" inRotation="-3.135901" inDistance="5.09508" outRotation="0" outDistance="1.679"/>
+                <CubicDetachedVertex x="26.153" y="48.86" inRotation="3.141593" inDistance="1.679" outRotation="0" outDistance="0.987"/>
+              </PointsPath>
+              <PointsPath isClosed="true" isClockwise="true" name="digit4Hole1">
+                <CubicDetachedVertex x="29.511" y="9.719" inRotation="2.265767" inDistance="1.65219" outRotation="0.877727" outDistance="0.23008"/>
+                <CubicDetachedVertex x="29.952" y="10.249" inRotation="-2.263865" inDistance="0.23008" outRotation="1.570796" outDistance="7.363"/>
+                <CubicDetachedVertex x="29.952" y="32.338" inRotation="-1.570796" inDistance="7.363" outRotation="1.570796" outDistance="2.15"/>
+                <CubicDetachedVertex x="29.952" y="38.788" inRotation="-1.570796" inDistance="2.15" outRotation="2.21158" outDistance="0.1472"/>
+                <CubicDetachedVertex x="29.687" y="39.141" inRotation="-0.920493" inDistance="0.147" outRotation="2.975986" outDistance="1.79557"/>
+                <CubicDetachedVertex x="23.502" y="39.23" inRotation="0" inDistance="1.892" outRotation="3.141593" outDistance="4.123"/>
+                <CubicDetachedVertex x="11.133" y="39.23" inRotation="0" inDistance="4.123" outRotation="-2.495385" outDistance="0.1478"/>
+                <CubicDetachedVertex x="10.779" y="38.965" inRotation="0.640784" inDistance="0.1472" outRotation="-1.570796" outDistance="0.118"/>
+                <CubicDetachedVertex x="10.779" y="38.611" inRotation="1.570796" inDistance="0.118" outRotation="-0.982455" outDistance="1.63609"/>
+                <CubicDetachedVertex x="13.253" y="34.459" inRotation="2.158799" inDistance="1.65855" outRotation="-1.107149" outDistance="1.25667"/>
+                <CubicDetachedVertex x="15.197" y="31.189" inRotation="2.158582" inDistance="1.27858" outRotation="-1.106658" outDistance="0.91142"/>
+                <CubicDetachedVertex x="16.787" y="28.715" inRotation="2.264858" inDistance="0.94581" outRotation="-1.106508" outDistance="1.39575"/>
+                <CubicDetachedVertex x="18.996" y="25.181" inRotation="2.158799" inDistance="1.42059" outRotation="-0.982794" outDistance="0.88697"/>
+                <CubicDetachedVertex x="20.41" y="23.061" inRotation="2.266073" inDistance="0.95067" outRotation="-1.107775" outDistance="0.7142"/>
+                <CubicDetachedVertex x="21.47" y="21.47" inRotation="2.26452" inDistance="0.75695" outRotation="-1.106481" outDistance="0.66993"/>
+                <CubicDetachedVertex x="22.531" y="19.88" inRotation="2.266985" inDistance="0.70638" outRotation="-1.10747" outDistance="1.39396"/>
+                <CubicDetachedVertex x="24.916" y="16.346" inRotation="2.158604" inDistance="1.4192" outRotation="-1.107621" outDistance="0.94675"/>
+                <CubicDetachedVertex x="26.683" y="13.783" inRotation="2.265276" inDistance="0.98908" outRotation="-0.982794" outDistance="1.61168"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="331.5" y="10" name="digit5" id="0:1515">
-                <PointsPath isClosed="false" name="Path0">
-                    <StraightVertex x="37.95" y="6.05" />
-                    <StraightVertex x="6.05" y="6.05" />
-                    <StraightVertex x="6.05" y="26.05" />
-                    <StraightVertex x="7.73" y="26.1" />
-                    <StraightVertex x="9.72" y="26.24" />
-                    <StraightVertex x="11.96" y="26.49" />
-                    <StraightVertex x="14.41" y="26.83" />
-                    <StraightVertex x="16.99" y="27.28" />
-                    <StraightVertex x="19.66" y="27.84" />
-                    <StraightVertex x="22.35" y="28.51" />
-                    <StraightVertex x="25" y="29.3" />
-                    <StraightVertex x="27.56" y="30.2" />
-                    <StraightVertex x="29.97" y="31.23" />
-                    <StraightVertex x="32.16" y="32.37" />
-                    <StraightVertex x="34.09" y="33.64" />
-                    <StraightVertex x="35.69" y="35.04" />
-                    <StraightVertex x="36.91" y="36.58" />
-                    <StraightVertex x="37.68" y="38.24" />
-                    <StraightVertex x="37.95" y="40.05" />
-                    <StraightVertex x="37.77" y="41.86" />
-                    <StraightVertex x="37.25" y="43.55" />
-                    <StraightVertex x="36.43" y="45.11" />
-                    <StraightVertex x="35.34" y="46.55" />
-                    <StraightVertex x="34.02" y="47.87" />
-                    <StraightVertex x="32.5" y="49.06" />
-                    <StraightVertex x="30.81" y="50.14" />
-                    <StraightVertex x="29" y="51.1" />
-                    <StraightVertex x="27.09" y="51.94" />
-                    <StraightVertex x="25.13" y="52.67" />
-                    <StraightVertex x="23.14" y="53.28" />
-                    <StraightVertex x="21.16" y="53.78" />
-                    <StraightVertex x="19.23" y="54.16" />
-                    <StraightVertex x="17.37" y="54.43" />
-                    <StraightVertex x="15.64" y="54.6" />
-                    <StraightVertex x="14.05" y="54.65" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 5: width 44.089, advance 50.186 (measured), 1 contour(s), 0 hole(s) -->
+          <Node name="digit5" x="254.772" y="0">
+            <Shape name="digit5Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit5Outer">
+                <CubicDetachedVertex x="30.748" y="34.37" inRotation="-2.265535" inDistance="1.51519" outRotation="1.088585" outDistance="0.69867"/>
+                <CubicDetachedVertex x="31.72" y="36.226" inRotation="-2.053008" inDistance="0.69867" outRotation="1.275414" outDistance="0.70765"/>
+                <CubicDetachedVertex x="32.338" y="38.258" inRotation="-1.865768" inDistance="0.7086" outRotation="1.405648" outDistance="1.40512"/>
+                <CubicDetachedVertex x="32.338" y="42.852" inRotation="-1.405999" inDistance="1.40199" outRotation="1.93727" outDistance="0.41024"/>
+                <CubicDetachedVertex x="31.896" y="44.001" inRotation="-1.204323" inDistance="0.41024" outRotation="1.736122" outDistance="0.92968"/>
+                <CubicDetachedVertex x="30.924" y="46.386" inRotation="-0.982493" inDistance="0.9208" outRotation="2.034193" outDistance="1.78528"/>
+                <CubicDetachedVertex x="27.39" y="50.097" inRotation="-0.694303" inDistance="1.76448" outRotation="2.677945" outDistance="0.63504"/>
+                <CubicDetachedVertex x="25.711" y="50.893" inRotation="-0.588003" inDistance="0.64539" outRotation="2.843553" outDistance="0.80028"/>
+                <CubicDetachedVertex x="23.414" y="51.599" inRotation="-0.297673" inDistance="0.80124" outRotation="3.141593" outDistance="1.237"/>
+                <CubicDetachedVertex x="19.703" y="51.599" inRotation="0" inDistance="1.237" outRotation="-2.917487" outDistance="1.05744"/>
+                <CubicDetachedVertex x="16.611" y="50.893" inRotation="0.224105" inDistance="1.05744" outRotation="-2.677945" outDistance="0.59256"/>
+                <CubicDetachedVertex x="15.02" y="50.097" inRotation="0.462894" inDistance="0.59345" outRotation="-2.50796" outDistance="0.54723"/>
+                <CubicDetachedVertex x="13.695" y="49.125" inRotation="0.632553" inDistance="0.54803" outRotation="-2.316813" outDistance="1.04167"/>
+                <CubicDetachedVertex x="11.575" y="46.828" inRotation="0.826136" inDistance="1.04173" outRotation="-2.101343" outDistance="0.99011"/>
+                <CubicDetachedVertex x="10.072" y="44.266" inRotation="1.04025" inDistance="0.99011" outRotation="-2.355444" outDistance="0.94257"/>
+                <CubicDetachedVertex x="8.217" y="42.499" inRotation="0.6946" inDistance="0.92801" outRotation="-2.701366" outDistance="0.5538"/>
+                <CubicDetachedVertex x="6.715" y="41.792" inRotation="0.440227" inDistance="0.5538" outRotation="-3.094701" outDistance="0.61868"/>
+                <CubicDetachedVertex x="4.86" y="41.704" inRotation="0.046891" inDistance="0.61868" outRotation="2.976444" outDistance="2.56084"/>
+                <CubicDetachedVertex x="0.088" y="45.061" inRotation="-1.10698" inDistance="2.64885" outRotation="1.608637" outDistance="0.76655"/>
+                <CubicDetachedVertex x="0" y="47.358" inRotation="-1.532906" inDistance="0.76555" outRotation="1.405648" outDistance="0.47446"/>
+                <CubicDetachedVertex x="0.353" y="48.595" inRotation="-1.891134" inDistance="0.44778" outRotation="1.405351" outDistance="2.77489"/>
+                <CubicDetachedVertex x="4.683" y="55.664" inRotation="-2.356194" inDistance="2.93025" outRotation="0.620861" outDistance="0.75979"/>
+                <CubicDetachedVertex x="6.538" y="56.989" inRotation="-2.520731" inDistance="0.75979" outRotation="0.527635" outDistance="0.81829"/>
+                <CubicDetachedVertex x="8.659" y="58.226" inRotation="-2.613958" inDistance="0.81829" outRotation="0.410937" outDistance="0.73848"/>
+                <CubicDetachedVertex x="10.691" y="59.11" inRotation="-2.730655" inDistance="0.73848" outRotation="0.462514" outDistance="0.39444"/>
+                <CubicDetachedVertex x="11.751" y="59.64" inRotation="-2.676813" inDistance="0.39489" outRotation="0.16474" outDistance="0.8049"/>
+                <CubicDetachedVertex x="13.872" y="60.258" inRotation="-2.82066" inDistance="0.77349" outRotation="0.223076" outDistance="0.66446"/>
+                <CubicDetachedVertex x="15.816" y="60.7" inRotation="-2.918516" inDistance="0.66446" outRotation="0" outDistance="0.885"/>
+                <CubicDetachedVertex x="18.466" y="61.053" inRotation="-2.819842" inDistance="0.81903" outRotation="0.071394" outDistance="0.82711"/>
+                <CubicDetachedVertex x="20.94" y="61.23" inRotation="-3.070113" inDistance="0.82611" outRotation="0" outDistance="1.386"/>
+                <CubicDetachedVertex x="24.916" y="60.788" inRotation="2.976318" inDistance="1.30681" outRotation="0" outDistance="0.989"/>
+                <CubicDetachedVertex x="27.744" y="60.347" inRotation="2.677945" inDistance="0.91902" outRotation="-0.166035" outDistance="1.11331"/>
+                <CubicDetachedVertex x="30.836" y="59.64" inRotation="2.976896" inDistance="1.09177" outRotation="-0.588806" outDistance="1.03535"/>
+                <CubicDetachedVertex x="33.398" y="58.226" inRotation="2.553325" inDistance="1.047" outRotation="0" outDistance="0.089"/>
+                <CubicDetachedVertex x="33.663" y="58.226" inRotation="3.141593" inDistance="0.088" outRotation="-0.499995" outDistance="0.3692"/>
+                <CubicDetachedVertex x="34.635" y="57.696" inRotation="2.641597" inDistance="0.3692" outRotation="-0.658152" outDistance="0.81909"/>
+                <CubicDetachedVertex x="36.579" y="56.194" inRotation="2.483441" inDistance="0.81909" outRotation="-0.588211" outDistance="2.66728"/>
+                <CubicDetachedVertex x="41.615" y="50.628" inRotation="2.158909" inDistance="2.52888" outRotation="-1.249046" outDistance="0.71467"/>
+                <CubicDetachedVertex x="42.676" y="48.419" inRotation="2.159569" inDistance="0.72028" outRotation="-1.272726" outDistance="1.202"/>
+                <CubicDetachedVertex x="43.736" y="44.973" inRotation="1.869907" inDistance="1.20134" outRotation="-1.570796" outDistance="0.924"/>
+                <CubicDetachedVertex x="44.089" y="42.587" inRotation="1.892176" inDistance="0.8516" outRotation="-1.570796" outDistance="0.942"/>
+                <CubicDetachedVertex x="44.089" y="39.76" inRotation="1.570796" inDistance="0.942" outRotation="-1.570796" outDistance="0.56"/>
+                <CubicDetachedVertex x="44.089" y="38.081" inRotation="1.570796" inDistance="0.56" outRotation="-1.73536" outDistance="0.84238"/>
+                <CubicDetachedVertex x="43.736" y="35.519" inRotation="1.570796" inDistance="0.899" outRotation="-1.912746" outDistance="0.43838"/>
+                <CubicDetachedVertex x="43.294" y="34.282" inRotation="1.22808" inDistance="0.43744" outRotation="-1.735577" outDistance="1.34117"/>
+                <CubicDetachedVertex x="41.969" y="30.836" inRotation="0.982794" inDistance="1.33405" outRotation="-2.034764" outDistance="1.39888"/>
+                <CubicDetachedVertex x="39.848" y="27.567" inRotation="0.785398" inDistance="1.54574" outRotation="-2.274649" outDistance="0.77261"/>
+                <CubicDetachedVertex x="38.346" y="25.8" inRotation="0.865957" inDistance="0.77325" outRotation="-2.53041" outDistance="0.35899"/>
+                <CubicDetachedVertex x="37.463" y="25.181" inRotation="0.611182" inDistance="0.35899" outRotation="-2.442305" outDistance="0.73174"/>
+                <CubicDetachedVertex x="35.784" y="23.768" inRotation="0.700168" inDistance="0.73097" outRotation="-2.677945" outDistance="2.1019"/>
+                <CubicDetachedVertex x="30.041" y="21.559" inRotation="0.165149" inDistance="2.15938" outRotation="-2.677945" outDistance="0.97269"/>
+                <CubicDetachedVertex x="27.302" y="21.117" inRotation="0" inDistance="1.042" outRotation="-2.975977" outDistance="1.05544"/>
+                <CubicDetachedVertex x="24.209" y="20.763" inRotation="0" inDistance="1.122" outRotation="2.976311" outDistance="1.23381"/>
+                <CubicDetachedVertex x="20.322" y="21.205" inRotation="0" inDistance="1.271" outRotation="2.677211" outDistance="0.60955"/>
+                <CubicDetachedVertex x="18.555" y="21.735" inRotation="-0.164884" inDistance="0.62143" outRotation="2.689259" outDistance="1.14628"/>
+                <CubicDetachedVertex x="15.462" y="23.237" inRotation="-0.451548" inDistance="1.14585" outRotation="2.419693" outDistance="0.98061"/>
+                <CubicDetachedVertex x="13.253" y="25.181" inRotation="-0.721226" inDistance="0.98136" outRotation="2.354961" outDistance="0.57346"/>
+                <CubicDetachedVertex x="12.37" y="26.241" inRotation="-0.982794" inDistance="0.51559" outRotation="2.44519" outDistance="0.23072"/>
+                <CubicDetachedVertex x="11.84" y="26.683" inRotation="-0.695855" inDistance="0.22931" outRotation="2.156202" outDistance="0.10678"/>
+                <CubicDetachedVertex x="11.663" y="26.948" inRotation="-0.980176" inDistance="0.10595" outRotation="2.356194" outDistance="0.08344"/>
+                <CubicDetachedVertex x="11.486" y="27.125" inRotation="-0.785398" inDistance="0.08344" outRotation="-2.356194" outDistance="0.04101"/>
+                <CubicDetachedVertex x="11.398" y="27.037" inRotation="0.785398" inDistance="0.04101" outRotation="-1.892911" outDistance="0.86868"/>
+                <CubicDetachedVertex x="11.575" y="24.563" inRotation="1.737087" inDistance="0.86392" outRotation="-1.570796" outDistance="1.105"/>
+                <CubicDetachedVertex x="11.751" y="21.294" inRotation="1.735788" inDistance="1.04722" outRotation="-1.570796" outDistance="0.807"/>
+                <CubicDetachedVertex x="12.016" y="18.996" inRotation="1.891698" inDistance="0.74503" outRotation="-1.570796" outDistance="0.715"/>
+                <CubicDetachedVertex x="12.193" y="17.053" inRotation="1.735945" inDistance="0.66302" outRotation="-1.570796" outDistance="1.548"/>
+                <CubicDetachedVertex x="12.546" y="12.723" inRotation="1.735832" inDistance="1.44868" outRotation="-1.51718" outDistance="0.5598"/>
+                <CubicDetachedVertex x="12.635" y="11.044" inRotation="1.624317" inDistance="0.5608" outRotation="-0.980176" outDistance="0.10595"/>
+                <CubicDetachedVertex x="12.811" y="10.779" inRotation="2.148355" inDistance="0.10623" outRotation="-0.321302" outDistance="1.40911"/>
+                <CubicDetachedVertex x="18.996" y="10.603" inRotation="3.141593" inDistance="1.612" outRotation="0" outDistance="3.888"/>
+                <CubicDetachedVertex x="30.659" y="10.603" inRotation="3.141593" inDistance="3.887" outRotation="0" outDistance="2.091"/>
+                <CubicDetachedVertex x="36.932" y="10.603" inRotation="3.141593" inDistance="2.091" outRotation="-0.1987" outDistance="0.45087"/>
+                <CubicDetachedVertex x="38.258" y="10.338" inRotation="2.945067" inDistance="0.45068" outRotation="-0.463851" outDistance="2.20387"/>
+                <CubicDetachedVertex x="41.085" y="6.008" inRotation="1.735865" inDistance="2.05088" outRotation="-1.625459" outDistance="0.53079"/>
+                <CubicDetachedVertex x="40.997" y="4.418" inRotation="1.516134" inDistance="0.53079" outRotation="-2.033848" outDistance="0.74998"/>
+                <CubicDetachedVertex x="39.937" y="2.562" inRotation="0.984228" inDistance="0.77325" outRotation="-2.447381" outDistance="0.72994"/>
+                <CubicDetachedVertex x="38.258" y="1.414" inRotation="0.587607" inDistance="0.7017" outRotation="3.141593" outDistance="0.597"/>
+                <CubicDetachedVertex x="36.491" y="1.06" inRotation="0.322884" inDistance="0.55783" outRotation="3.141593" outDistance="9.16"/>
+                <CubicDetachedVertex x="9.012" y="1.06" inRotation="0" inDistance="9.16" outRotation="3.01462" outDistance="0.23691"/>
+                <CubicDetachedVertex x="8.305" y="1.149" inRotation="-0.12644" inDistance="0.2379" outRotation="2.820422" outDistance="0.54486"/>
+                <CubicDetachedVertex x="6.892" y="1.414" inRotation="0" inDistance="0.601" outRotation="2.678519" outDistance="0.77905"/>
+                <CubicDetachedVertex x="4.86" y="2.474" inRotation="-0.589046" inDistance="0.79738" outRotation="2.322289" outDistance="0.60492"/>
+                <CubicDetachedVertex x="3.623" y="3.799" inRotation="-0.820513" inDistance="0.60424" outRotation="2.035799" outDistance="0.33004"/>
+                <CubicDetachedVertex x="3.181" y="4.683" inRotation="-1.108506" inDistance="0.3296" outRotation="1.892547" outDistance="1.69182"/>
+                <CubicDetachedVertex x="2.386" y="9.631" inRotation="-1.570796" inDistance="1.828" outRotation="1.783547" outDistance="0.4215"/>
+                <CubicDetachedVertex x="2.121" y="10.868" inRotation="-1.360861" inDistance="0.42227" outRotation="1.5976" outDistance="1.1194"/>
+                <CubicDetachedVertex x="2.032" y="14.225" inRotation="-1.543993" inDistance="1.1194" outRotation="1.735995" outDistance="3.31412"/>
+                <CubicDetachedVertex x="1.06" y="24.298" inRotation="-1.405449" inDistance="3.31116" outRotation="1.570796" outDistance="2.08"/>
+                <CubicDetachedVertex x="0.618" y="30.394" inRotation="-1.405564" inDistance="1.97591" outRotation="1.302717" outDistance="0.336"/>
+                <CubicDetachedVertex x="0.884" y="31.366" inRotation="-1.838876" inDistance="0.336" outRotation="1.430939" outDistance="0.41606"/>
+                <CubicDetachedVertex x="1.06" y="32.603" inRotation="-1.713033" inDistance="0.4162" outRotation="1.106016" outDistance="0.39489"/>
+                <CubicDetachedVertex x="1.59" y="33.663" inRotation="-2.03331" inDistance="0.39444" outRotation="0.876538" outDistance="0.80023"/>
+                <CubicDetachedVertex x="3.092" y="35.254" inRotation="-2.445936" inDistance="0.83634" outRotation="0.461951" outDistance="0.52727"/>
+                <CubicDetachedVertex x="4.506" y="35.961" inRotation="-2.677096" inDistance="0.52682" outRotation="0.109" outDistance="0.53316"/>
+                <CubicDetachedVertex x="6.097" y="36.137" inRotation="-3.030935" inDistance="0.53427" outRotation="0" outDistance="1.47"/>
+                <CubicDetachedVertex x="10.338" y="35.254" inRotation="2.6786" inDistance="1.36579" outRotation="-0.589601" outDistance="0.69421"/>
+                <CubicDetachedVertex x="11.84" y="34.017" inRotation="2.35725" inDistance="0.66963" outRotation="-0.679133" outDistance="1.17334"/>
+                <CubicDetachedVertex x="14.579" y="31.808" inRotation="2.463123" inDistance="1.17272" outRotation="-0.464101" outDistance="0.98745"/>
+                <CubicDetachedVertex x="17.229" y="30.483" inRotation="2.678398" inDistance="0.987" outRotation="-0.180125" outDistance="0.32933"/>
+                <CubicDetachedVertex x="18.201" y="30.306" inRotation="2.961468" inDistance="0.32933" outRotation="-0.380506" outDistance="0.31772"/>
+                <CubicDetachedVertex x="19.085" y="29.952" inRotation="2.761086" inDistance="0.31772" outRotation="-0.119" outDistance="0.74124"/>
+                <CubicDetachedVertex x="21.294" y="29.687" inRotation="3.021415" inDistance="0.74235" outRotation="0.07148" outDistance="0.82611"/>
+                <CubicDetachedVertex x="23.768" y="29.864" inRotation="-3.070199" inDistance="0.82711" outRotation="0.367349" outDistance="0.40931"/>
+                <CubicDetachedVertex x="24.916" y="30.306" inRotation="-2.775119" inDistance="0.41024" outRotation="0.164803" outDistance="0.47544"/>
+                <CubicDetachedVertex x="25.888" y="30.571" inRotation="-2.677017" inDistance="0.4821" outRotation="0.443415" outDistance="0.68527"/>
+                <CubicDetachedVertex x="27.744" y="31.454" inRotation="-2.698177" inDistance="0.68527" outRotation="0.695172" outDistance="1.47537"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="395.8" y="10" name="digit6" id="0:1516">
-                <PointsPath isClosed="false" name="Path0">
-                    <StraightVertex x="40.05" y="6.05" />
-                    <StraightVertex x="36.87" y="6.19" />
-                    <StraightVertex x="33.71" y="6.6" />
-                    <StraightVertex x="30.6" y="7.28" />
-                    <StraightVertex x="27.57" y="8.21" />
-                    <StraightVertex x="24.63" y="9.38" />
-                    <StraightVertex x="21.82" y="10.8" />
-                    <StraightVertex x="19.16" y="12.44" />
-                    <StraightVertex x="16.68" y="14.3" />
-                    <StraightVertex x="14.39" y="16.37" />
-                    <StraightVertex x="12.33" y="18.65" />
-                    <StraightVertex x="10.51" y="21.12" />
-                    <StraightVertex x="8.97" y="23.77" />
-                    <StraightVertex x="7.73" y="26.6" />
-                    <StraightVertex x="6.81" y="29.59" />
-                    <StraightVertex x="6.25" y="32.75" />
-                    <StraightVertex x="6.05" y="36.05" />
-                </PointsPath>
-                <PointsPath isClosed="true" name="Path1">
-                    <StraightVertex x="40.05" y="40.35" />
-                    <StraightVertex x="39.99" y="41.6" />
-                    <StraightVertex x="39.79" y="42.83" />
-                    <StraightVertex x="39.47" y="44.05" />
-                    <StraightVertex x="39.02" y="45.24" />
-                    <StraightVertex x="38.46" y="46.39" />
-                    <StraightVertex x="37.77" y="47.5" />
-                    <StraightVertex x="36.98" y="48.55" />
-                    <StraightVertex x="36.07" y="49.54" />
-                    <StraightVertex x="35.07" y="50.46" />
-                    <StraightVertex x="33.98" y="51.3" />
-                    <StraightVertex x="32.8" y="52.06" />
-                    <StraightVertex x="31.55" y="52.73" />
-                    <StraightVertex x="30.23" y="53.31" />
-                    <StraightVertex x="28.86" y="53.79" />
-                    <StraightVertex x="27.45" y="54.16" />
-                    <StraightVertex x="26" y="54.43" />
-                    <StraightVertex x="24.53" y="54.6" />
-                    <StraightVertex x="23.05" y="54.65" />
-                    <StraightVertex x="21.57" y="54.6" />
-                    <StraightVertex x="20.1" y="54.43" />
-                    <StraightVertex x="18.65" y="54.16" />
-                    <StraightVertex x="17.24" y="53.79" />
-                    <StraightVertex x="15.87" y="53.31" />
-                    <StraightVertex x="14.55" y="52.73" />
-                    <StraightVertex x="13.3" y="52.06" />
-                    <StraightVertex x="12.12" y="51.3" />
-                    <StraightVertex x="11.03" y="50.46" />
-                    <StraightVertex x="10.03" y="49.54" />
-                    <StraightVertex x="9.12" y="48.55" />
-                    <StraightVertex x="8.33" y="47.5" />
-                    <StraightVertex x="7.64" y="46.39" />
-                    <StraightVertex x="7.08" y="45.24" />
-                    <StraightVertex x="6.63" y="44.05" />
-                    <StraightVertex x="6.31" y="42.83" />
-                    <StraightVertex x="6.11" y="41.6" />
-                    <StraightVertex x="6.05" y="40.35" />
-                    <StraightVertex x="6.11" y="39.1" />
-                    <StraightVertex x="6.31" y="37.87" />
-                    <StraightVertex x="6.63" y="36.65" />
-                    <StraightVertex x="7.08" y="35.46" />
-                    <StraightVertex x="7.64" y="34.31" />
-                    <StraightVertex x="8.33" y="33.2" />
-                    <StraightVertex x="9.12" y="32.15" />
-                    <StraightVertex x="10.03" y="31.16" />
-                    <StraightVertex x="11.03" y="30.24" />
-                    <StraightVertex x="12.12" y="29.4" />
-                    <StraightVertex x="13.3" y="28.64" />
-                    <StraightVertex x="14.55" y="27.97" />
-                    <StraightVertex x="15.87" y="27.39" />
-                    <StraightVertex x="17.24" y="26.91" />
-                    <StraightVertex x="18.65" y="26.54" />
-                    <StraightVertex x="20.1" y="26.27" />
-                    <StraightVertex x="21.57" y="26.1" />
-                    <StraightVertex x="23.05" y="26.05" />
-                    <StraightVertex x="24.53" y="26.1" />
-                    <StraightVertex x="26" y="26.27" />
-                    <StraightVertex x="27.45" y="26.54" />
-                    <StraightVertex x="28.86" y="26.91" />
-                    <StraightVertex x="30.23" y="27.39" />
-                    <StraightVertex x="31.55" y="27.97" />
-                    <StraightVertex x="32.8" y="28.64" />
-                    <StraightVertex x="33.98" y="29.4" />
-                    <StraightVertex x="35.07" y="30.24" />
-                    <StraightVertex x="36.07" y="31.16" />
-                    <StraightVertex x="36.98" y="32.15" />
-                    <StraightVertex x="37.77" y="33.2" />
-                    <StraightVertex x="38.46" y="34.31" />
-                    <StraightVertex x="39.02" y="35.46" />
-                    <StraightVertex x="39.47" y="36.65" />
-                    <StraightVertex x="39.79" y="37.87" />
-                    <StraightVertex x="39.99" y="39.1" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 6: width 46.828, advance 52.66 (measured), 2 contour(s), 1 hole(s) -->
+          <Node name="digit6" x="304.958" y="0">
+            <Shape name="digit6Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit6Outer">
+                <CubicDetachedVertex x="0" y="32.426" inRotation="-1.570796" inDistance="1.649" outRotation="1.570796" outDistance="1.631"/>
+                <CubicDetachedVertex x="0.442" y="37.198" inRotation="-1.735945" inDistance="1.54502" outRotation="1.570796" outDistance="1.189"/>
+                <CubicDetachedVertex x="1.06" y="40.732" inRotation="-1.892547" inDistance="1.1068" outRotation="1.570796" outDistance="0.647"/>
+                <CubicDetachedVertex x="1.414" y="42.234" inRotation="-2.035191" inDistance="0.59837" outRotation="1.405648" outDistance="1.2713"/>
+                <CubicDetachedVertex x="2.474" y="45.68" inRotation="-2.034444" inDistance="1.23878" outRotation="1.406186" outDistance="0.61025"/>
+                <CubicDetachedVertex x="3.092" y="47.27" inRotation="-2.034444" inDistance="0.59256" outRotation="1.248503" outDistance="1.16498"/>
+                <CubicDetachedVertex x="4.506" y="50.009" inRotation="-2.158565" inDistance="1.18484" outRotation="1.248576" outDistance="0.67262"/>
+                <CubicDetachedVertex x="5.655" y="52.041" inRotation="-2.158799" inDistance="0.69227" outRotation="0.902623" outDistance="0.71342"/>
+                <CubicDetachedVertex x="6.98" y="53.72" inRotation="-2.23897" inDistance="0.71342" outRotation="0.808283" outDistance="0.89614"/>
+                <CubicDetachedVertex x="8.836" y="55.664" inRotation="-2.33331" inDistance="0.89614" outRotation="0.604619" outDistance="1.50234"/>
+                <CubicDetachedVertex x="12.546" y="58.226" inRotation="-2.537352" inDistance="1.50316" outRotation="0" outDistance="0.089"/>
+                <CubicDetachedVertex x="12.811" y="58.226" inRotation="3.141593" inDistance="0.088" outRotation="0.587632" outDistance="0.74857"/>
+                <CubicDetachedVertex x="15.02" y="59.286" inRotation="-2.976444" inDistance="0.7421" outRotation="0.462846" outDistance="0.55768"/>
+                <CubicDetachedVertex x="16.257" y="59.728" inRotation="-2.976728" inDistance="0.57885" outRotation="0.463097" outDistance="0.81259"/>
+                <CubicDetachedVertex x="18.466" y="60.347" inRotation="3.141593" inDistance="0.882" outRotation="0.463138" outDistance="0.87743"/>
+                <CubicDetachedVertex x="20.587" y="60.788" inRotation="-2.976444" inDistance="0.86375" outRotation="0.322024" outDistance="1.15644"/>
+                <CubicDetachedVertex x="24.739" y="61.23" inRotation="3.141593" inDistance="1.251" outRotation="-0.090799" outDistance="0.65068"/>
+                <CubicDetachedVertex x="26.683" y="61.053" inRotation="3.050794" inDistance="0.65068" outRotation="-0.321067" outDistance="0.92528"/>
+                <CubicDetachedVertex x="29.776" y="60.7" inRotation="3.141593" inDistance="1" outRotation="-0.322223" outDistance="0.66945"/>
+                <CubicDetachedVertex x="31.454" y="60.258" inRotation="2.976444" inDistance="0.7056" outRotation="-0.321751" outDistance="0.78424"/>
+                <CubicDetachedVertex x="33.663" y="59.64" inRotation="2.976849" inDistance="0.81098" outRotation="-0.588621" outDistance="0.44848"/>
+                <CubicDetachedVertex x="34.635" y="59.198" inRotation="2.819842" inDistance="0.43007" outRotation="-0.463648" outDistance="0.72449"/>
+                <CubicDetachedVertex x="36.579" y="58.226" inRotation="2.677945" inDistance="0.72449" outRotation="0" outDistance="0.088"/>
+                <CubicDetachedVertex x="36.844" y="58.226" inRotation="3.141593" inDistance="0.088" outRotation="-0.694915" outDistance="1.44771"/>
+                <CubicDetachedVertex x="40.29" y="55.575" inRotation="2.553394" inDistance="1.41476" outRotation="-0.848486" outDistance="1.64872"/>
+                <CubicDetachedVertex x="43.559" y="51.864" inRotation="2.293107" inDistance="1.64872" outRotation="-1.076284" outDistance="1.30425"/>
+                <CubicDetachedVertex x="45.415" y="48.419" inRotation="2.065309" inDistance="1.30425" outRotation="-1.24943" outDistance="0.82314"/>
+                <CubicDetachedVertex x="46.21" y="46.121" inRotation="2.034444" inDistance="0.82511" outRotation="-1.406344" outDistance="0.70856"/>
+                <CubicDetachedVertex x="46.652" y="44.178" inRotation="1.893467" inDistance="0.68748" outRotation="-1.570796" outDistance="0.751"/>
+                <CubicDetachedVertex x="46.828" y="42.145" inRotation="1.735002" inDistance="0.69738" outRotation="-1.587207" outDistance="1.76724"/>
+                <CubicDetachedVertex x="46.74" y="36.844" inRotation="1.554386" inDistance="1.76724" outRotation="-1.892138" outDistance="0.77254"/>
+                <CubicDetachedVertex x="46.21" y="34.635" inRotation="1.405648" inDistance="0.79684" outRotation="-2.034444" outDistance="0.66411"/>
+                <CubicDetachedVertex x="45.768" y="33.045" inRotation="1.406138" inDistance="0.67108" outRotation="-2.024297" outDistance="1.2782"/>
+                <CubicDetachedVertex x="44.089" y="29.599" inRotation="1.117295" inDistance="1.2782" outRotation="-2.229713" outDistance="1.15474"/>
+                <CubicDetachedVertex x="41.969" y="26.86" inRotation="0.91188" inDistance="1.15474" outRotation="-2.432807" outDistance="1.35809"/>
+                <CubicDetachedVertex x="38.876" y="24.209" inRotation="0.708786" inDistance="1.35809" outRotation="-2.666757" outDistance="1.15925"/>
+                <CubicDetachedVertex x="35.784" y="22.619" inRotation="0.474835" inDistance="1.15925" outRotation="-2.819842" outDistance="0.37315"/>
+                <CubicDetachedVertex x="34.724" y="22.266" inRotation="0.32005" inDistance="0.37188" outRotation="-2.975494" outDistance="0.8649"/>
+                <CubicDetachedVertex x="32.515" y="21.647" inRotation="0.322134" inDistance="0.82441" outRotation="-3.080229" outDistance="0.47289"/>
+                <CubicDetachedVertex x="31.101" y="21.559" inRotation="0.061493" inDistance="0.47189" outRotation="-2.961468" outDistance="0.65866"/>
+                <CubicDetachedVertex x="29.157" y="21.205" inRotation="0.180125" inDistance="0.65866" outRotation="3.141593" outDistance="1.148"/>
+                <CubicDetachedVertex x="25.711" y="21.205" inRotation="0" inDistance="1.149" outRotation="2.97606" outDistance="0.8557"/>
+                <CubicDetachedVertex x="23.237" y="21.647" inRotation="0" inDistance="0.939" outRotation="2.828558" outDistance="1.05213"/>
+                <CubicDetachedVertex x="20.233" y="22.619" inRotation="-0.312742" inDistance="1.05308" outRotation="2.55359" outDistance="0.79683"/>
+                <CubicDetachedVertex x="18.201" y="23.679" inRotation="-0.46307" inDistance="0.77457" outRotation="2.504503" outDistance="0.84222"/>
+                <CubicDetachedVertex x="16.169" y="25.181" inRotation="-0.636134" inDistance="0.84162" outRotation="2.355856" outDistance="2.08809"/>
+                <CubicDetachedVertex x="12.723" y="29.952" inRotation="-1.249046" inDistance="1.92899" outRotation="2.552535" outDistance="0.52558"/>
+                <CubicDetachedVertex x="12.016" y="30.306" inRotation="-0.321751" inDistance="0.49648" outRotation="-2.356194" outDistance="0.08344"/>
+                <CubicDetachedVertex x="11.84" y="30.129" inRotation="0.793945" inDistance="0.08273" outRotation="-1.570796" outDistance="0.737"/>
+                <CubicDetachedVertex x="12.016" y="28.185" inRotation="1.734977" inDistance="0.67913" outRotation="-1.570796" outDistance="1.95"/>
+                <CubicDetachedVertex x="12.635" y="22.177" inRotation="1.892547" inDistance="1.79617" outRotation="-1.570796" outDistance="1.15"/>
+                <CubicDetachedVertex x="13.253" y="19.35" inRotation="1.891942" inDistance="1.04545" outRotation="-1.405648" outDistance="0.94891"/>
+                <CubicDetachedVertex x="14.048" y="16.964" inRotation="2.034444" inDistance="0.92126" outRotation="-1.080369" outDistance="0.50106"/>
+                <CubicDetachedVertex x="14.755" y="15.639" inRotation="2.059461" inDistance="0.50059" outRotation="-1.247398" outDistance="0.3839"/>
+                <CubicDetachedVertex x="15.109" y="14.667" inRotation="2.034444" inDistance="0.39355" outRotation="-0.933157" outDistance="0.98942"/>
+                <CubicDetachedVertex x="16.876" y="12.281" inRotation="2.207834" inDistance="0.99022" outRotation="-0.711795" outDistance="0.85579"/>
+                <CubicDetachedVertex x="18.82" y="10.603" inRotation="2.429798" inDistance="0.85579" outRotation="-0.464511" outDistance="0.51787"/>
+                <CubicDetachedVertex x="20.145" y="10.161" inRotation="2.976751" inDistance="0.53627" outRotation="-0.463648" outDistance="2.26961"/>
+                <CubicDetachedVertex x="27.125" y="9.277" inRotation="-2.976782" inDistance="2.43195" outRotation="0.321751" outDistance="1.09099"/>
+                <CubicDetachedVertex x="30.217" y="10.514" inRotation="-2.677535" inDistance="1.09031" outRotation="0.624866" outDistance="0.65471"/>
+                <CubicDetachedVertex x="31.808" y="11.663" inRotation="-2.515832" inDistance="0.6539" outRotation="0.830891" outDistance="1.83472"/>
+                <CubicDetachedVertex x="35.519" y="15.727" inRotation="-2.310701" inDistance="1.83472" outRotation="0.552237" outDistance="0.44987"/>
+                <CubicDetachedVertex x="36.667" y="16.434" inRotation="-2.588187" inDistance="0.44902" outRotation="0.42593" outDistance="0.35579"/>
+                <CubicDetachedVertex x="37.639" y="16.876" inRotation="-2.715663" inDistance="0.35579" outRotation="0.164672" outDistance="0.68933"/>
+                <CubicDetachedVertex x="39.406" y="17.229" inRotation="-2.819374" inDistance="0.67578" outRotation="0" outDistance="0.572"/>
+                <CubicDetachedVertex x="40.555" y="17.053" inRotation="2.819842" inDistance="0.52178" outRotation="0" outDistance="1.386"/>
+                <CubicDetachedVertex x="43.647" y="15.551" inRotation="2.356194" inDistance="1.3831" outRotation="-1.041669" outDistance="0.41008"/>
+                <CubicDetachedVertex x="44.266" y="14.49" inRotation="2.097816" inDistance="0.40958" outRotation="-1.326217" outDistance="0.60707"/>
+                <CubicDetachedVertex x="44.708" y="12.723" inRotation="1.816973" inDistance="0.60731" outRotation="-1.570796" outDistance="1.252"/>
+                <CubicDetachedVertex x="44.089" y="9.631" inRotation="1.405203" inDistance="1.11019" outRotation="-2.033978" outDistance="0.96017"/>
+                <CubicDetachedVertex x="42.587" y="7.068" inRotation="0.983079" inDistance="0.97211" outRotation="-2.356194" outDistance="1.79322"/>
+                <CubicDetachedVertex x="38.876" y="3.534" inRotation="0.694956" inDistance="1.76153" outRotation="-2.642787" outDistance="0.73791"/>
+                <CubicDetachedVertex x="36.932" y="2.474" inRotation="0.498806" inDistance="0.73791" outRotation="-2.351939" outDistance="0.16617"/>
+                <CubicDetachedVertex x="36.579" y="2.121" inRotation="0.781143" inDistance="0.16617" outRotation="-2.818771" outDistance="0.88575"/>
+                <CubicDetachedVertex x="34.105" y="1.06" inRotation="0.588003" inDistance="0.89778" outRotation="-2.976673" outDistance="0.71875"/>
+                <CubicDetachedVertex x="32.161" y="0.442" inRotation="0.463648" inDistance="0.69989" outRotation="-2.884445" outDistance="0.57801"/>
+                <CubicDetachedVertex x="30.483" y="0" inRotation="0.257148" inDistance="0.57801" outRotation="3.141593" outDistance="1.136"/>
+                <CubicDetachedVertex x="27.478" y="-0.442" inRotation="0.165149" inDistance="1.0584" outRotation="3.141593" outDistance="0.885"/>
+                <CubicDetachedVertex x="24.828" y="-0.53" inRotation="0.165345" inDistance="0.83843" outRotation="3.110849" outDistance="0.94345"/>
+                <CubicDetachedVertex x="22" y="-0.442" inRotation="-0.030743" inDistance="0.94345" outRotation="2.975974" outDistance="1.04936"/>
+                <CubicDetachedVertex x="18.908" y="0" inRotation="0" inDistance="1.102" outRotation="2.819842" outDistance="0.68938"/>
+                <CubicDetachedVertex x="17.141" y="0.442" inRotation="-0.166062" inDistance="0.7199" outRotation="2.783403" outDistance="1.00691"/>
+                <CubicDetachedVertex x="14.314" y="1.502" inRotation="-0.358538" inDistance="1.00597" outRotation="2.642787" outDistance="0.73791"/>
+                <CubicDetachedVertex x="12.37" y="2.562" inRotation="-0.498806" inDistance="0.73791" outRotation="2.527918" outDistance="0.97243"/>
+                <CubicDetachedVertex x="9.984" y="4.241" inRotation="-0.613675" inDistance="0.97243" outRotation="2.356194" outDistance="1.85969"/>
+                <CubicDetachedVertex x="6.273" y="8.129" inRotation="-0.876058" inDistance="1.83541" outRotation="2.176681" outDistance="0.93066"/>
+                <CubicDetachedVertex x="4.683" y="10.426" inRotation="-0.965523" inDistance="0.93148" outRotation="1.892547" outDistance="0.73997"/>
+                <CubicDetachedVertex x="3.534" y="12.546" inRotation="-0.982426" inDistance="0.75495" outRotation="1.570796" outDistance="0.089"/>
+                <CubicDetachedVertex x="3.534" y="12.811" inRotation="-1.570796" inDistance="0.088" outRotation="2.017478" outDistance="0.81718"/>
+                <CubicDetachedVertex x="2.474" y="15.02" inRotation="-1.123586" inDistance="0.81628" outRotation="1.735018" outDistance="0.53216"/>
+                <CubicDetachedVertex x="2.121" y="16.081" inRotation="-1.108017" inDistance="0.51519" outRotation="1.736836" outDistance="0.73815"/>
+                <CubicDetachedVertex x="1.414" y="18.201" inRotation="-1.107149" inDistance="0.72001" outRotation="1.570796" outDistance="0.716"/>
+                <CubicDetachedVertex x="1.06" y="19.792" inRotation="-1.248552" inDistance="0.64099" outRotation="1.570796" outDistance="0.824"/>
+                <CubicDetachedVertex x="0.618" y="22.177" inRotation="-1.248221" inDistance="0.76654" outRotation="1.570796" outDistance="0.44"/>
+                <CubicDetachedVertex x="0.442" y="23.237" inRotation="-1.248257" inDistance="0.40066" outRotation="1.570796" outDistance="1.473"/>
+                <CubicDetachedVertex x="0" y="27.478" inRotation="-1.405648" inDistance="1.39904" outRotation="1.570796" outDistance="1.65"/>
+              </PointsPath>
+              <PointsPath isClosed="true" isClockwise="true" name="digit6Hole1">
+                <CubicDetachedVertex x="26.948" y="51.246" inRotation="-0.244979" inDistance="0.48653" outRotation="2.819624" outDistance="1.44737"/>
+                <CubicDetachedVertex x="22.442" y="51.599" inRotation="0" inDistance="1.56" outRotation="-2.832531" outDistance="0.77261"/>
+                <CubicDetachedVertex x="20.233" y="50.893" inRotation="0.308669" inDistance="0.77356" outRotation="-2.491289" outDistance="0.147"/>
+                <CubicDetachedVertex x="19.88" y="50.628" inRotation="0.640784" inDistance="0.1472" outRotation="-2.818968" outDistance="1.08498"/>
+                <CubicDetachedVertex x="17.318" y="48.949" inRotation="0.785398" inDistance="1.17097" outRotation="-2.446987" outDistance="3.86825"/>
+                <CubicDetachedVertex x="13.783" y="38.346" inRotation="1.735945" inDistance="3.99637" outRotation="-1.106438" outDistance="0.62968"/>
+                <CubicDetachedVertex x="14.402" y="36.402" inRotation="1.735945" inDistance="0.64477" outRotation="-1.106016" outDistance="0.39489"/>
+                <CubicDetachedVertex x="14.932" y="35.342" inRotation="2.035576" inDistance="0.39489" outRotation="-0.912644" outDistance="0.81909"/>
+                <CubicDetachedVertex x="16.434" y="33.398" inRotation="2.228948" inDistance="0.81909" outRotation="-0.685561" outDistance="0.83714"/>
+                <CubicDetachedVertex x="18.378" y="31.808" inRotation="2.456031" inDistance="0.83714" outRotation="-0.486532" outDistance="0.56677"/>
+                <CubicDetachedVertex x="19.88" y="31.013" inRotation="2.65506" inDistance="0.56677" outRotation="-0.322204" outDistance="0.69791"/>
+                <CubicDetachedVertex x="21.824" y="30.306" inRotation="2.679224" inDistance="0.69944" outRotation="0" outDistance="1.847"/>
+                <CubicDetachedVertex x="27.302" y="30.394" inRotation="-2.976533" inDistance="1.83798" outRotation="0.463648" outDistance="1.0107"/>
+                <CubicDetachedVertex x="30.129" y="31.631" inRotation="-2.678379" inDistance="1.02949" outRotation="0.643773" outDistance="0.7364"/>
+                <CubicDetachedVertex x="31.896" y="32.956" inRotation="-2.498907" inDistance="0.7358" outRotation="0.876414" outDistance="1.43926"/>
+                <CubicDetachedVertex x="34.193" y="36.226" inRotation="-2.034444" inDistance="1.37518" outRotation="1.278197" outDistance="0.9222"/>
+                <CubicDetachedVertex x="34.989" y="38.876" inRotation="-1.862357" inDistance="0.92191" outRotation="1.526073" outDistance="0.64865"/>
+                <CubicDetachedVertex x="35.077" y="40.82" inRotation="-1.61552" inDistance="0.64865" outRotation="1.613606" outDistance="0.67762"/>
+                <CubicDetachedVertex x="34.989" y="42.852" inRotation="-1.527986" inDistance="0.67762" outRotation="1.843105" outDistance="0.55028"/>
+                <CubicDetachedVertex x="34.547" y="44.443" inRotation="-1.300239" inDistance="0.55001" outRotation="2.034444" outDistance="0.92126"/>
+                <CubicDetachedVertex x="33.31" y="46.917" inRotation="-1.107634" inDistance="0.92215" outRotation="2.265937" outDistance="1.59252"/>
+                <CubicDetachedVertex x="30.129" y="50.009" inRotation="-0.694657" inDistance="1.56845" outRotation="2.677266" outDistance="0.65875"/>
+                <CubicDetachedVertex x="28.362" y="50.893" inRotation="-0.464326" inDistance="0.65875" outRotation="2.898113" outDistance="0.48531"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="460.1" y="10" name="digit7" id="0:1517">
-                <PointsPath isClosed="false" name="Path0">
-                    <StraightVertex x="6.05" y="6.05" />
-                    <StraightVertex x="36.45" y="6.05" />
-                    <StraightVertex x="14.05" y="54.65" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 7: width 42.676, advance 49.611 (extrapolated), 1 contour(s), 0 hole(s) -->
+          <Node name="digit7" x="357.618" y="0">
+            <Shape name="digit7Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit7Outer">
+                <CubicDetachedVertex x="30.306" y="10.956" inRotation="-2.621402" inDistance="0.2374" outRotation="1.570796" outDistance="0.088"/>
+                <CubicDetachedVertex x="30.306" y="11.221" inRotation="-1.570796" inDistance="0.088" outRotation="2.158967" outDistance="1.64912"/>
+                <CubicDetachedVertex x="27.92" y="15.462" inRotation="-0.982626" inDistance="1.64912" outRotation="1.892547" outDistance="0.70203"/>
+                <CubicDetachedVertex x="26.948" y="17.318" inRotation="-0.982406" inDistance="0.71529" outRotation="1.892966" outDistance="0.75484"/>
+                <CubicDetachedVertex x="25.888" y="19.35" inRotation="-0.983515" inDistance="0.76881" outRotation="1.892194" outDistance="0.89587"/>
+                <CubicDetachedVertex x="24.386" y="22.177" inRotation="-0.982493" inDistance="0.9208" outRotation="1.89208" outDistance="0.67768"/>
+                <CubicDetachedVertex x="23.414" y="24.033" inRotation="-0.983195" inDistance="0.69088" outRotation="1.892547" outDistance="0.58186"/>
+                <CubicDetachedVertex x="22.707" y="25.358" inRotation="-0.983264" inDistance="0.58992" outRotation="1.891837" outDistance="0.8905"/>
+                <CubicDetachedVertex x="21.294" y="28.009" inRotation="-0.984008" inDistance="0.91387" outRotation="1.892547" outDistance="0.73049"/>
+                <CubicDetachedVertex x="20.233" y="30.041" inRotation="-0.983166" inDistance="0.74496" outRotation="1.892547" outDistance="0.73049"/>
+                <CubicDetachedVertex x="19.173" y="32.073" inRotation="-0.982421" inDistance="0.74413" outRotation="1.892057" outDistance="0.64605"/>
+                <CubicDetachedVertex x="18.201" y="33.928" inRotation="-0.981534" inDistance="0.66037" outRotation="2.033914" outDistance="0.84389"/>
+                <CubicDetachedVertex x="17.053" y="36.049" inRotation="-0.983112" inDistance="0.87116" outRotation="1.892994" outDistance="0.7074"/>
+                <CubicDetachedVertex x="15.992" y="38.081" inRotation="-0.983177" inDistance="0.72333" outRotation="1.891826" outDistance="0.87785"/>
+                <CubicDetachedVertex x="14.579" y="40.732" inRotation="-0.983717" inDistance="0.90083" outRotation="1.892547" outDistance="0.73049"/>
+                <CubicDetachedVertex x="13.518" y="42.764" inRotation="-0.982421" inDistance="0.74413" outRotation="1.892547" outDistance="0.68305"/>
+                <CubicDetachedVertex x="12.458" y="44.796" inRotation="-0.982794" inDistance="0.69948" outRotation="1.892971" outDistance="0.74535"/>
+                <CubicDetachedVertex x="11.309" y="46.917" inRotation="-0.982794" inDistance="0.76438" outRotation="2.034187" outDistance="1.74279"/>
+                <CubicDetachedVertex x="8.836" y="51.599" inRotation="-0.982794" inDistance="1.77033" outRotation="1.951693" outDistance="0.95225"/>
+                <CubicDetachedVertex x="7.775" y="54.25" inRotation="-1.189509" inDistance="0.95132" outRotation="1.570796" outDistance="1.875"/>
+                <CubicDetachedVertex x="8.747" y="58.668" inRotation="-2.26533" inDistance="1.87804" outRotation="0.982417" outDistance="0.73692"/>
+                <CubicDetachedVertex x="10.072" y="59.993" inRotation="-2.553219" inDistance="0.74774" outRotation="0.322153" outDistance="0.78646"/>
+                <CubicDetachedVertex x="12.458" y="60.7" inRotation="-2.976652" inDistance="0.79175" outRotation="0" outDistance="0.707"/>
+                <CubicDetachedVertex x="14.579" y="60.7" inRotation="3.141593" inDistance="0.707" outRotation="-0.322264" outDistance="0.6157"/>
+                <CubicDetachedVertex x="16.257" y="59.993" inRotation="2.677945" inDistance="0.61715" outRotation="-0.694796" outDistance="2.21171"/>
+                <CubicDetachedVertex x="19.438" y="55.399" inRotation="2.034444" inDistance="1.99457" outRotation="-0.982559" outDistance="1.18401"/>
+                <CubicDetachedVertex x="21.117" y="52.395" inRotation="2.158799" inDistance="1.18983" outRotation="-1.570796" outDistance="0.089"/>
+                <CubicDetachedVertex x="21.117" y="52.13" inRotation="1.570796" inDistance="0.088" outRotation="-0.983181" outDistance="0.71612"/>
+                <CubicDetachedVertex x="22.177" y="50.097" inRotation="1.892547" inDistance="0.69886" outRotation="-0.982794" outDistance="0.93023"/>
+                <CubicDetachedVertex x="23.679" y="47.182" inRotation="1.892896" inDistance="0.90663" outRotation="-0.982794" outDistance="0.89778"/>
+                <CubicDetachedVertex x="25.093" y="44.443" inRotation="1.893268" inDistance="0.87722" outRotation="-0.982794" outDistance="0.77159"/>
+                <CubicDetachedVertex x="26.241" y="42.234" inRotation="1.892127" inDistance="0.75357" outRotation="-0.981923" outDistance="0.31868"/>
+                <CubicDetachedVertex x="26.772" y="41.439" inRotation="2.159669" inDistance="0.31868" outRotation="-1.570796" outDistance="0.089"/>
+                <CubicDetachedVertex x="26.772" y="41.174" inRotation="1.570796" inDistance="0.088" outRotation="-0.984344" outDistance="0.71556"/>
+                <CubicDetachedVertex x="27.832" y="39.141" inRotation="1.892547" inDistance="0.69886" outRotation="-0.982406" outDistance="0.71529"/>
+                <CubicDetachedVertex x="28.892" y="37.109" inRotation="1.892547" inDistance="0.69886" outRotation="-0.982794" outDistance="1.27637"/>
+                <CubicDetachedVertex x="30.659" y="33.663" inRotation="2.034444" inDistance="1.26114" outRotation="-1.063618" outDistance="1.21265"/>
+                <CubicDetachedVertex x="32.426" y="30.483" inRotation="2.077975" inDistance="1.21265" outRotation="-1.570796" outDistance="0.089"/>
+                <CubicDetachedVertex x="32.426" y="30.217" inRotation="1.570796" inDistance="0.089" outRotation="-0.982794" outDistance="0.73914"/>
+                <CubicDetachedVertex x="33.487" y="28.185" inRotation="1.892547" inDistance="0.72416" outRotation="-0.983173" outDistance="0.73054"/>
+                <CubicDetachedVertex x="34.635" y="25.976" inRotation="1.892103" inDistance="0.71246" outRotation="-1.081477" outDistance="1.568"/>
+                <CubicDetachedVertex x="36.844" y="21.824" inRotation="2.059553" inDistance="1.56753" outRotation="-1.107149" outDistance="1.71283"/>
+                <CubicDetachedVertex x="39.141" y="17.229" inRotation="2.033922" inDistance="1.71238" outRotation="-0.982221" outDistance="0.96906"/>
+                <CubicDetachedVertex x="40.555" y="14.402" inRotation="1.892878" inDistance="0.95406" outRotation="-1.107149" outDistance="2.04153"/>
+                <CubicDetachedVertex x="42.676" y="8.482" inRotation="1.736261" inDistance="2.08244" outRotation="-1.611535" outDistance="0.73661"/>
+                <CubicDetachedVertex x="42.587" y="6.273" inRotation="1.530113" inDistance="0.73761" outRotation="-1.849737" outDistance="0.42857"/>
+                <CubicDetachedVertex x="42.234" y="5.036" inRotation="1.292497" inDistance="0.42953" outRotation="-2.034444" outDistance="2.92701"/>
+                <CubicDetachedVertex x="37.021" y="1.149" inRotation="0.32163" inDistance="2.63196" outRotation="-3.132887" outDistance="3.44613"/>
+                <CubicDetachedVertex x="26.683" y="1.06" inRotation="0.008706" inDistance="3.44613" outRotation="3.141593" outDistance="7.363"/>
+                <CubicDetachedVertex x="4.594" y="1.06" inRotation="0" inDistance="7.363" outRotation="2.882773" outDistance="0.57826"/>
+                <CubicDetachedVertex x="2.916" y="1.502" inRotation="-0.257148" inDistance="0.57801" outRotation="2.575263" outDistance="0.38394"/>
+                <CubicDetachedVertex x="1.944" y="2.121" inRotation="-0.568525" inDistance="0.38448" outRotation="2.447147" outDistance="1.75167"/>
+                <CubicDetachedVertex x="0.088" y="6.45" inRotation="-1.735482" inDistance="1.77502" outRotation="1.309912" outDistance="0.45748"/>
+                <CubicDetachedVertex x="0.442" y="7.775" inRotation="-1.83168" inDistance="0.45748" outRotation="0.982597" outDistance="1.41116"/>
+                <CubicDetachedVertex x="2.827" y="10.161" inRotation="-2.55359" inDistance="1.40616" outRotation="0.321751" outDistance="2.28"/>
+                <CubicDetachedVertex x="10.603" y="10.603" inRotation="3.141593" inDistance="2.482" outRotation="0" outDistance="4.741"/>
+                <CubicDetachedVertex x="24.828" y="10.603" inRotation="3.141593" inDistance="4.742" outRotation="0" outDistance="1.62"/>
+                <CubicDetachedVertex x="29.687" y="10.603" inRotation="3.141593" inDistance="1.62" outRotation="0.516528" outDistance="0.23691"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="524.4" y="10" name="digit8" id="0:1518">
-                <PointsPath isClosed="true" name="Path0">
-                    <StraightVertex x="39.65" y="19.05" />
-                    <StraightVertex x="39.59" y="20.18" />
-                    <StraightVertex x="39.39" y="21.31" />
-                    <StraightVertex x="39.08" y="22.41" />
-                    <StraightVertex x="38.64" y="23.5" />
-                    <StraightVertex x="38.08" y="24.54" />
-                    <StraightVertex x="37.4" y="25.55" />
-                    <StraightVertex x="36.61" y="26.51" />
-                    <StraightVertex x="35.72" y="27.41" />
-                    <StraightVertex x="34.73" y="28.24" />
-                    <StraightVertex x="33.65" y="29.01" />
-                    <StraightVertex x="32.49" y="29.7" />
-                    <StraightVertex x="31.25" y="30.31" />
-                    <StraightVertex x="29.95" y="30.83" />
-                    <StraightVertex x="28.6" y="31.27" />
-                    <StraightVertex x="27.2" y="31.61" />
-                    <StraightVertex x="25.77" y="31.85" />
-                    <StraightVertex x="24.31" y="32" />
-                    <StraightVertex x="22.85" y="32.05" />
-                    <StraightVertex x="21.39" y="32" />
-                    <StraightVertex x="19.93" y="31.85" />
-                    <StraightVertex x="18.5" y="31.61" />
-                    <StraightVertex x="17.1" y="31.27" />
-                    <StraightVertex x="15.75" y="30.83" />
-                    <StraightVertex x="14.45" y="30.31" />
-                    <StraightVertex x="13.21" y="29.7" />
-                    <StraightVertex x="12.05" y="29.01" />
-                    <StraightVertex x="10.97" y="28.24" />
-                    <StraightVertex x="9.98" y="27.41" />
-                    <StraightVertex x="9.09" y="26.51" />
-                    <StraightVertex x="8.3" y="25.55" />
-                    <StraightVertex x="7.62" y="24.54" />
-                    <StraightVertex x="7.06" y="23.5" />
-                    <StraightVertex x="6.62" y="22.41" />
-                    <StraightVertex x="6.31" y="21.31" />
-                    <StraightVertex x="6.11" y="20.18" />
-                    <StraightVertex x="6.05" y="19.05" />
-                    <StraightVertex x="6.11" y="17.92" />
-                    <StraightVertex x="6.31" y="16.79" />
-                    <StraightVertex x="6.62" y="15.69" />
-                    <StraightVertex x="7.06" y="14.6" />
-                    <StraightVertex x="7.62" y="13.56" />
-                    <StraightVertex x="8.3" y="12.55" />
-                    <StraightVertex x="9.09" y="11.59" />
-                    <StraightVertex x="9.98" y="10.69" />
-                    <StraightVertex x="10.97" y="9.86" />
-                    <StraightVertex x="12.05" y="9.09" />
-                    <StraightVertex x="13.21" y="8.4" />
-                    <StraightVertex x="14.45" y="7.79" />
-                    <StraightVertex x="15.75" y="7.27" />
-                    <StraightVertex x="17.1" y="6.83" />
-                    <StraightVertex x="18.5" y="6.49" />
-                    <StraightVertex x="19.93" y="6.25" />
-                    <StraightVertex x="21.39" y="6.1" />
-                    <StraightVertex x="22.85" y="6.05" />
-                    <StraightVertex x="24.31" y="6.1" />
-                    <StraightVertex x="25.77" y="6.25" />
-                    <StraightVertex x="27.2" y="6.49" />
-                    <StraightVertex x="28.6" y="6.83" />
-                    <StraightVertex x="29.95" y="7.27" />
-                    <StraightVertex x="31.25" y="7.79" />
-                    <StraightVertex x="32.49" y="8.4" />
-                    <StraightVertex x="33.65" y="9.09" />
-                    <StraightVertex x="34.73" y="9.86" />
-                    <StraightVertex x="35.72" y="10.69" />
-                    <StraightVertex x="36.61" y="11.59" />
-                    <StraightVertex x="37.4" y="12.55" />
-                    <StraightVertex x="38.08" y="13.56" />
-                    <StraightVertex x="38.64" y="14.6" />
-                    <StraightVertex x="39.08" y="15.69" />
-                    <StraightVertex x="39.39" y="16.79" />
-                    <StraightVertex x="39.59" y="17.92" />
-                </PointsPath>
-                <PointsPath isClosed="true" name="Path1">
-                    <StraightVertex x="39.65" y="41.65" />
-                    <StraightVertex x="39.59" y="42.78" />
-                    <StraightVertex x="39.39" y="43.91" />
-                    <StraightVertex x="39.08" y="45.01" />
-                    <StraightVertex x="38.64" y="46.1" />
-                    <StraightVertex x="38.08" y="47.14" />
-                    <StraightVertex x="37.4" y="48.15" />
-                    <StraightVertex x="36.61" y="49.11" />
-                    <StraightVertex x="35.72" y="50.01" />
-                    <StraightVertex x="34.73" y="50.84" />
-                    <StraightVertex x="33.65" y="51.61" />
-                    <StraightVertex x="32.49" y="52.3" />
-                    <StraightVertex x="31.25" y="52.91" />
-                    <StraightVertex x="29.95" y="53.43" />
-                    <StraightVertex x="28.6" y="53.87" />
-                    <StraightVertex x="27.2" y="54.21" />
-                    <StraightVertex x="25.77" y="54.45" />
-                    <StraightVertex x="24.31" y="54.6" />
-                    <StraightVertex x="22.85" y="54.65" />
-                    <StraightVertex x="21.39" y="54.6" />
-                    <StraightVertex x="19.93" y="54.45" />
-                    <StraightVertex x="18.5" y="54.21" />
-                    <StraightVertex x="17.1" y="53.87" />
-                    <StraightVertex x="15.75" y="53.43" />
-                    <StraightVertex x="14.45" y="52.91" />
-                    <StraightVertex x="13.21" y="52.3" />
-                    <StraightVertex x="12.05" y="51.61" />
-                    <StraightVertex x="10.97" y="50.84" />
-                    <StraightVertex x="9.98" y="50.01" />
-                    <StraightVertex x="9.09" y="49.11" />
-                    <StraightVertex x="8.3" y="48.15" />
-                    <StraightVertex x="7.62" y="47.14" />
-                    <StraightVertex x="7.06" y="46.1" />
-                    <StraightVertex x="6.62" y="45.01" />
-                    <StraightVertex x="6.31" y="43.91" />
-                    <StraightVertex x="6.11" y="42.78" />
-                    <StraightVertex x="6.05" y="41.65" />
-                    <StraightVertex x="6.11" y="40.52" />
-                    <StraightVertex x="6.31" y="39.39" />
-                    <StraightVertex x="6.62" y="38.29" />
-                    <StraightVertex x="7.06" y="37.2" />
-                    <StraightVertex x="7.62" y="36.16" />
-                    <StraightVertex x="8.3" y="35.15" />
-                    <StraightVertex x="9.09" y="34.19" />
-                    <StraightVertex x="9.98" y="33.29" />
-                    <StraightVertex x="10.97" y="32.46" />
-                    <StraightVertex x="12.05" y="31.69" />
-                    <StraightVertex x="13.21" y="31" />
-                    <StraightVertex x="14.45" y="30.39" />
-                    <StraightVertex x="15.75" y="29.87" />
-                    <StraightVertex x="17.1" y="29.43" />
-                    <StraightVertex x="18.5" y="29.09" />
-                    <StraightVertex x="19.93" y="28.85" />
-                    <StraightVertex x="21.39" y="28.7" />
-                    <StraightVertex x="22.85" y="28.65" />
-                    <StraightVertex x="24.31" y="28.7" />
-                    <StraightVertex x="25.77" y="28.85" />
-                    <StraightVertex x="27.2" y="29.09" />
-                    <StraightVertex x="28.6" y="29.43" />
-                    <StraightVertex x="29.95" y="29.87" />
-                    <StraightVertex x="31.25" y="30.39" />
-                    <StraightVertex x="32.49" y="31" />
-                    <StraightVertex x="33.65" y="31.69" />
-                    <StraightVertex x="34.73" y="32.46" />
-                    <StraightVertex x="35.72" y="33.29" />
-                    <StraightVertex x="36.61" y="34.19" />
-                    <StraightVertex x="37.4" y="35.15" />
-                    <StraightVertex x="38.08" y="36.16" />
-                    <StraightVertex x="38.64" y="37.2" />
-                    <StraightVertex x="39.08" y="38.29" />
-                    <StraightVertex x="39.39" y="39.39" />
-                    <StraightVertex x="39.59" y="40.52" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 8: width 47.8, advance 53.985 (measured), 3 contour(s), 2 hole(s) -->
+          <Node name="digit8" x="407.229" y="0">
+            <Shape name="digit8Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit8Outer">
+                <CubicDetachedVertex x="13.342" y="28.627" inRotation="-2.361844" inDistance="0.12516" outRotation="2.356194" outDistance="1.06349"/>
+                <CubicDetachedVertex x="11.221" y="29.511" inRotation="-0.165621" inDistance="1.04328" outRotation="2.678427" outDistance="0.92886"/>
+                <CubicDetachedVertex x="8.57" y="30.571" inRotation="-0.321751" inDistance="0.93287" outRotation="2.677945" outDistance="0.3287"/>
+                <CubicDetachedVertex x="7.687" y="31.013" inRotation="-0.466365" inDistance="0.32915" outRotation="2.53632" outDistance="0.93148"/>
+                <CubicDetachedVertex x="5.39" y="32.603" inRotation="-0.605884" inDistance="0.93066" outRotation="2.337619" outDistance="1.10398"/>
+                <CubicDetachedVertex x="3.092" y="34.989" inRotation="-0.804602" inDistance="1.1047" outRotation="2.204429" outDistance="0.54723"/>
+                <CubicDetachedVertex x="2.121" y="36.314" inRotation="-0.939717" inDistance="0.54744" outRotation="1.892978" outDistance="0.7327"/>
+                <CubicDetachedVertex x="0.972" y="38.523" inRotation="-0.982794" inDistance="0.74635" outRotation="1.736576" outDistance="0.52114"/>
+                <CubicDetachedVertex x="0.618" y="39.583" inRotation="-1.106262" inDistance="0.50446" outRotation="1.735231" outDistance="0.69031"/>
+                <CubicDetachedVertex x="0.177" y="41.527" inRotation="-1.249046" inDistance="0.6704" outRotation="1.688021" outDistance="0.50446"/>
+                <CubicDetachedVertex x="0" y="43.029" inRotation="-1.453572" inDistance="0.50446" outRotation="1.570796" outDistance="1.88"/>
+                <CubicDetachedVertex x="0.618" y="48.154" inRotation="-1.735477" inDistance="1.75677" outRotation="1.1056" outDistance="0.57735"/>
+                <CubicDetachedVertex x="1.06" y="49.391" inRotation="-1.735401" inDistance="0.60417" outRotation="1.171315" outDistance="0.60678"/>
+                <CubicDetachedVertex x="1.767" y="51.069" inRotation="-1.970278" inDistance="0.60678" outRotation="0.972186" outDistance="0.78439"/>
+                <CubicDetachedVertex x="3.092" y="53.013" inRotation="-2.168353" inDistance="0.78383" outRotation="0.784981" outDistance="1.69635"/>
+                <CubicDetachedVertex x="6.803" y="56.636" inRotation="-2.44678" inDistance="1.71185" outRotation="0.462967" outDistance="1.31436"/>
+                <CubicDetachedVertex x="10.249" y="58.668" inRotation="-2.553175" inDistance="1.33683" outRotation="0.164835" outDistance="0.5241"/>
+                <CubicDetachedVertex x="11.398" y="59.11" inRotation="-2.677945" inDistance="0.49864" outRotation="0.164959" outDistance="0.86474"/>
+                <CubicDetachedVertex x="14.314" y="60.17" inRotation="-2.677945" inDistance="0.86536" outRotation="0.164933" outDistance="1.52266"/>
+                <CubicDetachedVertex x="18.731" y="60.965" inRotation="-2.976553" inDistance="1.50951" outRotation="0.085148" outDistance="1.03475"/>
+                <CubicDetachedVertex x="21.824" y="61.23" inRotation="-3.056445" inDistance="1.03475" outRotation="0" outDistance="1.384"/>
+                <CubicDetachedVertex x="25.976" y="61.23" inRotation="3.141593" inDistance="1.384" outRotation="-0.101451" outDistance="1.45146"/>
+                <CubicDetachedVertex x="30.306" y="60.788" inRotation="3.039386" inDistance="1.45057" outRotation="-0.321751" outDistance="0.86963"/>
+                <CubicDetachedVertex x="33.487" y="60.17" inRotation="3.141593" inDistance="0.908" outRotation="-0.463648" outDistance="1.3327"/>
+                <CubicDetachedVertex x="37.286" y="58.756" inRotation="2.819606" inDistance="1.33669" outRotation="-0.588003" outDistance="1.37372"/>
+                <CubicDetachedVertex x="40.997" y="56.636" inRotation="2.677945" inDistance="1.36177" outRotation="-0.694983" outDistance="2.09097"/>
+                <CubicDetachedVertex x="45.238" y="52.483" inRotation="2.265351" inDistance="2.09673" outRotation="-1.068921" outDistance="1.04143"/>
+                <CubicDetachedVertex x="46.74" y="49.744" inRotation="2.072672" inDistance="1.04143" outRotation="-1.405648" outDistance="0.4927"/>
+                <CubicDetachedVertex x="47.182" y="48.507" inRotation="2.03538" inDistance="0.47762" outRotation="-1.406621" outDistance="0.84435"/>
+                <CubicDetachedVertex x="47.712" y="46.033" inRotation="1.89293" inDistance="0.82441" outRotation="-1.538003" outDistance="0.88448"/>
+                <CubicDetachedVertex x="47.8" y="43.382" inRotation="1.60359" inDistance="0.88448" outRotation="-1.713033" outDistance="0.83241"/>
+                <CubicDetachedVertex x="47.447" y="40.908" inRotation="1.42873" inDistance="0.8334" outRotation="-1.892961" outDistance="0.76432"/>
+                <CubicDetachedVertex x="46.828" y="38.7" inRotation="1.405438" inDistance="0.78369" outRotation="-2.034444" outDistance="0.85641"/>
+                <CubicDetachedVertex x="45.68" y="36.402" inRotation="1.108194" inDistance="0.85597" outRotation="-2.26561" outDistance="1.69623"/>
+                <CubicDetachedVertex x="42.41" y="32.691" inRotation="0.785398" inDistance="1.79039" outRotation="-2.537816" outDistance="1.03742"/>
+                <CubicDetachedVertex x="39.848" y="30.924" inRotation="0.603777" inDistance="1.03742" outRotation="-2.820237" outDistance="0.801"/>
+                <CubicDetachedVertex x="37.463" y="29.864" inRotation="0.588347" inDistance="0.80542" outRotation="-2.976804" outDistance="0.45719"/>
+                <CubicDetachedVertex x="36.491" y="29.511" inRotation="0.463648" inDistance="0.43603" outRotation="-2.97608" outDistance="0.90436"/>
+                <CubicDetachedVertex x="34.37" y="28.892" inRotation="0.463648" inDistance="0.88996" outRotation="-2.161417" outDistance="0.10595"/>
+                <CubicDetachedVertex x="34.193" y="28.627" inRotation="0.980176" inDistance="0.10595" outRotation="-0.980176" outDistance="0.10595"/>
+                <CubicDetachedVertex x="34.37" y="28.362" inRotation="2.161417" inDistance="0.10595" outRotation="-0.164476" outDistance="0.48859"/>
+                <CubicDetachedVertex x="35.342" y="28.009" inRotation="2.678909" inDistance="0.46376" outRotation="-0.322175" outDistance="0.74535"/>
+                <CubicDetachedVertex x="37.463" y="27.302" inRotation="2.820691" inDistance="0.74503" outRotation="-0.491369" outDistance="0.50018"/>
+                <CubicDetachedVertex x="38.788" y="26.595" inRotation="2.651166" inDistance="0.50106" outRotation="-0.69436" outDistance="0.67667"/>
+                <CubicDetachedVertex x="40.29" y="25.535" inRotation="2.554028" inDistance="0.63319" outRotation="-0.765304" outDistance="1.02056"/>
+                <CubicDetachedVertex x="42.499" y="23.414" inRotation="2.376289" inDistance="1.02056" outRotation="-0.927635" outDistance="0.5886"/>
+                <CubicDetachedVertex x="43.559" y="22" inRotation="2.21294" inDistance="0.5894" outRotation="-1.070801" outDistance="0.73839"/>
+                <CubicDetachedVertex x="44.619" y="20.057" inRotation="2.069602" inDistance="0.73791" outRotation="-1.405503" outDistance="1.13649"/>
+                <CubicDetachedVertex x="45.326" y="16.787" inRotation="1.735661" inDistance="1.1577" outRotation="-1.570796" outDistance="0.883"/>
+                <CubicDetachedVertex x="45.326" y="14.137" inRotation="1.570796" inDistance="0.883" outRotation="-1.670633" outDistance="0.59195"/>
+                <CubicDetachedVertex x="45.149" y="12.37" inRotation="1.47096" inDistance="0.59195" outRotation="-1.996726" outDistance="0.35579"/>
+                <CubicDetachedVertex x="44.708" y="11.398" inRotation="1.144867" inDistance="0.35579" outRotation="-1.570796" outDistance="0.147"/>
+                <CubicDetachedVertex x="44.708" y="10.956" inRotation="1.570796" inDistance="0.147" outRotation="-1.975883" outDistance="0.67242"/>
+                <CubicDetachedVertex x="43.913" y="9.101" inRotation="1.165709" inDistance="0.67242" outRotation="-2.158892" outDistance="2.96515"/>
+                <CubicDetachedVertex x="37.639" y="3.004" inRotation="0.463648" inDistance="2.99186" outRotation="-2.578344" outDistance="0.66113"/>
+                <CubicDetachedVertex x="35.961" y="1.944" inRotation="0.563249" inDistance="0.66113" outRotation="-2.819842" outDistance="1.26807"/>
+                <CubicDetachedVertex x="32.426" y="0.618" inRotation="0.464" inDistance="1.26919" outRotation="-3.026109" outDistance="0.50335"/>
+                <CubicDetachedVertex x="30.924" y="0.442" inRotation="0.117225" inDistance="0.50446" outRotation="-2.677945" outDistance="0.57243"/>
+                <CubicDetachedVertex x="29.422" y="0.088" inRotation="0" inDistance="0.619" outRotation="-2.911729" outDistance="0.51351"/>
+                <CubicDetachedVertex x="27.92" y="-0.265" inRotation="0.231313" inDistance="0.51471" outRotation="-3.085278" outDistance="1.56348"/>
+                <CubicDetachedVertex x="23.237" y="-0.53" inRotation="0.056315" inDistance="1.56348" outRotation="3.049402" outDistance="1.59678"/>
+                <CubicDetachedVertex x="18.466" y="-0.088" inRotation="-0.092756" inDistance="1.59787" outRotation="2.931162" outDistance="0.42129"/>
+                <CubicDetachedVertex x="17.229" y="0.177" inRotation="-0.212251" inDistance="0.42248" outRotation="2.819395" outDistance="0.7074"/>
+                <CubicDetachedVertex x="15.374" y="0.53" inRotation="0" inDistance="0.78" outRotation="2.677945" outDistance="1.29692"/>
+                <CubicDetachedVertex x="11.575" y="1.944" inRotation="-0.321993" inDistance="1.30507" outRotation="2.575263" outDistance="0.38394"/>
+                <CubicDetachedVertex x="10.603" y="2.562" inRotation="-0.56633" inDistance="0.38394" outRotation="2.677945" outDistance="3.42342"/>
+                <CubicDetachedVertex x="3.181" y="9.896" inRotation="-1.107149" inDistance="3.44354" outRotation="1.736821" outDistance="0.75032"/>
+                <CubicDetachedVertex x="2.474" y="11.928" inRotation="-1.24948" inDistance="0.72827" outRotation="1.736188" outDistance="1.35448"/>
+                <CubicDetachedVertex x="2.032" y="15.992" inRotation="-1.570796" inDistance="1.431" outRotation="1.459932" outDistance="0.53327"/>
+                <CubicDetachedVertex x="2.209" y="17.583" inRotation="-1.681661" inDistance="0.53327" outRotation="1.315073" outDistance="0.69976"/>
+                <CubicDetachedVertex x="2.739" y="19.615" inRotation="-1.826159" inDistance="0.70072" outRotation="1.148013" outDistance="0.64587"/>
+                <CubicDetachedVertex x="3.534" y="21.382" inRotation="-1.99358" inDistance="0.64587" outRotation="0.957122" outDistance="0.97243"/>
+                <CubicDetachedVertex x="5.213" y="23.768" inRotation="-2.183879" inDistance="0.97325" outRotation="0.75628" outDistance="0.72863"/>
+                <CubicDetachedVertex x="6.803" y="25.27" inRotation="-2.384315" inDistance="0.72932" outRotation="0.619026" outDistance="0.76003"/>
+                <CubicDetachedVertex x="8.659" y="26.595" inRotation="-2.521496" inDistance="0.76061" outRotation="0.463648" outDistance="1.47133"/>
+                <CubicDetachedVertex x="13.077" y="28.362" inRotation="-2.976665" inDistance="1.48617" outRotation="0.785398" outDistance="0.12445"/>
+              </PointsPath>
+              <PointsPath isClosed="true" isClockwise="true" name="digit8Hole1">
+                <CubicDetachedVertex x="26.683" y="52.13" inRotation="-0.278513" inDistance="0.64381" outRotation="3.076076" outDistance="0.44295"/>
+                <CubicDetachedVertex x="25.358" y="52.218" inRotation="-0.067769" inDistance="0.44302" outRotation="-3.120379" outDistance="1.41432"/>
+                <CubicDetachedVertex x="21.117" y="52.13" inRotation="0.020506" inDistance="1.4143" outRotation="-2.869284" outDistance="0.55028"/>
+                <CubicDetachedVertex x="19.526" y="51.688" inRotation="0.270072" inDistance="0.55097" outRotation="-2.67758" outDistance="1.22671"/>
+                <CubicDetachedVertex x="16.257" y="50.009" inRotation="0.588003" inDistance="1.24752" outRotation="-2.380216" outDistance="0.85372"/>
+                <CubicDetachedVertex x="14.402" y="48.242" inRotation="0.761376" inDistance="0.85372" outRotation="-2.180384" outDistance="0.35981"/>
+                <CubicDetachedVertex x="13.783" y="47.358" inRotation="0.958934" inDistance="0.36038" outRotation="-2.034444" outDistance="1.18064"/>
+                <CubicDetachedVertex x="12.723" y="43.913" inRotation="1.405512" inDistance="1.20948" outRotation="-1.535723" outDistance="0.85553"/>
+                <CubicDetachedVertex x="12.811" y="41.35" inRotation="1.604741" inDistance="0.85449" outRotation="-1.249046" outDistance="0.59451"/>
+                <CubicDetachedVertex x="13.253" y="39.848" inRotation="1.734643" inDistance="0.63146" outRotation="-1.080369" outDistance="0.50106"/>
+                <CubicDetachedVertex x="13.96" y="38.523" inRotation="2.059461" inDistance="0.50059" outRotation="-0.806334" outDistance="0.97956"/>
+                <CubicDetachedVertex x="15.992" y="36.402" inRotation="2.334522" inDistance="0.97887" outRotation="-0.587257" outDistance="0.74358"/>
+                <CubicDetachedVertex x="17.848" y="35.165" inRotation="2.553217" inDistance="0.74413" outRotation="-0.397962" outDistance="0.60639"/>
+                <CubicDetachedVertex x="19.526" y="34.459" inRotation="2.74363" inDistance="0.60639" outRotation="-0.165384" outDistance="0.69853"/>
+                <CubicDetachedVertex x="21.205" y="34.017" inRotation="2.678587" inDistance="0.69631" outRotation="-0.01958" outDistance="1.53229"/>
+                <CubicDetachedVertex x="25.8" y="33.928" inRotation="3.122013" inDistance="1.53229" outRotation="0.165932" outDistance="0.62965"/>
+                <CubicDetachedVertex x="27.39" y="34.37" inRotation="-2.677232" inDistance="0.62744" outRotation="0.101347" outDistance="0.29652"/>
+                <CubicDetachedVertex x="28.274" y="34.459" inRotation="-3.040246" inDistance="0.29652" outRotation="0.405087" outDistance="0.67242"/>
+                <CubicDetachedVertex x="30.129" y="35.254" inRotation="-2.736506" inDistance="0.67242" outRotation="0.597556" outDistance="0.78383"/>
+                <CubicDetachedVertex x="32.073" y="36.579" inRotation="-2.542982" inDistance="0.78439" outRotation="0.833058" outDistance="0.87569"/>
+                <CubicDetachedVertex x="33.84" y="38.523" inRotation="-2.308535" inDistance="0.87569" outRotation="1.080369" outDistance="0.50106"/>
+                <CubicDetachedVertex x="34.547" y="39.848" inRotation="-2.061223" inDistance="0.50106" outRotation="1.406166" outDistance="0.63458"/>
+                <CubicDetachedVertex x="34.989" y="41.439" inRotation="-1.892547" inDistance="0.60716" outRotation="1.534335" outDistance="0.79553"/>
+                <CubicDetachedVertex x="35.077" y="43.824" inRotation="-1.607258" inDistance="0.79553" outRotation="1.736036" outDistance="1.79951"/>
+                <CubicDetachedVertex x="33.398" y="48.242" inRotation="-0.982639" inDistance="1.79695" outRotation="2.356194" outDistance="0.66609"/>
+                <CubicDetachedVertex x="31.985" y="49.656" inRotation="-0.786459" inDistance="0.6668" outRotation="2.522948" outDistance="0.50696"/>
+                <CubicDetachedVertex x="30.748" y="50.539" inRotation="-0.61979" inDistance="0.50614" outRotation="2.693808" outDistance="0.81761"/>
+                <CubicDetachedVertex x="28.539" y="51.599" inRotation="-0.447211" inDistance="0.81628" outRotation="2.86308" outDistance="0.64381"/>
+              </PointsPath>
+              <PointsPath isClosed="true" isClockwise="true" name="digit8Hole2">
+                <CubicDetachedVertex x="29.422" y="9.896" inRotation="-2.677461" inDistance="0.92484" outRotation="0.587864" outDistance="1.99969"/>
+                <CubicDetachedVertex x="33.133" y="14.49" inRotation="-1.73563" inDistance="2.09033" outRotation="1.249046" outDistance="0.37315"/>
+                <CubicDetachedVertex x="33.487" y="15.551" inRotation="-1.892547" inDistance="0.37315" outRotation="1.570796" outDistance="0.883"/>
+                <CubicDetachedVertex x="33.487" y="18.201" inRotation="-1.570796" inDistance="0.883" outRotation="1.892547" outDistance="0.53442"/>
+                <CubicDetachedVertex x="33.045" y="19.615" inRotation="-1.405357" inDistance="0.56471" outRotation="2.083287" outDistance="0.54043"/>
+                <CubicDetachedVertex x="32.25" y="21.029" inRotation="-1.059212" inDistance="0.5413" outRotation="2.303518" outDistance="0.79235"/>
+                <CubicDetachedVertex x="30.659" y="22.796" inRotation="-0.838075" inDistance="0.79235" outRotation="2.50904" outDistance="0.54803"/>
+                <CubicDetachedVertex x="29.334" y="23.768" inRotation="-0.632553" inDistance="0.54803" outRotation="2.821182" outDistance="0.70803"/>
+                <CubicDetachedVertex x="27.302" y="24.563" inRotation="-0.464279" inDistance="0.70794" outRotation="2.880709" outDistance="0.45748"/>
+                <CubicDetachedVertex x="25.976" y="24.916" inRotation="-0.260884" inDistance="0.45748" outRotation="3.141593" outDistance="1.531"/>
+                <CubicDetachedVertex x="21.382" y="24.916" inRotation="0" inDistance="1.531" outRotation="-2.803692" outDistance="1.15533"/>
+                <CubicDetachedVertex x="18.113" y="23.768" inRotation="0.337083" inDistance="1.155" outRotation="-2.497073" outDistance="0.5892"/>
+                <CubicDetachedVertex x="16.699" y="22.707" inRotation="0.644519" inDistance="0.5892" outRotation="-2.282591" outDistance="0.85579"/>
+                <CubicDetachedVertex x="15.02" y="20.763" inRotation="0.858117" inDistance="0.85645" outRotation="-2.010157" outDistance="0.55247"/>
+                <CubicDetachedVertex x="14.314" y="19.261" inRotation="1.132204" inDistance="0.55338" outRotation="-1.742394" outDistance="0.86673"/>
+                <CubicDetachedVertex x="13.872" y="16.699" inRotation="1.400336" inDistance="0.86656" outRotation="-1.406171" outDistance="0.6285"/>
+                <CubicDetachedVertex x="14.314" y="14.755" inRotation="1.893058" inDistance="0.61886" outRotation="-1.570796" outDistance="0.147"/>
+                <CubicDetachedVertex x="14.314" y="14.314" inRotation="1.570796" inDistance="0.147" outRotation="-1.148013" outDistance="0.64587"/>
+                <CubicDetachedVertex x="15.109" y="12.546" inRotation="1.99358" inDistance="0.64587" outRotation="-0.875963" outDistance="2.68954"/>
+                <CubicDetachedVertex x="20.675" y="8.747" inRotation="2.819842" inDistance="2.4476" outRotation="-0.164875" outDistance="1.80346"/>
+                <CubicDetachedVertex x="26.86" y="8.747" inRotation="-2.976717" inDistance="1.80346" outRotation="0.322093" outDistance="0.92244"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <Shape x="588.7" y="10" name="digit9" id="0:1519">
-                <PointsPath isClosed="true" name="Path0">
-                    <StraightVertex x="40.75" y="24.05" />
-                    <StraightVertex x="40.68" y="25.62" />
-                    <StraightVertex x="40.49" y="27.18" />
-                    <StraightVertex x="40.16" y="28.71" />
-                    <StraightVertex x="39.7" y="30.21" />
-                    <StraightVertex x="39.12" y="31.66" />
-                    <StraightVertex x="38.43" y="33.05" />
-                    <StraightVertex x="37.61" y="34.37" />
-                    <StraightVertex x="36.69" y="35.62" />
-                    <StraightVertex x="35.67" y="36.78" />
-                    <StraightVertex x="34.55" y="37.84" />
-                    <StraightVertex x="33.35" y="38.79" />
-                    <StraightVertex x="32.08" y="39.64" />
-                    <StraightVertex x="30.73" y="40.36" />
-                    <StraightVertex x="29.33" y="40.96" />
-                    <StraightVertex x="27.89" y="41.44" />
-                    <StraightVertex x="26.41" y="41.78" />
-                    <StraightVertex x="24.91" y="41.98" />
-                    <StraightVertex x="23.4" y="42.05" />
-                    <StraightVertex x="21.89" y="41.98" />
-                    <StraightVertex x="20.39" y="41.78" />
-                    <StraightVertex x="18.91" y="41.44" />
-                    <StraightVertex x="17.47" y="40.96" />
-                    <StraightVertex x="16.07" y="40.36" />
-                    <StraightVertex x="14.73" y="39.64" />
-                    <StraightVertex x="13.45" y="38.79" />
-                    <StraightVertex x="12.25" y="37.84" />
-                    <StraightVertex x="11.13" y="36.78" />
-                    <StraightVertex x="10.11" y="35.62" />
-                    <StraightVertex x="9.19" y="34.37" />
-                    <StraightVertex x="8.37" y="33.05" />
-                    <StraightVertex x="7.68" y="31.66" />
-                    <StraightVertex x="7.1" y="30.21" />
-                    <StraightVertex x="6.64" y="28.71" />
-                    <StraightVertex x="6.31" y="27.18" />
-                    <StraightVertex x="6.12" y="25.62" />
-                    <StraightVertex x="6.05" y="24.05" />
-                    <StraightVertex x="6.12" y="22.48" />
-                    <StraightVertex x="6.31" y="20.92" />
-                    <StraightVertex x="6.64" y="19.39" />
-                    <StraightVertex x="7.1" y="17.89" />
-                    <StraightVertex x="7.68" y="16.44" />
-                    <StraightVertex x="8.37" y="15.05" />
-                    <StraightVertex x="9.19" y="13.73" />
-                    <StraightVertex x="10.11" y="12.48" />
-                    <StraightVertex x="11.13" y="11.32" />
-                    <StraightVertex x="12.25" y="10.26" />
-                    <StraightVertex x="13.45" y="9.31" />
-                    <StraightVertex x="14.72" y="8.46" />
-                    <StraightVertex x="16.07" y="7.74" />
-                    <StraightVertex x="17.47" y="7.14" />
-                    <StraightVertex x="18.91" y="6.66" />
-                    <StraightVertex x="20.39" y="6.32" />
-                    <StraightVertex x="21.89" y="6.12" />
-                    <StraightVertex x="23.4" y="6.05" />
-                    <StraightVertex x="24.91" y="6.12" />
-                    <StraightVertex x="26.41" y="6.32" />
-                    <StraightVertex x="27.89" y="6.66" />
-                    <StraightVertex x="29.33" y="7.14" />
-                    <StraightVertex x="30.73" y="7.74" />
-                    <StraightVertex x="32.08" y="8.46" />
-                    <StraightVertex x="33.35" y="9.31" />
-                    <StraightVertex x="34.55" y="10.26" />
-                    <StraightVertex x="35.67" y="11.32" />
-                    <StraightVertex x="36.69" y="12.48" />
-                    <StraightVertex x="37.61" y="13.73" />
-                    <StraightVertex x="38.43" y="15.05" />
-                    <StraightVertex x="39.12" y="16.44" />
-                    <StraightVertex x="39.7" y="17.89" />
-                    <StraightVertex x="40.16" y="19.39" />
-                    <StraightVertex x="40.49" y="20.92" />
-                    <StraightVertex x="40.68" y="22.48" />
-                </PointsPath>
-                <PointsPath isClosed="false" name="Path1">
-                    <StraightVertex x="40.75" y="24.05" />
-                    <StraightVertex x="40.75" y="40.65" />
-                    <StraightVertex x="40.55" y="43.11" />
-                    <StraightVertex x="39.99" y="45.27" />
-                    <StraightVertex x="39.1" y="47.14" />
-                    <StraightVertex x="37.92" y="48.74" />
-                    <StraightVertex x="36.5" y="50.1" />
-                    <StraightVertex x="34.87" y="51.23" />
-                    <StraightVertex x="33.08" y="52.16" />
-                    <StraightVertex x="31.16" y="52.9" />
-                    <StraightVertex x="29.15" y="53.48" />
-                    <StraightVertex x="27.1" y="53.91" />
-                    <StraightVertex x="25.04" y="54.22" />
-                    <StraightVertex x="23.01" y="54.43" />
-                    <StraightVertex x="21.06" y="54.56" />
-                    <StraightVertex x="19.22" y="54.62" />
-                    <StraightVertex x="17.54" y="54.65" />
-                    <StraightVertex x="16.05" y="54.65" />
-                </PointsPath>
-                <Stroke thickness="12.1" cap="round" join="round" name="Stroke">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Stroke>
+          </Node>
+
+          <!-- digit 9: width 47.27, advance 54.427 (measured), 2 contour(s), 1 hole(s) -->
+          <Node name="digit9" x="461.214" y="0">
+            <Shape name="digit9Ink">
+              <PointsPath isClosed="true" isClockwise="false" name="digit9Outer">
+                <CubicDetachedVertex x="35.254" y="30.483" inRotation="2.819842" inDistance="0.49648" outRotation="0.776851" outDistance="0.08273"/>
+                <CubicDetachedVertex x="35.43" y="30.659" inRotation="-2.347648" inDistance="0.08273" outRotation="1.570796" outDistance="0.53"/>
+                <CubicDetachedVertex x="35.43" y="32.25" inRotation="-1.570796" inDistance="0.53" outRotation="1.845245" outDistance="0.21401"/>
+                <CubicDetachedVertex x="35.254" y="32.868" inRotation="-1.291856" inDistance="0.21428" outRotation="1.570796" outDistance="3.089"/>
+                <CubicDetachedVertex x="34.017" y="41.35" inRotation="-1.249267" inDistance="2.85427" outRotation="1.736141" outDistance="0.83843"/>
+                <CubicDetachedVertex x="33.31" y="43.559" inRotation="-1.1066" inDistance="0.81527" outRotation="1.893035" outDistance="0.64732"/>
+                <CubicDetachedVertex x="32.515" y="45.238" inRotation="-0.983215" inDistance="0.65843" outRotation="1.892547" outDistance="0.36999"/>
+                <CubicDetachedVertex x="32.161" y="46.21" inRotation="-1.107149" inDistance="0.3779" outRotation="2.265675" outDistance="0.91521"/>
+                <CubicDetachedVertex x="30.571" y="48.33" inRotation="-0.982482" inDistance="0.88835" outRotation="2.451222" outDistance="0.87937"/>
+                <CubicDetachedVertex x="28.539" y="50.009" inRotation="-0.691095" inDistance="0.87859" outRotation="2.709765" outDistance="0.84342"/>
+                <CubicDetachedVertex x="26.241" y="51.069" inRotation="-0.431828" inDistance="0.84342" outRotation="3.008596" outDistance="0.44493"/>
+                <CubicDetachedVertex x="24.916" y="51.246" inRotation="-0.1327" inDistance="0.44592" outRotation="2.819842" outDistance="0.80954"/>
+                <CubicDetachedVertex x="22.531" y="51.688" inRotation="-0.165747" inDistance="0.8243" outRotation="-3.070199" outDistance="0.82711"/>
+                <CubicDetachedVertex x="20.057" y="51.511" inRotation="0.07148" inDistance="0.82611" outRotation="-2.748006" outDistance="0.38331"/>
+                <CubicDetachedVertex x="18.996" y="51.069" inRotation="0.395994" inDistance="0.38369" outRotation="-2.977128" outDistance="0.72073"/>
+                <CubicDetachedVertex x="16.964" y="50.362" inRotation="0.464283" inDistance="0.70347" outRotation="-2.553885" outDistance="1.87932"/>
+                <CubicDetachedVertex x="12.9" y="46.563" inRotation="0.876323" inDistance="1.93131" outRotation="-2.436754" outDistance="0.77325"/>
+                <CubicDetachedVertex x="11.133" y="45.061" inRotation="0.704839" inDistance="0.77325" outRotation="-2.553903" outDistance="0.88558"/>
+                <CubicDetachedVertex x="9.012" y="43.736" inRotation="0.463134" inDistance="0.87072" outRotation="-2.976296" outDistance="2.21824"/>
+                <CubicDetachedVertex x="3.269" y="45.061" inRotation="-0.694622" inDistance="2.20748" outRotation="2.110883" outDistance="0.51535"/>
+                <CubicDetachedVertex x="2.474" y="46.386" inRotation="-1.02971" inDistance="0.5145" outRotation="1.743112" outDistance="0.68819"/>
+                <CubicDetachedVertex x="2.121" y="48.419" inRotation="-1.399913" inDistance="0.68802" outRotation="1.405648" outDistance="0.95499"/>
+                <CubicDetachedVertex x="2.827" y="51.158" inRotation="-1.892208" inDistance="0.93382" outRotation="1.054705" outDistance="1.01523"/>
+                <CubicDetachedVertex x="4.329" y="53.808" inRotation="-2.086031" inDistance="1.01474" outRotation="0.784981" outDistance="1.69494"/>
+                <CubicDetachedVertex x="7.864" y="57.166" inRotation="-2.447007" inDistance="1.67639" outRotation="0.463648" outDistance="0.81169"/>
+                <CubicDetachedVertex x="9.984" y="58.403" inRotation="-2.553255" inDistance="0.82706" outRotation="0.418137" outDistance="1.15993"/>
+                <CubicDetachedVertex x="13.165" y="59.816" inRotation="-2.723456" inDistance="1.15993" outRotation="0.166583" outDistance="0.57293"/>
+                <CubicDetachedVertex x="14.402" y="60.17" inRotation="-2.677159" inDistance="0.5693" outRotation="0.165149" outDistance="0.71777"/>
+                <CubicDetachedVertex x="16.257" y="60.612" inRotation="-2.819842" inDistance="0.69254" outRotation="0.165149" outDistance="0.90633"/>
+                <CubicDetachedVertex x="18.731" y="61.142" inRotation="-2.819485" inDistance="0.88449" outRotation="0.015142" outDistance="1.91522"/>
+                <CubicDetachedVertex x="24.474" y="61.23" inRotation="-3.126442" inDistance="1.91422" outRotation="-0.164851" outDistance="1.10295"/>
+                <CubicDetachedVertex x="27.832" y="60.788" inRotation="3.141593" inDistance="1.142" outRotation="-0.321751" outDistance="0.91706"/>
+                <CubicDetachedVertex x="30.306" y="60.17" inRotation="2.976099" inDistance="0.95302" outRotation="-0.463152" outDistance="0.90203"/>
+                <CubicDetachedVertex x="32.868" y="59.11" inRotation="2.820193" inDistance="0.9022" outRotation="-0.48119" outDistance="0.76485"/>
+                <CubicDetachedVertex x="34.9" y="58.049" inRotation="2.659797" inDistance="0.76397" outRotation="-0.587581" outDistance="1.31686"/>
+                <CubicDetachedVertex x="38.081" y="55.664" inRotation="2.446949" inDistance="1.34976" outRotation="-0.802669" outDistance="1.18741"/>
+                <CubicDetachedVertex x="40.555" y="53.101" inRotation="2.338339" inDistance="1.18813" outRotation="-0.938898" outDistance="0.94806"/>
+                <CubicDetachedVertex x="42.234" y="50.804" inRotation="2.202072" inDistance="0.94887" outRotation="-1.05152" outDistance="0.94911"/>
+                <CubicDetachedVertex x="43.647" y="48.33" inRotation="2.089551" inDistance="0.94998" outRotation="-1.248708" outDistance="0.93509"/>
+                <CubicDetachedVertex x="44.708" y="45.945" inRotation="2.035407" inDistance="0.92842" outRotation="-1.405801" outDistance="1.07155"/>
+                <CubicDetachedVertex x="45.768" y="42.764" inRotation="1.892843" inDistance="1.0679" outRotation="-1.472806" outDistance="0.29642"/>
+                <CubicDetachedVertex x="45.856" y="41.88" inRotation="1.668787" inDistance="0.29642" outRotation="-1.189118" outDistance="0.3168"/>
+                <CubicDetachedVertex x="46.21" y="40.997" inRotation="1.952475" inDistance="0.3168" outRotation="-1.406224" outDistance="1.14142"/>
+                <CubicDetachedVertex x="46.828" y="37.728" inRotation="1.892263" inDistance="1.11407" outRotation="-1.570796" outDistance="1.434"/>
+                <CubicDetachedVertex x="47.27" y="33.575" inRotation="1.736308" inDistance="1.35958" outRotation="-1.570796" outDistance="1.649"/>
+                <CubicDetachedVertex x="47.27" y="28.627" inRotation="1.570796" inDistance="1.649" outRotation="-1.570796" outDistance="1.382"/>
+                <CubicDetachedVertex x="46.917" y="24.386" inRotation="1.249046" inDistance="1.27124" outRotation="-1.570796" outDistance="1.873"/>
+                <CubicDetachedVertex x="46.121" y="19.085" inRotation="1.405278" inDistance="1.7783" outRotation="-2.156202" outDistance="0.10678"/>
+                <CubicDetachedVertex x="45.945" y="18.82" inRotation="0.980176" inDistance="0.10595" outRotation="-1.736423" outDistance="1.37684"/>
+                <CubicDetachedVertex x="44.796" y="15.109" inRotation="1.106816" inDistance="1.34298" outRotation="-1.735272" outDistance="0.48859"/>
+                <CubicDetachedVertex x="44.354" y="14.048" inRotation="0.982794" inDistance="0.48314" outRotation="-1.570796" outDistance="0.088"/>
+                <CubicDetachedVertex x="44.354" y="13.783" inRotation="1.570796" inDistance="0.089" outRotation="-2.034444" outDistance="1.31704"/>
+                <CubicDetachedVertex x="42.587" y="10.249" inRotation="1.107149" inDistance="1.31704" outRotation="-2.218103" outDistance="1.36641"/>
+                <CubicDetachedVertex x="40.113" y="6.98" inRotation="0.922906" inDistance="1.36701" outRotation="-2.356194" outDistance="2.72519"/>
+                <CubicDetachedVertex x="34.193" y="2.297" inRotation="0.463825" inDistance="2.51915" outRotation="-2.53041" outDistance="0.35899"/>
+                <CubicDetachedVertex x="33.31" y="1.679" inRotation="0.611182" inDistance="0.35899" outRotation="-2.819842" outDistance="0.838"/>
+                <CubicDetachedVertex x="30.924" y="0.884" inRotation="0.321374" inDistance="0.83895" outRotation="-2.677259" outDistance="1.30408"/>
+                <CubicDetachedVertex x="26.507" y="-0.088" inRotation="0" inDistance="1.406" outRotation="-2.976189" outDistance="1.28757"/>
+                <CubicDetachedVertex x="22.442" y="-0.53" inRotation="0" inDistance="1.347" outRotation="3.008744" outDistance="0.89085"/>
+                <CubicDetachedVertex x="19.792" y="-0.177" inRotation="-0.132848" inDistance="0.89085" outRotation="3.141593" outDistance="1.48"/>
+                <CubicDetachedVertex x="15.816" y="0.53" inRotation="-0.321751" inDistance="1.3661" outRotation="3.141593" outDistance="0.942"/>
+                <CubicDetachedVertex x="12.458" y="1.59" inRotation="-0.587383" inDistance="0.89501" outRotation="3.141593" outDistance="0.088"/>
+                <CubicDetachedVertex x="12.193" y="1.59" inRotation="0" inDistance="0.088" outRotation="2.553256" outDistance="0.83066"/>
+                <CubicDetachedVertex x="10.161" y="2.651" inRotation="-0.464767" inDistance="0.79872" outRotation="2.47452" outDistance="0.7128"/>
+                <CubicDetachedVertex x="8.482" y="3.976" inRotation="-0.668174" inDistance="0.71342" outRotation="2.540901" outDistance="0.67762"/>
+                <CubicDetachedVertex x="6.803" y="5.125" inRotation="-0.599858" inDistance="0.67845" outRotation="2.356194" outDistance="1.79888"/>
+                <CubicDetachedVertex x="3.269" y="9.012" inRotation="-0.875837" inDistance="1.7381" outRotation="2.055311" outDistance="1.26455"/>
+                <CubicDetachedVertex x="1.502" y="12.37" inRotation="-1.086282" inDistance="1.26455" outRotation="1.855322" outDistance="1.25756"/>
+                <CubicDetachedVertex x="0.442" y="15.992" inRotation="-1.286271" inDistance="1.25756" outRotation="1.570796" outDistance="1.369"/>
+                <CubicDetachedVertex x="0" y="19.968" inRotation="-1.405396" inDistance="1.30582" outRotation="1.516721" outDistance="1.0916"/>
+                <CubicDetachedVertex x="0.177" y="23.237" inRotation="-1.624922" inDistance="1.0906" outRotation="1.249046" outDistance="0.80006"/>
+                <CubicDetachedVertex x="0.618" y="25.535" inRotation="-1.735543" inDistance="0.81706" outRotation="1.258274" outDistance="0.95948"/>
+                <CubicDetachedVertex x="1.502" y="28.274" inRotation="-1.882326" inDistance="0.95917" outRotation="1.107149" outDistance="1.36177"/>
+                <CubicDetachedVertex x="3.623" y="31.896" inRotation="-2.159" inDistance="1.37871" outRotation="0.859476" outDistance="1.12739"/>
+                <CubicDetachedVertex x="5.831" y="34.459" inRotation="-2.281538" inDistance="1.12815" outRotation="0.685561" outDistance="0.83714"/>
+                <CubicDetachedVertex x="7.775" y="36.049" inRotation="-2.456031" inDistance="0.83714" outRotation="0.530546" outDistance="0.99011"/>
+                <CubicDetachedVertex x="10.338" y="37.551" inRotation="-2.611557" inDistance="0.99097" outRotation="0.3226" outDistance="0.7444"/>
+                <CubicDetachedVertex x="12.458" y="38.258" inRotation="-2.819418" inDistance="0.74535" outRotation="0.463263" outDistance="1.16365"/>
+                <CubicDetachedVertex x="16.257" y="39.141" inRotation="3.141593" inDistance="1.254" outRotation="0.246308" outDistance="0.36502"/>
+                <CubicDetachedVertex x="17.318" y="39.406" inRotation="-2.897944" inDistance="0.36477" outRotation="0.117457" outDistance="0.50347"/>
+                <CubicDetachedVertex x="18.82" y="39.583" inRotation="-3.024368" inDistance="0.50446" outRotation="0" outDistance="0.706"/>
+                <CubicDetachedVertex x="20.94" y="39.583" inRotation="3.141593" inDistance="0.707" outRotation="-0.075574" outDistance="0.3841"/>
+                <CubicDetachedVertex x="22.089" y="39.495" inRotation="3.066019" inDistance="0.3841" outRotation="-0.321751" outDistance="0.92971"/>
+                <CubicDetachedVertex x="24.739" y="38.965" inRotation="2.976962" inDistance="0.95187" outRotation="-0.463648" outDistance="0.77144"/>
+                <CubicDetachedVertex x="26.948" y="38.169" inRotation="2.819433" inDistance="0.77381" outRotation="-0.493474" outDistance="0.43489"/>
+                <CubicDetachedVertex x="28.097" y="37.551" inRotation="2.648119" inDistance="0.43489" outRotation="0" outDistance="0.088"/>
+                <CubicDetachedVertex x="28.362" y="37.551" inRotation="3.141593" inDistance="0.088" outRotation="-0.576554" outDistance="0.70257"/>
+                <CubicDetachedVertex x="30.129" y="36.402" inRotation="2.565038" inDistance="0.70257" outRotation="-0.685561" outDistance="0.41857"/>
+                <CubicDetachedVertex x="31.101" y="35.607" inRotation="2.456031" inDistance="0.41857" outRotation="-0.785398" outDistance="0.83297"/>
+                <CubicDetachedVertex x="32.868" y="33.84" inRotation="2.356194" inDistance="0.83297" outRotation="-1.106722" outDistance="1.04782"/>
+                <CubicDetachedVertex x="34.547" y="31.101" inRotation="2.034864" inDistance="1.06347" outRotation="-1.570796" outDistance="0.088"/>
+                <CubicDetachedVertex x="34.547" y="30.836" inRotation="1.570796" inDistance="0.088" outRotation="-0.587474" outDistance="0.52502"/>
+              </PointsPath>
+              <PointsPath isClosed="true" isClockwise="true" name="digit9Hole1">
+                <CubicDetachedVertex x="27.213" y="10.072" inRotation="-2.677945" inDistance="0.73567" outRotation="0.46385" outDistance="2.21058"/>
+                <CubicDetachedVertex x="31.808" y="13.783" inRotation="-2.26586" inDistance="2.35934" outRotation="1.107771" outDistance="0.71867"/>
+                <CubicDetachedVertex x="32.868" y="15.639" inRotation="-2.159177" inDistance="0.73331" outRotation="1.27193" outDistance="0.80153"/>
+                <CubicDetachedVertex x="33.575" y="17.936" inRotation="-1.869662" inDistance="0.80153" outRotation="1.526073" outDistance="0.64865"/>
+                <CubicDetachedVertex x="33.663" y="19.88" inRotation="-1.61552" inDistance="0.64865" outRotation="1.611792" outDistance="0.70759"/>
+                <CubicDetachedVertex x="33.575" y="22" inRotation="-1.529743" inDistance="0.7066" outRotation="1.869662" outDistance="0.80153"/>
+                <CubicDetachedVertex x="32.868" y="24.298" inRotation="-1.27193" inDistance="0.80153" outRotation="2.060401" outDistance="0.49971"/>
+                <CubicDetachedVertex x="32.161" y="25.623" inRotation="-1.080369" inDistance="0.50106" outRotation="2.265395" outDistance="0.9202"/>
+                <CubicDetachedVertex x="30.394" y="27.744" inRotation="-0.876197" inDistance="0.9202" outRotation="2.446967" outDistance="2.27778"/>
+                <CubicDetachedVertex x="25.093" y="30.483" inRotation="-0.32219" inDistance="2.15699" outRotation="3.102211" outDistance="0.73657"/>
+                <CubicDetachedVertex x="22.884" y="30.571" inRotation="-0.040738" inDistance="0.73661" outRotation="-3.107669" outDistance="0.88451"/>
+                <CubicDetachedVertex x="20.233" y="30.483" inRotation="0.032794" inDistance="0.88448" outRotation="-2.727513" outDistance="0.51448"/>
+                <CubicDetachedVertex x="18.82" y="29.864" inRotation="0.412299" inDistance="0.51408" outRotation="3.141593" outDistance="0.148"/>
+                <CubicDetachedVertex x="18.378" y="29.864" inRotation="0" inDistance="0.147" outRotation="-2.659381" outDistance="0.69867"/>
+                <CubicDetachedVertex x="16.522" y="28.892" inRotation="0.482211" inDistance="0.69867" outRotation="-2.446854" outDistance="1.39803"/>
+                <CubicDetachedVertex x="13.695" y="26.065" inRotation="0.875783" inDistance="1.39445" outRotation="-2.101473" outDistance="0.58089"/>
+                <CubicDetachedVertex x="12.811" y="24.563" inRotation="1.037762" inDistance="0.58054" outRotation="-1.89204" outDistance="1.87175"/>
+                <CubicDetachedVertex x="11.928" y="19.261" inRotation="1.570796" inDistance="2.033" outRotation="-1.411159" outDistance="0.92476"/>
+                <CubicDetachedVertex x="12.37" y="16.522" inRotation="1.731501" inDistance="0.92492" outRotation="-1.107149" outDistance="1.20524"/>
+                <CubicDetachedVertex x="14.048" y="13.43" inRotation="2.158799" inDistance="1.24392" outRotation="-0.811973" outDistance="0.77173"/>
+                <CubicDetachedVertex x="15.639" y="11.751" inRotation="2.328679" inDistance="0.77104" outRotation="-0.70214" outDistance="0.50166"/>
+                <CubicDetachedVertex x="16.787" y="10.779" inRotation="2.438163" inDistance="0.5009" outRotation="-0.462291" outDistance="0.65919"/>
+                <CubicDetachedVertex x="18.555" y="9.896" inRotation="2.678624" inDistance="0.6583" outRotation="-0.322221" outDistance="0.67262"/>
+                <CubicDetachedVertex x="20.322" y="9.277" inRotation="2.6786" inDistance="0.6829" outRotation="-0.165149" outDistance="1.41728"/>
+                <CubicDetachedVertex x="25.623" y="9.631" inRotation="-2.677945" inDistance="1.3081" outRotation="0" outDistance="0.814"/>
+              </PointsPath>
+              <Fill fillRule="evenOdd" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color"/>
+              </Fill>
             </Shape>
-            <!-- Inline bolt: the 40 x 59 knockout shape. RML has no PorterDuff CLEAR, so
-                 the sample is a filled patch with the bolt marked as a hole; the runtime
-                 clears the same outline inside the battery fill. -->
-            <Shape x="10" y="90" name="inlineBoltSample" id="0:1528">
-                <Rectangle x="-6" y="-6" width="52" height="71" originX="0" originY="0" name="Patch" />
-                <PointsPath isClosed="true" isHole="true" name="BoltHole">
-                    <StraightVertex x="28.53" y="0" />
-                    <StraightVertex x="28.53" y="5.75" />
-                    <StraightVertex x="22.67" y="17.75" />
-                    <StraightVertex x="21.6" y="22.75" />
-                    <StraightVertex x="22.13" y="24.75" />
-                    <StraightVertex x="24.27" y="26.25" />
-                    <StraightVertex x="39.2" y="25.75" />
-                    <StraightVertex x="39.73" y="27.25" />
-                    <StraightVertex x="39.2" y="28.75" />
-                    <StraightVertex x="26.4" y="41.75" />
-                    <StraightVertex x="17.87" y="52.75" />
-                    <StraightVertex x="11.47" y="58.75" />
-                    <StraightVertex x="11.47" y="53.75" />
-                    <StraightVertex x="17.33" y="41.25" />
-                    <StraightVertex x="18.4" y="36.25" />
-                    <StraightVertex x="16.27" y="33.75" />
-                    <StraightVertex x="1.33" y="33.75" />
-                    <StraightVertex x="0.27" y="32.25" />
-                    <StraightVertex x="7.2" y="23.25" />
-                    <StraightVertex x="10.93" y="20.25" />
-                    <StraightVertex x="18.4" y="10.75" />
-                </PointsPath>
-                <Fill fillRule="clockwise" name="Fill">
-                    <SolidColor colorValue="FFFFFFFF" name="Color" />
-                </Fill>
-            </Shape>
+          </Node>
         </Node>
+
+        <!-- Inline bolt: the 40 x 59 knockout shape. RML has no PorterDuff CLEAR, so
+             the sample is a filled patch with the bolt marked as a hole; the runtime
+             clears the same outline inside the battery fill. -->
+        <Shape x="10" y="90" name="inlineBoltSample" id="0:1528">
+            <Rectangle x="-6" y="-6" width="52" height="71" originX="0" originY="0" name="Patch" />
+            <PointsPath isClosed="true" isHole="true" name="BoltHole">
+                <StraightVertex x="28.53" y="0" />
+                <StraightVertex x="28.53" y="5.75" />
+                <StraightVertex x="22.67" y="17.75" />
+                <StraightVertex x="21.6" y="22.75" />
+                <StraightVertex x="22.13" y="24.75" />
+                <StraightVertex x="24.27" y="26.25" />
+                <StraightVertex x="39.2" y="25.75" />
+                <StraightVertex x="39.73" y="27.25" />
+                <StraightVertex x="39.2" y="28.75" />
+                <StraightVertex x="26.4" y="41.75" />
+                <StraightVertex x="17.87" y="52.75" />
+                <StraightVertex x="11.47" y="58.75" />
+                <StraightVertex x="11.47" y="53.75" />
+                <StraightVertex x="17.33" y="41.25" />
+                <StraightVertex x="18.4" y="36.25" />
+                <StraightVertex x="16.27" y="33.75" />
+                <StraightVertex x="1.33" y="33.75" />
+                <StraightVertex x="0.27" y="32.25" />
+                <StraightVertex x="7.2" y="23.25" />
+                <StraightVertex x="10.93" y="20.25" />
+                <StraightVertex x="18.4" y="10.75" />
+            </PointsPath>
+            <Fill fillRule="clockwise" name="Fill">
+                <SolidColor colorValue="FFFFFFFF" name="Color" />
+            </Fill>
+        </Shape>
     </Artboard>
 
     <!-- batteryLevel (0..1) -> fill Rectangle width (0..189.3).  Clamped so a bad value can

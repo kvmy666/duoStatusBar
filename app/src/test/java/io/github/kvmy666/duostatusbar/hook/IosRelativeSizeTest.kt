@@ -61,7 +61,7 @@ class IosRelativeSizeTest {
             "wifi",
             IosIconKind.WIFI,
             IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f),
-            80, 50, 31, 1.0027f, 0.9917f
+            80, 50, 31, 1.0027f, 1.0250f
         ),
         Case(
             "cell-single",

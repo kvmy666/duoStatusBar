@@ -96,8 +96,8 @@ class IosR6KnockoutEvidenceTest {
         val off = render(visual(level = 50, inside = false), Bg.PHOTO)
         val on = render(visual(level = 50, inside = true), Bg.PHOTO)
 
-        // R9 digits are stroke skeletons: the stroke is cleared, but the open interior of the "0"
-        // (its loop centre) must stay body ink, not become a background hole.
+        // The traced digits are filled even-odd contours: the ink band is cleared, but the counter
+        // (hole) of the "0" must stay body ink, not become a background hole.
         val glyph = IosDigits.glyph('0')
         val origin = penOrigins("50")[1]
         val ux = origin + glyph.width / 2f
@@ -404,12 +404,11 @@ class IosR6KnockoutEvidenceTest {
     private fun penOrigins(text: String): List<Float> {
         val group = IosDigits.groupWidth(text, withBolt = false)
         val left = b.BODY_LEFT + b.BODY_W / 2f - group / 2f
-        var pen = left - IosDigits.bearing(IosDigits.glyph(text.first()))
+        var pen = left
         val out = ArrayList<Float>(text.length)
         for (ch in text) {
-            val glyph = IosDigits.glyph(ch)
-            out += pen + IosDigits.bearing(glyph)
-            pen += glyph.advance
+            out += pen
+            pen += IosDigits.glyph(ch).advance
         }
         return out
     }

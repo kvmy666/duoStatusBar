@@ -13,7 +13,7 @@ cd "$ROOT"
 
 SHIPPED_NEW_HASH="4c59e9dc0860d9d6a117889499ccb904bc6138078efe709a12d8d539aa55b817"
 SHIPPED_OLD_HASH="464586cad821ce8d8a801822e45adc4f77d7c68169ffecd09c69bcaf01176cf0"
-SHIPPED_IOS_HASH="c0fae43ce9245b55a8faea65ac346e47f58b1f8946386d9db477eaba60a2b77e"
+SHIPPED_IOS_HASH="fe5034a4c735072b40c56a5cf808cde1c0a886f2fa2a4d682b72df77ca3bdf1b"
 SHIPPED_NEW="app/src/main/res/raw/duo.riv"
 SHIPPED_OLD="app/src/main/res/raw/duo_old.riv"
 SHIPPED_IOS="app/src/main/res/raw/ios.riv"

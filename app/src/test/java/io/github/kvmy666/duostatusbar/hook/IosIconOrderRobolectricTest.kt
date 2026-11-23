@@ -219,14 +219,43 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.activate()
         IosIconOrder.flushForTest()
+        val passes = IosIconOrder.passesForTest()
+        val moves = IosIconOrder.movesForTest()
+        assertEquals(1, passes)
+
+        IosIconOrder.activate()
         IosIconOrder.flushForTest()
 
         assertOrder(listOf(stock[1], stock[2], stock[0], stock[3], stock[4]), order(container))
+        assertEquals("a repeated activate must not schedule another pass", passes, IosIconOrder.passesForTest())
+        assertEquals("a repeated activate must not move anything", moves, IosIconOrder.movesForTest())
         assertTrue(container.mEnableAnimation)
         assertTrue(container.animationStates.contains(false))
         assertEquals(true, container.animationStates.last())
+    }
+
+    @Test
+    fun `repeated activate on an unchanged adopted container schedules no pass`() {
+        IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile"))
+        val container = stockContainer()
+        val stock = order(container)
+
+        IosIconOrder.onIconAdded(container)
+        IosIconOrder.activate()
+        IosIconOrder.flushForTest()
+
+        assertEquals(1, IosIconOrder.passesForTest())
+        assertEquals(1, IosIconOrder.movesForTest())
+        assertOrder(listOf(stock[1], stock[2], stock[0], stock[3], stock[4]), order(container))
+
+        IosIconOrder.resetCountersForTest()
+        IosIconOrder.activate()
+        IosIconOrder.flushForTest()
+
+        assertEquals(0, IosIconOrder.passesForTest())
+        assertEquals(0, IosIconOrder.movesForTest())
+        assertOrder(listOf(stock[1], stock[2], stock[0], stock[3], stock[4]), order(container))
     }
 
     @Test

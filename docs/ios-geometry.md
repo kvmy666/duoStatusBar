@@ -157,7 +157,7 @@ the preview/evidence composition; the runtime glyph fills the bounds it is given
 
 Measured from the light single-SIM reference capture; the reference glyph bbox origin is light px
 (243.24, 30.56) and the artboard adds a 1-unit margin on every side. This is the iOS glyph now, not
-Duo's.
+Duo's. R10A restores these 2.0.6 values in `rive/ios/scene.rml` (the R9 scene had drifted).
 
 | Quantity | Value | Source |
 |---|---:|---|
@@ -176,6 +176,9 @@ The full fit and the dark cross-check are in the B4 measurement notes (kept outs
 "Duo uniformly scaled" glyph has been removed.
 
 ## Data-type label (R5B)
+
+R10A supersedes the stroked R5B/R6 label construction described in this section: the shipping
+labels are now traced filled cubic contours at cap 71.4 (see R9 / R10A above).
 
 When the active network is not Wi-Fi, the Wi-Fi slot can draw a data-type label ("LTE", "4G", "5G",
 "5G+", "3G", "E") from `IosGeometry.DataLabel`.
@@ -500,12 +503,14 @@ unchanged by R5B.
 The scene is built offline with **Rive 1.8.0** (`rive rive/ios --once`). Rive **1.9.2** is used only to
 verify (`rive . --verify`), including `tools/check-rive-shipped.sh`. The brief's 1.9.2 build path is not
 possible here: 1.9.2 removed `--once`, and `--publish` needs a login, so it cannot write an unsigned
-`.riv` offline. Building the same scene twice with 1.8.0 is byte-identical, and the committed
-`app/src/main/res/raw/ios.riv` is that build (**40,985 bytes**, sha256
-`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`). The `IosDigits` artboard now
-carries the v6 filled contours (one closed `PointsPath` per contour, one `Fill fillRule="evenOdd"` per
-digit; all ten built from ref 4/6 with the uniform bold construction); the runtime `IosDigits` and the
-scene are pinned together by `IosGeometryParityTest`. If the installed CLI's cached minimum version
+`.riv` offline. Building the same scene twice with 1.8.0 is byte-identical. At R3D the committed
+`app/src/main/res/raw/ios.riv` was that build (**40,985 bytes**, sha256
+`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`, historical); the current R10A
+build is **39,759 bytes**, sha256
+`fe5034a4c735072b40c56a5cf808cde1c0a886f2fa2a4d682b72df77ca3bdf1b` (see R9 / R10A). The
+`IosDigits` artboard carries the R10A traced cubic contours (one `PointsPath` per contour, one
+`Fill fillRule="evenOdd"` per digit); the runtime `IosDigits` and the scene are pinned together by
+`IosGeometryParityTest`. If the installed CLI's cached minimum version
 blocks 1.8.0, run it with an isolated `RIVE_HOME` whose `update-check` minimum is 1.8.0; the build
 itself is offline.
 
@@ -513,9 +518,9 @@ itself is offline.
 confirm the authored 0.50, the label lives on the Canvas path, and `Cell.INACTIVE_ALPHA` is unchanged
 and still UNVERIFIED. Because the `rive` CLI is absent on this machine, editing `rive/ios/scene.rml`
 without rebuilding would make `ios.riv` stale and break the hash gate. The scene and
-`app/src/main/res/raw/ios.riv` are therefore untouched, the hash stays
-`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`, and there is no scene-parity
-drift.
+`app/src/main/res/raw/ios.riv` were therefore untouched at R5B time, the hash stayed
+`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`, and there was no scene-parity
+drift. R10A later rebuilt the scene (see R9 / R10A).
 
 ## R6 (TRUE knockout + equal label weight)
 
@@ -577,12 +582,13 @@ plus the labelled `digits-matrix.png` and `digits-sha256.txt`. The matrix note r
 white-on-white and black-on-black cells vanish by design (the true knockout reveals a same-colour
 background), not because of a bug.
 
-`rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` stay untouched: the iOS runtime is Canvas-only
-(`IosRenderers.kt:8-24`), so the scene does not represent the percentage or the labels, and editing it
-without the absent `rive` CLI would only break the `.riv` hash gate. The shipped hash remains
-`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe`.
+At R6 time `rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` stayed untouched: the iOS runtime
+is Canvas-only (`IosRenderers.kt:8-24`), so the scene did not represent the percentage or the labels,
+and the shipped hash remained
+`0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe` (historical). R10A later rebuilt
+the scene with the traced digits (labels stay Canvas-only).
 
-## R9 (measured sizes, separate nub, stroke-skeleton digits)
+## R9 / R10A (measured sizes, separate nub, traced filled digits)
 
 R9 changes the shared design numbers in `IosGeometry`/`IosDigits` and mirrors them in
 `rive/ios/scene.rml` at the same design units (battery body H = 100). Artboard positions are unchanged
@@ -592,8 +598,8 @@ R9 changes the shared design numbers in `IosGeometry`/`IosDigits` and mirrors th
 |---|---|---|
 | `Ios` | **209.2 x 102** | body **189.3 x 100** at (1,1), circular radius **28.6**; separate half-capsule nub **14.3 x 32.1**, flat left at **193.9**, top **34.95**, gap **3.6**; fill/remainder/clip rectangles 189.3 x 100; no outline |
 | `IosCell` | **150.1 x 105.6** (kept) | single **W25 / pitch 39.3 / heights 46.4, 60.7, 75.0, 92.9** / bottom **93.9** / radius **11.75**; dual **W27 / pitch 40.3 / heights 37.9, 46.1, 52.9, 64.3** / row H **64.3** / gap **10** / dots **27 x 29** at y **89.8**; radius 12.69 |
-| `IosWifi` | **129.53 x 96.77** (kept) | centre **(64.809, 95.022)**; outer r **81.2** / stroke **18.6** / trim **0.232575 / 0.884175**; inner r **47.4** / stroke **19.4** / trim **0.220078 / 0.889917**; dot **38 x 28** at (64.809, 81.77); level alphas unchanged (0.3/0.3/0.3/1 and 0.3/0.3/1/1) |
-| `IosDigits` | **663 x 160** | ten stroke skeletons, cap **60.7**, stroke **12.1**, equal advance **64.3**, ink widths **50.8/26.7/43.0/44.0/49.2/44.0/46.1/42.5/45.7/46.8** for 0..9; x offsets 10 + cumulative advance, y 10 |
+| `IosWifi` | **129.53 x 96.77** (kept) | 2.0.6 geometry restored (R10A): centre **(64.809, 93.522)**; outer r **83.843** / stroke **16.903** / trim **0.232575 / 0.884175**; inner r **50.053** / stroke **17.794** / trim **0.220078 / 0.889917**; dot **34.64 x 26.68** (32-gon bbox x 47.50..82.14, y 69.09..95.77); level alphas unchanged (0.3/0.3/0.3/1 and 0.3/0.3/1/1) |
+| `IosDigits` | **535.641 x 160** | ten traced filled contours, cap **60.7**, one even-odd fill per digit; advances **54.824/41.704/50.451/51.599/56.194/50.186/52.660/49.611/53.985/54.427** (sum 515.641); ink widths **47.889/28.362/43.117/44.619/49.302/44.089/46.828/42.676/47.800/47.270** for 0..9; node x = cumulative advance, y 0 |
 
 **Battery bolt.** With digits the charging bolt is a **40 x 59** knockout hole; without digits it is a
 solid system-ink **67 x 92** bolt centred on the body, bound to the neutral tint (`0:1003`) and faded
@@ -601,25 +607,40 @@ by `boltOpacity`, with **no outline**. The battery shape is still the only `bolt
 RML has no PorterDuff CLEAR, so the scene's `IosDigits` sample authors the 40 x 59 inline bolt as a
 hole in a small filled patch; the runtime clears the same outline inside the battery fill.
 
-**Percentage digits.** The ten filled even-odd contours are gone. The runtime draws the R9 centre-line
-skeletons with `Paint.Style.STROKE` (`Cap.ROUND`, `Join.ROUND`), so the ink is skeleton + stroke =
-`IosDigits` width and the cap is 60.7. The scene mirrors this with `PointsPath` + `<Stroke
-thickness="12.1" cap="round" join="round">` and no `<Fill>`; arc/cubic segments are flattened offline
-at 5 degrees / 16 segments (the only RML-expressive conversion), while stroke, cap, joins, advance and
-the per-digit ink widths are exact. `IosGeometryParityTest` (8 tests) derives the artboards, body/nub,
-both bolt variants, cell, Wi-Fi and digit stroke/advance/width expectations from the Kotlin constants.
+**Percentage digits (R10A).** The ten glyphs are traced filled contours from the R10 regular sheet,
+not stroke skeletons: one `PointsPath` per contour (outer first, then holes) under ONE `<Fill
+fillRule="evenOdd">`, with the cubic anchors and handles stored explicitly. The cap is 60.7 design
+units, each node x is the cumulative measured advance, and the ink widths / advances are
+47.889/54.824, 28.362/41.704, 43.117/50.451, 44.619/51.599, 49.302/56.194, 44.089/50.186,
+46.828/52.660, 42.676/49.611, 47.800/53.985, 47.270/54.427 for 0..9 (the `0` and `7` advances are
+extrapolated and flagged). The data is `rive/ios/glyphs-r10.json` (sha256
+`2c757bc137bebf0b756d59fcad19767ff6ddaede996b9ddc4102e67821caddd8`), generated by
+`tools/r10-glyphs.py`, and the digits were traced from
+`.pm/ref/r10/battery-digits-rounded-bold.jpg` with min IoU **0.99132** (max deviation **0.2413 px**).
+`IosGeometryParityTest` reconstructs every cubic from the scene and compares it to `R10Glyphs.DIGITS`
+within 1e-3, plus the 535.641 artboard width, one even-odd fill per digit and no strokes.
 
-**Scene build.** `rive rive/ios --once` with **Rive 1.8.0** (isolated `RIVE_HOME` whose `update-check`
-minimum is 1.8.0, because the global check now requires 1.9.2) produces **16,436 bytes**, sha256
-`c0fae43ce9245b55a8faea65ac346e47f58b1f8946386d9db477eaba60a2b77e`; a second build is byte-identical
-and `app/src/main/res/raw/ios.riv` is that copy. Rive 1.9.2 `--verify` passes
-(`tools/check-rive-shipped.sh`, pin updated) and the easing gate reports no keyframes.
+**Data-type labels (R10A).** The label glyphs (`L T E G 3 4 5 +`) are traced filled cubic contours
+at cap **71.4** from `label-glyphs-regular.jpg`; the `+` shape comes from the r4 SF strip and is
+flagged. Label group ink widths are LTE **143.727**, 4G **118.513**, 5G **116.921**, 3G **115.484**,
+E **43.714**, G **56.138**, 5G+ **178.899** units. The trace acceptance is min IoU **0.98573** (max
+deviation **0.240 px**). The label digits come from the label sheet, never from the battery-digit
+table (no battery digits in labels). Provenance:
+`.pm/out-r10/trace/battery/acceptance.md`.
+
+**Scene build (R10A).** `rive rive/ios --once` with **Rive 1.8.0** (temporary `update-check` minimum
+1.8.0 and an isolated `RIVE_BASE_URL`) produces **39,759 bytes**, sha256
+`fe5034a4c735072b40c56a5cf808cde1c0a886f2fa2a4d682b72df77ca3bdf1b`; a second build is
+byte-identical and `app/src/main/res/raw/ios.riv` is that copy. The standalone
+`generated-r10-digits.rml` is a fragment, so it is kept out of the project directory during the
+directory build (the scene already contains its content). Rive 1.9.1 `--verify` passes
+(`tools/check-rive-shipped.sh`, pin updated) and the easing gate reports 0 keyframes. The
+`IosDigits` artboard width is 535.641 (20 + 515.641) and its height stays 160.
 
 **Representation limits (not runtime mismatches).** The scene keeps a fixed remainder/nub opacity of
 0.50 (light ink); the dark-ink 0.30 rule has no Rive property and stays runtime-only, as before. The
-inline bolt is a sample hole because RML cannot clear pixels; its 40 x 59 geometry is exact. Curves are
-flattened as noted above; the skeleton endpoints and extrema (so the ink bbox, stroke and advance) are
-exact.
+inline bolt is a sample hole because RML cannot clear pixels; its 40 x 59 geometry is exact. Digit
+contours are now stored as cubics, not flattened.
 
 ## UNVERIFIED / caveats
 

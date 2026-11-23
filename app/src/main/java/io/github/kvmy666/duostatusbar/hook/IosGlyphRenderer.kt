@@ -199,11 +199,12 @@ internal object IosGlyphRenderer {
     }
 
     /**
-     * Draws the percentage digits as stroke skeletons, plus the optional inline bolt.
+     * Draws the percentage digits as traced filled even-odd contours, plus the optional inline bolt.
      *
      * [solid] is the red-critical rule: solid white digits and, when present, the inline bolt is
-     * solid white too (no layer). Otherwise the digits and the inline bolt are CLEAR strokes/holes so
-     * the real background shows through, and the digits shift left to make room for the 40 x 59 bolt
+     * solid white too (no layer). Otherwise the digit ink band and the inline bolt are CLEAR fills
+     * so the real background shows through; glyph counters stay body ink because they are holes of
+     * the even-odd path, not cleared areas. The digits shift left to make room for the 40 x 59 bolt
      * at the measured 5-unit gap.
      */
     private fun drawPercentInside(canvas: Canvas, v: IosVisual, solid: Boolean, alpha: Float) {
@@ -218,24 +219,22 @@ internal object IosGlyphRenderer {
         val group = IosDigits.groupWidth(text, withBolt = hasBolt)
         val left = centreX - group / 2f
 
+        // ONE even-odd filled path for the whole percentage: a glyph is placed at its pen and the
+        // pen walks the measured ink-left advance.
         val digits = Path().apply {
-            var pen = left - IosDigits.bearing(IosDigits.glyph(text.first()))
+            fillType = Path.FillType.EVEN_ODD
+            var pen = left
             for (ch in text) {
                 val glyph = IosDigits.glyph(ch)
-                addPath(IosDigits.buildPath(glyph, pen + IosDigits.bearing(glyph), textTop))
+                addPath(IosDigits.buildPath(glyph, pen, textTop))
                 pen += glyph.advance
             }
         }
 
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = IosDigits.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         if (solid) {
-            stroke.color = withAlpha(Color.WHITE, 1f, alpha)
-            canvas.drawPath(digits, stroke)
+            fill.color = withAlpha(Color.WHITE, 1f, alpha)
+            canvas.drawPath(digits, fill)
             if (hasBolt) {
                 // Red critical keeps the inline bolt too, as solid white at the same measured seat.
                 val boltX = left + textWidth + IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W / 2f
@@ -248,8 +247,8 @@ internal object IosGlyphRenderer {
             return
         }
 
-        stroke.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-        canvas.drawPath(digits, stroke)
+        fill.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        canvas.drawPath(digits, fill)
         if (hasBolt) {
             val boltX = left + textWidth + IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W / 2f
             val clear = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -317,62 +316,24 @@ internal object IosGlyphRenderer {
     }
 
     /**
-     * Draws a data-type label ("LTE", "4G", ...) in the Wi-Fi artboard: letters and the plus are
-     * filled WINDING outlines (closed, clockwise contours that union without seams), the 3/4/5 digits
-     * are the R9 [IosDigits] stroke skeletons scaled to [IosGeometry.DataLabel.CAP_HEIGHT] and drawn
-     * with the round-cap digit stroke. There is no font and no bitmap. The group ink starts at the
-     * artboard margin and is centred by the caller's CONTAIN fit; the cap box top is
-     * [IosGeometry.DataLabel.TOP]. An unsupported label is not drawn here (the dispatch in [drawWifi]
-     * checks [IosGeometry.DataLabel.supports] first).
+     * Draws a data-type label ("LTE", "4G", ...) in the Wi-Fi artboard: every character is the
+     * measured R10 [IosLabelGlyphs] set of closed cubic contours, drawn as one
+     * [Path.FillType.EVEN_ODD] filled path at its pen. The ink-left pen starts at
+     * [IosGeometry.Wifi.ARTBOARD_MARGIN] and advances by each measured advance; the cap box top is
+     * [IosGeometry.DataLabel.TOP]. There is no font, no bitmap and no stroke. An unsupported label
+     * is not drawn here (the dispatch in [drawWifi] checks [IosGeometry.DataLabel.supports] first).
      */
     private fun drawDataLabel(canvas: Canvas, label: String, alpha: Float, tint: Int) {
         val d = IosGeometry.DataLabel
-        val first = label.firstOrNull() ?: return
-        val colour = withAlpha(tint, 1f, alpha)
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
-            color = colour
+            color = withAlpha(tint, 1f, alpha)
         }
-        val digitStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            // The digit path is scaled by DIGIT_SCALE below; pre-dividing keeps the drawn digit
-            // stroke exactly the label stroke, matching G/L/T/E.
-            strokeWidth = d.STROKE / d.DIGIT_SCALE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            color = colour
-        }
-
-        val top = d.TOP
-        var pen = IosGeometry.Wifi.ARTBOARD_MARGIN - d.bearing(first)
+        var pen = IosGeometry.Wifi.ARTBOARD_MARGIN
         for (ch in label) {
-            val glyphLeft = pen + d.bearing(ch)
-            if (d.isDigit(ch)) {
-                val saved = canvas.save()
-                try {
-                    canvas.translate(glyphLeft, top)
-                    canvas.scale(d.DIGIT_SCALE, d.DIGIT_SCALE)
-                    canvas.drawPath(IosDigits.buildPath(IosDigits.glyph(ch), 0f, 0f), digitStroke)
-                } finally {
-                    canvas.restoreToCount(saved)
-                }
-            } else {
-                val path = Path().apply {
-                    fillType = Path.FillType.WINDING
-                    for (contour in d.outlines(ch)) {
-                        if (contour.size < 6) continue
-                        moveTo(glyphLeft + contour[0], top + contour[1])
-                        var i = 2
-                        while (i < contour.size) {
-                            lineTo(glyphLeft + contour[i], top + contour[i + 1])
-                            i += 2
-                        }
-                        close()
-                    }
-                }
-                canvas.drawPath(path, fill)
-            }
-            pen += d.advance(ch)
+            val glyph = IosLabelGlyphs.glyph(ch) ?: continue
+            canvas.drawPath(IosLabelGlyphs.buildPath(glyph, pen, d.TOP), fill)
+            pen += glyph.advance
         }
     }
 

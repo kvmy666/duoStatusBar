@@ -70,28 +70,13 @@ class IosDataLabelRasterTest {
         val out = File(dir)
         out.mkdirs()
 
-        // Per-glyph masks at 10x the reference cap (360 px). The letters use their measured
-        // reference stroke so the comparison is weight-normalised; G weight 1 is the measured
-        // reference letterform and G bold is the shipping digit weight. Digits are fixed-weight.
+        // Per-glyph masks at 10x the reference cap (360 px), from the shipping traced contours.
         val cap = 360
-        val d = IosGeometry.DataLabel
-        // Per-letter measured reference strokes (px at cap 36): L stem ~6, T/E/+ ~5.
-        val glyphStrokes = mapOf(
-            'L' to 5.8f / 36f * d.CAP_HEIGHT,
-            'T' to 5.0f / 36f * d.CAP_HEIGHT,
-            'E' to 5.0f / 36f * d.CAP_HEIGHT,
-            '+' to 5.0f / 36f * d.CAP_HEIGHT,
-            'G' to d.G_REFERENCE_STEM_STROKE
-        )
         for (ch in listOf('L', 'T', 'E', 'G', '+', '3', '4', '5')) {
-            val weight = glyphStrokes[ch] ?: d.STROKE
-            val bitmap = glyphBitmap(ch, cap, weight)
-            write(bitmap, File(out, "r4-glyph-${glyphTag(ch)}-refweight-v3.png"))
+            val bitmap = glyphBitmap(ch, cap)
+            write(bitmap, File(out, "r4-glyph-${glyphTag(ch)}-traced-v3.png"))
             bitmap.recycle()
         }
-        val boldG = glyphBitmap('G', cap, d.STROKE)
-        write(boldG, File(out, "r4-glyph-g-bold-v3.png"))
-        boldG.recycle()
 
         // Every label that contains G, at the production 80x50 slot (4x supersample), light + dark.
         for (label in listOf("4G", "5G", "5G+", "3G")) {
@@ -113,13 +98,13 @@ class IosDataLabelRasterTest {
         familyDark.recycle()
     }
 
-    /** One glyph, supersampled at [capPx] with transparent background, in design-unit scaling. */
-    private fun glyphBitmap(ch: Char, capPx: Int, stroke: Float): Bitmap {
+    /** One traced label glyph, supersampled at [capPx] with transparent background. */
+    private fun glyphBitmap(ch: Char, capPx: Int): Bitmap {
         val d = IosGeometry.DataLabel
+        val glyph = IosLabelGlyphs.glyph(ch) ?: error("$ch has no label glyph")
         val scale = capPx / d.CAP_HEIGHT
-        val inkW = if (d.isDigit(ch)) IosDigits.glyph(ch).width * d.DIGIT_SCALE else d.inkWidth(ch)
         val pad = 8f
-        val bw = ((inkW + 2f * pad) * scale).toInt()
+        val bw = ((glyph.width + 2f * pad) * scale).toInt()
         val bh = ((d.CAP_HEIGHT + 2f * pad) * scale).toInt()
         val bitmap = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -130,34 +115,7 @@ class IosDataLabelRasterTest {
         val saved = canvas.save()
         try {
             canvas.scale(scale, scale)
-            if (d.isDigit(ch)) {
-                // R9: the label digits are the stroke skeletons, not filled contours.
-                val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    style = Paint.Style.STROKE
-                    strokeWidth = d.STROKE / d.DIGIT_SCALE
-                    strokeCap = Paint.Cap.ROUND
-                    strokeJoin = Paint.Join.ROUND
-                    color = Color.BLACK
-                }
-                canvas.translate(pad, pad)
-                canvas.scale(d.DIGIT_SCALE, d.DIGIT_SCALE)
-                canvas.drawPath(IosDigits.buildPath(IosDigits.glyph(ch), 0f, 0f), stroke)
-            } else {
-                val path = android.graphics.Path().apply {
-                    fillType = android.graphics.Path.FillType.WINDING
-                    for (contour in d.outlines(ch, stroke)) {
-                        if (contour.size < 6) continue
-                        moveTo(pad + contour[0], pad + contour[1])
-                        var i = 2
-                        while (i < contour.size) {
-                            lineTo(pad + contour[i], pad + contour[i + 1])
-                            i += 2
-                        }
-                        close()
-                    }
-                }
-                canvas.drawPath(path, paint)
-            }
+            canvas.drawPath(IosLabelGlyphs.buildPath(glyph, pad, pad), paint)
         } finally {
             canvas.restoreToCount(saved)
         }
@@ -231,8 +189,9 @@ class IosDataLabelRasterTest {
                 "/ `.json`: battery body H = 42.377 px = 100 units (1 px = 2.360 units, +/-0.5 px = " +
                 "+/-1.18 units). Shape/width/spacing authority remains " +
                 "`.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` (SF-style \"LTE E 4G 5G 5G+ 345\", " +
-                "light on black). The fixed bold `IosDigits` 3/4/5 are not retyped; R9 draws every " +
-                "label glyph, including the digits, at the same ${d.STROKE}-unit label stroke.\n\n"
+                "light on black). The shipped glyphs are the R10 regular-sheet traced contours; the " +
+                "plus shape is from the r4 strip, and the G/E/+ advances are extrapolated and " +
+                "flagged. The label 3/4/5 are independent label-sheet data, not the digit table.\n\n"
         )
         val cellToLabel = IosGeometry.Strip.CELL_LABEL_GAP
         val labelToBattery = IosGeometry.Strip.LABEL_BATTERY_GAP
@@ -286,52 +245,32 @@ class IosDataLabelRasterTest {
         sb.append(
             String.format(
                 Locale.US,
-                "| Stroke | %.2f | R9 label stroke = %.4f cap; the label digits pre-divide the " +
-                    "paint by DIGIT_SCALE so they draw at the same stroke. The R5B ref-1 SF label " +
-                    "weight 11.10 (0.143 cap) is provenance only |\n",
-                d.STROKE,
-                d.STROKE / d.CAP_HEIGHT
-            )
-        )
-        sb.append(
-            String.format(
-                Locale.US,
                 "| Cap-box top | %.2f | measured ref-1 cap top (top-anchored); baseline %.2f |\n",
                 d.TOP,
                 d.TOP + d.CAP_HEIGHT
             )
         )
-        sb.append(String.format(Locale.US, "| L width | %.2f | 0.611 x cap |\n", d.inkWidth('L')))
-        sb.append(String.format(Locale.US, "| T width | %.2f | 0.806 x cap |\n", d.inkWidth('T')))
-        sb.append(String.format(Locale.US, "| E width | %.2f | 0.667 x cap |\n", d.inkWidth('E')))
-        sb.append(String.format(Locale.US, "| G width | %.2f | 0.944 x cap |\n", d.inkWidth('G')))
+        sb.append(String.format(Locale.US, "| L width | %.2f | R10 traced ink width |\n", d.inkWidth('L')))
+        sb.append(String.format(Locale.US, "| T width | %.2f | R10 traced ink width |\n", d.inkWidth('T')))
+        sb.append(String.format(Locale.US, "| E width | %.2f | R10 traced ink width |\n", d.inkWidth('E')))
+        sb.append(String.format(Locale.US, "| G width | %.2f | R10 traced ink width |\n", d.inkWidth('G')))
         sb.append(
             String.format(
                 Locale.US,
-                "| + width | %.2f | 0.750 x cap square (measured height; reference width 0.778) |\n",
+                "| + width | %.2f | r4 strip shape, flagged |\n",
                 d.inkWidth('+')
             )
         )
+        sb.append(String.format(Locale.US, "| L advance | %.2f | measured |\n", d.advance('L')))
+        sb.append(String.format(Locale.US, "| T advance | %.2f | measured |\n", d.advance('T')))
+        sb.append(String.format(Locale.US, "| E advance | %.2f | extrapolated |\n", d.advance('E')))
+        sb.append(String.format(Locale.US, "| G advance | %.2f | extrapolated |\n", d.advance('G')))
+        sb.append(String.format(Locale.US, "| + advance | %.2f | extrapolated |\n", d.advance('+')))
         sb.append(
             String.format(
                 Locale.US,
-                "| Digit scale | %.4f | cap / %s |\n",
-                d.DIGIT_SCALE,
-                IosDigits.CAP_HEIGHT
-            )
-        )
-        sb.append(
-            String.format(
-                Locale.US,
-                "| Letter side bearing | %.3f | 0.04 x cap (measured T..E 0.083 cap gap) |\n",
-                d.bearing('L')
-            )
-        )
-        sb.append(
-            String.format(
-                Locale.US,
-                "| Plus side bearing | %.3f | 0.06 x cap (G bearing 0.04 -> G..+ gap 0.10 cap) |\n",
-                d.bearing('+')
+                "| 5G group | %.3f | ink-left sum |\n",
+                d.widthOf("5G")
             )
         )
         sb.append(
@@ -388,14 +327,10 @@ class IosDataLabelRasterTest {
         sb.append(
             String.format(
                 Locale.US,
-                "\nHeight-limited (4G, 5G, 3G, E): geometric cap %.2f px (1x) = %.3f x the " +
-                    "%.2f-unit Wi-Fi ink. 5G+ is WIDTH-limited (artboard %.2f): geometric cap %.2f px, " +
-                    "~0.63 of the Wi-Fi ink (measured ink ratio in the table is slightly higher because " +
-                    "anti-aliasing adds ~1 px per edge). At the measured cap LTE is width-limited too " +
-                    "(artboard ~176.3), at ~0.72 of the Wi-Fi ink. The shrink is the 80x50 slot " +
-                    "constraint caused by honoring the measured 0.750-cap plus and the measured cap, " +
-                    "not a geometry bug; the alternative is a smaller plus (~0.49-0.51 cap) or cap, " +
-                    "closer to the constant cap but deviating from the reference. " +
+                "\nHeight-limited (LTE, 4G, 5G, 3G, E): geometric cap %.2f px (1x) = %.3f x the " +
+                    "%.2f-unit Wi-Fi ink. 5G+ is WIDTH-limited (artboard %.2f): geometric cap %.2f px. " +
+                    "The shrink is the 80x50 slot constraint caused by the measured group widths, " +
+                    "not a geometry bug. " +
                     "Geometric Wi-Fi ink %.2f units; measured Wi-Fi ink %.2f px.\n\n",
                 d.CAP_HEIGHT * heightScale4x / ss,
                 d.CAP_HEIGHT / wifiInkHeight,
@@ -407,11 +342,11 @@ class IosDataLabelRasterTest {
             )
         )
 
-        sb.append("## Digit widths vs the reference (IosDigits is not retyped)\n\n")
-        sb.append("| Digit | Reference / cap | IosDigits / cap | Ratio |\n|---|---:|---:|---:|\n")
+        sb.append("## Label digit widths vs the reference (independent label-sheet data)\n\n")
+        sb.append("| Digit | Reference / cap | label / cap | Ratio |\n|---|---:|---:|---:|\n")
         val referenceDigit = mapOf('3' to 25f / 36f, '4' to 27f / 36f, '5' to 24f / 36f)
         for (ch in charArrayOf('3', '4', '5')) {
-            val ours = IosDigits.glyph(ch).width / IosDigits.CAP_HEIGHT
+            val ours = d.inkWidth(ch) / d.CAP_HEIGHT
             val ref = referenceDigit.getValue(ch)
             sb.append(
                 String.format(Locale.US, "| %c | %.4f | %.4f | %.3f |%n", ch, ref, ours, ours / ref)
@@ -426,15 +361,12 @@ class IosDataLabelRasterTest {
                 "weight 11.10 (0.143 cap, provenance), cell->label / label->battery ink gaps 52.07 / " +
                 "54.04. The battery remainder (0.4975) and cap (0.5021) alphas confirm 0.50. " +
                 "UNVERIFIED: `Cell.INACTIVE_ALPHA` (ref 1 has all four bars and dots active) and the " +
-                "battery cap W/H (low confidence, outside this change). R9: the shipping label " +
-                "stroke is ${d.STROKE} = ${d.STROKE / d.CAP_HEIGHT} cap; the 3/4/5, the letters, " +
-                "the plus and the G all draw at that one weight, and the label digits use letter " +
-                "spacing instead of the battery's tabular advance cell; " +
-                "`IosLabelStrokeWeightTest` measures the rendered glyphs. The plus uses the " +
-                "measured 0.750 height as an equal-arm square, " +
-                "so 5G+ is width-limited at the 80x50 slot; at the measured cap LTE is width-limited " +
-                "too, while 4G/5G/3G/E stay height-limited. This is a slot constraint, not a " +
-                "geometry bug. Owner/device review required.\n"
+                "battery cap W/H (low confidence, outside this change). R10: every label glyph is a " +
+                "measured filled traced contour drawn even-odd at its ink-left pen; there is no label " +
+                "stroke constant and the label 3/4/5 are independent of the percentage digits. The " +
+                "plus shape comes from the r4 strip and the G/E/+ advances are extrapolated. " +
+                "5G+ is width-limited at the 80x50 slot while LTE/4G/5G/3G/E stay height-limited. " +
+                "Owner/device review required.\n"
         )
         return sb.toString()
     }
@@ -482,24 +414,17 @@ class IosDataLabelRasterTest {
         val left = -group / 2f
         val top = -IosDigits.CAP_HEIGHT / 2f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = IosDigits.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
+            style = Paint.Style.FILL
             this.color = colour
         }
         val saved = canvas.save()
         try {
             canvas.translate(centreX, centreY)
             canvas.scale(scale, scale)
-            val first = IosDigits.glyph(text.first())
-            var pen = left - IosDigits.bearing(first)
+            var pen = left
             for (ch in text) {
                 val glyph = IosDigits.glyph(ch)
-                canvas.drawPath(
-                    IosDigits.buildPath(glyph, pen + IosDigits.bearing(glyph), top),
-                    paint
-                )
+                canvas.drawPath(IosDigits.buildPath(glyph, pen, top), paint)
                 pen += glyph.advance
             }
         } finally {

@@ -82,6 +82,14 @@ class IosIconOrderTest {
     }
 
     @Test
+    fun `activation schedules only on the first activation or a slot-order change`() {
+        assertTrue(IosIconOrder.shouldScheduleOnActivate(wasActive = false, changed = false))
+        assertTrue(IosIconOrder.shouldScheduleOnActivate(wasActive = false, changed = true))
+        assertTrue(IosIconOrder.shouldScheduleOnActivate(wasActive = true, changed = true))
+        assertFalse(IosIconOrder.shouldScheduleOnActivate(wasActive = true, changed = false))
+    }
+
+    @Test
     fun `moved index is after the last mobile once wifi is removed`() {
         assertEquals(2, IosIconOrder.movedIndex(listOf("wifi", "mobile", "mobile", "battery")))
         assertEquals(1, IosIconOrder.movedIndex(listOf("mobile", "wifi", "battery")))

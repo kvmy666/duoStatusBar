@@ -140,17 +140,16 @@ class IosDigitEvidenceTest {
         return pixels.count { Color.alpha(it) > 8 }
     }
 
-    /** The R9 stroke metrics, 2dp, so the evidence names the actual runtime source. */
+    /** The R10 traced digit metrics, 2dp, so the evidence names the actual runtime source. */
     private fun shippedJson(): String {
         val out = StringBuilder()
-        out.append("{\"cap\":").append(f(IosDigits.CAP_HEIGHT))
-            .append(",\"stroke\":").append(f(IosDigits.STROKE))
-            .append(",\"advance\":").append(f(IosDigits.ADVANCE)).append(",\"digits\":[")
+        out.append("{\"cap\":").append(f(IosDigits.CAP_HEIGHT)).append(",\"digits\":[")
         for (ch in '0'..'9') {
             val glyph = IosDigits.glyph(ch)
             if (ch != '0') out.append(',')
             out.append("{\"d\":").append(ch).append(",\"width\":").append(f(glyph.width))
-                .append(",\"advance\":").append(f(glyph.advance)).append("}")
+                .append(",\"advance\":").append(f(glyph.advance))
+                .append(",\"advanceMeasured\":").append(glyph.advanceMeasured).append("}")
         }
         out.append("]}")
         return out.toString()

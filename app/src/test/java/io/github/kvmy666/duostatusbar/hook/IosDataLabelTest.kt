@@ -16,18 +16,16 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.security.MessageDigest
+import kotlin.math.min
 
 /**
- * R5B data-type label: the contract, the measured ref-1 metrics, and the rendered ink at the
- * production Wi-Fi path (`IosDrawables.create(WIFI, ..., 80, 50, relativeSize = true)`, 4x
- * supersample).
+ * R10 data-type label contract: the measured glyph metrics, the ink-left group widths and the
+ * rendered ink at the production Wi-Fi path (`IosDrawables.create(WIFI, ..., 80, 50,
+ * relativeSize = true)`, 4x supersample).
  *
- * Ref 1 (`.pm/ref/r5/1-real-iphone-5g-dual.jpg`, sha256 `0e009673…`, dark, dual-SIM) is the first
- * real iOS capture of the label (5G). It fixes the cap (77.69), the top-anchored [TOP] (14.95), the
- * baseline (92.64) and the R5B provenance weight (11.1). R6 item 3 raised the label weight to 15.54
- * (0.200 cap) so every glyph matched the battery digits; R9 sets the shipping stroke to 13.6
- * (0.19 cap). The SF strip
- * `.pm/ref/r4/5-sf-labels-LTE-E-4G-5G-5Gplus.jpg` stays the shape/width authority.
+ * The shapes/widths/advances are the R10 regular-sheet trace (`R10Glyphs.LABELS`); the plus shape is
+ * from the r4 SF strip and its advance is extrapolated, as are the `G` and `E` advances. The label
+ * digits are independent data from the percentage [IosDigits] table.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -70,14 +68,13 @@ class IosDataLabelTest {
         assertTrue("default WIFI drew no ink", inkCount(bitmap) > 0)
         assertTrue("explicit WIFI drew no ink", inkCount(render(explicit)) > 0)
 
-        // Golden baseline of the default Wi-Fi render through the production path
+        // Golden baseline of the restored 2.0.6 Wi-Fi render through the production path
         // (IosDrawables.create(WIFI, ..., 80*4, 50*4, relativeSize = true), 4x supersample,
-        // transparent background). Any change to the Wi-Fi glyph or its fit fails here; the V2 label
-        // work must not move it.
-        assertEquals("Wi-Fi 4x ink bbox", "78,43,243,162", rawInkBox(bitmap))
+        // transparent background). A change to the Wi-Fi glyph or its fit fails here.
+        assertEquals("Wi-Fi 4x ink bbox", "77,39,244,162", rawInkBox(bitmap))
         assertEquals(
             "Wi-Fi alpha channel SHA-256",
-            "710fd75efaf079bf694996e53c1f8a2b8ce51cd61e5136ebea95fbeda0afb10a",
+            "4d1f3883bf5ebac169f192d17428651edead76107eb9ce9bf39f785b35104373",
             alphaSha256(bitmap)
         )
 
@@ -127,7 +124,7 @@ class IosDataLabelTest {
     fun `supports accepts only the measured labels`() {
         val d = IosGeometry.DataLabel
         assertEquals(listOf("LTE", "4G", "5G", "5G+", "3G", "E", "G"), d.LABELS)
-        assertTrue("G is the measured outline and must be supported", d.supports("G"))
+        assertTrue("G is the measured traced glyph and must be supported", d.supports("G"))
         for (label in d.LABELS) assertTrue(label, d.supports(label))
         for (label in listOf("", "L", "WIFI", "lte", "5G++", "NR", "H+")) {
             assertFalse("$label must be unsupported", d.supports(label))
@@ -137,7 +134,7 @@ class IosDataLabelTest {
     }
 
     @Test
-    fun `cap matches the R9 measured label`() {
+    fun `cap matches the R10 measured label`() {
         val tallest = IosGeometry.Cell.SINGLE_BAR_HEIGHTS.max()
         val d = IosGeometry.DataLabel
         assertEquals(71.4f, d.CAP_HEIGHT, 0.01f)
@@ -147,7 +144,7 @@ class IosDataLabelTest {
     }
 
     @Test
-    fun `top is pinned to the R9 label and not centred on the Wi-Fi ink`() {
+    fun `top is pinned to the measured label and not centred on the Wi-Fi ink`() {
         val d = IosGeometry.DataLabel
         assertEquals(17.4f, d.TOP, 0.01f)
         assertEquals("baseline", 88.8f, d.TOP + d.CAP_HEIGHT, 0.02f)
@@ -155,130 +152,68 @@ class IosDataLabelTest {
         val capCentre = d.TOP + d.CAP_HEIGHT / 2f
         assertEquals("cap centre - body centre", 2.1f, capCentre - bodyCentre, 0.05f)
 
-        // The old centre-on-Wi-Fi formula gives 9.54 at this cap; a regression to it must fail here.
+        // The old centre-on-Wi-Fi formula gives 12.68 at this cap; a regression must fail here.
         val wifiInkTop = IosGeometry.Wifi.ARTBOARD_MARGIN
         val wifiInkBottom = IosGeometry.Wifi.ARTBOARD_H - IosGeometry.Wifi.ARTBOARD_MARGIN
         val centringTop = wifiInkTop + (wifiInkBottom - wifiInkTop - d.CAP_HEIGHT) / 2f
         assertEquals("the centring formula is 12.68", 12.68f, centringTop, 0.05f)
         assertTrue("TOP must not be the Wi-Fi-centred formula", kotlin.math.abs(d.TOP - centringTop) > 1f)
+    }
 
-        assertEquals(13.6f, d.STROKE, 0.01f)
-        assertEquals("stroke / cap", 0.1905f, d.STROKE / d.CAP_HEIGHT, 0.0005f)
-        // The renderer pre-divides the digit paint by DIGIT_SCALE, so the scaled label digit
-        // stroke is exactly the label stroke (0.19 cap), not the battery digit run-stroke.
-        assertEquals(
-            "label digit stroke / cap",
-            0.1905f,
-            (d.STROKE / d.DIGIT_SCALE) * d.DIGIT_SCALE / d.CAP_HEIGHT,
-            0.0005f
+    @Test
+    fun `label glyphs use the measured traced widths and advances`() {
+        val d = IosGeometry.DataLabel
+        val widths = mapOf(
+            'L' to 42.522f,
+            'T' to 53.516f,
+            'E' to 43.714f,
+            'G' to 56.138f,
+            '+' to 52.688f
         )
+        val advances = mapOf(
+            'L' to 37.488f,
+            'T' to 62.525f,
+            'E' to 52.987f,
+            'G' to 65.428f,
+            '+' to 61.961f
+        )
+        for ((ch, width) in widths) {
+            assertEquals("$ch ink width", width, d.inkWidth(ch), 0.001f)
+            assertEquals("$ch traced ink width", width, IosLabelGlyphs.inkWidth(ch), 0.001f)
+        }
+        for ((ch, advance) in advances) {
+            assertEquals("$ch advance", advance, d.advance(ch), 0.001f)
+            assertEquals("$ch traced advance", advance, IosLabelGlyphs.advance(ch), 0.001f)
+        }
+        assertEquals("ink-left bearing is zero", 0f, d.bearing('+'), 0.0001f)
     }
 
     @Test
-    fun `letters use the measured reference widths and the plus is a square`() {
-        val d = IosGeometry.DataLabel
-        val c = d.CAP_HEIGHT
-        // Measured ink widths / reference cap 36: L 22, T 29, E 24; R9 G 0.847 cap.
-        assertEquals(22f / 36f, d.inkWidth('L') / c, 0.0001f)
-        assertEquals(29f / 36f, d.inkWidth('T') / c, 0.0001f)
-        assertEquals(24f / 36f, d.inkWidth('E') / c, 0.0001f)
-        assertEquals(0.847f, d.inkWidth('G') / c, 0.001f)
-        // Equal arms use the measured plus HEIGHT 27/36 = 0.750 (the reference width is 28/36 = 0.778).
-        assertEquals(27f / 36f, d.inkWidth('+') / c, 0.0001f)
-        assertEquals("plus side bearing", 0.06f, d.bearing('+') / c, 0.0001f)
+    fun `G is one traced contour with an open counter`() {
+        val glyph = IosLabelGlyphs.glyph('G')!!
+        assertEquals("G traced contours", 1, glyph.contours.size)
+        assertEquals("G ink width", 56.138f, glyph.width, 0.001f)
+        val path = IosLabelGlyphs.buildPath(glyph, 0f, 0f)
+        assertEquals("G fill type", Path.FillType.EVEN_ODD, path.fillType)
 
-        // The plus is two equal-arm rectangles: the horizontal and vertical spans are identical, and
-        // the arm thickness is the common STROKE.
-        val arms = d.outlines('+')
-        assertEquals("plus has two rectangles", 2, arms.size)
-        val boxes = arms.map { bbox(it) }
-        val horizontal = boxes.maxByOrNull { it.width }!!
-        val vertical = boxes.maxByOrNull { it.height }!!
-        assertEquals("plus arms have equal span", horizontal.width, vertical.height, 0.0001f)
-        assertEquals("horizontal arm thickness", d.STROKE, horizontal.height, 0.0001f)
-        assertEquals("vertical arm thickness", d.STROKE, vertical.width, 0.0001f)
-        assertEquals("plus is square", d.inkWidth('+'), d.CAP_HEIGHT * 0.75f, 0.0001f)
-    }
-
-    @Test
-    fun `G v3 has the measured bar, right stem and open upper aperture`() {
-        val d = IosGeometry.DataLabel
-        val c = d.CAP_HEIGHT
-        val w = d.inkWidth('G')
-        val outlines = d.outlines('G')
-        assertEquals("G = band + stem + bar", 3, outlines.size)
-
-        val rects = outlines.drop(1).map { bbox(it) }
-        // Bar at the measured centre (0.5102 C) and measured reference half thickness (0.06288 C),
-        // scaled by the production weight; its inner end reaches into the counter at 0.60653 W.
-        val weight = d.STROKE / d.G_REFERENCE_STEM_STROKE
-        val bar = rects.maxByOrNull { it.width }!!
-        assertEquals("bar centre", 0.5102f * c, (bar.top + bar.bottom) / 2f, 0.01f)
-        assertEquals("bar thickness", 2f * 0.06288f * c * weight, bar.height, 0.02f)
-        assertEquals("bar inner end", 0.60653f * w, bar.left, 0.02f)
-        assertEquals("bar reaches the right ink edge", w, bar.right, 0.01f)
-
-        // Right stem: exactly the digit stroke wide, from the bar down to the measured slanted
-        // bottom (0.97497 C on the left, 0.92007 C on the right). This is the stroke a C lacks.
-        val stem = rects.maxByOrNull { it.height }!!
-        assertEquals("stem width is the digit stroke", w - d.STROKE, stem.left, 0.02f)
-        assertEquals("stem right edge", w, stem.right, 0.01f)
-        assertEquals("stem starts at the bar", bar.top, stem.top, 0.01f)
-        assertEquals("stem bottom", 0.97497f * c, stem.bottom, 0.02f)
-
-        // The weight-1 rebuild is the measured reference letterform: bar y 0.4473..0.5731 C,
-        // inner end 0.60653 W, stem left 0.84951 W and bottom 0.97497 C.
-        val reference = d.outlines('G', d.G_REFERENCE_STEM_STROKE).drop(1).map { bbox(it) }
-        val refBar = reference.maxByOrNull { it.width }!!
-        assertEquals(0.5102f * c - 0.06288f * c, refBar.top, 0.01f)
-        assertEquals(0.5102f * c + 0.06288f * c, refBar.bottom, 0.01f)
-        assertEquals(0.60653f * w, refBar.left, 0.01f)
-        val refStem = reference.maxByOrNull { it.height }!!
-        assertEquals(0.84951f * w, refStem.left, 0.01f)
-        assertEquals("reference stem is the reference stroke", d.G_REFERENCE_STEM_STROKE, w - refStem.left, 0.01f)
-        assertEquals(0.97497f * c, refStem.bottom, 0.01f)
-
-        // The counter is not closed (no holes), the upper-right aperture is open, and the right
-        // stem is inked below the bar. A C would be transparent at the stem pixel and a "G with a
-        // glued corner" fails the bar/stem geometry above.
+        // The counter opens to the right, so the traced single contour encloses no background.
         val bitmap = renderGlyph('G')
         assertEquals("G must not have a closed counter", 0, enclosedBackgroundPixels(bitmap))
-        val apertureX = (glyphPad + 0.87f * w).toInt()
-        val apertureY = (glyphPad + 0.35f * c).toInt()
-        assertEquals("G upper-right aperture is not open", 0, Color.alpha(bitmap.getPixel(apertureX, apertureY)))
-        val stemX = (glyphPad + 0.93f * w).toInt()
-        val stemY = (glyphPad + 0.70f * c).toInt()
-        assertTrue(
-            "G right stem must be inked below the bar (a C is not)",
-            Color.alpha(bitmap.getPixel(stemX, stemY)) > 8
-        )
-
     }
 
     @Test
-    fun `label digits keep the IosDigits ink width but use letter spacing`() {
+    fun `label digits come from the label sheet and keep its advances`() {
         val d = IosGeometry.DataLabel
-        val scale = d.CAP_HEIGHT / IosDigits.CAP_HEIGHT
+        val widths = mapOf('3' to 49.808f, '4' to 54.015f, '5' to 49.635f)
+        val advances = mapOf('3' to 59.346f, '4' to 62.375f, '5' to 60.783f)
         for (ch in charArrayOf('3', '4', '5')) {
-            val glyph = IosDigits.glyph(ch)
-            assertEquals("$ch width", glyph.width * scale, d.inkWidth(ch), 0.0001f)
-            // R9 letter spacing: the digit advance is its ink width plus the label's letter side
-            // bearing on both sides, not the battery's equal 64.3-unit tabular cell.
-            assertEquals(
-                "$ch advance",
-                d.inkWidth(ch) + 2f * d.bearing('L'),
-                d.advance(ch),
-                0.0001f
-            )
-            assertEquals("$ch bearing", d.bearing('L'), d.bearing(ch), 0.0001f)
-            assertTrue("$ch advance is narrower than the battery cell", d.advance(ch) < glyph.advance * scale)
-            assertTrue("$ch must be a scaled digit", d.isDigit(ch))
+            assertEquals("$ch width", widths.getValue(ch), d.inkWidth(ch), 0.001f)
+            assertEquals("$ch advance", advances.getValue(ch), d.advance(ch), 0.001f)
         }
-        // The 5G group is the R9 letter-spaced target: 5 ink + letter gap + G ink.
-        assertEquals(117.94f, d.widthOf("5G")!!, 0.01f)
-        assertTrue(
-            "the label set must exercise the digit path",
-            d.LABELS.any { label -> label.any { d.isDigit(it) } }
+        assertEquals(116.921f, d.widthOf("5G")!!, 0.02f)
+        assertFalse(
+            "label 5 must not reuse the digit 5 width",
+            kotlin.math.abs(R10Glyphs.LABELS.getValue('5').width - R10Glyphs.DIGITS.getValue('5').width) < 0.5f
         )
     }
 
@@ -305,57 +240,37 @@ class IosDataLabelTest {
             val byWidth = innerW4x / artboard
             val byHeight = heightScale4x
             val scale4x = minOf(byWidth, byHeight)
-            val expectedCap1x = IosGeometry.DataLabel.CAP_HEIGHT * scale4x / ss
+            val traced = tracedLabelBox(label)
+            val expectedHeight1x = traced.height * scale4x / ss
             val ratioToWifi = ink.height / wifiInk.height
 
             // 4x supersampling adds ~2 px of anti-aliased fringe per edge, so allow ~0.7 px (1x)
-            // slack on the small cap; the exact ratio is pinned in the constants test above.
+            // slack on the small cap; the exact traced height is pinned separately.
             assertEquals(
-                "$label rendered cap in 1x pixels (byWidth $byWidth vs byHeight $byHeight)",
-                expectedCap1x,
+                "$label rendered traced ink height in 1x pixels (byWidth $byWidth vs byHeight $byHeight)",
+                expectedHeight1x,
                 ink.height,
                 0.7f
             )
-            // At the R9 cap the 80x50 inner box (50.25 x 31.25 px at 1x) no longer fits every label
-            // at its height-limited scale: LTE and 5G+ are width-limited. The ratio follows the
-            // actual CONTAIN fit and the R9 Wi-Fi ink height:
-            //   (cap / Wi-Fi ink) * min(byWidth, byHeight) / byHeight.
             val limitedByWidth = byWidth < byHeight
             val wifiInkHeight = IosGeometry.inkBox(
                 IosIconKind.WIFI,
                 baseWifiVisual()
             ).height
-            val expectedRatio = (IosGeometry.DataLabel.CAP_HEIGHT / wifiInkHeight) *
-                minOf(byWidth, byHeight) / byHeight
+            val expectedRatio = (traced.height / wifiInkHeight) * scale4x / byHeight
             assertEquals(
                 "$label ink / Wi-Fi ink at the CONTAIN fit",
                 expectedRatio,
                 ratioToWifi,
                 0.02f
             )
-            when (label) {
-                "5G+" -> {
-                    assertTrue("5G+ must be width-limited", limitedByWidth)
-                }
-                "LTE" -> {
-                    assertTrue(
-                        "LTE must be width-limited at the R9 cap " +
-                            "(byWidth $byWidth vs byHeight $byHeight)",
-                        limitedByWidth
-                    )
-                }
-                else -> {
-                    assertTrue(
-                        "$label must be height-limited (byWidth $byWidth vs byHeight $byHeight)",
-                        !limitedByWidth
-                    )
-                    assertEquals(
-                        "$label ink / Wi-Fi ink is the R9 cap ratio (AA slack)",
-                        IosGeometry.DataLabel.CAP_HEIGHT / wifiInkHeight,
-                        ratioToWifi,
-                        0.02f
-                    )
-                }
+            if (label == "5G+") {
+                assertTrue("5G+ must be width-limited", limitedByWidth)
+            } else {
+                assertTrue(
+                    "$label must be height-limited (byWidth $byWidth vs byHeight $byHeight)",
+                    !limitedByWidth
+                )
             }
             assertTrue(
                 "$label ink width ${ink.width} bleeds past the ${innerW}px inner box " +
@@ -407,46 +322,31 @@ class IosDataLabelTest {
         val height: Float get() = bottom - top
     }
 
-    private fun bbox(contour: FloatArray): Box {
-        var minX = Float.MAX_VALUE
-        var minY = Float.MAX_VALUE
-        var maxX = -Float.MAX_VALUE
-        var maxY = -Float.MAX_VALUE
-        var i = 0
-        while (i < contour.size) {
-            minX = minOf(minX, contour[i])
-            maxX = maxOf(maxX, contour[i])
-            minY = minOf(minY, contour[i + 1])
-            maxY = maxOf(maxY, contour[i + 1])
-            i += 2
+    /** The tight ink box of [label] in design units, from the same paths the renderer draws. */
+    private fun tracedLabelBox(label: String): Box {
+        val union = Path()
+        var pen = IosGeometry.Wifi.ARTBOARD_MARGIN
+        for (ch in label) {
+            val glyph = IosLabelGlyphs.glyph(ch) ?: continue
+            union.addPath(IosLabelGlyphs.buildPath(glyph, pen, IosGeometry.DataLabel.TOP))
+            pen += glyph.advance
         }
-        return Box(minX, minY, maxX, maxY)
+        val bounds = android.graphics.RectF()
+        union.computeBounds(bounds, true)
+        return Box(bounds.left, bounds.top, bounds.right, bounds.bottom)
     }
 
-    /** Rasterises one glyph outline (no digits) into a padded bitmap, 1 unit = 1 px in the ink box. */
+    /** Rasterises one label glyph into a padded bitmap, 1 unit = 1 px in the ink box. */
     private fun renderGlyph(ch: Char): Bitmap {
-        val d = IosGeometry.DataLabel
-        val w = d.inkWidth(ch)
-        val h = d.CAP_HEIGHT
+        val glyph = IosLabelGlyphs.glyph(ch) ?: error("$ch has no label glyph")
+        val w = glyph.width
+        val h = IosGeometry.DataLabel.CAP_HEIGHT
         val bw = (w + 2f * glyphPad).toInt()
         val bh = (h + 2f * glyphPad).toInt()
         val bitmap = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val path = Path().apply {
-            fillType = Path.FillType.WINDING
-            for (contour in d.outlines(ch)) {
-                if (contour.size < 6) continue
-                moveTo(glyphPad + contour[0], glyphPad + contour[1])
-                var i = 2
-                while (i < contour.size) {
-                    lineTo(glyphPad + contour[i], glyphPad + contour[i + 1])
-                    i += 2
-                }
-                close()
-            }
-        }
         canvas.drawPath(
-            path,
+            IosLabelGlyphs.buildPath(glyph, glyphPad, glyphPad),
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.FILL
                 color = Color.BLACK
