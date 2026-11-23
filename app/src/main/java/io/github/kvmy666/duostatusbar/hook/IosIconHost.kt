@@ -121,6 +121,18 @@ internal object IosAttachDecision {
         rootRoot: View?
     ): Boolean = isAttached && stripInTree && layerAttached && stripRoot != null &&
         rootRoot != null && stripRoot === rootRoot
+
+    /**
+     * R6 item 7: a live host on the same window is kept even when its strip is momentarily hidden or
+     * detached (a closing panel removes the header from the tree while the window object survives).
+     * Only a different window/identity, or a detached overlay layer (which would leave stock hidden
+     * with no drawing), may rebuild.
+     *
+     * [sameWindow] compares the root the host attached under with the one requested now, not the
+     * strip's own `rootView`: a temporarily detached strip reports itself as its root.
+     */
+    fun keepHidden(isAttached: Boolean, sameWindow: Boolean, layerAttached: Boolean): Boolean =
+        isAttached && sameWindow && layerAttached
 }
 
 /**

@@ -1601,6 +1601,14 @@ class IosIconHostTest {
     }
 
     @Test
+    fun `keepHidden keeps a live host only on the same window with an attached layer`() {
+        assertTrue(IosAttachDecision.keepHidden(isAttached = true, sameWindow = true, layerAttached = true))
+        assertFalse("nothing to keep", IosAttachDecision.keepHidden(false, true, true))
+        assertFalse("a new window/identity rebuilds", IosAttachDecision.keepHidden(true, false, true))
+        assertFalse("a detached overlay layer cannot keep stock hidden", IosAttachDecision.keepHidden(true, true, false))
+    }
+
+    @Test
     fun `a parented strip survives a transient window detach`() {
         val tree = batteryTree()
         val created = ArrayList<FakeElement>()

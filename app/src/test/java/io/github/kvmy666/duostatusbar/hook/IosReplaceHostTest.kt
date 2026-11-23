@@ -854,7 +854,7 @@ class IosReplaceHostTest {
     }
 
     @Test
-    fun `hyperos wifi and mobile replace the named leaves and blank their siblings`() {
+    fun `hyperos wifi and mobile replace the named leaves and blank their signal siblings`() {
         val tree = hyperosSignalTree(subId = 7)
         val owner = IosSizeOwner()
         val host = host(sizeOwner = owner, cellSource = { oneSimReading(7) })
@@ -867,7 +867,9 @@ class IosReplaceHostTest {
         assertEquals(24, wifi.intrinsicHeight)
         assertTrue(tree.mobileLeaf.drawable is IosCellDrawable)
         assertEquals(0, tree.wifiActivity.drawable.alpha)
-        assertEquals(0, tree.mobileType.drawable.alpha)
+        // R6 item 1: `mobile_type` is the label's native anchor, never a sibling to blank. In the
+        // Wi-Fi state there is no label, so the stock type is left exactly as the system drew it.
+        assertEquals(255, tree.mobileType.drawable.alpha)
         assertEquals(Pair(24, 24), owner.sizeFor(IosIconKind.WIFI, 24, 24))
 
         host.teardown()
@@ -896,13 +898,15 @@ class IosReplaceHostTest {
     }
 
     @Test
-    fun `wifi off with a data label keeps one visible WIFI overlay label`() {
+    fun `a hidden wifi slot defers the label to the native mobile_type anchor`() {
         IosReadings.resetForTest(
             data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
         )
         val tree = hyperosSignalTree(subId = 7)
-        // Wi-Fi off: the stock view may be hidden, but it must still be laid out so the overlay has a box.
+        // Wi-Fi off: the stock view is hidden. R6 has no overlay fallback, so the label moves to the
+        // data SIM's own `mobile_type` and replaces its drawable.
         tree.wifiOuter.visibility = View.INVISIBLE
+        val typeDrawable = tree.mobileType.drawable
         val host = host(
             cellSource = { noCellReading() },
             wifiSource = { _, _, _, _, _ ->
@@ -912,16 +916,22 @@ class IosReplaceHostTest {
 
         assertTrue(host.attachIn(tree.strip, null))
 
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
-        assertNotNull("the label needs our own overlay canvas", host.overlayForTest(IosIconKind.WIFI))
-        val visual = host.visualForTest(tree.wifiOuter)
-        assertNotNull(visual)
-        assertTrue("the label visual must be visible", visual!!.visible)
-        assertEquals(IosWifiSlot.DataType("5G"), visual.wifiSlot)
-        // The stock view stays exactly as the system left it; we never re-show it.
+        assertEquals(IosReplaceMechanism.NATIVE_LABEL, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
+        assertSame("the label is anchored on the data SIM's mobile_type", tree.mobileType,
+            host.recordOuterForTest(IosIconKind.WIFI))
+        assertTrue("the native label owns the type drawable", tree.mobileType.drawable is IosWifiDrawable)
+        assertFalse("no label canvas is added", containsCanvasView(tree.root))
+        // The stock Wi-Fi view stays exactly as the system left it; we never re-show it.
         assertEquals(View.INVISIBLE, tree.wifiOuter.visibility)
+        assertTrue(
+            host.diagnosticLines().any {
+                it.contains("label state=DataType(5G)") && it.contains("anchor=cell-type")
+            }
+        )
 
         host.teardown()
+        assertSame("the stock type drawable returns", typeDrawable, tree.mobileType.drawable)
     }
 
     @Test
@@ -991,21 +1001,22 @@ class IosReplaceHostTest {
         val kinds = host.recordKindsForTest()
         assertEquals("one Wi-Fi record", 1, kinds.count { it == IosIconKind.WIFI })
         assertEquals("one cell record", 1, kinds.count { it == IosIconKind.CELL })
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
-        assertEquals(IosIconKind.WIFI, host.overlayForTest(IosIconKind.WIFI)?.kind)
+        assertEquals(IosReplaceMechanism.NATIVE_LABEL, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull("the label lives in the native tree", host.overlayForTest(IosIconKind.WIFI))
+        assertTrue("the native label swaps the type drawable", tree.mobileType.drawable is IosWifiDrawable)
         assertEquals(IosPart.CELL, host.visualForTest(tree.mobileOuter)?.part)
 
         host.teardown()
     }
 
     @Test
-    fun `wifi off on a zero-sized oplus outer draws the label from its content box`() {
+    fun `a zero-sized oplus wifi outer draws the label on its sized content leaf`() {
         IosReadings.resetForTest(
             data = { DataLabelSample("LTE", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
         )
         // Measured OPLUS anatomy: the outer is 0x0, the icon content lives in wifi_group (73x63).
         val tree = oplusSignalTree(subId = 5)
-        tree.wifiOuter.visibility = View.INVISIBLE
+        tree.wifiOuter.visibility = View.VISIBLE
         val host = host(
             cellSource = { oneSimReading(5) },
             wifiSource = { _, _, _, _, _ ->
@@ -1015,14 +1026,12 @@ class IosReplaceHostTest {
 
         assertTrue(host.attachIn(tree.strip, null))
 
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
-        val visual = host.visualForTest(tree.wifiOuter)
-        assertEquals(IosWifiSlot.DataType("LTE"), visual?.wifiSlot)
-        val overlay = host.overlayForTest(IosIconKind.WIFI)
-        assertNotNull("the label needs an overlay canvas", overlay)
-        // The label box comes from wifi_group, not the 0x0 outer, so the canvas is drawable.
-        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.width > 0)
-        assertTrue("the label canvas must have a real box", overlay.layoutParams.height > 0)
+        // The label is our drawable on the sized wifi_signal leaf; it is never an overlay.
+        assertEquals(IosReplaceMechanism.IMAGE_DRAWABLE, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
+        assertFalse("no label canvas is added", containsCanvasView(tree.root))
+        assertTrue("the label replaces the Wi-Fi slot leaf", tree.wifiLeaf.drawable is IosWifiDrawable)
+        assertEquals(IosWifiSlot.DataType("LTE"), host.visualForTest(tree.wifiOuter)?.wifiSlot)
         // C2: no stock view is resized to make room.
         assertEquals(0, tree.wifiOuter.width)
         assertEquals(0, tree.wifiOuter.height)
@@ -1046,12 +1055,12 @@ class IosReplaceHostTest {
 
         assertTrue(host.attachIn(tree.strip, null))
 
-        // 1. Wi-Fi off + cellular data -> one WIFI overlay record drawing the label.
+        // 1. Wi-Fi off + cellular data -> one WIFI record drawing the label on the stock slot leaf.
         assertEquals(1, host.recordCountForTest())
         assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
         assertTrue("the first WIFI record is a label", host.labelSlotForTest())
-        assertNotNull("the label needs its own overlay canvas", host.overlayForTest(IosIconKind.WIFI))
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
+        assertEquals(IosReplaceMechanism.IMAGE_DRAWABLE, host.mechanismForTest(IosIconKind.WIFI))
         assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(tree.wifiOuter)?.wifiSlot)
         assertTrue(
             host.diagnosticLines().any { it.contains("label state=DataType(5G)") }
@@ -1079,7 +1088,7 @@ class IosReplaceHostTest {
 
         assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
         assertTrue("the reverse transition restores the label", host.labelSlotForTest())
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertEquals(IosReplaceMechanism.IMAGE_DRAWABLE, host.mechanismForTest(IosIconKind.WIFI))
         assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(tree.wifiOuter)?.wifiSlot)
 
         host.teardown()
@@ -1105,18 +1114,16 @@ class IosReplaceHostTest {
 
         assertTrue(host.attachIn(tree.strip, tree.root))
 
-        // Exactly one WIFI record, and it is our label overlay, not a Wi-Fi glyph.
+        // Exactly one WIFI record, and it is the native label on `mobile_type`, not a Wi-Fi glyph.
         assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
         assertTrue("the WIFI record is a label", host.labelSlotForTest())
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertEquals(IosReplaceMechanism.NATIVE_LABEL, host.mechanismForTest(IosIconKind.WIFI))
         assertSame("anchored to the data SIM's mobile_type", type, host.recordOuterForTest(IosIconKind.WIFI))
         assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(type)?.wifiSlot)
-        val overlay = host.overlayForTest(IosIconKind.WIFI)
-        assertNotNull("the label needs an overlay canvas", overlay)
-        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.width > 0)
-        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.height > 0)
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
+        assertFalse("no label canvas is added", containsCanvasView(tree.root))
 
-        // C2: no stock view was resized or re-laid out; the cell's own sibling swap blanks the type.
+        // C2: no stock view was resized or re-laid out; the label replaces the type's drawable.
         assertSame(mobileParams, tree.mobileOuter.layoutParams)
         assertEquals(mobileWidth, tree.mobileOuter.width)
         assertEquals(mobileHeight, tree.mobileOuter.height)
@@ -1124,9 +1131,8 @@ class IosReplaceHostTest {
         assertEquals(typeWidth, type.width)
         assertEquals(typeHeight, type.height)
         assertEquals(View.VISIBLE, type.visibility)
-        // Only the CELL sibling swap blanks the type's drawable; the label must not write the view.
         assertEquals(1f, type.alpha)
-        assertEquals(0, type.drawable.alpha)
+        assertTrue("the native label owns the type drawable", type.drawable is IosWifiDrawable)
 
         val labelLine = host.diagnosticLines().first { it.contains(" label ") }
         assertTrue(labelLine, labelLine.contains("state=DataType(5G)"))
@@ -1174,7 +1180,7 @@ class IosReplaceHostTest {
         mobile.addView(combo, FrameLayout.LayoutParams(cellWidth, 63))
 
         val battery = StatBatteryMeterView(context)
-        val batteryLeaf = NamedImageView(context, "battery_icon")
+        val batteryLeaf = NamedImageView(context, "battery_icon_view")
         batteryLeaf.setImageDrawable(ColorDrawable(Color.RED))
         battery.addView(batteryLeaf, FrameLayout.LayoutParams(79, 48))
 
@@ -1210,24 +1216,23 @@ class IosReplaceHostTest {
 
         assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
         assertTrue("the WIFI record is a label", host.labelSlotForTest())
+        assertEquals(IosReplaceMechanism.NATIVE_LABEL, host.mechanismForTest(IosIconKind.WIFI))
         assertSame("anchored to mobile_type", type, host.recordOuterForTest(IosIconKind.WIFI))
-        val overlay = host.overlayForTest(IosIconKind.WIFI)
-        assertNotNull("the label needs an overlay canvas", overlay)
-        val shift = overlay!!.translationX
-        assertTrue("the label canvas must move right (shift=$shift)", shift > 0f)
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
+        val shift = type.translationX
+        assertTrue("the native label must move right (shift=$shift)", shift > 0f)
 
-        val params = overlay.layoutParams as FrameLayout.LayoutParams
-        val width = if (overlay.width > 0) overlay.width else params.width
-        val canvasLeft = if (overlay.width > 0) overlay.left.toFloat() else params.leftMargin.toFloat()
-        assertEquals("the measured type canvas width", 66, width)
-        val labelLeft = canvasLeft + shift
+        // The measured type box is 66x51 at (970,57) in window coordinates; the shift only moves
+        // drawing (the layout is untouched).
+        val width = 66
+        val labelLeft = 970f + shift
         val labelRight = labelLeft + width
         val labelCenter = labelLeft + width / 2f
         val cellRight = 976f + 60f
         val batteryLeft = 1102f
         assertTrue("centre $labelCenter must be in the gap", labelCenter in cellRight..batteryLeft)
-        assertTrue("canvas $labelLeft..$labelRight must clear the cell leaf", labelLeft >= cellRight - 0.5f)
-        assertTrue("canvas must stay left of the battery", labelRight <= batteryLeft + 0.5f)
+        assertTrue("label $labelLeft..$labelRight must clear the cell leaf", labelLeft >= cellRight - 0.5f)
+        assertTrue("label must stay left of the battery", labelRight <= batteryLeft + 0.5f)
         // The drawn label ink is ~42 px wide (R5B): the estimated ink must fit the free gap.
         assertTrue("label ink left ${labelCenter - 21f}", labelCenter - 21f > cellRight)
         assertTrue("label ink right ${labelCenter + 21f}", labelCenter + 21f < batteryLeft)
@@ -1243,6 +1248,263 @@ class IosReplaceHostTest {
         assertEquals(View.VISIBLE, type.visibility)
 
         host.teardown()
+    }
+
+    /**
+     * R6 item 1 (raster): the label is drawn inside the CELL record's own `dispatchDraw` session, so
+     * it is part of the native tree, moves with the canvas, and never creates an `IosCanvasView`.
+     */
+    @Test
+    fun `the native label is drawn inside the cell session and moves with the canvas`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val tree = measuredLabelTree()
+        val originalType = tree.mobileType.drawable
+        // Robolectric cannot install a real Xposed hook; the forced installer lets the measured
+        // OPLUS OUTER_DRAW path (and the label riding in its draw pass) run.
+        IosDrawHookInstaller.forceForTest(tree.mobileOuter.javaClass.name, "dispatchDraw")
+        val host = host(
+            cellSource = { oneSimReading(7) },
+            wifiSource = { _, _, _, _, _ -> offWifiSample() }
+        )
+
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        assertEquals(IosReplaceMechanism.OUTER_DRAW, host.mechanismForTest(IosIconKind.CELL))
+        assertEquals(IosReplaceMechanism.NATIVE_LABEL, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
+        assertFalse("no label canvas is added", containsCanvasView(tree.root))
+        val session = IosDrawingHooks.sessionFor(tree.mobileOuter)
+        assertNotNull("the cell owns a native draw session", session)
+        assertNotNull("the label rides in that same session", session!!.label)
+        assertSame("the session path never writes the type drawable", originalType, tree.mobileType.drawable)
+        assertEquals("the session path never translates the stock type", 0f, tree.mobileType.translationX, 0f)
+
+        // Measured OPLUS boxes in the mobile outer's own coordinate space: cell leaf 22..82,
+        // label box 82..148 (type offset 16 + measured shift 66), battery starts at 148.
+        val batteryLeft = 148
+        // Measure real ink boxes, not a fixed x partition: render the cell alone, then the full pass,
+        // and take the ink that exists only in the full pass as the label's visible box.
+        val baseCellOnly = Bitmap.createBitmap(220, 70, Bitmap.Config.ARGB_8888)
+        val baseCellSessionLabel = session!!.label
+        session.label = null
+        assertTrue(IosDrawingHooks.renderForTest(tree.mobileOuter, Canvas(baseCellOnly)))
+        session.label = baseCellSessionLabel
+        val base = Bitmap.createBitmap(220, 70, Bitmap.Config.ARGB_8888)
+        assertTrue(IosDrawingHooks.renderForTest(tree.mobileOuter, Canvas(base)))
+        val baseCell = inkBounds(baseCellOnly)
+        val baseLabel = labelOnlyBounds(base, baseCellOnly)
+        assertTrue("the cell drew no ink", baseCell[2] >= 0)
+        assertTrue("the label drew no ink", baseLabel[2] >= 0)
+        assertTrue(
+            "cell ink ${baseCell[2]} must end before label ink ${baseLabel[0]}",
+            baseCell[2] < baseLabel[0]
+        )
+        assertTrue("label ink must stay left of the battery", baseLabel[2] < batteryLeft)
+
+        val movedCellOnly = Bitmap.createBitmap(220, 70, Bitmap.Config.ARGB_8888)
+        val movedCellOnlyCanvas = Canvas(movedCellOnly)
+        movedCellOnlyCanvas.translate(20f, 0f)
+        session.label = null
+        assertTrue(IosDrawingHooks.renderForTest(tree.mobileOuter, movedCellOnlyCanvas))
+        session.label = baseCellSessionLabel
+        val moved = Bitmap.createBitmap(220, 70, Bitmap.Config.ARGB_8888)
+        val movedCanvas = Canvas(moved)
+        movedCanvas.translate(20f, 0f)
+        assertTrue(IosDrawingHooks.renderForTest(tree.mobileOuter, movedCanvas))
+        val movedCell = inkBounds(movedCellOnly)
+        val movedLabel = labelOnlyBounds(moved, movedCellOnly)
+        assertTrue("the moved label drew no ink", movedLabel[2] >= 0)
+        assertEquals(
+            "the label must move by exactly the canvas delta (inside the native pass)",
+            20,
+            movedLabel[0] - baseLabel[0]
+        )
+        assertEquals("the cell moves by the same canvas delta", 20, movedCell[0] - baseCell[0])
+
+        host.teardown()
+        assertSame(originalType, tree.mobileType.drawable)
+    }
+
+    private data class AnchorCase(val visibility: Int, val alpha: Float, val shown: Boolean)
+
+    /**
+     * R6 audit FIX 2: the native label inherits the anchor's visibility/alpha and the diagnostic never
+     * claims a box for a label that cannot draw.
+     */
+    @Test
+    fun `the native label hides with its anchor and fades with its alpha`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val cases = listOf(
+            AnchorCase(View.INVISIBLE, 1f, shown = false),
+            AnchorCase(View.VISIBLE, 0f, shown = false),
+            AnchorCase(View.VISIBLE, 0.5f, shown = true)
+        )
+        for (case in cases) {
+            val tree = measuredLabelTree()
+            val originalType = tree.mobileType.drawable
+            tree.mobileType.visibility = case.visibility
+            tree.mobileType.alpha = case.alpha
+            IosDrawHookInstaller.forceForTest(tree.mobileOuter.javaClass.name, "dispatchDraw")
+            IosSurfaceThrash.clearForTest()
+            IosSurfaceOwners.clearForTest()
+            val host = host(
+                cellSource = { oneSimReading(7) },
+                wifiSource = { _, _, _, _, _ -> offWifiSample() }
+            )
+            assertTrue("$case: attach", host.attachIn(tree.strip, tree.root))
+            val line = host.diagnosticLines().first { it.contains(" label ") }
+
+            if (case.visibility != View.VISIBLE) {
+                // The new anchor rule refuses an INVISIBLE type outright, so there is not even a label
+                // record; the stock type is untouched.
+                assertFalse("$case: no label record", host.recordKindsForTest().contains(IosIconKind.WIFI))
+                assertTrue("$case: absent line: $line", line.contains("anchor=absent"))
+                assertSame("$case: the stock type is untouched",
+                    originalType, tree.mobileType.drawable)
+            } else if (case.alpha <= 0f) {
+                assertTrue("$case: the label record exists", host.recordKindsForTest().contains(IosIconKind.WIFI))
+                assertTrue("$case: hidden line: $line", line.contains("anchor=absent"))
+                assertTrue("$case: anchor-hidden reason: $line", line.contains("reason=anchor-hidden"))
+            } else {
+                assertTrue("$case: shown line: $line", line.contains("anchor=cell-type"))
+                val session = IosDrawingHooks.sessionFor(tree.mobileOuter)
+                assertNotNull(session)
+                assertEquals("$case: the alpha provider follows the anchor",
+                    case.alpha, session!!.label!!.alpha(), 0.001f)
+            }
+
+            // Rendered proof: a hidden/transparent anchor draws no label ink; a 0.5 anchor draws
+            // non-opaque ink.
+            val bitmap = Bitmap.createBitmap(220, 70, Bitmap.Config.ARGB_8888)
+            val session = IosDrawingHooks.sessionFor(tree.mobileOuter)
+            assertNotNull("$case: the cell session", session)
+            if (!case.shown) {
+                assertTrue("$case: render", IosDrawingHooks.renderForTest(tree.mobileOuter, Canvas(bitmap)))
+                val stray = inkBoundsIn(bitmap, 82, bitmap.width - 1)
+                assertTrue("$case: a hidden label must draw no ink (${stray.toList()})", stray[2] < 0)
+            } else {
+                assertTrue("$case: render", IosDrawingHooks.renderForTest(tree.mobileOuter, Canvas(bitmap)))
+                val maxAlpha = maxAlphaIn(bitmap, 82, 148)
+                assertTrue("$case: the label must draw some ink", maxAlpha > 0)
+                assertTrue("$case: 0.5 alpha must not be opaque (max=$maxAlpha)", maxAlpha < 255)
+            }
+            host.teardown()
+        }
+        IosDrawHookInstaller.releaseWhenEmpty()
+    }
+
+    private data class ShiftCase(
+        val cellWidth: Int,
+        val leafLeft: Int,
+        val typeLeft: Int,
+        val gap: Int,
+        val accepted: Boolean,
+        val batteryOverride: Int? = null
+    )
+
+    /**
+     * R6 item 2 runtime matrix: the shifted native label must never share a column with the cell ink
+     * when the free gap can hold it, and must draw nothing (fail closed, no stock resize) when the gap
+     * is too narrow. Cell widths 63/82, leaf lefts 0/22, type lefts 16/120 and gaps 73/66/28.
+     */
+    @Test
+    fun `the native label never shares a column with the cell across the shift matrix`() {
+        IosReadings.resetForTest(
+            data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
+        )
+        val cases = listOf(
+            ShiftCase(cellWidth = 82, leafLeft = 22, typeLeft = 16, gap = 73, accepted = true),
+            ShiftCase(cellWidth = 82, leafLeft = 22, typeLeft = 16, gap = 66, accepted = true),
+            ShiftCase(cellWidth = 63, leafLeft = 0, typeLeft = 16, gap = 73, accepted = true),
+            ShiftCase(cellWidth = 63, leafLeft = 0, typeLeft = 16, gap = 66, accepted = true),
+            ShiftCase(cellWidth = 82, leafLeft = 22, typeLeft = 16, gap = 28, accepted = false),
+            ShiftCase(cellWidth = 63, leafLeft = 0, typeLeft = 16, gap = 28, accepted = false),
+            // Control: the type box is already clear of the cell, so no shift is needed, and the
+            // battery is far enough right for the label to stay clear of it too.
+            ShiftCase(cellWidth = 82, leafLeft = 22, typeLeft = 120, gap = 66, accepted = true, batteryOverride = 1264)
+        )
+        IosDrawHookInstaller.forceForTest(OplusModernStatusBarMobileViewWithSub::class.java.name, "dispatchDraw")
+
+        for (case in cases) {
+            val batteryLeft = case.batteryOverride ?: (954 + case.cellWidth + case.gap)
+            val tree = measuredLabelTree(
+                cellWidth = case.cellWidth,
+                leafLeft = case.leafLeft,
+                typeLeft = case.typeLeft,
+                batteryLeft = batteryLeft
+            )
+            val host = host(
+                cellSource = { oneSimReading(7) },
+                wifiSource = { _, _, _, _, _ -> offWifiSample() }
+            )
+            // teardown() releases the forced installer; re-arm it for every case.
+            IosDrawHookInstaller.forceForTest(OplusModernStatusBarMobileViewWithSub::class.java.name, "dispatchDraw")
+            // A fresh surface per case: the anti-thrash guard is process-wide and a rapid loop is not
+            // a real attach cadence.
+            IosSurfaceThrash.clearForTest()
+            IosSurfaceOwners.clearForTest()
+            assertTrue("$case: attach", host.attachIn(tree.strip, tree.root))
+            val session = IosDrawingHooks.sessionFor(tree.mobileOuter)
+            assertNotNull("$case: the cell session", session)
+            assertNotNull("$case: the label rides in the cell session", session!!.label)
+
+            val cellLeafRight = case.leafLeft + 60
+            val gapLeft = maxOf(cellLeafRight, case.cellWidth)
+            val batteryLocal = batteryLeft - 954
+            val directShift = labelShiftPx(
+                typeBox = intArrayOf(case.typeLeft, 6, 66, 51),
+                cellBox = intArrayOf(case.leafLeft, 6, 60, 51),
+                cellOuterBox = intArrayOf(0, 0, case.cellWidth, 63),
+                batteryBox = intArrayOf(batteryLocal, 57, 79, 48),
+                canvasLeft = case.typeLeft.toFloat(),
+                canvasWidth = 66
+            )
+            if (case.accepted) {
+                if (case.typeLeft < cellLeafRight) {
+                    assertTrue("$case: a fitting gap shifts (direct=$directShift)", directShift > 0f)
+                } else {
+                    assertEquals("$case: no overlap means no shift", 0f, directShift, 0f)
+                }
+            } else {
+                assertEquals("$case: a too-narrow gap fails closed", 0f, directShift, 0f)
+            }
+            val bitmap = Bitmap.createBitmap(420, 80, Bitmap.Config.ARGB_8888)
+            assertTrue("$case: render", IosDrawingHooks.renderForTest(tree.mobileOuter, Canvas(bitmap)))
+
+            if (!case.accepted) {
+                val stray = inkBoundsIn(bitmap, cellLeafRight, bitmap.width - 1)
+                assertTrue("$case: a too-narrow gap must draw no label (found ${stray.toList()})", stray[2] < 0)
+            } else {
+                val cellInk = inkBoundsIn(bitmap, 0, maxOf(gapLeft - 1, 0))
+                val labelInk = inkBoundsIn(bitmap, gapLeft.coerceAtMost(bitmap.width - 1), bitmap.width - 1)
+                assertTrue("$case: the cell drew no ink", cellInk[2] >= 0)
+                assertTrue(case.toString(), labelInk[2] >= 0)
+                assertTrue(
+                    "$case: label ink ${labelInk[0]} must be right of cell ink ${cellInk[2]}",
+                    cellInk[2] < labelInk[0]
+                )
+                assertTrue("$case: cell ink stays left of the gap", cellInk[2] < gapLeft)
+                assertTrue("$case: label ink starts in the gap", labelInk[0] >= gapLeft)
+                assertTrue("$case: label ink stays left of the battery", labelInk[2] < batteryLocal)
+            }
+            val labelDiagnostic = host.diagnosticLines().firstOrNull { it.contains(" label ") }
+            assertNotNull("$case: no label diagnostic", labelDiagnostic)
+            if (case.accepted) {
+                assertTrue("$case: shown label: $labelDiagnostic",
+                    labelDiagnostic!!.contains("anchor=cell-type"))
+            } else {
+                assertTrue("$case: hidden label must not claim a box: $labelDiagnostic",
+                    labelDiagnostic!!.contains("anchor=absent"))
+                assertTrue("$case: hidden reason: $labelDiagnostic",
+                    labelDiagnostic.contains("reason=gap-too-narrow"))
+            }
+            host.teardown()
+        }
+        IosDrawHookInstaller.releaseWhenEmpty()
     }
 
     /** R5M control: no horizontal overlap means no behaviour change (translation stays zero). */
@@ -1261,9 +1523,8 @@ class IosReplaceHostTest {
 
         assertTrue(host.labelSlotForTest())
         assertSame(tree.mobileType, host.recordOuterForTest(IosIconKind.WIFI))
-        val overlay = host.overlayForTest(IosIconKind.WIFI)
-        assertNotNull(overlay)
-        assertEquals("a non-overlapping type box must not move", 0f, overlay!!.translationX, 0f)
+        assertNull(host.overlayForTest(IosIconKind.WIFI))
+        assertEquals("a non-overlapping type box must not move", 0f, tree.mobileType.translationX, 0f)
         val line = host.diagnosticLines().first { it.contains(" label ") }
         assertTrue(line, line.contains("shift=0px"))
 
@@ -1271,15 +1532,15 @@ class IosReplaceHostTest {
     }
 
     @Test
-    fun `a visible stock wifi slot is suppressed under the label and restored on teardown`() {
+    fun `a visible stock wifi slot draws the label on its own leaf and restores on teardown`() {
         IosReadings.resetForTest(
             data = { DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE) }
         )
         val tree = hyperosSignalTree(subId = 7)
-        // The stock Wi-Fi outer is VISIBLE and laid out (the regression case): its ink must be
-        // suppressed by the skin even though the record is a label.
+        // The stock Wi-Fi outer is VISIBLE and laid out: the label replaces its leaf drawable, so no
+        // stock Wi-Fi ink can draw twice and no overlay is created.
         val originalWifi = tree.wifiLeaf.drawable
-        val wifiAlpha = tree.wifiLeaf.alpha
+        val typeDrawable = tree.mobileType.drawable
         val typeAlpha = tree.mobileType.alpha
         val typeVisibility = tree.mobileType.visibility
         val host = host(
@@ -1289,19 +1550,20 @@ class IosReplaceHostTest {
 
         assertTrue(host.attachIn(tree.strip, tree.root))
 
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertEquals(IosReplaceMechanism.IMAGE_DRAWABLE, host.mechanismForTest(IosIconKind.WIFI))
         assertTrue(host.labelSlotForTest())
-        // The laid-out Wi-Fi slot wins over the mobile_type, as the existing label path does.
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
+        // The laid-out Wi-Fi slot wins over the mobile_type.
         assertSame(tree.wifiOuter, host.recordOuterForTest(IosIconKind.WIFI))
-        // The stock Wi-Fi ink is suppressed while our label draws (HYPEROS_WIFI is an alpha skin).
-        assertEquals(0f, tree.wifiLeaf.alpha)
+        assertTrue("the label owns the Wi-Fi leaf drawable", tree.wifiLeaf.drawable is IosWifiDrawable)
+        assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(tree.wifiOuter)?.wifiSlot)
         // The label did not write the data SIM's inner mobile_type.
         assertEquals(typeAlpha, tree.mobileType.alpha)
         assertEquals(typeVisibility, tree.mobileType.visibility)
+        assertSame(typeDrawable, tree.mobileType.drawable)
 
         host.teardown()
         assertSame("the stock Wi-Fi drawable is restored", originalWifi, tree.wifiLeaf.drawable)
-        assertEquals("the stock Wi-Fi alpha is restored", wifiAlpha, tree.wifiLeaf.alpha)
         assertEquals(typeAlpha, tree.mobileType.alpha)
         assertEquals(typeVisibility, tree.mobileType.visibility)
     }
@@ -1379,7 +1641,7 @@ class IosReplaceHostTest {
         assertEquals(View.VISIBLE, type.visibility)
         assertEquals(1f, type.alpha)
         val line = host.diagnosticLines().first { it.contains(" label ") }
-        assertTrue(line, line.contains("reason=cell-type-not-blanked"))
+        assertTrue(line, line.contains("reason=no-native-anchor"))
 
         host.teardown()
     }
@@ -1425,9 +1687,11 @@ class IosReplaceHostTest {
             host.mechanismForTest(IosIconKind.CELL)
         )
         assertTrue("the label is adopted after the CELL record exists", host.labelSlotForTest())
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertEquals(IosReplaceMechanism.NATIVE_LABEL, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
         assertSame(type, host.recordOuterForTest(IosIconKind.WIFI))
         assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(type)?.wifiSlot)
+        assertTrue("the native label owns the type drawable", type.drawable is IosWifiDrawable)
         assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
 
         host.teardown()
@@ -1495,24 +1759,27 @@ class IosReplaceHostTest {
     }
 
     @Test
-    fun `wifi label overlay is dropped and leaves no label when the data path is gone`() {
+    fun `native label is dropped and leaves no label when the data path is gone`() {
         var data = DataLabelSample("5G", mobileActive = true, source = DataLabelReader.SRC_ACTIVE)
         IosReadings.resetForTest(data = { data })
         val tree = hyperosSignalTree(subId = 7)
         tree.wifiOuter.visibility = View.INVISIBLE
+        val typeDrawable = tree.mobileType.drawable
         val host = host(
-            cellSource = { noCellReading() },
+            cellSource = { oneSimReading(7) },
             wifiSource = { _, _, _, _, _ ->
                 wifiSample(validated = false).copy(on = false, active = false)
             }
         )
 
         assertTrue(host.attachIn(tree.strip, null))
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
-        assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(tree.wifiOuter)?.wifiSlot)
+        assertEquals(IosReplaceMechanism.NATIVE_LABEL, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull(host.overlayForTest(IosIconKind.WIFI))
+        assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(tree.mobileType)?.wifiSlot)
+        assertTrue(tree.mobileType.drawable is IosWifiDrawable)
 
         // No active data path: the slot state is None, so the label record must be dropped, not kept
-        // blank. The OEM-hidden stock view is not re-shown by the label path (no skin was created).
+        // blank. The type drawable is restored; the OEM-hidden Wi-Fi view is not re-shown.
         data = DataLabelSample("", mobileActive = false, source = DataLabelReader.SRC_UNAVAILABLE)
         IosReadings.invalidate()
         host.refresh()
@@ -1520,7 +1787,8 @@ class IosReplaceHostTest {
         assertNull(host.mechanismForTest(IosIconKind.WIFI))
         assertFalse(host.recordKindsForTest().contains(IosIconKind.WIFI))
         assertNull(host.overlayForTest(IosIconKind.WIFI))
-        assertNull("no label visual survives the drop", host.visualForTest(tree.wifiOuter))
+        assertNull("no label visual survives the drop", host.visualForTest(tree.mobileType))
+        assertSame("the stock type drawable returns", typeDrawable, tree.mobileType.drawable)
         assertEquals(View.INVISIBLE, tree.wifiOuter.visibility)
 
         host.teardown()
@@ -2261,6 +2529,57 @@ class IosReplaceHostTest {
         var maxX = -1
         var maxY = -1
         for (x in 0 until bitmap.width) {
+            for (y in 0 until bitmap.height) {
+                if (bitmap.getPixel(x, y) ushr 24 != 0) {
+                    minX = minOf(minX, x)
+                    minY = minOf(minY, y)
+                    maxX = maxOf(maxX, x)
+                    maxY = maxOf(maxY, y)
+                }
+            }
+        }
+        return intArrayOf(minX, minY, maxX, maxY)
+    }
+
+    /** Bounding box of ink that exists in [all] but not in [cellOnly] (the visible label ink). */
+    private fun labelOnlyBounds(all: Bitmap, cellOnly: Bitmap): IntArray {
+        var minX = all.width
+        var minY = all.height
+        var maxX = -1
+        var maxY = -1
+        for (x in 0 until all.width) {
+            for (y in 0 until all.height) {
+                val fullAlpha = all.getPixel(x, y) ushr 24
+                val cellAlpha = cellOnly.getPixel(x, y) ushr 24
+                if (fullAlpha != 0 && cellAlpha == 0) {
+                    minX = minOf(minX, x)
+                    minY = minOf(minY, y)
+                    maxX = maxOf(maxX, x)
+                    maxY = maxOf(maxY, y)
+                }
+            }
+        }
+        return intArrayOf(minX, minY, maxX, maxY)
+    }
+
+    /** Highest alpha byte in [fromX]..[toX] (0 when the region is empty). */
+    private fun maxAlphaIn(bitmap: Bitmap, fromX: Int, toX: Int): Int {
+        var max = 0
+        for (x in fromX.coerceAtLeast(0)..toX.coerceAtMost(bitmap.width - 1)) {
+            for (y in 0 until bitmap.height) {
+                max = maxOf(max, bitmap.getPixel(x, y) ushr 24)
+            }
+        }
+        return max
+    }
+
+    /** Inclusive ink bounding box in [fromX]..[toX] as `[minX, minY, maxX, maxY]`. */
+    private fun inkBoundsIn(bitmap: Bitmap, fromX: Int, toX: Int): IntArray {
+        var minX = bitmap.width
+        var minY = bitmap.height
+        var maxX = -1
+        var maxY = -1
+        for (x in fromX..toX) {
             for (y in 0 until bitmap.height) {
                 if (bitmap.getPixel(x, y) ushr 24 != 0) {
                     minX = minOf(minX, x)

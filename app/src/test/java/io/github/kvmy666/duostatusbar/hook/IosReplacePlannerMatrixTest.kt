@@ -93,6 +93,8 @@ class IosReplacePlannerMatrixTest {
         IosReplaceMechanism.OUTER_DRAW,
         IosReplaceMechanism.LEAF_DRAW -> plan.leafIds.isNotEmpty() &&
             plan.fallback != plan.mechanism
+        // A label is never planned by the icon table; it is an adjunct of an adopted CELL record.
+        IosReplaceMechanism.NATIVE_LABEL -> false
     }
 
     /**

@@ -103,6 +103,47 @@ class IosDrawingHooksTest {
     }
 
     @Test
+    fun `a label draws inside the native session and follows its translation`() {
+        val view = sizedView()
+        val visual = IosVisual(
+            part = IosPart.WIFI,
+            visible = true,
+            tint = Color.WHITE,
+            wifiSlot = IosWifiSlot.DataType("5G")
+        )
+        val labelBox = intArrayOf(40, 5, 40, 30)
+        val session = IosDrawSession(
+            drawable = batteryDrawable(),
+            // A label-only state: the glyph bounds are empty, so only the label draws and the stock
+            // drawing is still skipped because render() returns true.
+            bounds = { intArrayOf(0, 0, 0, 0) }
+        )
+        session.label = IosDrawLabel(visual, bounds = { labelBox })
+        IosDrawingHooks.register(view, session)
+
+        val base = Bitmap.createBitmap(120, 60, Bitmap.Config.ARGB_8888)
+        assertTrue("a drawn label must suppress the stock pass", IosDrawingHooks.renderForTest(view, Canvas(base)))
+        val baseLeft = minInkX(base)
+        assertTrue("the label drew no ink", baseLeft >= 0)
+        assertTrue("the label sits at its box", baseLeft >= labelBox[0])
+
+        val shiftedSession = IosDrawSession(
+            drawable = batteryDrawable(),
+            bounds = { intArrayOf(0, 0, 0, 0) },
+            translateX = { 25f }
+        )
+        shiftedSession.label = IosDrawLabel(visual, bounds = { labelBox })
+        IosDrawingHooks.register(view, shiftedSession)
+        val shifted = Bitmap.createBitmap(120, 60, Bitmap.Config.ARGB_8888)
+        assertTrue(IosDrawingHooks.renderForTest(view, Canvas(shifted)))
+        assertEquals(
+            "the label moves with the native canvas translation",
+            25,
+            minInkX(shifted) - baseLeft
+        )
+    }
+
+    @Test
     fun `releaseWhenEmpty only releases when no session remains`() {
         val view = sizedView()
         val session = IosDrawSession(batteryDrawable(), bounds = { intArrayOf(0, 0, 100, 50) })

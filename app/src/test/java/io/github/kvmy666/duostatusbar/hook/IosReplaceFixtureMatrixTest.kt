@@ -523,7 +523,7 @@ class IosReplaceFixtureMatrixTest {
         assertTrue(wifiLeaf.drawable is IosWifiDrawable)
         assertTrue(mobileLeaf.drawable is IosCellDrawable)
         assertEquals(0, wifiActivity.drawable.alpha)
-        assertEquals(0, mobileType.drawable.alpha)
+        assertEquals("R6: mobile_type is the native label anchor, not a blanked sibling", 255, mobileType.drawable.alpha)
 
         host.teardown()
 
@@ -917,7 +917,7 @@ class IosReplaceFixtureMatrixTest {
         assertTrue(wifiLeaf.drawable is IosWifiDrawable)
         assertTrue(mobileLeaf.drawable is IosCellDrawable)
         assertEquals(0, wifiActivity.drawable.alpha)
-        assertEquals(0, mobileType.drawable.alpha)
+        assertEquals("R6: mobile_type is the native label anchor, not a blanked sibling", 255, mobileType.drawable.alpha)
         assertEquals(0, countCanvasViews(tree.root))
 
         host.teardown()
@@ -995,7 +995,7 @@ class IosReplaceFixtureMatrixTest {
         assertTrue(wifiLeaf.drawable is IosWifiDrawable)
         assertTrue(mobileLeaf.drawable is IosCellDrawable)
         assertEquals(0, wifiActivity.drawable.alpha)
-        assertEquals(0, mobileType.drawable.alpha)
+        assertEquals("R6: mobile_type is the native label anchor, not a blanked sibling", 255, mobileType.drawable.alpha)
         assertEquals(0, countCanvasViews(tree.root))
 
         host.teardown()
@@ -1131,7 +1131,7 @@ class IosReplaceFixtureMatrixTest {
         // `wifi_iconset` is the leaf's ancestor: it must never be hidden or blanked.
         assertEquals(View.VISIBLE, iconSet.visibility)
         assertEquals(0, vowifi.drawable.alpha)
-        assertEquals(0, mobileType.drawable.alpha)
+        assertEquals("R6: mobile_type is the native label anchor, not a blanked sibling", 255, mobileType.drawable.alpha)
         assertEquals(0, countCanvasViews(tree.root))
 
         host.teardown()
@@ -1342,6 +1342,69 @@ class IosReplaceFixtureMatrixTest {
         )
     }
 
+    @Test
+    fun `a hidden shade strip on the same window keeps every record`() {
+        val surface = surfaceIcons()
+        val host = host(
+            surface = "shade header",
+            isMainBar = false,
+            cellSource = { oneSimReading(4) }
+        )
+        assertTrue(host.attachSurface("shade header", surface.root, "system_icons"))
+        val count = host.recordCountForTest()
+        val batteryInstalled = surface.batteryLeaf.drawable
+        assertTrue(count > 0)
+        assertTrue(batteryInstalled is IosBatteryDrawable)
+
+        // A panel close removes the header from the tree while the shade window object survives. R6
+        // keeps the live host for the same window instead of restoring stock and re-adopting.
+        (surface.strip.parent as? ViewGroup)?.removeView(surface.strip)
+        assertTrue("the same window keeps the host", host.attachSurface("shade header", surface.root, "system_icons"))
+        assertEquals("no record was rebuilt", count, host.recordCountForTest())
+        assertSame("the drawing is untouched", batteryInstalled, surface.batteryLeaf.drawable)
+        assertTrue(host.attached)
+        assertEquals(0, countCanvasViews(surface.root))
+
+        host.teardown()
+        assertSame(surface.batteryOriginal, surface.batteryLeaf.drawable)
+    }
+
+    @Test
+    fun `the measured shade close and open keep the same records`() {
+        val surface = surfaceIcons()
+        val host = host(
+            surface = "shade header",
+            isMainBar = false,
+            cellSource = { oneSimReading(4) }
+        )
+        assertTrue(host.attachSurface("shade header", surface.root, "system_icons"))
+        val count = host.recordCountForTest()
+        val batteryInstalled = surface.batteryLeaf.drawable
+        val wifiInstalled = surface.wifiLeaf.drawable
+        assertTrue(count > 0)
+
+        // The measured QS close/open: the header is only hidden, not re-inflated. The host must keep
+        // every record and visual across both attaches (attaches=1, teardowns=0 in the power line).
+        surface.strip.visibility = View.INVISIBLE
+        assertTrue("hide keeps the host", host.attachSurface("shade header", surface.root, "system_icons"))
+        assertEquals("no record was rebuilt on close", count, host.recordCountForTest())
+        assertSame(batteryInstalled, surface.batteryLeaf.drawable)
+        assertSame(wifiInstalled, surface.wifiLeaf.drawable)
+
+        surface.strip.visibility = View.VISIBLE
+        assertTrue("show keeps the host", host.attachSurface("shade header", surface.root, "system_icons"))
+        assertEquals("no record was rebuilt on open", count, host.recordCountForTest())
+        assertSame(batteryInstalled, surface.batteryLeaf.drawable)
+        assertSame(wifiInstalled, surface.wifiLeaf.drawable)
+        assertTrue(host.attached)
+        assertEquals(0, countCanvasViews(surface.root))
+
+        // A ROM that inflates a NEW header view necessarily re-adopts once (a removed view cannot be
+        // owned), and that attach happens inside the same pre-draw, not a posted runnable.
+        host.teardown()
+        assertSame(surface.batteryOriginal, surface.batteryLeaf.drawable)
+    }
+
     // ------------------------------------------------------- R5A item 1: mobile_type label anchor
 
     private fun dataLabel() {
@@ -1360,14 +1423,14 @@ class IosReplaceFixtureMatrixTest {
         assertEquals("WIFI records: ${host.diagnosticLines()}",
             1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
         assertTrue("the WIFI record is a label", host.labelSlotForTest())
-        assertEquals(IosReplaceMechanism.OVERLAY, host.mechanismForTest(IosIconKind.WIFI))
+        assertEquals(IosReplaceMechanism.NATIVE_LABEL, host.mechanismForTest(IosIconKind.WIFI))
+        assertNull("R6 never paints the label as an overlay", host.overlayForTest(IosIconKind.WIFI))
         assertSame("anchored to the data SIM's mobile_type", type, host.recordOuterForTest(IosIconKind.WIFI))
         assertEquals(IosWifiSlot.DataType("5G"), host.visualForTest(type)?.wifiSlot)
-        val overlay = host.overlayForTest(IosIconKind.WIFI)
-        assertNotNull("the label needs an overlay canvas", overlay)
-        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.width > 0)
-        assertTrue("the label canvas must have a real box", overlay!!.layoutParams.height > 0)
-        // C2: the stock type keeps its laid-out size/visibility; the CELL sibling swap blanks its ink.
+        // Non-OPLUS families replace the `mobile_type` drawable; the session path (OPLUS OUTER_DRAW)
+        // would leave it alone. Both are native, never an overlay canvas.
+        assertTrue("the native label owns the type drawable", type.drawable is IosGlyphDrawable)
+        // C2: the stock type keeps its laid-out size/visibility.
         assertEquals(typeWidth, type.width)
         assertEquals(typeHeight, type.height)
         assertEquals(View.VISIBLE, type.visibility)
@@ -1515,6 +1578,94 @@ class IosReplaceFixtureMatrixTest {
         assertNull("no label is drawn without a mobile_type", host.overlayForTest(IosIconKind.WIFI))
         // Whatever the host did with the cellular row, it never became a WIFI label.
         assertEquals(0, host.recordKindsForTest().count { it == IosIconKind.WIFI })
+        host.teardown()
+    }
+
+    @Test
+    fun `a GONE mobile_type on a non-OPLUS family draws no label and no overlay`() {
+        dataLabel()
+        val mobile = ModernStatusBarMobileViewWithSub(context, 7)
+        val leaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        mobile.addView(leaf, FrameLayout.LayoutParams(20, 20))
+        val label = labelTree(mobile, 20, 10)
+        leaf.layout(0, 0, 20, 20)
+        label.type.visibility = View.GONE
+
+        val host = host(cellSource = { oneSimReading(7) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        assertTrue(host.attachIn(label.tree.strip, label.tree.root))
+
+        assertFalse("no label without a usable mobile_type", host.recordKindsForTest().contains(IosIconKind.WIFI))
+        assertNull("no overlay in any case", host.overlayForTest(IosIconKind.WIFI))
+        assertEquals(0, countCanvasViews(label.tree.root))
+        assertSame("the stock type drawable is untouched", label.typeDrawable, label.type.drawable)
+        val absent = host.diagnosticLines().first { it.contains(" label ") }
+        assertTrue(absent, absent.contains("anchor=absent"))
+        assertTrue(absent, absent.contains("reason=no-mobile-type"))
+
+        host.teardown()
+    }
+
+    @Test
+    fun `a non-ImageView mobile_type fails closed with no label and no overlay`() {
+        dataLabel()
+        val mobile = ModernStatusBarMobileViewWithSub(context, 7)
+        val leaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        mobile.addView(leaf, FrameLayout.LayoutParams(20, 20))
+        val type = NamedGroup(context, "mobile_type")
+        mobile.addView(type, FrameLayout.LayoutParams(20, 10))
+        val tree = tree()
+        tree.strip.addView(mobile, LinearLayout.LayoutParams(80, 60))
+        tree.layout()
+        mobile.layout(0, 0, 80, 60)
+        leaf.layout(0, 0, 20, 20)
+        type.layout(10, 10, 30, 20)
+
+        val host = host(cellSource = { oneSimReading(7) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        assertTrue(host.attachIn(tree.strip, tree.root))
+
+        // The stock type is not an ImageView, so the drawable swap is impossible. R6 fails closed: the
+        // stock type stays visible exactly as the ROM drew it, and no overlay replaces it.
+        assertFalse("no label without a drawable anchor", host.recordKindsForTest().contains(IosIconKind.WIFI))
+        assertNull("no overlay in any case", host.overlayForTest(IosIconKind.WIFI))
+        assertEquals(0, countCanvasViews(tree.root))
+        assertEquals(View.VISIBLE, type.visibility)
+        assertEquals(20, type.width)
+        assertEquals(10, type.height)
+        val absent = host.diagnosticLines().first { it.contains(" label ") }
+        assertTrue(absent, absent.contains("anchor=absent"))
+        assertTrue(absent, absent.contains("reason=no-native-anchor"))
+
+        host.teardown()
+    }
+
+    @Test
+    fun `a transparent mobile_type on the swap path reports anchor-hidden`() {
+        dataLabel()
+        val mobile = ModernStatusBarMobileViewWithSub(context, 7)
+        val leaf = NamedImageView(context, "mobile_signal").apply {
+            setImageDrawable(ColorDrawable(Color.CYAN))
+        }
+        mobile.addView(leaf, FrameLayout.LayoutParams(20, 20))
+        val label = labelTree(mobile, 20, 10)
+        label.type.alpha = 0f
+        leaf.layout(0, 0, 20, 20)
+
+        val host = host(cellSource = { oneSimReading(7) }, wifiSource = { _, _, _, _, _ -> offWifiSample() })
+        assertTrue(host.attachIn(label.tree.strip, label.tree.root))
+
+        // The ImageView itself makes the label invisible; the dump must not claim a shown box.
+        assertEquals(1, host.recordKindsForTest().count { it == IosIconKind.WIFI })
+        assertNull("no overlay in any case", host.overlayForTest(IosIconKind.WIFI))
+        assertEquals(0, countCanvasViews(label.tree.root))
+        val line = host.diagnosticLines().first { it.contains(" label ") }
+        assertTrue(line, line.contains("anchor=absent"))
+        assertTrue(line, line.contains("reason=anchor-hidden"))
+        assertEquals(0f, label.type.alpha, 0f)
+
         host.teardown()
     }
 

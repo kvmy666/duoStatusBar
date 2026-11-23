@@ -129,6 +129,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     /** IOS-LAG: at most one extra-surface attach attempt per [IOS_EXTRA_ATTACH_MIN_MS]. */
     private var lastIosExtraAttachAt = 0L
 
+    /**
+     * R6 item 4: `StatusBarIconView.onDarkChanged` fires once per icon per appearance change. One
+     * coalesced repaint per burst replaces a full refresh per icon.
+     */
+    private var iosRefreshPending = false
+    private val iosRefreshSoonRunnable = Runnable {
+        iosRefreshPending = false
+        if (features.iosRuntime) iosRefreshAll()
+    }
+
     /** R3 A6: the same bound for the plain-Duo extra bars, which had no throttle at all. */
     private var lastDuoExtraAttachAt = 0L
 
@@ -547,6 +557,20 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     /**
+     * R6 item 4: coalesces the per-icon `onDarkChanged` burst into one repaint. Settings and panel-edge
+     * refreshes stay immediate; only the appearance burst is debounced.
+     */
+    private fun iosRefreshAllSoon() {
+        if (iosRefreshPending) return
+        iosRefreshPending = true
+        try {
+            handler.postDelayed(iosRefreshSoonRunnable, IOS_REFRESH_COALESCE_MS)
+        } catch (_: Throwable) {
+            iosRefreshPending = false
+        }
+    }
+
+    /**
      * Tears every iOS host down and restores every replaced stock drawing. Idempotent:
      * `IosReplaceHost.teardown` is itself idempotent and the maps are cleared, so a second call does
      * nothing.
@@ -661,6 +685,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 statusBarRoot = found
                 L.i("existing status bar window found: ${found.javaClass.name}")
                 scheduleAttach(attempt = 0)
+                // R6 item 4: a late injection already has the children inflated, so the icon hook saw
+                // a null statusBarRoot. Hand the existing window to the first-frame path; the closure
+                // is iOS-gated and the pre-draw attach is what prevents a stock frame.
+                if (found is ViewGroup) attachIosMainFirstFrame(found)
                 // Now that a SystemUI-owned context exists, the bootstrap can succeed even when the
                 // ActivityThread lookups did not.
                 bootstrap()
@@ -987,6 +1015,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             statusBarRoot = view
                             L.i("status bar window found: ${view.javaClass.name}")
                             scheduleAttach(attempt = 0)
+                            // R6 item 4: AOSP/OPLUS inflate the status-bar children BEFORE this
+                            // addView call, so the icon hook already fired with a null
+                            // `statusBarRoot` and missed. The window hook is therefore the guaranteed
+                            // first-frame handoff: hand the real window to IosFirstFrameAttach before
+                            // its first draw. The icon hook still covers later icon batches, and the
+                            // 2.5 s path stays the fallback if iOS is not yet enabled at the pre-draw.
+                            if (view is ViewGroup) attachIosMainFirstFrame(view)
                         }
                         AppContextResolver.TYPE_NOTIFICATION_SHADE -> adoptShadeWindow(view)
                     }
@@ -1652,7 +1687,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     L.guard("DuoHook icon added") {
                         // R3 A3: the container is the object addView was called on. Registration is
                         // additive; the existing host notifications below stay exactly as they were.
-                        (param.thisObject as? ViewGroup)?.let { IosIconOrder.onIconAdded(it) }
+                        val container = param.thisObject as? ViewGroup
+                        if (container != null) IosIconOrder.onIconAdded(container)
+                        // R6 item 4: style the main bar on the first laid-out frame instead of the
+                        // 2.5 s retry. The keyguard/shade containers share this class, so only the
+                        // captured status-bar root may take this path.
+                        if (features.iosRuntime && container != null &&
+                            IosImmediateAttach.isMainBarContainer(container, statusBarRoot)
+                        ) {
+                            attachIosMainFirstFrame(container)
+                        }
                         val child = param.args.firstOrNull() as? View ?: return@guard
                         // A6: feed only the owner that is live. The other mode's fields are null while
                         // it is off, but the explicit gate keeps a slow async callback from reaching a
@@ -1675,6 +1719,47 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 }
             }
             L.i("status icon container hooks installed: $hooked")
+        }
+    }
+
+    /**
+     * R6 item 4: runs the main-bar attach before the first frame draws.
+     *
+     * [IosFirstFrameAttach] attaches immediately when the container is already laid out, otherwise on
+     * the container's first laid-out pre-draw. Either way the first drawn status bar is ours, making
+     * the 2.5 s [scheduleAttach] delay irrelevant for iOS (it stays for Duo and as a fallback). The
+     * log is emitted once per process and says which outcome was chosen.
+     */
+    private fun attachIosMainFirstFrame(container: ViewGroup) {
+        val laidOut = IosFirstFrameAttach.isLaidOut(container)
+        val accepted = IosFirstFrameAttach.whenLaidOut(
+            container,
+            attach = {
+                if (features.iosRuntime) {
+                    val ctx = app ?: container.context
+                    val host = ensureIosMain(ctx)
+                    // R6 item 4: this runs before `refreshIosHostSettings`, so without this the first
+                    // frames would use the DEFAULT geometry for up to the 2.5 s delayed attach. Apply
+                    // the last-read snapshot before the host draws (fail-silent via the helper).
+                    val snapshot = try {
+                        DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx)
+                    } catch (_: Throwable) {
+                        ModuleSettings.DEFAULT
+                    }
+                    refreshIosHostSettings(snapshot, listOf(host))
+                    host.attach(container.rootView ?: container)
+                } else {
+                    false
+                }
+            }
+        )
+        if (accepted) {
+            logOnce.once("ios-main-first-frame") {
+                L.i(
+                    "iOS main first-frame attach: " +
+                        (if (laidOut) "attached" else "scheduled")
+                )
+            }
         }
     }
 
@@ -1705,7 +1790,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             if (features.iosRuntime &&
                                 (iosMainHost != null || iosExtraHosts.isNotEmpty())
                             ) {
-                                iosRefreshAll()
+                                iosRefreshAllSoon()
                             }
                         }
                     } catch (t: Throwable) {
@@ -1933,6 +2018,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
         /** IOS-LAG: the extra-surface (keyguard/shade) attach is throttled to this cadence. */
         const val IOS_EXTRA_ATTACH_MIN_MS = 500L
+
+        /** R6 item 4: one repaint per `onDarkChanged` burst instead of one per icon. */
+        const val IOS_REFRESH_COALESCE_MS = 32L
 
         /** R3 A6: the plain-Duo extra bars use the same cadence. */
         const val DUO_EXTRA_ATTACH_MIN_MS = 500L

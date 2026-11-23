@@ -7,10 +7,19 @@ import android.view.View
  *
  * [IMAGE_DRAWABLE] installs our [IosGlyphDrawable] on an `ImageView` leaf; [OUTER_DRAW] hooks the
  * composite outer's proven `dispatchDraw`; [LEAF_DRAW] hooks a custom drawing leaf's `onDraw`;
- * [OVERLAY] is the approved hide-in-place + [IosCanvasView] fallback; [SKIP] leaves the stock drawing
- * untouched. See the measured replacement map (device dumps) §0.
+ * [OVERLAY] is the approved hide-in-place + [IosCanvasView] fallback; [NATIVE_LABEL] is the R6
+ * data-type label drawn inside another native record's own draw pass (or its `mobile_type` drawable),
+ * never as an overlay; [SKIP] leaves the stock drawing untouched. See the measured replacement map
+ * (device dumps) §0.
  */
-internal enum class IosReplaceMechanism { IMAGE_DRAWABLE, OUTER_DRAW, LEAF_DRAW, OVERLAY, SKIP }
+internal enum class IosReplaceMechanism {
+    IMAGE_DRAWABLE,
+    OUTER_DRAW,
+    LEAF_DRAW,
+    OVERLAY,
+    NATIVE_LABEL,
+    SKIP
+}
 
 /**
  * One pure replacement decision: family + mechanism + the measured names the runtime resolves.
