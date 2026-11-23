@@ -247,11 +247,21 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // R7 P4: only a successful activation may release a live host/order from a
                         // previous HOST session, so no icon is ever drawn by two owners.
                         if (oldHostsLive) teardownIosHosts(next)
-                        IosBatteryV2.refresh()
-                        applyDuoRegistrations()
-                        settingsRereadAttempt = 0
-                        reporter.report(ctx, stage, iosSettings)
-                        return@guard
+                        // R7 P5: the zero-double-ownership invariant is the post-condition here. After
+                        // the teardown and activation a V2 route must have no host left; a host that
+                        // survived the teardown would fight V2 for the same icon, so log once and keep
+                        // that live host (the fall-through below runs the normal HOST path).
+                        if (iosV2HasNoHosts(iosRoute, iosMainHost != null, iosExtraHosts.size)) {
+                            IosBatteryV2.refresh()
+                            applyDuoRegistrations()
+                            settingsRereadAttempt = 0
+                            reporter.report(ctx, stage, iosSettings)
+                            return@guard
+                        }
+                        logOnce.once("ios-v2-hosts-left") {
+                            L.w("iOS v2 active with a host still present - falling back to HOST")
+                        }
+                        stopIosV2Owners()
                     }
                     // Activation left no live map: keep HOST with the stock icons and the old owner.
                     iosRoute = IosRoute.HOST

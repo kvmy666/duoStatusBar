@@ -87,9 +87,26 @@ class IosBatteryV2Test {
         val controller = f.controller()
 
         // R7 P5: a null reading must not install an invisible glyph over the stock icon.
-        assertFalse(controller.install())
+        assertFalse(controller.install(null))
         assertFalse(controller.installedForTest)
         assertSame(f.original, f.image.drawable)
+    }
+
+    @Test
+    fun `install with the first reading draws the glyph without a prior update`() {
+        val f = fixture()
+        val controller = f.controller()
+
+        // Production ordering (`controllerFor`): construct, then install(reading, saver); the old tests
+        // called update() first, which hid this path (the controller refused to install on device).
+        assertTrue(controller.install(reading(level = 50), saver = false))
+
+        assertTrue(controller.installedForTest)
+        assertTrue(f.image.drawable is IosBatteryDrawable)
+        val visual = controller.visualForTest!!
+        assertTrue(visual.visible)
+        assertEquals(0.5f, visual.batteryLevel, 0.0001f)
+        assertEquals(IosBatteryState.NORMAL, visual.batteryState)
     }
 
     @Test
@@ -97,8 +114,7 @@ class IosBatteryV2Test {
         val f = fixture()
         val controller = f.controller()
 
-        controller.update(reading(level = 50), saver = false)
-        assertTrue(controller.install())
+        assertTrue(controller.install(reading(level = 50), saver = false))
         assertTrue(controller.installedForTest)
         assertNotSame(f.original, f.image.drawable)
         assertTrue(f.image.drawable is IosBatteryDrawable)
@@ -118,9 +134,8 @@ class IosBatteryV2Test {
         val image = ImageView(context)
         root.addView(image)
         val controller = IosBatteryV2.Controller(root, image, IntArray(0), context, false, 20)
-        controller.update(reading(level = 50), saver = false)
 
-        assertFalse(controller.install())
+        assertFalse(controller.install(reading(level = 50), saver = false))
         assertFalse(controller.installedForTest)
         assertNull(image.drawable)
     }
@@ -135,8 +150,7 @@ class IosBatteryV2Test {
             f.root, f.image, IntArray(0), context, false, 20, settings
         )
 
-        controller.update(reading(level = 50), saver = false)
-        assertTrue(controller.install())
+        assertTrue(controller.install(reading(level = 50), saver = false))
 
         val inner = IosGeometry.Relative.sizeFor(
             IosIconKind.BATTERY, 60, 40, dualCell = false
@@ -155,8 +169,7 @@ class IosBatteryV2Test {
         val controller = IosBatteryV2.Controller(
             f.root, f.image, IntArray(0), context, false, 20, a
         )
-        controller.update(reading(level = 50), saver = false)
-        assertTrue(controller.install())
+        assertTrue(controller.install(reading(level = 50), saver = false))
         assertEquals(1f, controller.visualForTest!!.userTransform.scale, 0.0001f)
         assertFalse(controller.visualForTest!!.percentInside)
 
@@ -176,8 +189,7 @@ class IosBatteryV2Test {
             f.root, f.image, IntArray(0), context, false, 20, null, transform
         )
 
-        controller.update(reading(level = 50), saver = false)
-        assertTrue(controller.install())
+        assertTrue(controller.install(reading(level = 50), saver = false))
 
         assertEquals(transform, controller.visualForTest!!.userTransform)
     }
@@ -188,8 +200,7 @@ class IosBatteryV2Test {
     fun `update maps the normal battery state and level`() {
         val f = fixture()
         val controller = f.controller()
-        controller.update(reading(level = 50), saver = false)
-        controller.install()
+        controller.install(reading(level = 50), saver = false)
 
         val visual = controller.visualForTest!!
         assertTrue(visual.visible)
@@ -203,8 +214,7 @@ class IosBatteryV2Test {
     fun `update maps charging, low, saver and plugged-not-charging`() {
         val f = fixture()
         val controller = f.controller(lowThreshold = 20)
-        controller.update(reading(level = 50), saver = false)
-        controller.install()
+        controller.install(reading(level = 50), saver = false)
 
         controller.update(
             reading(level = 50, plugged = true, status = BatteryManager.BATTERY_STATUS_CHARGING),
@@ -254,8 +264,7 @@ class IosBatteryV2Test {
     fun `update keeps the last level when the broadcast is unreadable`() {
         val f = fixture()
         val controller = f.controller()
-        controller.update(reading(level = 42), saver = false)
-        controller.install()
+        controller.install(reading(level = 42), saver = false)
 
         controller.update(reading(level = 42), saver = false)
         controller.update(null, saver = false)
@@ -267,8 +276,7 @@ class IosBatteryV2Test {
     fun `percentInside is carried onto the visual`() {
         val f = fixture()
         val controller = f.controller(percentInside = true)
-        controller.update(reading(level = 30), saver = false)
-        controller.install()
+        controller.install(reading(level = 30), saver = false)
 
         controller.update(reading(level = 30), saver = false)
 
@@ -281,8 +289,7 @@ class IosBatteryV2Test {
     fun `setTint ignores a zero-alpha int and applies a resolved colour`() {
         val f = fixture()
         val controller = f.controller()
-        controller.update(reading(level = 50), saver = false)
-        controller.install()
+        controller.install(reading(level = 50), saver = false)
         val initial = controller.visualForTest!!.tint
 
         controller.setTint(0x00AB12FF)
@@ -299,8 +306,7 @@ class IosBatteryV2Test {
     fun `reassert restores our drawable after a foreign push`() {
         val f = fixture()
         val controller = f.controller()
-        controller.update(reading(level = 50), saver = false)
-        controller.install()
+        controller.install(reading(level = 50), saver = false)
         val ours = f.image.drawable
 
         f.image.setImageDrawable(stockDrawable())
@@ -318,8 +324,7 @@ class IosBatteryV2Test {
         }
         f.root.addView(forward)
         val controller = f.controller(boltIds = intArrayOf(0x7f0a0211))
-        controller.update(reading(level = 50), saver = false)
-        assertTrue(controller.install())
+        assertTrue(controller.install(reading(level = 50), saver = false))
         assertEquals(View.GONE, forward.visibility)
 
         // `bind$updateChargingView` makes the OEM bolt visible again; reassert must re-hide it.
@@ -350,8 +355,7 @@ class IosBatteryV2Test {
         // A third id that does not resolve must be ignored, not throw.
         val controller = f.controller(boltIds = intArrayOf(0x7f0a0201, 0x7f0a0202, 0x7f0a02ff))
 
-        controller.update(reading(level = 50), saver = false)
-        assertTrue(controller.install())
+        assertTrue(controller.install(reading(level = 50), saver = false))
         assertEquals(View.GONE, forward.visibility)
         assertEquals(View.GONE, reverse.visibility)
 

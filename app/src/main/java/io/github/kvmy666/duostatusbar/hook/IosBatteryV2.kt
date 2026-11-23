@@ -547,14 +547,15 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 state.settings,
                 state.transform
             )
-            if (!controller.install()) {
+            // R7 P5: the first reading belongs to the install, exactly as the production path sees it;
+            // installing an empty controller would refuse forever and the v2 battery would never draw.
+            if (!controller.install(state.reading, state.saver)) {
                 countFailure()
                 return@synchronized null
             }
             installs++
             controllers[view] = controller
             if (state.tint != 0) controller.setTint(state.tint)
-            if (state.reading != null) controller.update(state.reading, state.saver)
             controller
         }
     }
@@ -689,11 +690,17 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 
         /**
          * Captures the stock drawable and size, swaps in our glyph and hides the OEM bolt(s).
-         * Returns false (and changes nothing) when there is no battery reading yet (R7 P5: keep the
-         * stock icon rather than install an invisible glyph) or the stock size is unusable (C2).
+         *
+         * [initialReading]/[saver] are the first snapshot and are stored before any guard, because the
+         * production path ([controllerFor]) constructs the controller and installs it with that state
+         * instead of calling [update] first (R7 P5). Returns false (and changes nothing) when there is
+         * no battery reading yet (keep the stock icon rather than install an invisible glyph) or the
+         * stock size is unusable (C2).
          */
-        fun install(): Boolean {
+        fun install(initialReading: IosBatteryReading? = null, saver: Boolean = false): Boolean {
             if (installedFlag) return true
+            if (initialReading != null) this.reading = initialReading
+            this.saver = saver
             if (reading == null) return false
             val stock = image.drawable
             val width = stock?.intrinsicWidth?.takeIf { it > 0 } ?: image.width
