@@ -105,12 +105,32 @@ class IosGeometryTest {
         assertEquals(0.25f, IosGeometry.Cell.INACTIVE_ALPHA, 0.0001f)
         assertEquals(0.30f, IosGeometry.Battery.REMAINDER_ALPHA_DARK_INK, 0.0001f)
         assertEquals(0.50f, IosGeometry.Battery.REMAINDER_ALPHA_LIGHT_INK, 0.0001f)
+        assertEquals(0.30f, IosGeometry.Battery.REMAINDER_ALPHA_LOW_CHARGING, 0.0001f)
         assertEquals(0.30f, IosGeometry.remainderAlpha(0xFF000000.toInt()), 0.0001f)
         assertEquals(0.50f, IosGeometry.remainderAlpha(0xFFFFFFFF.toInt()), 0.0001f)
         assertEquals(4, IosGeometry.Wifi.OUTER_ALPHA.size)
         assertEquals(4, IosGeometry.Wifi.INNER_ALPHA.size)
         assertEquals(1f, IosGeometry.Wifi.OUTER_ALPHA[3], 0.0001f)
         assertEquals(1f, IosGeometry.Wifi.INNER_ALPHA[3], 0.0001f)
+    }
+
+    @Test
+    fun `R11 state-aware remainder alpha matches the dark reference measurements`() {
+        val white = 0xFFFFFFFF.toInt()
+        val black = 0xFF000000.toInt()
+        // `.pm/out-r11/measurements.md` §4: charging 0.303 and red critical 0.303, plain dark 0.50,
+        // yellow low-power / charging-saver 0.50.
+        assertEquals(0.30f, IosGeometry.remainderAlpha(white, IosBatteryState.CHARGING), 0.0001f)
+        assertEquals(0.50f, IosGeometry.remainderAlpha(white, IosBatteryState.NORMAL), 0.0001f)
+        assertEquals(0.30f, IosGeometry.remainderAlpha(white, IosBatteryState.LOW), 0.0001f)
+        assertEquals(0.50f, IosGeometry.remainderAlpha(white, IosBatteryState.SAVER), 0.0001f)
+        assertEquals(0.50f, IosGeometry.remainderAlpha(white, IosBatteryState.CHARGING_SAVER), 0.0001f)
+        // Light mode keeps the R9 dark-ink rule for every state (charging included).
+        assertEquals(0.30f, IosGeometry.remainderAlpha(black, IosBatteryState.NORMAL), 0.0001f)
+        assertEquals(0.30f, IosGeometry.remainderAlpha(black, IosBatteryState.CHARGING), 0.0001f)
+        // UNVERIFIED: no reference for plugged-not-charging; it falls through to the ink rule.
+        assertEquals(0.50f, IosGeometry.remainderAlpha(white, IosBatteryState.PLUGGED_NOT_CHARGING), 0.0001f)
+        assertEquals(0.25f, IosGeometry.Cell.INACTIVE_ALPHA, 0.0001f)
     }
 
     @Test

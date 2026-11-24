@@ -255,15 +255,16 @@ class IosDrawablesTest {
     // ------------------------------------------------------------------- cap colour parity
 
     @Test
-    fun `battery cap is neutral bar ink at half alpha not the state colour`() {
+    fun `battery cap is neutral bar ink at the LOW alpha not the state colour`() {
         // A fixed LOW state keeps its red fill, but the cap is NEUTRAL ink: with a white system tint
-        // it is white at half alpha, never COLOR_LOW.
+        // it is white at the R11 LOW alpha (0.30, measured on the red critical reference), never
+        // COLOR_LOW.
         val visual = batteryVisual(level = 15, tint = Color.BLACK)
         val drawable = IosDrawables.create(IosIconKind.BATTERY, visual, 0, 0)
         drawable.setTint(Color.WHITE)
 
         val bitmap = render(drawable, BATTERY_W, BATTERY_H)
-        // Cap centre is artboard (205.75, 51); BATTERY_W x BATTERY_H is a 1:1 fit. A 50 % alpha on a
+        // Cap centre is artboard (205.75, 51); BATTERY_W x BATTERY_H is a 1:1 fit. A 30 % alpha on a
         // transparent bitmap round-trips through premultiplication, so allow a few channel units.
         val c = bitmap.getPixel(206, 51)
         assertTrue(
@@ -279,7 +280,7 @@ class IosDrawablesTest {
             kotlin.math.abs(Color.blue(c) - Color.blue(Color.WHITE)) <= 4
         )
         assertTrue("cap is not the red state colour", c != IosMapping.COLOR_LOW)
-        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 120..135)
+        assertTrue("cap alpha ${Color.alpha(c)}", Color.alpha(c) in 72..82)
     }
 
     @Test
@@ -392,7 +393,7 @@ class IosDrawablesTest {
     }
 
     @Test
-    fun `percentInside charging draws an inline bolt and no large bolt`() {
+    fun `percentInside charging draws a solid white inline bolt and no large bolt`() {
         val visual = batteryVisual(
             level = 60,
             plugged = true,
@@ -413,15 +414,19 @@ class IosDrawablesTest {
         val boltRight = boltLeft + IosDigits.INLINE_BOLT_W
         val boltTop = b.BODY_TOP + (b.BODY_H - IosDigits.INLINE_BOLT_H) / 2f
         val boltBottom = boltTop + IosDigits.INLINE_BOLT_H
+        val x0 = boltLeft.toInt() + 2
+        val y0 = boltTop.toInt() + 2
+        val x1 = kotlin.math.ceil(boltRight).toInt() - 2
+        val y1 = kotlin.math.ceil(boltBottom).toInt() - 2
+        // R11: the charge bolt is solid white over the fill/remainder, not a knockout hole.
+        assertEquals(
+            "inline bolt must not be cleared",
+            0,
+            countTransparent(bitmap, x0, y0, x1, y1)
+        )
         assertTrue(
-            "no cleared inline bolt after the digits",
-            countTransparent(
-                bitmap,
-                boltLeft.toInt() + 2,
-                boltTop.toInt() + 2,
-                kotlin.math.ceil(boltRight).toInt() - 2,
-                kotlin.math.ceil(boltBottom).toInt() - 2
-            ) > 50
+            "inline bolt is not solid white",
+            countBackgroundInk(bitmap, x0, y0, x1, y1) > 50
         )
     }
 

@@ -132,7 +132,22 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     // Diagnostics are approximate on purpose; races are acceptable and the hot path must not throw.
     private var installs = 0
     private var reasserts = 0
+
+    /**
+     * R11: expected boot-time install retries (no reading yet, or a stock slot whose size is still
+     * 0x0). `controllerFor` retries on every layout/binder event until the icon has a real box, so
+     * counting these as failures made a healthy boot look broken (198 in the R11 dump).
+     */
+    private var retries = 0
+
+    /** R11: unexpected failures only (a thrown hook, a missing class, a foreign binder push). */
     private var failures = 0
+
+    /**
+     * R11: the first refusal/exception, one-shot, compacted to one token for the diagnostic line.
+     * Explains the first [retries]/[failures] count in a report without repeating a log every frame.
+     */
+    private var firstFailure: String? = null
     private var lastLevel = -1
     private var lastState = "NONE"
 
@@ -158,18 +173,19 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 oplusClass = oplus
                 hookOplusView(oplus)
             } else {
-                countFailure()
+                countFailure("no OxygenOS battery view class")
                 false
             }
 
             val binder = findClass(OPLUS_BINDER_CLASS, classLoader)
-            if (binder != null) hookOplusBinder(binder, oplus) else countFailure()
+            if (binder != null) hookOplusBinder(binder, oplus) else
+                countFailure("no OxygenOS battery binder class")
 
             val aosp = findClass(AOSP_VIEW_CLASS, classLoader)
             val aospHooked = if (aosp != null) {
                 hookAospView(aosp)
             } else {
-                countFailure()
+                countFailure("no AOSP battery view class")
                 false
             }
 
@@ -185,7 +201,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             }
         } catch (t: Throwable) {
             installedFlag = false
-            countFailure()
+            countFailure(t)
             logOnce.once("ios-battery-install-failed") {
                 L.w("$TAG install failed: ${t.javaClass.simpleName}")
             }
@@ -242,8 +258,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                             val view = param.args.firstOrNull { it != null && oplus.isInstance(it) }
                                 as? View ?: return
                             reassertFor(view)
-                        } catch (_: Throwable) {
-                            countFailure()
+                        } catch (t: Throwable) {
+                            // Covers the reassert path: a foreign push that cannot be repaired.
+                            countFailure(t)
                         }
                     }
                 })
@@ -281,7 +298,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         return try {
             block().isNotEmpty()
         } catch (t: Throwable) {
-            countFailure()
+            countFailure(t)
             logOnce.once("ios-battery-hook-$what") {
                 L.w("$TAG hook $what failed: ${t.javaClass.simpleName}")
             }
@@ -293,8 +310,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     private fun onBatteryViewHook(param: XC_MethodHook.MethodHookParam) {
         try {
             (param.thisObject as? View)?.let { controllerFor(it) }
-        } catch (_: Throwable) {
-            countFailure()
+        } catch (t: Throwable) {
+            countFailure(t)
         }
     }
 
@@ -305,8 +322,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             if (!active) return
             if (synchronized(controllers) { controllers.containsKey(view) }) return
             controllerFor(view)
-        } catch (_: Throwable) {
-            countFailure()
+        } catch (t: Throwable) {
+            countFailure(t)
         }
     }
 
@@ -316,8 +333,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             if (color == 0) return
             lastTint = color
             (param.thisObject as? View)?.let { controllers[it]?.setTint(color) }
-        } catch (_: Throwable) {
-            countFailure()
+        } catch (t: Throwable) {
+            countFailure(t)
         }
     }
 
@@ -430,8 +447,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             }
             receiver = next
             receiverContext = context
-        } catch (_: Throwable) {
-            countFailure()
+        } catch (t: Throwable) {
+            countFailure(t)
             receiver = null
             receiverContext = null
         }
@@ -454,8 +471,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         for (controller in live) {
             try {
                 controller.restore()
-            } catch (_: Throwable) {
-                countFailure()
+            } catch (t: Throwable) {
+                countFailure(t)
             }
         }
         contextRef = null
@@ -509,8 +526,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         for (controller in live) {
             try {
                 controller.update(reading, saver)
-            } catch (_: Throwable) {
-                countFailure()
+            } catch (t: Throwable) {
+                countFailure(t)
             }
         }
         // R7 P5: a view recorded while the sticky read was missing was deliberately left stock.
@@ -579,8 +596,10 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             )
             // R7 P5: the first reading belongs to the install, exactly as the production path sees it;
             // installing an empty controller would refuse forever and the v2 battery would never draw.
+            // R11: a refusal here is the expected boot retry (no reading / zero-size stock slot), so it
+            // is counted as a retry with a one-shot reason, not as an unexpected failure.
             if (!controller.install(state.reading, state.saver)) {
-                countFailure()
+                noteInstallRefused(controller)
                 return@synchronized null
             }
             installs++
@@ -657,8 +676,53 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         return null
     }
 
-    private fun countFailure() {
+    /** An unexpected failure that threw: keep the exception class and message of the first one (R11). */
+    private fun countFailure(t: Throwable) {
         failures++
+        firstFailureOnce("failure ${t.javaClass.simpleName}: ${t.message.orEmpty()}")
+    }
+
+    /** A missing hook target: a real diagnostic failure, but there is no exception to name. */
+    private fun countFailure(reason: String) {
+        failures++
+        firstFailureOnce("failure $reason")
+    }
+
+    /**
+     * R11: an expected install refusal, counted separately from [failures]. `Controller.install`
+     * returns false until a sticky reading exists and the stock icon has a positive size, and the
+     * host retries on every layout/binder event, so these are boot retries, not failures.
+     */
+    private fun countRetry(reason: String) {
+        retries++
+        firstFailureOnce("retry $reason")
+    }
+
+    /** Records and logs the first reason once; compacted to a single token for the dump (R11). */
+    private fun firstFailureOnce(reason: String) {
+        if (firstFailure != null) return
+        firstFailure = reason.replace(Regex("\\s+"), "_").take(120)
+        logOnce.once("ios-battery-first-failure") {
+            L.w("$TAG first failure: $reason")
+        }
+    }
+
+    /**
+     * Test seam: the accounting `controllerFor` applies when `install` refuses. Production calls this
+     * from `controllerFor`; keeping it internal lets a Robolectric test prove a 0x0 stock slot is a
+     * retry and not a failure without the Xposed hooks.
+     */
+    internal fun noteInstallRefused(controller: Controller) {
+        countRetry(controller.installFailure ?: "install refused")
+    }
+
+    /** Test seam: zero the process-lifetime counters so a test can assert deltas (R11). */
+    internal fun resetCountersForTest() {
+        installs = 0
+        reasserts = 0
+        retries = 0
+        failures = 0
+        firstFailure = null
     }
 
     // -------------------------------------------------------------------------------- diagnostics
@@ -667,8 +731,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         val views = synchronized(seen) { seen.size }
         return listOf(
             "ios v2 battery: active=$active installed=$installedFlag views=$views " +
-                "installs=$installs reasserts=$reasserts failures=$failures " +
-                "level=$lastLevel state=$lastState"
+                "installs=$installs reasserts=$reasserts retries=$retries failures=$failures " +
+                "firstFailure=${firstFailure ?: "none"} level=$lastLevel state=$lastState"
         )
     }
 
@@ -727,23 +791,37 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         val installedForTest: Boolean get() = installedFlag
 
         /**
+         * R11: why [install] last returned false ("no reading" / "stock size 0x0 <= 0"), read by the
+         * object's retry accounting and the diagnostic; null after a successful install.
+         */
+        var installFailure: String? = null
+            private set
+
+        /**
          * Captures the stock drawable and size, swaps in our glyph and hides the OEM bolt(s).
          *
          * [initialReading]/[saver] are the first snapshot and are stored before any guard, because the
          * production path ([controllerFor]) constructs the controller and installs it with that state
          * instead of calling [update] first (R7 P5). Returns false (and changes nothing) when there is
          * no battery reading yet (keep the stock icon rather than install an invisible glyph) or the
-         * stock size is unusable (C2).
+         * stock size is unusable (C2). R11: each refusal records [installFailure] so the caller counts
+         * it as an expected boot retry instead of an unexplained failure.
          */
         fun install(initialReading: IosBatteryReading? = null, saver: Boolean = false): Boolean {
             if (installedFlag) return true
             if (initialReading != null) this.reading = initialReading
             this.saver = saver
-            if (reading == null) return false
+            if (reading == null) {
+                installFailure = "no reading"
+                return false
+            }
             val stock = image.drawable
             val width = stock?.intrinsicWidth?.takeIf { it > 0 } ?: image.width
             val height = stock?.intrinsicHeight?.takeIf { it > 0 } ?: image.height
-            if (width <= 0 || height <= 0) return false
+            if (width <= 0 || height <= 0) {
+                installFailure = "stock size ${width}x${height} <= 0"
+                return false
+            }
 
             // The transform depends on the glyph's actual inner box, so it is resolved here once the
             // stock slot is known (R7 P4); a null settings snapshot keeps the caller's fallback.
@@ -771,6 +849,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             image.setImageDrawable(drawable)
             hideBolts()
             installedFlag = true
+            installFailure = null
             IosSlotLayout.registerBattery(view, image)
             return true
         }

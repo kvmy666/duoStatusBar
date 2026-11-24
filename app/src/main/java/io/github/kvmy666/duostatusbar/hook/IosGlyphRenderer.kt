@@ -66,8 +66,10 @@ internal object IosGlyphRenderer {
      * [alpha] multiplies every drawn colour's own alpha. [overrideTint] replaces the dynamic tint for
      * the battery NORMAL fill, the neutral remainder/cap, Wi-Fi and cellular; the fixed battery state
      * colours (LOW red, SAVER yellow, CHARGING green, PLUGGED_NOT_CHARGING grey) always stay
-     * [IosVisual.batteryFillColor]. The percentage is a true knockout (no tint colour). The charging
-     * bolt is white per ref 3, independent of the tint.
+     * [IosVisual.batteryFillColor]. The percentage digits are solid white for LOW, CHARGING and
+     * CHARGING_SAVER (ref: dark charging digits are solid white, not a hole, `.pm/out-r11/measurements.md`
+     * §3) and a true knockout (no tint colour) for every other state. The charging bolt is white per
+     * ref 3, independent of the tint.
      * A hidden visual, a zero/negative box or a non-positive scale draws nothing.
      */
     fun draw(
@@ -140,14 +142,22 @@ internal object IosGlyphRenderer {
         }
         val tint = overrideTint ?: v.tint
 
-        // R9 colour rule: remainder/nub use the tint at 0.30 for dark ink and 0.50 for light ink.
-        val remainderAlpha = IosGeometry.remainderAlpha(tint)
+        // R11 colour rule (`.pm/out-r11/measurements.md` §4): the remainder/nub is the tint at a
+        // state-aware alpha — LOW and CHARGING measure 0.30, every other state keeps the R9 ink rule
+        // (dark ink 0.30, light ink 0.50). The nub uses the same factor below.
+        val remainderAlpha = IosGeometry.remainderAlpha(tint, v.batteryState)
 
-        // R6 item 6 / R9: `percentInside` is a TRUE knockout in normal/green/yellow. The red critical
-        // state is the one exception: its digits are solid white (not a hole). A CLEAR stroke must be
-        // drawn into an isolated layer, otherwise it would erase glyphs already drawn beside the
-        // battery.
-        val solidDigits = v.percentInside && v.batteryState == IosBatteryState.LOW
+        // R6 item 6 / R9 / R11: `percentInside` is a TRUE knockout in NORMAL and SAVER. LOW (red
+        // critical), CHARGING (green) and CHARGING_SAVER (yellow) draw SOLID WHITE digits instead: the
+        // dark charging reference measures a solid white core (244,255,242), not a hole
+        // (`.pm/out-r11/measurements.md` §3). A CLEAR stroke must be drawn into an isolated layer,
+        // otherwise it would erase glyphs already drawn beside the battery.
+        val solidDigits = v.percentInside && when (v.batteryState) {
+            IosBatteryState.LOW,
+            IosBatteryState.CHARGING,
+            IosBatteryState.CHARGING_SAVER -> true
+            else -> false
+        }
         val knockout = v.percentInside && !solidDigits
         val layer = if (knockout) canvas.saveLayer(null, null) else -1
         try {
@@ -186,7 +196,8 @@ internal object IosGlyphRenderer {
             canvas.drawPath(nub, fill)
 
             if (v.percentInside) {
-                // Red critical: solid white digits. Normal/green/yellow: CLEAR stroke holes.
+                // LOW/CHARGING/CHARGING_SAVER: solid white digits. NORMAL/SAVER/PLUGGED_NOT_CHARGING:
+                // CLEAR stroke holes.
                 drawPercentInside(canvas, v, solid = solidDigits, alpha = alpha)
             } else if (v.boltOpacity > 0f) {
                 // R9: no digits -> a solid system-ink bolt (~67 x 92), centred, no outline.
@@ -201,11 +212,11 @@ internal object IosGlyphRenderer {
     /**
      * Draws the percentage digits as traced filled even-odd contours, plus the optional inline bolt.
      *
-     * [solid] is the red-critical rule: solid white digits and, when present, the inline bolt is
-     * solid white too (no layer). Otherwise the digit ink band and the inline bolt are CLEAR fills
-     * so the real background shows through; glyph counters stay body ink because they are holes of
-     * the even-odd path, not cleared areas. The digits shift left to make room for the 40 x 59 bolt
-     * at the measured 5-unit gap.
+     * [solid] is the R11 solid-digit rule for LOW, CHARGING and CHARGING_SAVER: solid white digits and,
+     * when present, the inline bolt is solid white too (no layer). Otherwise the digit ink band and the
+     * inline bolt are CLEAR fills so the real background shows through; glyph counters stay body ink
+     * because they are holes of the even-odd path, not cleared areas. The digits shift left to make
+     * room for the 40 x 59 bolt at the measured 5-unit gap.
      */
     private fun drawPercentInside(canvas: Canvas, v: IosVisual, solid: Boolean, alpha: Float) {
         val b = IosGeometry.Battery
@@ -236,7 +247,8 @@ internal object IosGlyphRenderer {
             fill.color = withAlpha(Color.WHITE, 1f, alpha)
             canvas.drawPath(digits, fill)
             if (hasBolt) {
-                // Red critical keeps the inline bolt too, as solid white at the same measured seat.
+                // LOW/CHARGING/CHARGING_SAVER keep the inline bolt too, as solid white at the same
+                // measured seat (the dark charging reference measures a solid white bolt).
                 val boltX = left + textWidth + IosDigits.INLINE_BOLT_GAP + IosDigits.INLINE_BOLT_W / 2f
                 val white = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     style = Paint.Style.FILL

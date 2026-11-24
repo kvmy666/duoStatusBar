@@ -19,10 +19,12 @@ import java.util.Locale
  * per-state PNGs plus `digits-shipped.json` so the inverse weight-normalised IoU can be recomputed
  * from the shipped contours.
  *
- * R6 item 6 makes `percentInside` a true knockout: on a transparent canvas the digit ink is alpha 0.
- * The guard therefore checks BOTH the body ink and the cleared holes, and every written PNG is
- * rendered over a deterministic opaque multicolour background so the holes are visible in the
- * evidence (not hidden as transparent-on-transparent). It is a real guard even without a directory.
+ * R6 item 6 makes `percentInside` a true knockout for NORMAL/SAVER; R11 makes LOW, CHARGING and
+ * CHARGING_SAVER draw solid white digits (`.pm/out-r11/measurements.md` §3). The guard therefore
+ * checks the body ink always, cleared holes for the knockout states and solid white digit ink for the
+ * solid states. Every written PNG is rendered over a deterministic opaque multicolour background so
+ * the holes are visible in the evidence (not hidden as transparent-on-transparent). It is a real
+ * guard even without a directory.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -63,10 +65,20 @@ class IosDigitEvidenceTest {
             val bitmap = render(visual)
             val ink = inkCount(bitmap)
             assertTrue("$name ($pct %) produced no body ink", ink > 500)
-            assertTrue(
-                "$name ($pct %) produced no cleared digit holes",
-                clearedInsideBody(bitmap) > 100
-            )
+            val solid = visual.batteryState == IosBatteryState.LOW ||
+                visual.batteryState == IosBatteryState.CHARGING ||
+                visual.batteryState == IosBatteryState.CHARGING_SAVER
+            if (solid) {
+                assertTrue(
+                    "$name ($pct %) produced no solid white digits",
+                    solidWhiteInBody(bitmap) > 100
+                )
+            } else {
+                assertTrue(
+                    "$name ($pct %) produced no cleared digit holes",
+                    clearedInsideBody(bitmap) > 100
+                )
+            }
             bitmap.recycle()
             if (dir != null) {
                 val bitmap2 = render(visual, opaque = true)
@@ -129,6 +141,27 @@ class IosDigitEvidenceTest {
         for (y in top..bottom) {
             for (x in left..right) {
                 if (Color.alpha(bitmap.getPixel(x, y)) == 0) count++
+            }
+        }
+        return count
+    }
+
+    /** Solid white digit ink inside the battery body (R11: LOW / CHARGING / CHARGING_SAVER). */
+    private fun solidWhiteInBody(bitmap: Bitmap): Int {
+        val b = IosGeometry.Battery
+        val left = (b.BODY_LEFT * SCALE).toInt()
+        val top = (b.BODY_TOP * SCALE).toInt()
+        val right = ((b.BODY_LEFT + b.BODY_W) * SCALE).toInt() - 1
+        val bottom = ((b.BODY_TOP + b.BODY_H) * SCALE).toInt() - 1
+        var count = 0
+        for (y in top..bottom) {
+            for (x in left..right) {
+                val c = bitmap.getPixel(x, y)
+                if (Color.alpha(c) > 200 &&
+                    Color.red(c) > 240 && Color.green(c) > 240 && Color.blue(c) > 240
+                ) {
+                    count++
+                }
             }
         }
         return count

@@ -149,6 +149,59 @@ class IosBatteryV2Test {
         assertFalse(controller.install(reading(level = 50), saver = false))
         assertFalse(controller.installedForTest)
         assertNull(image.drawable)
+        assertEquals("stock size 0x0 <= 0", controller.installFailure)
+    }
+
+    // ------------------------------------------------------------------ R11 retry accounting
+
+    @Test
+    fun `a zero-size install records a retry reason once and is not a failure`() {
+        IosBatteryV2.resetCountersForTest()
+        try {
+            val root = FrameLayout(context)
+            val image = ImageView(context)
+            root.addView(image)
+            val controller = IosBatteryV2.Controller(root, image, IntArray(0), context, false, 20)
+
+            assertFalse(controller.install(reading(level = 50), saver = false))
+            // Production (controllerFor) applies this accounting on a refused install; the host
+            // retries on every layout/binder event until the icon has a real box.
+            IosBatteryV2.noteInstallRefused(controller)
+            IosBatteryV2.noteInstallRefused(controller)
+
+            val line = IosBatteryV2.diagnosticLines().single()
+            assertTrue("retries not counted: $line", line.contains("retries=2"))
+            assertTrue("an expected retry counted as a failure: $line", line.contains("failures=0"))
+            assertTrue(
+                "first reason missing: $line",
+                line.contains("firstFailure=retry_stock_size_0x0_<=_0")
+            )
+        } finally {
+            IosBatteryV2.resetCountersForTest()
+        }
+    }
+
+    @Test
+    fun `a no-reading install records its own retry reason`() {
+        IosBatteryV2.resetCountersForTest()
+        try {
+            val f = fixture()
+            val controller = f.controller()
+
+            assertFalse(controller.install(null, saver = false))
+            assertEquals("no reading", controller.installFailure)
+            IosBatteryV2.noteInstallRefused(controller)
+
+            val line = IosBatteryV2.diagnosticLines().single()
+            assertTrue("retry not counted: $line", line.contains("retries=1"))
+            assertTrue("a no-reading retry counted as a failure: $line", line.contains("failures=0"))
+            assertTrue(
+                "first reason missing: $line",
+                line.contains("firstFailure=retry_no_reading")
+            )
+        } finally {
+            IosBatteryV2.resetCountersForTest()
+        }
     }
 
     // ------------------------------------------------------------------ user transform (R7 P4)
@@ -426,7 +479,8 @@ class IosBatteryV2Test {
         val line = IosBatteryV2.diagnosticLines().single()
         val pattern = Regex(
             "^ios v2 battery: active=(true|false) installed=(true|false) views=\\d+ " +
-                "installs=\\d+ reasserts=\\d+ failures=\\d+ level=-?\\d+ state=[A-Z_]+$"
+                "installs=\\d+ reasserts=\\d+ retries=\\d+ failures=\\d+ firstFailure=\\S+ " +
+                "level=-?\\d+ state=[A-Z_]+$"
         )
         assertTrue("unexpected line: $line", pattern.matches(line))
     }

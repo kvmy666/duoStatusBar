@@ -54,6 +54,13 @@ internal object IosGeometry {
         const val REMAINDER_ALPHA_LIGHT_INK = 0.50f
 
         /**
+         * R11 measured remainder/nub alpha for LOW and CHARGING, independent of the ink colour: the
+         * dark charging reference measures 0.303 and dark critical red 0.303
+         * (`.pm/out-r11/measurements.md` §4). Plain dark stays 0.50 and yellow low-power 0.50.
+         */
+        const val REMAINDER_ALPHA_LOW_CHARGING = 0.30f
+
+        /**
          * R9-design.md: artboard 209.2 x 102, body at (1,1). `CAP_*` keeps the historical name for
          * the separate nub: cap left is the body right + the 3.6-unit gap.
          */
@@ -406,6 +413,23 @@ internal object IosGeometry {
     /** R9 remainder/nub alpha: dark ink 0.30, light ink 0.50. */
     fun remainderAlpha(colour: Int): Float =
         if (isDarkInk(colour)) Battery.REMAINDER_ALPHA_DARK_INK else Battery.REMAINDER_ALPHA_LIGHT_INK
+
+    /**
+     * R11 remainder/nub alpha for [colour] in [state].
+     *
+     * Measured on the dark iPhone references (`.pm/out-r11/measurements.md` §4): the charging-green
+     * remainder is 0.30 and the red critical remainder 0.30, while plain dark is 0.50 and yellow
+     * low-power / charging-saver 0.50. So [IosBatteryState.LOW] and [IosBatteryState.CHARGING] take
+     * the fixed 0.30 whatever the ink; every other state keeps the R9 ink-luminance rule, which is
+     * dark ink 0.30 and light ink 0.50.
+     *
+     * UNVERIFIED: [IosBatteryState.PLUGGED_NOT_CHARGING] has no reference and falls through to the
+     * ink rule, and the light-mode yellow case (SAVER / CHARGING_SAVER on dark ink) is unverified.
+     */
+    fun remainderAlpha(colour: Int, state: IosBatteryState): Float = when (state) {
+        IosBatteryState.LOW, IosBatteryState.CHARGING -> Battery.REMAINDER_ALPHA_LOW_CHARGING
+        else -> remainderAlpha(colour)
+    }
 
     /**
      * The tight drawn-ink box of [kind] in artboard units. The R9 layout builder positions each
