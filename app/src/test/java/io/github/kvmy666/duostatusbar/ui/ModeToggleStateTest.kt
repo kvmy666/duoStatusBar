@@ -96,6 +96,34 @@ class ModeToggleStateTest {
     }
 
     @Test
+    fun `duo off clears a forced stale iosMode instead of leaving it behind`() {
+        val forced = fixture(enabled = true, iosMode = true)
+
+        val after = applyDuoMasterToggle(forced, requested = false)
+
+        assertEquals(fixture(enabled = false, iosMode = false), after)
+    }
+
+    @Test
+    fun `no reachable toggle result has Duo and iOS on together`() {
+        val reachable = listOf(
+            fixture(enabled = false, iosMode = false),
+            fixture(enabled = true, iosMode = false),
+            fixture(enabled = false, iosMode = true)
+        )
+        for (before in reachable) {
+            for (requested in listOf(true, false)) {
+                for (available in listOf(true, false)) {
+                    val ios = applyIosModeToggle(before, requested, available)
+                    assertFalse("ios toggle left both on: $ios", ios.enabled && ios.iosMode)
+                }
+                val duo = applyDuoMasterToggle(before, requested)
+                assertFalse("duo toggle left both on: $duo", duo.enabled && duo.iosMode)
+            }
+        }
+    }
+
+    @Test
     fun `OFF ios on becomes IOS and turns Duo off`() {
         val before = fixture(enabled = false, iosMode = false)
 
@@ -179,18 +207,26 @@ class ModeToggleStateTest {
     @Test
     fun `DUO keeps Duo and shared cards active and greys the iOS tuning`() {
         val duo = fixture(enabled = true, iosMode = false)
-        val iosTuningEnabled = duo.iosMode && true
 
         assertTrue(iosCardEnabled(duo, iosAvailable = true))
         assertTrue(duoOwnsBar(duo, iosAvailable = true))
         assertTrue(duoControlsEnabled(duo, iosAvailable = true))
         assertFalse(iosSimDisplayEnabled(duo, iosAvailable = true))
-        assertFalse("iOS tuning follows iosMode", iosTuningEnabled)
+        assertFalse("iOS tuning follows iosMode", iosTuningEnabled(duo, available = true))
+        assertFalse("iOS tuning needs the drawing", iosTuningEnabled(duo, available = false))
         assertTrue(sharedCardEnabled(duo, iosAvailable = true))
 
         assertTrue(customCardEnabled(CustomCard.IOS_MODE, duo, iosAvailable = true))
         assertTrue(customCardEnabled(CustomCard.CUSTOMIZE, duo, iosAvailable = true))
         assertTrue(customCardEnabled(CustomCard.SIM, duo, iosAvailable = true))
+    }
+
+    @Test
+    fun `ios tuning needs both iosMode and an available drawing`() {
+        assertTrue(iosTuningEnabled(fixture(enabled = false, iosMode = true), available = true))
+        assertFalse(iosTuningEnabled(fixture(enabled = false, iosMode = true), available = false))
+        assertFalse(iosTuningEnabled(fixture(enabled = true, iosMode = false), available = true))
+        assertFalse(iosTuningEnabled(fixture(enabled = true, iosMode = false), available = false))
     }
 
     @Test

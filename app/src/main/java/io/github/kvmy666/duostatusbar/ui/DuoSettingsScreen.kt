@@ -747,12 +747,15 @@ internal fun restartSystemUi(context: Context, reason: String) {
         }
         if (StockIconHider.isShizukuRunning() && StockIconHider.isPermissionGranted()) {
             L.w("root restart failed: $reasonText; trying Shizuku")
-            StockIconHider.exec(
-                context,
-                "pkill -f com.android.systemui || killall com.android.systemui || " +
-                    "kill -9 ${'$'}(pidof com.android.systemui)",
-                {}
-            )
+            // The same age-guarded, pid-targeted script as the root route. Shizuku must never run the
+            // blind pkill/killall, which could match the replacement SystemUI. The script refuses a
+            // young target with exit 3 and the shared marker; report that refusal, never a success.
+            StockIconHider.exec(context, RootLogs.restartScript()) { out ->
+                if (out.contains(RootLogs.YOUNG_REFUSAL_PREFIX)) {
+                    val line = out.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+                    L.w("shizuku restart refused: $line")
+                }
+            }
         } else {
             // Nothing else can restart System UI, so name the reason instead of failing silently.
             L.w("restart failed: $reasonText")

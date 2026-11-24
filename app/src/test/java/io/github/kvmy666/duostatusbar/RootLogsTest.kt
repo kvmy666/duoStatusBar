@@ -154,6 +154,24 @@ class RootLogsTest {
         assertFalse(RootLogs.isYoungRefusal(0, ""))
     }
 
+    /** Reads the settings screen from the test working directory (the app module) or its parents. */
+    private fun settingsScreenSource(): String {
+        val rel = "src/main/java/io/github/kvmy666/duostatusbar/ui/DuoSettingsScreen.kt"
+        val file = listOf(File(rel), File("app/$rel"), File("../$rel")).firstOrNull { it.isFile }
+            ?: throw AssertionError("DuoSettingsScreen.kt not found from ${File(".").absolutePath}")
+        return file.readText()
+    }
+
+    @Test
+    fun `the Shizuku restart route uses the guarded script and no blind kill`() {
+        val source = settingsScreenSource()
+        // Drop line comments so the check reads code, not prose that names the old matchers.
+        val code = source.lineSequence().map { it.substringBefore("//") }.joinToString("\n")
+        assertTrue("the Shizuku route must run RootLogs.restartScript()", code.contains("RootLogs.restartScript()"))
+        assertFalse("pkill must be gone from the app restart path", code.contains("pkill"))
+        assertFalse("killall must be gone from the app restart path", code.contains("killall"))
+    }
+
     @Test
     fun `blockedYoung is off unless the outcome says so`() {
         assertFalse(RestartOutcome(true, "").blockedYoung)

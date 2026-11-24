@@ -126,7 +126,7 @@ internal fun applyIosModeToggle(
 
 /**
  * The Duo master switch owns the bar too: turning it on leaves iOS, turning it off is the OFF mode.
- * (While iOS owns the bar the switch is disabled, so no write can enter here with `iosMode == true`.)
+ * OFF always clears `iosMode` as well, so a stale `iosMode` can never re-activate iOS later.
  */
 internal fun applyDuoMasterToggle(
     settings: DuoSettings,
@@ -134,8 +134,14 @@ internal fun applyDuoMasterToggle(
 ): DuoSettings = if (requested) {
     settings.copy(enabled = true, iosMode = false)
 } else {
-    settings.copy(enabled = false)
+    settings.copy(enabled = false, iosMode = false)
 }
+
+/** iOS tuning rows are live only in IOS mode and only while the drawing is ready. */
+internal fun iosTuningEnabled(
+    settings: DuoSettings,
+    available: Boolean = iosModeAvailable()
+): Boolean = settings.iosMode && available
 
 // --------------------------------------------------------------------- iOS 27 mode
 @Composable
@@ -181,13 +187,13 @@ internal fun IosModeSection(
                 label = stringResource(R.string.settings_ios_percent_inside),
                 detail = stringResource(R.string.settings_ios_percent_inside_detail),
                 checked = settings.iosPercentInside,
-                enabled = settings.iosMode && available
+                enabled = iosTuningEnabled(settings, available)
             ) { onUpdate(settings.copy(iosPercentInside = it)) }
             SettingSwitch(
                 label = stringResource(R.string.settings_ios_hide_extras),
                 detail = stringResource(R.string.settings_ios_hide_extras_detail),
                 checked = settings.hideExtras,
-                enabled = settings.iosMode && available
+                enabled = iosTuningEnabled(settings, available)
             ) { onUpdate(settings.copy(hideExtras = it)) }
 
             Text(
@@ -198,7 +204,7 @@ internal fun IosModeSection(
                 text = stringResource(R.string.settings_ios_icons_detail),
                 style = MaterialTheme.typography.bodySmall
             )
-            val tuningEnabled = settings.iosMode && available
+            val tuningEnabled = iosTuningEnabled(settings, available)
 
             Text(
                 text = stringResource(R.string.ios_icon_battery),
