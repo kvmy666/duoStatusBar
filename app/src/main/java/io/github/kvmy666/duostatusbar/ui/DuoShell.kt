@@ -634,7 +634,7 @@ fun CustomizationPage() {
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
-                        onRestart = { restartSystemUi(context) },
+                        onRestart = { restartSystemUi(context, "design-change") },
                         enabled = customCardEnabled(card, settings)
                     )
                 }

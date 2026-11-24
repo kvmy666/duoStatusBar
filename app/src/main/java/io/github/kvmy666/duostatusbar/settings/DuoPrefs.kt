@@ -273,6 +273,12 @@ object DuoPrefs {
     const val ACTION_RESTART_SYSTEMUI = "io.github.kvmy666.duostatusbar.RESTART_SYSTEMUI"
 
     /**
+     * Why a restart was requested (module-health card, stage-override clear, design change, settings size
+     * restart). The module logs it, so a restart storm can be traced to the button that caused it.
+     */
+    const val EXTRA_RESTART_REASON = "io.github.kvmy666.duostatusbar.EXTRA_RESTART_REASON"
+
+    /**
      * Sent by the app just before it builds a bug report. The module replies with a fresh diagnostic
      * dump, so the report shows the bar as it is *at that moment* — the one-shot boot dump cannot show
      * the shade expanded, which is exactly what the shade-position report needs (Issue #1).

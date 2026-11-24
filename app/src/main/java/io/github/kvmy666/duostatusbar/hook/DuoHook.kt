@@ -30,6 +30,7 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
+import io.github.kvmy666.duostatusbar.ui.RestartPolicy
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -170,6 +171,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** One-shot logging gates, so a repeated apply does not flood the report with the same cause. */
     private val logOnce = LogOnce()
+
+    /** Wall-clock ms of the last restart broadcast accepted by this process, for per-process debounce. */
+    @Volatile private var lastRestartRequestAt = 0L
 
     /**
      * The keyguard/shade window (FR-03b). On the lock screen the `StatusBar` window still draws our
@@ -395,6 +399,20 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         handler.postDelayed(settingsApply, delay)
     }
 
+    /**
+     * Writes the app-visible "the module loaded" stamp as early as a context is available.
+     *
+     * The app's restart handshake waits for this stamp to change; writing it at the top of install/start
+     * means a fresh SystemUI is detectable while the heavy install is still running, which is exactly the
+     * window in which the old app-side timeout expired and root killed the new process.
+     */
+    private fun noteLoadStamp(ctx: Context) {
+        L.guard("DuoHook load stamp") {
+            DuoGuard(ctx).noteLoaded()
+            logOnce.once("load-stamp") { L.i("module load stamp written (install/start)") }
+        }
+    }
+
     fun install() {
         L.guard("DuoHook install") {
             // LSPosed calls handleLoadPackage once per package in scope; on HyperOS System UI is seen
@@ -404,6 +422,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 L.i("already installed in this process - skipping duplicate load of ${lp.packageName}")
                 return@guard
             }
+            // Earliest point the app can see: before any hook, Rive or ROM work below.
+            AppContextResolver.resolveAppContext()?.let { noteLoadStamp(it) }
             L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
             IosResourceEngine.install(lp.classLoader)
             IosBatteryV2.install(lp.classLoader)
@@ -931,6 +951,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun start(ctx: Context) {
         if (!ProcessState.started.compareAndSet(false, true)) return
+        // First statement, before RomDetection: the new process must be detectable immediately.
+        noteLoadStamp(ctx)
         app = ctx
         // Now that a context exists the SystemUI package can be inspected. Only a successful read that
         // proves a non-MIUI SystemUI may switch a Xiaomi-brand device to AOSP; an unreadable one keeps
@@ -1090,7 +1112,17 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // module is the only side that can do it: it lives inside System UI, and killing its
                     // own process makes Android bring System UI straight back.
                     if (intent?.action == DuoPrefs.ACTION_RESTART_SYSTEMUI) {
-                        L.i("restart requested by the app - restarting System UI")
+                        val reason = intent.getStringExtra(DuoPrefs.EXTRA_RESTART_REASON) ?: "unknown"
+                        val now = System.currentTimeMillis()
+                        val last = lastRestartRequestAt
+                        if (RestartPolicy.shouldDebounce(now, last)) {
+                            // A second broadcast inside the window is the same request: killing twice in
+                            // quick succession is what let a replacement SystemUI be hit mid-install.
+                            L.w("restart ignored (debounced, ${now - last} ms since last request)")
+                            return
+                        }
+                        lastRestartRequestAt = now
+                        L.i("restart requested by the app (reason=$reason) - restarting System UI")
                         handler.postDelayed({
                             try {
                                 android.os.Process.killProcess(android.os.Process.myPid())

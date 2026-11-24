@@ -116,4 +116,48 @@ class RootLogsTest {
         val reason = RootLogs.restartExitReason("su", 1, "\n  permission denied  \nmore")
         assertEquals("su su: exit 1: permission denied", reason)
     }
+
+    @Test
+    fun `restart script never runs pkill or killall`() {
+        val script = RootLogs.restartScript()
+        // Blind matchers can hit the replacement SystemUI Android starts after the kill.
+        assertFalse("pkill must be gone", script.contains("pkill"))
+        assertFalse("killall must be gone", script.contains("killall"))
+    }
+
+    @Test
+    fun `restart script reads the current pid and its age then kills only that pid`() {
+        val script = RootLogs.restartScript()
+        assertTrue(script.contains("pidof com.android.systemui"))
+        assertTrue(script.contains("/proc/\$PID/stat"))
+        assertTrue(script.contains("/proc/uptime"))
+        assertTrue(script.contains("CLK_TCK"))
+        assertTrue(script.contains("kill -9 \"\$PID\""))
+        assertTrue("the age guard must exit before the kill", script.indexOf("exit 3") < script.indexOf("kill -9"))
+    }
+
+    @Test
+    fun `restart script refuses a too-young SystemUI with exit 3 and the shared message`() {
+        val script = RootLogs.restartScript()
+        assertTrue(script.contains("exit 3"))
+        assertTrue(script.contains(RootLogs.YOUNG_REFUSAL_PREFIX))
+        assertTrue(script.contains("< 15s"))
+        assertEquals("refused: systemui age 10s < 15s", RootLogs.youngRefusalMessage(10L))
+        assertEquals(null, RootLogs.youngRefusalMessage(15L))
+    }
+
+    @Test
+    fun `exit three or the marker marks a young refusal, an ordinary failure does not`() {
+        assertTrue(RootLogs.isYoungRefusal(RootLogs.EXIT_YOUNG, ""))
+        assertTrue(RootLogs.isYoungRefusal(1, "refused: systemui age 4s < 15s"))
+        assertFalse(RootLogs.isYoungRefusal(1, "su: permission denied"))
+        assertFalse(RootLogs.isYoungRefusal(0, ""))
+    }
+
+    @Test
+    fun `blockedYoung is off unless the outcome says so`() {
+        assertFalse(RestartOutcome(true, "").blockedYoung)
+        assertFalse(RestartOutcome(false, "su: denied").blockedYoung)
+        assertTrue(RestartOutcome(false, "refused: systemui age 3s < 15s", blockedYoung = true).blockedYoung)
+    }
 }

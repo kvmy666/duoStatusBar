@@ -443,7 +443,7 @@ fun DuoSettingsScreen(
                 state = moduleHealth.state,
                 busy = collecting,
                 onOpenLsposed = { openLsposed(context) },
-                onRestart = { restartSystemUi(context) },
+                onRestart = { restartSystemUi(context, "module-health") },
                 onReboot = { scope.launch { withContext(Dispatchers.IO) { RootLogs.reboot() } } },
                 onTelegram = { openTelegramChat(context) },
                 onExport = {
@@ -527,7 +527,7 @@ fun DuoSettingsScreen(
                             if (stageOverride == null) {
                                 // The module re-reads on a settings broadcast, but the override lived in a
                                 // store it cached; a restart makes the change deterministic.
-                                restartSystemUi(context)
+                                restartSystemUi(context, "stage-override-clear")
                             } else {
                                 overrideFailed = true
                                 Toast.makeText(
@@ -552,7 +552,7 @@ fun DuoSettingsScreen(
                 settings = settings,
                 onUpdate = onUpdate,
                 matches = search,
-                onRestart = { restartSystemUi(context) }
+                onRestart = { restartSystemUi(context, "settings-restart") }
             )
 
             AnimationsSection(
@@ -685,6 +685,13 @@ fun DuoSettingsScreen(
 /** Red Wine (FR-11): the app icon's background, reused for the header badge. */
 private val BRAND_WINE = Color(0xFF7B1E3A)
 
+/** Process-wide restart debounce state; guarded by [restartRequestLock]. */
+private val restartRequestLock = Any()
+@Volatile private var lastRestartRequestAt = 0L
+
+/** How long to keep waiting after root says the target is too young (the reload may still be landing). */
+private const val YOUNG_RETRY_WAIT_MS = 5_000L
+
 /**
  * Asks the module to restart System UI so a size change takes effect.
  *
@@ -696,20 +703,50 @@ private val BRAND_WINE = Color(0xFF7B1E3A)
  * newer load stamp, the app falls back to root, then to Shizuku — which is what makes the button work on a
  * ROM without `su` as long as Shizuku is running. When neither route can act, the failure says why
  * instead of leaving the button silent.
+ *
+ * Two guards learned from the safe-mode loop: repeated taps within [RestartPolicy.RESTART_DEBOUNCE_MS]
+ * are one request, and the wait is [RestartPolicy.RELOAD_WAIT_MS] even when the last stamp is unknown.
+ * The old 2.5 s wait expired while the fresh SystemUI was still installing, so root killed it.
+ *
+ * [reason] is forwarded to the module and logged there, so a restart can be traced to its button.
  */
-internal fun restartSystemUi(context: Context) {
+internal fun restartSystemUi(context: Context, reason: String) {
+    val now = System.currentTimeMillis()
+    synchronized(restartRequestLock) {
+        val last = lastRestartRequestAt
+        if (RestartPolicy.shouldDebounce(now, last)) {
+            L.w("restart ignored (debounced, ${now - last} ms since last request)")
+            return
+        }
+        lastRestartRequestAt = now
+    }
     val before = DuoPrefs.moduleLoadTime(context)
-    context.sendBroadcast(Intent(DuoPrefs.ACTION_RESTART_SYSTEMUI))
+    context.sendBroadcast(
+        Intent(DuoPrefs.ACTION_RESTART_SYSTEMUI)
+            .putExtra(DuoPrefs.EXTRA_RESTART_REASON, reason)
+    )
     Thread {
-        if (before > 0L && moduleReloadedSince(context, before)) return@Thread
+        // Always wait, even when before == 0: an unknown stamp means "not proven loaded", not "restarted".
+        if (moduleReloadedSince(context, before)) return@Thread
+        // One last look right before the root fallback: the reload can land just after the wait.
+        if (moduleReloadedSince(context, before, timeoutMs = 0L)) return@Thread
         // A throw here must not kill the worker thread and leave the button silent.
         val outcome = runCatching { RootLogs.restartSystemUiDetailed() }.getOrElse { t ->
             RestartOutcome(false, "root restart failed: ${t.javaClass.simpleName}: ${t.message}")
         }
         if (outcome.ok) return@Thread
-        val reason = outcome.reason.ifBlank { "root restart failed" }
+        val reasonText = outcome.reason.ifBlank { "root restart failed" }
+        if (outcome.blockedYoung) {
+            // Root found a SystemUI younger than the guard: that is the fresh process installing, not a
+            // stuck one. Give the load stamp a short extra window; if it appears, this was a restart.
+            if (moduleReloadedSince(context, before, timeoutMs = YOUNG_RETRY_WAIT_MS)) return@Thread
+            // Never fall through to Shizuku here: it would kill the same fresh pid.
+            L.w("restart failed: $reasonText")
+            showRestartFailure(context, reasonText)
+            return@Thread
+        }
         if (StockIconHider.isShizukuRunning() && StockIconHider.isPermissionGranted()) {
-            L.w("root restart failed: $reason; trying Shizuku")
+            L.w("root restart failed: $reasonText; trying Shizuku")
             StockIconHider.exec(
                 context,
                 "pkill -f com.android.systemui || killall com.android.systemui || " +
@@ -718,32 +755,41 @@ internal fun restartSystemUi(context: Context) {
             )
         } else {
             // Nothing else can restart System UI, so name the reason instead of failing silently.
-            L.w("restart failed: $reason")
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.settings_restart_failed, reason),
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            L.w("restart failed: $reasonText")
+            showRestartFailure(context, reasonText)
         }
     }.start()
 }
 
-/**
- * Whether System UI came back with a newer module-load stamp within [timeoutMs] of the restart request.
- * The module stamps `Settings.Global` before it does anything else, so a newer value is direct proof that
- * the restart happened and the module (or at least LSPosed) came back.
- */
-private fun moduleReloadedSince(context: Context, before: Long, timeoutMs: Long = 2_500L): Boolean {
-    val deadline = System.currentTimeMillis() + timeoutMs
-    while (true) {
-        if (DuoPrefs.moduleLoadTime(context) > before) return true
-        if (System.currentTimeMillis() >= deadline) return false
-        try {
-            Thread.sleep(250)
-        } catch (_: InterruptedException) {
-            return DuoPrefs.moduleLoadTime(context) > before
-        }
+private fun showRestartFailure(context: Context, reason: String) {
+    Handler(Looper.getMainLooper()).post {
+        Toast.makeText(
+            context,
+            context.getString(R.string.settings_restart_failed, reason),
+            Toast.LENGTH_LONG
+        ).show()
     }
 }
+
+/**
+ * Whether System UI came back with a newer module-load stamp within [timeoutMs] of the restart request.
+ * The module stamps `Settings.Global` as early as it can, so a newer value is direct proof that the
+ * restart happened and the module (or at least LSPosed) came back.
+ *
+ * Always waits, including when [before] is 0: a positive stamp then counts as the reload. The clock,
+ * stamp source and sleep are injectable so [RestartPolicy.waitForReload] can be exercised without Android.
+ */
+internal fun moduleReloadedSince(
+    context: Context,
+    before: Long,
+    timeoutMs: Long = RestartPolicy.RELOAD_WAIT_MS,
+    now: () -> Long = System::currentTimeMillis,
+    sleep: (Long) -> Unit = { ms ->
+        try {
+            Thread.sleep(ms)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+    },
+    readStamp: () -> Long = { DuoPrefs.moduleLoadTime(context) }
+): Boolean = RestartPolicy.waitForReload(before, readStamp, now, timeoutMs, sleep)

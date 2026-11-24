@@ -3,14 +3,23 @@ package io.github.kvmy666.duostatusbar
 import android.content.Context
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
+import io.github.kvmy666.duostatusbar.ui.RestartPolicy
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import rikka.shizuku.Shizuku
 
-/** The result of a root System UI restart: whether the shell finished, and why not when it did not. */
-internal data class RestartOutcome(val ok: Boolean, val reason: String)
+/**
+ * The result of a root System UI restart: whether the shell finished, and why not when it did not.
+ * [blockedYoung] marks the age guard: the process was too fresh to kill, so the app must not fall through
+ * to another killer (Shizuku would hit the same fresh pid).
+ */
+internal data class RestartOutcome(
+    val ok: Boolean,
+    val reason: String,
+    val blockedYoung: Boolean = false
+)
 
 /**
  * App-side diagnostics capture that works on **every** root method and on none at all.
@@ -245,17 +254,9 @@ internal object RootLogs {
         var su = "su"
         return try {
             su = findSuBinary()
-            // Different ROMs keep different tools, so every spelling is tried in turn: `pkill -f` (AOSP),
-            // `killall` (some vendors) and `pidof` + `kill -9` (the one that survives SELinux-restricted
-            // pkill). `true` makes the script succeed even when the process was already gone.
-            //
-            // Because the script ends with `; true`, a process this call killed is not provable from the
-            // exit code; the non-zero branch below is specifically for `su` denial / exec failure, where
-            // the root manager refuses the shell and exits immediately.
-            val script = "pkill -f com.android.systemui; " +
-                "killall com.android.systemui 2>/dev/null; " +
-                "kill -9 ${'$'}(pidof com.android.systemui) 2>/dev/null; true"
-            val process = ProcessBuilder(su, "-c", script).redirectErrorStream(true).start()
+            val process = ProcessBuilder(su, "-c", restartScript())
+                .redirectErrorStream(true)
+                .start()
             val finished = process.waitFor(ROOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroy()
@@ -263,14 +264,14 @@ internal object RootLogs {
                 RestartOutcome(false, restartTimeoutReason(su, ROOT_TIMEOUT_SECONDS))
             } else {
                 val exit = process.exitValue()
+                // The process has ended, so reading the merged stream cannot block.
+                val output = process.inputStream.bufferedReader().readText().trim()
                 if (exit == 0) {
                     RestartOutcome(true, "")
                 } else {
-                    // The process has ended, so reading the merged stream cannot block.
-                    val output = process.inputStream.bufferedReader().readText().trim()
                     val reason = restartExitReason(su, exit, output)
                     L.w("root restart failed: $reason")
-                    RestartOutcome(false, reason)
+                    RestartOutcome(false, reason, blockedYoung = isYoungRefusal(exit, output))
                 }
             }
         } catch (t: Throwable) {
@@ -279,6 +280,71 @@ internal object RootLogs {
             RestartOutcome(false, reason)
         }
     }
+
+    /**
+     * The pid-targeted restart script.
+     *
+     * It reads the *current* SystemUI pid and its age (start time from `/proc/<pid>/stat` field 22 against
+     * `/proc/uptime`, using `CLK_TCK`), refuses before killing when the pid is younger than
+     * [minAgeSeconds], and then kills exactly that pid. `pkill`/`killall` are deliberately absent: after
+     * the kill they can match the replacement process Android starts, which is how the app's old fallback
+     * took down the fresh SystemUI and drove LSPosed into safe mode.
+     *
+     * Exposed so the rules are unit-tested without a device or `su`.
+     */
+    internal fun restartScript(minAgeSeconds: Long = RestartPolicy.MIN_SYSTEMUI_AGE_S): String = """
+        PID=${'$'}(pidof com.android.systemui 2>/dev/null | cut -d' ' -f1)
+        if [ -z "${'$'}PID" ]; then
+          echo "refused: systemui pid not found"
+          exit 4
+        fi
+        STAT=${'$'}(cat /proc/${'$'}PID/stat 2>/dev/null)
+        if [ -z "${'$'}STAT" ]; then
+          echo "refused: systemui stat unreadable"
+          exit 4
+        fi
+        # Field 22 is starttime; the comm field can contain spaces, so strip through the last ')' first.
+        REST=${'$'}{STAT##*) }
+        START=${'$'}(echo "${'$'}REST" | awk '{print ${'$'}20}' 2>/dev/null)
+        TCK=${'$'}(getconf CLK_TCK 2>/dev/null || echo 100)
+        case "${'$'}TCK" in ''|*[!0-9]*) TCK=100 ;; esac
+        case "${'$'}START" in ''|*[!0-9]*) echo "refused: systemui starttime unreadable"; exit 4 ;; esac
+        UP=${'$'}(cut -d. -f1 /proc/uptime 2>/dev/null)
+        case "${'$'}UP" in ''|*[!0-9]*) echo "refused: systemui uptime unreadable"; exit 4 ;; esac
+        # Round the start up, so a process just under the guard is never rounded over it.
+        START_S=${'$'}(( (START + TCK - 1) / TCK ))
+        AGE=${'$'}(( UP - START_S ))
+        if [ "${'$'}AGE" -lt $minAgeSeconds ]; then
+          echo "refused: systemui age ${'$'}{AGE}s < ${minAgeSeconds}s"
+          exit 3
+        fi
+        kill -9 "${'$'}PID"
+        exit 0
+    """.trimIndent()
+
+    /** The shell's exit code for "refused: the target is too young to kill". */
+    internal const val EXIT_YOUNG = 3
+
+    /** The first part of the shell's young-refusal message, shared with [isYoungRefusal]. */
+    internal const val YOUNG_REFUSAL_PREFIX = "refused: systemui age"
+
+    /** The exact young-refusal line for [ageSeconds], or null when the age passes the guard. */
+    internal fun youngRefusalMessage(
+        ageSeconds: Long,
+        minAgeSeconds: Long = RestartPolicy.MIN_SYSTEMUI_AGE_S
+    ): String? =
+        if (ageSeconds < minAgeSeconds) {
+            "$YOUNG_REFUSAL_PREFIX ${ageSeconds}s < ${minAgeSeconds}s"
+        } else {
+            null
+        }
+
+    /**
+     * Whether a failed root restart was the age guard (exit 3, or the marker in the output when a shell
+     * does not pass the status through). Such a failure must not fall through to Shizuku.
+     */
+    internal fun isYoungRefusal(exit: Int, output: String): Boolean =
+        exit == EXIT_YOUNG || output.lineSequence().any { it.trim().startsWith(YOUNG_REFUSAL_PREFIX) }
 
     /** The failure text for a restart that could not run the shell, naming the binary that was tried. */
     internal fun rootRestartFailure(t: Throwable, su: String): String =
