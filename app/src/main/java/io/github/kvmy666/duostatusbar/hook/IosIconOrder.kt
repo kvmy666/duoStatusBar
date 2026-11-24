@@ -312,8 +312,8 @@ internal object IosIconOrder {
         restoreOnMain()
     }
 
-    private fun restoreOnMain() {
-        if (!active.get()) return
+    private fun restoreOnMain(): Boolean {
+        if (!active.get()) return true
         // Move first, then restore the slots (the exact inverse of activateOnMain). A failed child
         // move must not be papered over: restoring the stock slot list over permuted children would
         // desynchronise the indices, and clearing `active` would disable the IconManager guard.
@@ -325,13 +325,14 @@ internal object IosIconOrder {
             logOnce.once("ios-order-restore-deferred") {
                 L.w("iOS order: restore deferred (move failed) - keeping the consistent iOS order")
             }
-            return
+            return false
         }
         active.set(false)
         restoreSlotLists()
         loggedActive = false
         // Only one log per leave event; restore() returns above when there was nothing to restore.
         L.i("iOS order restored")
+        return true
     }
 
     /**
@@ -352,7 +353,16 @@ internal object IosIconOrder {
         // Stop new capture/registration before touching any state, then restore what this session
         // changed. A caller may release without a prior restore; never leave the stock order permuted.
         installed.set(false)
-        restoreOnMain()
+        if (!restoreOnMain()) {
+            // The stock order could not be restored. Clearing the guard now would leave a permuted
+            // slot list over stock/partial children with no IconManager hook: the exact crash surface.
+            // Keep everything installed and let a later release() retry the restore.
+            installed.set(true)
+            logOnce.once("ios-order-release-deferred") {
+                L.w("iOS order: release deferred (restore failed) - hooks kept")
+            }
+            return
+        }
         active.set(false)
         applying.set(false)
         loggedActive = false

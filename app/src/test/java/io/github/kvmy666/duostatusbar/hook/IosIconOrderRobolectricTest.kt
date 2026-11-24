@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.test.core.app.ApplicationProvider
+import io.github.kvmy666.duostatusbar.L
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -234,6 +235,54 @@ class IosIconOrderRobolectricTest {
         assertFalse(IosIconOrder.isActive)
         assertOrder(stockOrder, order(container))
         assertEquals(listOf("wifi", "mobile", "battery"), slots)
+    }
+
+    @Test
+    fun `release defers while the stock restore fails and keeps every guard`() {
+        val slots = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
+        val container = stockContainer(FailingRestoreContainer(context))
+        val stockOrder = order(container)
+        val iosOrder = listOf(stockOrder[1], stockOrder[2], stockOrder[0], stockOrder[3], stockOrder[4])
+
+        IosIconOrder.onIconAdded(container)
+        IosIconOrder.activate()
+        flushMainThread()
+        assertOrder(iosOrder, order(container))
+        assertEquals(listOf("mobile", "wifi", "battery"), slots)
+        val hooksBefore = IosIconOrder.unhookCountForTest()
+        L.clearRecentForTest()
+
+        // The container still rejects the stock Wi-Fi re-insert, so release() cannot restore the
+        // stock order. It must keep the guard (installed/active), the permuted slot list, the
+        // container registry and every unhook; clearing them would expose IconManager to a permuted
+        // slot list with no guard.
+        IosIconOrder.release()
+        flushMainThread()
+
+        assertTrue("release must keep the hooks installed", IosIconOrder.isInstalledForTest())
+        assertTrue("release must keep iOS active", IosIconOrder.isActive)
+        assertEquals("the slot list must stay permuted", listOf("mobile", "wifi", "battery"), slots)
+        assertEquals(1, IosIconOrder.slotListCountForTest())
+        assertEquals(1, IosIconOrder.containerCountForTest())
+        assertEquals("every unhook must be retained", hooksBefore, IosIconOrder.unhookCountForTest())
+        assertOrder(iosOrder, order(container))
+        val deferredLog = L.recentText()
+        assertTrue(
+            deferredLog,
+            deferredLog.contains("iOS order: release deferred (restore failed) - hooks kept")
+        )
+
+        // The container accepts the stock move now; the next release restores stock and tears down.
+        IosIconOrder.release()
+        flushMainThread()
+
+        assertFalse(IosIconOrder.isInstalledForTest())
+        assertFalse(IosIconOrder.isActive)
+        assertOrder(stockOrder, order(container))
+        assertEquals(listOf("wifi", "mobile", "battery"), slots)
+        assertEquals(0, IosIconOrder.slotListCountForTest())
+        assertEquals(0, IosIconOrder.containerCountForTest())
+        assertEquals(0, IosIconOrder.unhookCountForTest())
     }
 
     @Test
