@@ -61,11 +61,11 @@ internal class DuoGuard(private val context: Context) {
         if (override != null) {
             // One owner decision: the override is fed through featureSetFor, exactly like the runtime.
             L.i("stage $override (adb override)")
-            return stageOf(featureSetFor(null, override, IosRenderers.DRAWING_READY, false))
+            return stageOf(featureSetFor(null, override, true, false))
         }
         val app = DuoSettingsClient.read(context)
         val ios = effectiveIosMode(app.iosMode)
-        val resolved = stageOf(featureSetFor(app, null, IosRenderers.DRAWING_READY, false))
+        val resolved = stageOf(featureSetFor(app, null, true, false))
         if (ios) {
             L.i("stage $resolved (iOS mode on - Duo element off)")
         } else {
@@ -231,7 +231,7 @@ internal class DuoGuard(private val context: Context) {
          */
         internal fun effectiveIosMode(
             iosMode: Boolean,
-            drawingReady: Boolean = IosRenderers.DRAWING_READY
+            drawingReady: Boolean = true
         ): Boolean = iosMode && drawingReady
 
         /** The stage resolution actually used by [stage]: an unavailable iOS mode falls through to Duo. */
@@ -240,7 +240,7 @@ internal class DuoGuard(private val context: Context) {
             iosMode: Boolean,
             engineMode: String,
             useRive: Boolean,
-            drawingReady: Boolean = IosRenderers.DRAWING_READY
+            drawingReady: Boolean = true
         ): Int = stageForSettings(enabled, iosMode, engineMode, useRive, drawingReady)
 
         /**
@@ -254,7 +254,7 @@ internal class DuoGuard(private val context: Context) {
          * suppressed.
          */
         internal fun stageFor(enabled: Boolean, iosMode: Boolean, engineMode: String, useRive: Boolean): Int =
-            stageForSettings(enabled, iosMode, engineMode, useRive, IosRenderers.DRAWING_READY)
+            stageForSettings(enabled, iosMode, engineMode, useRive, true)
 
         private fun stageForSettings(
             enabled: Boolean,

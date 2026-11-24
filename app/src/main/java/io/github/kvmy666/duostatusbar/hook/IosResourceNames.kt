@@ -86,17 +86,6 @@ internal object IosResourceNames {
     fun hiddenSpecs(familyId: String): List<IosResourceSpec> =
         specs(familyId).filter { it.kind == IosResourceKind.HIDDEN }
 
-    /** Test convenience: the iOS label text mapped to a stock resource [name], or null. */
-    fun labelFor(name: String): String? {
-        for (family in IosV2Profile.FAMILIES) {
-            val hit = specs(family).firstOrNull {
-                it.kind == IosResourceKind.LABEL && it.name == name && it.label.isNotEmpty()
-            }
-            if (hit != null) return hit.label
-        }
-        return null
-    }
-
     // ------------------------------------------------------------------------------ builders
 
     private fun wifi(name: String, level: Int, top: Int): IosResourceSpec =

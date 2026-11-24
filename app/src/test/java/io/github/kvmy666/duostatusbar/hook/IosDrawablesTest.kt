@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
-import android.graphics.drawable.Drawable
 import android.os.BatteryManager
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertArrayEquals
@@ -25,7 +24,7 @@ import kotlin.math.roundToInt
 
 /**
  * The in-place [IosGlyphDrawable]: intrinsic size (C2), drawing, captured tint, fixed state colours,
- * alpha, the detach signal and the dual-SIM row artboards.
+ * alpha and the dual-SIM row artboards.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -33,16 +32,6 @@ import kotlin.math.roundToInt
 class IosDrawablesTest {
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
-
-    private class RecordingCallback : Drawable.Callback {
-        var invalidations = 0
-        override fun invalidateDrawable(who: Drawable) {
-            invalidations++
-        }
-
-        override fun scheduleDrawable(who: Drawable, what: Runnable, `when`: Long) = Unit
-        override fun unscheduleDrawable(who: Drawable, what: Runnable) = Unit
-    }
 
     // ------------------------------------------------------------------ intrinsic size and C2
 
@@ -68,22 +57,6 @@ class IosDrawablesTest {
         )
         assertEquals(IosGeometry.Cell.ARTBOARD_W.roundToInt(), cell.intrinsicWidth)
         assertEquals(IosGeometry.Cell.ARTBOARD_H.roundToInt(), cell.intrinsicHeight)
-    }
-
-    @Test
-    fun `setStockSize invalidates only when it changed`() {
-        val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(), 40, 30)
-        val callback = RecordingCallback()
-        drawable.setCallback(callback)
-
-        drawable.setStockSize(40, 30)
-        assertEquals(0, callback.invalidations)
-
-        drawable.setStockSize(41, 30)
-        assertEquals(1, callback.invalidations)
-
-        drawable.setStockSize(41, 30)
-        assertEquals(1, callback.invalidations)
     }
 
     // ----------------------------------------------------------------------------- drawing
@@ -195,37 +168,6 @@ class IosDrawablesTest {
 
         assertEquals(128, Color.alpha(opaque))
         assertEquals(64, Color.alpha(half))
-    }
-
-    // ------------------------------------------------------------------------- detach signal
-
-    @Test
-    fun `detach listener fires once and not after clearing it`() {
-        // `Drawable.setCallback` is final on Android 33-36, so the host signals a replacement through
-        // `notifyDetached` (or a real view detach via setVisible(false)); both share this listener.
-        val drawable = IosDrawables.create(IosIconKind.BATTERY, batteryVisual(), 0, 0)
-        var fired = 0
-        drawable.detachListener = { fired++ }
-
-        drawable.notifyDetached()
-        assertEquals(1, fired)
-        drawable.notifyDetached()
-        assertEquals(1, fired)
-
-        drawable.clearDetachListener()
-        drawable.notifyDetached()
-        assertEquals(1, fired)
-
-        drawable.detachListener = { fired++ }
-        drawable.setVisible(false, false)
-        assertEquals(2, fired)
-        drawable.setVisible(false, false)
-        assertEquals(2, fired)
-
-        drawable.clearDetachListener()
-        drawable.setVisible(true, false)
-        drawable.setVisible(false, false)
-        assertEquals(2, fired)
     }
 
     // --------------------------------------------------------------------- dual-SIM row artboards

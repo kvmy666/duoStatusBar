@@ -192,7 +192,3 @@ internal fun desiredSurfaces(settings: ModuleSettings): Set<String> = buildSet {
 /** Live slots that the new settings no longer want; dropping one restores its stock icons. */
 internal fun surfacesToDrop(live: Collection<String>, settings: ModuleSettings): Set<String> =
     live.filter { it in EXTRA_SURFACES && it !in desiredSurfaces(settings) }.toSet()
-
-/** Desired extra surfaces that are not live; the next attach/layout creates them. */
-internal fun surfacesToCreate(live: Collection<String>, settings: ModuleSettings): Set<String> =
-    desiredSurfaces(settings) - live.toSet()

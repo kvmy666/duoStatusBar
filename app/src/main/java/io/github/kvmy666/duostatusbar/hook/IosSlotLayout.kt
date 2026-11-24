@@ -1,6 +1,5 @@
 package io.github.kvmy666.duostatusbar.hook
 
-import android.content.Context
 import android.graphics.Rect
 import android.view.Gravity
 import android.view.View
@@ -10,7 +9,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.kvmy666.duostatusbar.L
-import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import java.lang.ref.WeakReference
@@ -478,26 +476,6 @@ internal object IosSlotLayout {
                 L.w("$TAG host clock id not resolved in $systemUiPackage; screen-width fallback")
             }
         }
-    }
-
-    /** Test-only convenience: resolve [clockIdName] in [systemUiPackage], then configure it. */
-    @Synchronized
-    internal fun configure(context: Context, systemUiPackage: String, clockIdName: String) {
-        configure(
-            RomResources.id(
-                context,
-                RomAdapter(
-                    id = "test",
-                    label = "test",
-                    systemUiPackage = systemUiPackage,
-                    containerIds = emptyList(),
-                    batteryId = "",
-                    notes = "test-only clock id lookup"
-                ),
-                clockIdName
-            ),
-            systemUiPackage
-        )
     }
 
     /**

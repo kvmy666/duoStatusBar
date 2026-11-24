@@ -97,12 +97,6 @@ internal object IosExtras {
     internal var warningCountForTest: Int = 0
         private set
 
-    @Volatile
-    private var installedFlag = false
-
-    /** True once at least one measured hook was installed in this process. */
-    val installed: Boolean get() = installedFlag
-
     /**
      * The global hide-extras gate. Default false so a non-iOS bar is byte-for-byte stock; the
      * resource gate drawables read it directly, which is what makes the toggle live.
@@ -123,9 +117,6 @@ internal object IosExtras {
     private val views: MutableSet<ImageView> =
         Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ImageView, Boolean>()))
 
-    @Volatile
-    private var registeredTotal: Long = 0L
-
     private val idCache = ConcurrentHashMap<String, Int>()
 
     /** REL210: measured class names and whether they were resolved, for the diag block. */
@@ -141,9 +132,6 @@ internal object IosExtras {
     }
 
     private val mainHandler: Handler by lazy { Handler(Looper.getMainLooper()) }
-
-    /** Live registered leaves (diagnostics). */
-    val registeredCount: Int get() = views.size
 
     /** Leaves currently collapsed by the gate (diagnostics). */
     val hiddenViewCount: Int get() = if (hidden) views.size else 0
@@ -237,7 +225,6 @@ internal object IosExtras {
                 }
             }
         }
-        installedFlag = methods > 0
         L.i("$TAG: methods=$methods failures=$failures")
     }
 
@@ -500,13 +487,11 @@ internal object IosExtras {
 
     /** Registers a leaf whose drawable is (or will be) a gate. */
     internal fun register(view: ImageView) {
-        val added = try {
+        try {
             views.add(view)
         } catch (t: Throwable) {
             IosV2Log.failureOnce("extras.register", t)
-            false
         }
-        if (added) registeredTotal++
     }
 
     // ---------------------------------------------------------------------------------- toggle
@@ -568,9 +553,6 @@ internal object IosExtras {
         heightPx: Int
     ): Drawable.ConstantState = HiddenGateState(stock, widthPx, heightPx)
 
-    /** Test seam: fields the diagnostics expose without an Xposed install. */
-    internal val registeredTotalForTest: Long get() = registeredTotal
-
     /** Test seam: drops the registry and the gate; production never calls this. */
     internal fun resetForTest() {
         active = false
@@ -578,7 +560,6 @@ internal object IosExtras {
         hidden = false
         views.clear()
         idCache.clear()
-        registeredTotal = 0L
         retrying.clear()
         retryTasks.clear()
         idLookupForTest = null

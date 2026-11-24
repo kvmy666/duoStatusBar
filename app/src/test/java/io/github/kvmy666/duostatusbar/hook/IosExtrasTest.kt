@@ -55,7 +55,6 @@ class IosExtrasTest {
     fun `apply flips the gate and requests layout on a registered leaf`() {
         val view = FakeView(context)
         IosExtras.register(view)
-        assertEquals(1, IosExtras.registeredCount)
 
         IosExtras.apply(true)
         shadowOf(Looper.getMainLooper()).idle()
@@ -75,12 +74,10 @@ class IosExtrasTest {
         IosExtras.register(view)
         IosExtras.apply(true)
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(1, IosExtras.registeredCount)
 
         IosExtras.deactivate()
         shadowOf(Looper.getMainLooper()).idle()
         assertFalse(IosExtras.hidden)
-        assertEquals(1, IosExtras.registeredCount) // not cleared: a later toggle still reaches it
     }
 
     @Test
@@ -96,7 +93,6 @@ class IosExtrasTest {
         val loader = javaClass.classLoader ?: ClassLoader.getSystemClassLoader()
         IosExtras.install(loader)
         IosExtras.install(loader)
-        assertEquals(0, IosExtras.registeredCount)
     }
 
     /** A Wi-Fi bind group with ids the Robolectric resources cannot resolve, so a seam maps them. */
@@ -146,7 +142,10 @@ class IosExtrasTest {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
 
         assertEquals("a refused bind must not reach the slot layout", 0, registerCalls)
-        assertEquals("a refused bind must not grow the registry", 0, IosExtras.registeredCount)
+        // The surviving observable: re-enabling the gate would hide every registered leaf.
+        IosExtras.apply(true)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("a refused bind must not grow the registry", 0, IosExtras.hiddenViewCount)
     }
 
     @Test
@@ -180,7 +179,7 @@ class IosExtrasTest {
 
         IosExtras.bindWifiForTest(root)
         assertEquals(1, registerCalls)
-        assertTrue(IosExtras.registeredCount > 0)
+        assertTrue(IosExtras.hiddenViewCount > 0)
     }
 
     @Test
@@ -197,8 +196,11 @@ class IosExtrasTest {
         shadowOf(Looper.getMainLooper()).idle()
 
         assertFalse(IosExtras.hidden)
-        assertEquals(1, IosExtras.registeredCount)
         assertEquals("the second deactivate writes no layout", layouts, view.layouts)
+        // The surviving observable: a later toggle still reaches the leaf, so the registry survived.
+        IosExtras.apply(true)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("the registry is not cleared by deactivate", 1, IosExtras.hiddenViewCount)
     }
 
     private companion object {

@@ -57,7 +57,6 @@ import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoPart
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
-import io.github.kvmy666.duostatusbar.hook.IosRenderers
 import io.github.kvmy666.duostatusbar.hook.rawResourceFor
 import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
@@ -107,7 +106,7 @@ internal fun duoSimRowsEnabled(
  * The one constant that makes iOS mode reachable: while the drawing is not ready the switch is shown
  * disabled. The hook side gates the mode on the same flag separately.
  */
-internal fun iosModeAvailable(drawingReady: Boolean = IosRenderers.DRAWING_READY): Boolean = drawingReady
+internal fun iosModeAvailable(drawingReady: Boolean = true): Boolean = drawingReady
 
 /**
  * One mode owns the bar: OFF (both switches off), DUO (master on) or IOS (iOS on, Duo off).

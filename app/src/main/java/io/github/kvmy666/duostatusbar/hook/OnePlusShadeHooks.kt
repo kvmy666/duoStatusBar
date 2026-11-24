@@ -30,8 +30,7 @@ private const val SPLIT_SOURCE = "OplusSplitShade"
  */
 internal class OnePlusShadeHooks(
     private val lp: XC_LoadPackage.LoadPackageParam,
-    private val host: () -> DuoIconHost?,
-    private val iosAttach: ((ViewGroup, View?, String, () -> Unit) -> Boolean)? = null
+    private val host: () -> DuoIconHost?
 ) {
     private val logOnce = LogOnce()
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
@@ -107,11 +106,7 @@ internal class OnePlusShadeHooks(
     /**
      * Hands a resolved cluster to the host, on the main thread. The vendor callback can run on a
      * worker, and touching the SystemUI view tree from there is not safe, so the attach is posted.
-     * A missing host is logged once and left to the fallback, on either path.
-     *
-     * The Duo host is resolved before the iOS attempt so the iOS first-frame path can receive a
-     * refusal callback: a scheduled iOS attach that later gives up must hand the cluster to Duo
-     * instead of leaving the stock drawing visible.
+     * A missing host is logged once and left to the fallback.
      */
     private fun attach(cluster: ViewGroup, battery: View?, source: String) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
@@ -125,36 +120,13 @@ internal class OnePlusShadeHooks(
 
     private fun attachOnMainThread(cluster: ViewGroup, battery: View?, source: String) {
         val target = host()
-        val duoFallback: () -> Unit = {
-            if (target == null) {
-                logOnce.once("giveup:$source") {
-                    L.w("$source: iOS first-frame attach gave up; no Duo host")
-                }
-            } else {
-                try {
-                    target.attachShadeCluster(cluster, battery, source)
-                } catch (t: Throwable) {
-                    logOnce.once("duo:$source") {
-                        L.w("$source: Duo fallback failed (${t.javaClass.simpleName}: ${t.message})")
-                    }
-                }
-            }
-        }
-        val iosAttached = try {
-            iosAttach?.invoke(cluster, battery, source, duoFallback) == true
-        } catch (t: Throwable) {
-            logOnce.once("ios:$source") {
-                L.w("$source: iOS attach failed (${t.javaClass.simpleName}) - trying the Duo route")
-            }
-            false
-        }
-        when (shadeAttachRoute(iosAttached, target != null)) {
-            ShadeAttachRoute.IOS -> return
-            ShadeAttachRoute.DUO -> target!!.attachShadeCluster(cluster, battery, source)
-            ShadeAttachRoute.NONE -> logOnce.once("host:$source") {
+        if (target == null) {
+            logOnce.once("host:$source") {
                 L.i("$source: host not ready - waiting for the layout fallback")
             }
+            return
         }
+        target.attachShadeCluster(cluster, battery, source)
     }
 
     /** Resolves a vendor class, or logs once and returns null when this build does not have it. */
@@ -199,16 +171,3 @@ internal class OnePlusShadeHooks(
 
 /** `qsStatusIcon` -> `getQsStatusIcon`; pinned by a unit test because the OEM spelling is unknown. */
 internal fun getterFor(field: String): String = "get" + field.replaceFirstChar { it.uppercaseChar() }
-
-/** Which owner a vendor shade cluster was handed to. */
-internal enum class ShadeAttachRoute { IOS, DUO, NONE }
-
-/**
- * IOS wins when the iOS attach succeeded, so a null Duo host in iOS mode is not treated as a
- * failure; otherwise the vendor hook keeps the exact Duo path it had before.
- */
-internal fun shadeAttachRoute(iosAttached: Boolean, hasDuoHost: Boolean): ShadeAttachRoute = when {
-    iosAttached -> ShadeAttachRoute.IOS
-    hasDuoHost -> ShadeAttachRoute.DUO
-    else -> ShadeAttachRoute.NONE
-}
