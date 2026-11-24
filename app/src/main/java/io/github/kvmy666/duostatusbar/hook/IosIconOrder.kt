@@ -58,8 +58,16 @@ internal object IosIconOrder {
         "com.android.systemui.statusbar.views.MiuiStatusIconContainer"
     )
 
-    /** The last-resort guard against a slot index pointing at a non-icon child. */
-    private val ICON_MANAGER_CLASS = "com.android.systemui.statusbar.phone.IconManager"
+    /**
+     * Every measured last-resort guard class: Android 14+ SystemUI moved `IconManager` under
+     * `phone.ui`, older OxygenOS/HyperOS keeps `phone.IconManager`, and older OPPO nests it in
+     * `StatusBarIconController`. Every class that resolves is hooked; an absent one is only noted.
+     */
+    internal val ICON_MANAGER_CLASSES = listOf(
+        "com.android.systemui.statusbar.phone.ui.IconManager",
+        "com.android.systemui.statusbar.phone.IconManager",
+        "com.android.systemui.statusbar.phone.StatusBarIconController\$IconManager"
+    )
     private const val ICON_MANAGER_METHOD = "onSetIcon"
 
     private val installed = AtomicBoolean(false)
@@ -197,16 +205,25 @@ internal object IosIconOrder {
                 hookSafely { XposedBridge.hookAllMethods(cls, "onLayout", laidOut) }
             }
             // Last-resort guard (bug B): if the slot list and the children ever disagree, the next
-            // IconManager.onSetIcon must not cast the Wi-Fi composite to StatusBarIconView.
-            val iconManager = findClass(ICON_MANAGER_CLASS, classLoader)
-            noteClass("IconManager", iconManager != null)
-            if (iconManager != null) {
+            // IconManager.onSetIcon must not cast the Wi-Fi composite to StatusBarIconView. The class
+            // moved across SystemUI versions, so hook every measured candidate that resolves.
+            var iconManagerClasses = 0
+            for (name in ICON_MANAGER_CLASSES) {
+                val iconManager = findClass(name, classLoader)
+                noteClass(name, iconManager != null)
+                if (iconManager == null) continue
+                iconManagerClasses++
                 val guard = object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         guardIconManagerCall(param)
                     }
                 }
                 hookSafely { XposedBridge.hookAllMethods(iconManager, ICON_MANAGER_METHOD, guard) }
+            }
+            if (iconManagerClasses > 0) {
+                logOnce.once("ios-order-icon-manager-guard") {
+                    L.i("iOS order: IconManager guard on $iconManagerClasses class(es)")
+                }
             }
             if (listClasses == 0) {
                 logOnce.once("ios-order-no-slot-class") {
@@ -296,9 +313,21 @@ internal object IosIconOrder {
     }
 
     private fun restoreOnMain() {
-        if (!active.getAndSet(false)) return
-        // Move first, then restore the slots (the exact inverse of activateOnMain).
-        moveAll(afterMobile = false)
+        if (!active.get()) return
+        // Move first, then restore the slots (the exact inverse of activateOnMain). A failed child
+        // move must not be papered over: restoring the stock slot list over permuted children would
+        // desynchronise the indices, and clearing `active` would disable the IconManager guard.
+        val moved = moveAllForRestore()
+        if (moved.failed) {
+            // Keep the bar consistent: re-align every container to the iOS order, keep the permuted
+            // slot list and the guard active. A later restore() retries the stock move.
+            moveAll(afterMobile = true)
+            logOnce.once("ios-order-restore-deferred") {
+                L.w("iOS order: restore deferred (move failed) - keeping the consistent iOS order")
+            }
+            return
+        }
+        active.set(false)
         restoreSlotLists()
         loggedActive = false
         // Only one log per leave event; restore() returns above when there was nothing to restore.
@@ -692,6 +721,24 @@ internal object IosIconOrder {
     private fun moveAll(afterMobile: Boolean) {
         val snapshot = synchronized(containers) { containers.toList() }
         for (container in snapshot) movePass(container, afterMobile)
+    }
+
+    /**
+     * The restore-side counterpart of [moveAllForActivate]: moves every container back to the stock
+     * order and reports whether any container failed. A failure must stop the slot restore.
+     */
+    private fun moveAllForRestore(): SurfaceResult {
+        val snapshot = synchronized(containers) { containers.toList() }
+        var surface = syntheticSurfaceForTest
+        var failed = false
+        for (container in snapshot) {
+            when (movePass(container, afterMobile = false)) {
+                MoveResult.MOVED, MoveResult.ALREADY -> surface = true
+                MoveResult.FAILED -> failed = true
+                MoveResult.NOT_APPLICABLE, MoveResult.SKIPPED -> Unit
+            }
+        }
+        return SurfaceResult(surface, failed)
     }
 
     /**

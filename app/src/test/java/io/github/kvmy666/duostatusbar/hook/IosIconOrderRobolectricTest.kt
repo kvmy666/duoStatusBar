@@ -49,7 +49,7 @@ class IosIconOrderRobolectricTest {
     class FakeStatusBarIconSubclass(context: Context) : StatusBarIconView(context)
 
     /** The measured container shape, plus the optional animation switch the hook suppresses. */
-    class FakeContainer(context: Context) : LinearLayout(context) {
+    open class FakeContainer(context: Context) : LinearLayout(context) {
         @JvmField
         var mEnableAnimation = true
         val animationStates = ArrayList<Boolean>()
@@ -74,6 +74,24 @@ class IosIconOrderRobolectricTest {
             IosIconOrder.onContainerLayoutForTest(this)
             observedDuringLayout = (0 until childCount).map { getChildAt(it) }
             layoutCalls++
+        }
+    }
+
+    /**
+     * A container that rejects the stock-order Wi-Fi re-insert once (the restore target index) and
+     * accepts the fallback re-insert and any later retry.
+     */
+    class FailingRestoreContainer(context: Context) : FakeContainer(context) {
+        var rejectedStockMove = false
+
+        override fun addView(child: View?, index: Int) {
+            if (!rejectedStockMove && index == 0 && child != null &&
+                StockIconKey.slotTagOf(child) == "wifi"
+            ) {
+                rejectedStockMove = true
+                throw IllegalStateException("rejects the stock restore move")
+            }
+            super.addView(child, index)
         }
     }
 
@@ -183,6 +201,37 @@ class IosIconOrderRobolectricTest {
         IosIconOrder.restore()
         flushMainThread()
 
+        assertOrder(stockOrder, order(container))
+        assertEquals(listOf("wifi", "mobile", "battery"), slots)
+    }
+
+    @Test
+    fun `a failed restore move keeps the iOS order and the guard active until the retry`() {
+        val slots = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
+        val container = stockContainer(FailingRestoreContainer(context))
+        val stockOrder = order(container)
+        val iosOrder = listOf(stockOrder[1], stockOrder[2], stockOrder[0], stockOrder[3], stockOrder[4])
+
+        IosIconOrder.onIconAdded(container)
+        IosIconOrder.activate()
+        flushMainThread()
+        assertOrder(iosOrder, order(container))
+        assertEquals(listOf("mobile", "wifi", "battery"), slots)
+
+        // The stock-order re-insert is rejected once. Restore must not clear the guard or the
+        // permuted slot list, and the child order must stay the consistent iOS order.
+        IosIconOrder.restore()
+        flushMainThread()
+
+        assertTrue("the restore failed, so iOS still owns the bar", IosIconOrder.isActive)
+        assertEquals("the slot list must stay permuted", listOf("mobile", "wifi", "battery"), slots)
+        assertOrder(iosOrder, order(container))
+
+        // The container accepts the move now; the next restore must complete.
+        IosIconOrder.restore()
+        flushMainThread()
+
+        assertFalse(IosIconOrder.isActive)
         assertOrder(stockOrder, order(container))
         assertEquals(listOf("wifi", "mobile", "battery"), slots)
     }

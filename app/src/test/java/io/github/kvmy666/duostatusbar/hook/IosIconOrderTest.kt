@@ -312,6 +312,23 @@ class IosIconOrderTest {
     }
 
     @Test
+    fun `every measured IconManager class is a guard candidate`() {
+        val candidates = IosIconOrder.ICON_MANAGER_CLASSES
+        assertTrue(
+            "phone.ui (Android 14+): $candidates",
+            candidates.contains("com.android.systemui.statusbar.phone.ui.IconManager")
+        )
+        assertTrue(
+            "phone (OxygenOS/HyperOS): $candidates",
+            candidates.contains("com.android.systemui.statusbar.phone.IconManager")
+        )
+        assertTrue(
+            "StatusBarIconController (older OPPO): $candidates",
+            candidates.contains("com.android.systemui.statusbar.phone.StatusBarIconController\$IconManager")
+        )
+    }
+
+    @Test
     fun `the IconManager guard accepts icon views and rejects the OPLUS wifi composite`() {
         assertTrue(IosIconOrder.isIconManagerChildClass("StatusBarIconView"))
         assertTrue(IosIconOrder.isIconManagerChildClass("SingleBindableStatusBarIconView"))
