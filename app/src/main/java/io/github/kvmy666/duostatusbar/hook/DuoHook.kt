@@ -244,7 +244,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 DuoSettingsClient.servedFromBridge,
                 // BUG D: only a real Duo element counts. A live iOS host made this true, so switching
                 // iOS off for Duo read as REFRESH and the never-recreated Duo host stayed absent.
-                host?.duo != null
+                host?.duo != null,
+                iosLive
             )
             if (next.owner == BarOwner.NONE && action == SettingsApplyAction.KEEP_UNREACHABLE) {
                 // The unreachable read is ModuleSettings.DEFAULT; applying it would visually reset the

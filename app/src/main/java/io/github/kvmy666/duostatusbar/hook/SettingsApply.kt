@@ -30,6 +30,11 @@ internal object StageRetry {
  * settings it just wrote even if it cannot expose them over the provider - so only a failed read with no
  * bridge snapshot is "unreachable". A real "off" (the provider or the bridge answered, or the adb
  * `duo_statusbar_stage` override pins 0) must still tear down exactly as before.
+ *
+ * The two liveness inputs are deliberately separate: [hasElement] means a real Duo element exists and
+ * alone feeds the D1 REFRESH/ENABLE branch (a live iOS owner must not make a reachable Duo read look
+ * like REFRESH); [iosLive] means a live iOS v2 owner exists and is consulted only for the unreachable
+ * keep decision, so an unreachable read cannot release a live iOS bar (C11).
  */
 internal enum class SettingsApplyAction { ENABLE, REFRESH, KEEP_UNREACHABLE, TEARDOWN }
 
@@ -38,12 +43,13 @@ internal fun settingsApplyAction(
     stageFromAdbOverride: Boolean,
     providerUnreachable: Boolean,
     servedFromBridge: Boolean,
-    hasElement: Boolean
+    hasElement: Boolean,
+    iosLive: Boolean
 ): SettingsApplyAction =
     if (stage == DuoGuard.OFF) {
         // C10: the adb kill switch is authoritative, so it is never treated as "unreachable".
         val unreachable = providerUnreachable && !stageFromAdbOverride && !servedFromBridge
-        if (unreachable && hasElement) SettingsApplyAction.KEEP_UNREACHABLE else SettingsApplyAction.TEARDOWN
+        if (unreachable && (hasElement || iosLive)) SettingsApplyAction.KEEP_UNREACHABLE else SettingsApplyAction.TEARDOWN
     } else if (hasElement) {
         SettingsApplyAction.REFRESH
     } else {
