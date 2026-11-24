@@ -39,6 +39,22 @@ internal object IosExtras {
     private const val WIFI_CLASS = "com.oplus.systemui.statusbar.pipeline.OplusWifiSignalExImpl"
     private const val WIFI_METHOD = "bindEx"
 
+    /**
+     * The Wi-Fi outer composite that owns the `wifi_group -> wifi_combo -> wifi_signal` chain
+     * (decoded `new_status_bar_wifi_group.xml`). The simple name is measured in the R11 dump; the
+     * FQCN comes from the layout and is UNVERIFIED on the device until a report confirms it, so it is
+     * resolved by [XposedHelpers.findClass] and only one warning is logged when absent.
+     */
+    private const val WIFI_VIEW_CLASS =
+        "com.oplus.systemui.statusbar.phone.signal.widget.OplusModernStatusBarWifiView"
+
+    /**
+     * `bindEx` starts the image coroutine via `repeatWhenAttached`, so the after-hook usually runs
+     * before our glyph is set on `wifi_signal`. Four bounded retries (absolute timings, ms) bridge
+     * that race; they stop on success or when the leaf leaves its parent.
+     */
+    private val WIFI_RETRY_AT_MS = longArrayOf(0L, 50L, 150L, 400L)
+
     /** The four measured mobile binders; the same call sets the cell activity arrow (`data_inout`). */
     private val MOBILE_BINDERS = listOf(
         "com.oplus.systemui.statusbar.pipeline.mobile.ui.view.OplusStatusBarMobileViewBinder",
@@ -53,7 +69,21 @@ internal object IosExtras {
     private const val DATA_INOUT = "data_inout"
     private const val WIFI_SIGNAL = "wifi_signal"
 
-    private val logOnce = LogOnce()
+    private var logOnce = LogOnce()
+
+    /** Signals with a bounded `wifi_signal` retry chain already running (never two chains). */
+    private val retrying: MutableSet<ImageView> =
+        Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ImageView, Boolean>()))
+
+    /** Test seam: force the `wifi_signal` id lookup (Robolectric has no SystemUI resources). */
+    internal var idLookupForTest: ((String) -> Int)? = null
+
+    /** Test seam: replace the slot registration so a test can pin or force-fail one path. */
+    internal var registerWifiForTest: ((ImageView) -> Boolean)? = null
+
+    /** Test seam: how many once-only exception warnings really reached [L]. */
+    internal var warningCountForTest: Int = 0
+        private set
 
     @Volatile
     private var installedFlag = false
@@ -124,6 +154,33 @@ internal object IosExtras {
                 L.w("$TAG wifi binder unavailable: ${t.javaClass.simpleName}")
             }
         }
+        // The outer view's attach/layout is the second, independent trigger: on OxygenOS the bind
+        // coroutine may set the image after `bindEx` returns, and a relayout follows it. Missing
+        // class/method is normal off OxygenOS, so it stays one warning and the bind retry still runs.
+        try {
+            val outer = XposedHelpers.findClass(WIFI_VIEW_CLASS, classLoader)
+            val attached = XposedBridge.hookAllMethods(
+                outer,
+                "onAttachedToWindow",
+                viewHook { registerWifiFrom(it) }
+            )
+            val laidOut = XposedBridge.hookAllMethods(
+                outer,
+                "onLayout",
+                viewHook { registerWifiFrom(it) }
+            )
+            if (attached.isNotEmpty() || laidOut.isNotEmpty()) {
+                methods++
+            } else {
+                logOnce.once("ios-extras-wifi-view-method") {
+                    L.w("$TAG $WIFI_VIEW_CLASS attach/layout not found; bind retry kept")
+                }
+            }
+        } catch (t: Throwable) {
+            logOnce.once("ios-extras-wifi-view") {
+                L.w("$TAG wifi outer unavailable: ${brief(t)}; bind retry kept")
+            }
+        }
         for (name in MOBILE_BINDERS) {
             // One binder family missing is normal across OEM variants; the others still work.
             val cls = try {
@@ -159,6 +216,20 @@ internal object IosExtras {
         override fun afterHookedMethod(param: MethodHookParam) = body(param)
     }
 
+    /** After-hook on the Wi-Fi outer view; the body is always guarded so SystemUI keeps running. */
+    private fun viewHook(body: (ViewGroup) -> Unit): XC_MethodHook = object : XC_MethodHook() {
+        override fun afterHookedMethod(param: MethodHookParam) {
+            try {
+                val root = param.thisObject as? ViewGroup ?: return
+                body(root)
+            } catch (t: Throwable) {
+                warnOnce("ios-extras-wifi-view-event") {
+                    "$TAG wifi outer event failed: ${brief(t)}"
+                }
+            }
+        }
+    }
+
     // ------------------------------------------------------------------------------------- hook
 
     private fun onWifiBind(param: XC_MethodHook.MethodHookParam) {
@@ -167,9 +238,9 @@ internal object IosExtras {
             registerById(group, WIFI_LEFT)
             registerById(group, WIFI_INOUT)
             // R9: the group's own leaf drives the real slot size; iOS off restores it exactly.
-            imageById(group, WIFI_SIGNAL)?.let { IosSlotLayout.registerWifi(it) }
-        } catch (_: Throwable) {
-            // Whole body guarded: any unexpected failure leaves the stock extra untouched.
+            registerWifiFrom(group)
+        } catch (t: Throwable) {
+            warnOnce("ios-extras-wifi-bind") { "$TAG wifi bind failed: ${brief(t)}" }
         }
     }
 
@@ -180,9 +251,99 @@ internal object IosExtras {
             registerById(parent, DATA_INOUT)
             // R9: same chain the placement owner uses; the label is picked up from the measured order.
             IosSlotLayout.registerMobile(signal)
-        } catch (_: Throwable) {
-            // Whole body guarded.
+        } catch (t: Throwable) {
+            warnOnce("ios-extras-mobile-bind") { "$TAG mobile bind failed: ${brief(t)}" }
         }
+    }
+
+    /**
+     * Finds `wifi_signal` under [root] and registers the live slot. Called from the `bindEx`
+     * after-hook and from the Wi-Fi outer view's attach event; returns true once the slot is applied.
+     */
+    internal fun registerWifiFrom(root: ViewGroup): Boolean {
+        val signal = imageById(root, WIFI_SIGNAL) ?: return false
+        if (tryRegisterWifi(signal)) return true
+        if (!hasOurWifiGlyph(signal)) scheduleWifiRetry(signal)
+        return false
+    }
+
+    /**
+     * One registration attempt. A false result while the leaf still carries the stock drawable is the
+     * bind race (`bindEx` starts its image coroutine after the hook), so the caller retries.
+     */
+    private fun tryRegisterWifi(signal: ImageView): Boolean {
+        val seam = registerWifiForTest
+        val registered = try {
+            if (seam != null) seam(signal) else IosSlotLayout.registerWifi(signal)
+        } catch (t: Throwable) {
+            warnOnce("ios-extras-wifi-register") { "$TAG wifi register failed: ${brief(t)}" }
+            return false
+        }
+        if (registered) {
+            retrying.remove(signal)
+            logOnce.once("ios-extras-wifi-registered") { L.i("$TAG wifi slot registered") }
+        }
+        return registered
+    }
+
+    /** Starts one bounded retry chain per leaf; a second trigger while it runs is a no-op. */
+    private fun scheduleWifiRetry(signal: ImageView) {
+        if (!retrying.add(signal)) return
+        postWifiRetry(signal, 0)
+    }
+
+    /**
+     * Posts the next retry at its absolute time (0/50/150/400 ms). The chain stops when the slot
+     * registers, when the leaf leaves its parent, or after the four tries; never an open loop.
+     */
+    private fun postWifiRetry(signal: ImageView, index: Int) {
+        if (index >= WIFI_RETRY_AT_MS.size) {
+            retrying.remove(signal)
+            warnOnce("ios-extras-wifi-retry") {
+                "$TAG wifi slot still stock after ${WIFI_RETRY_AT_MS.size} retries"
+            }
+            return
+        }
+        val delay = if (index == 0) {
+            WIFI_RETRY_AT_MS[0]
+        } else {
+            WIFI_RETRY_AT_MS[index] - WIFI_RETRY_AT_MS[index - 1]
+        }
+        val retry = Runnable {
+            if (signal.parent == null) {
+                retrying.remove(signal)
+            } else if (!tryRegisterWifi(signal)) {
+                postWifiRetry(signal, index + 1)
+            }
+        }
+        try {
+            mainHandler.postDelayed(retry, delay)
+        } catch (t: Throwable) {
+            retrying.remove(signal)
+            warnOnce("ios-extras-wifi-retry-post") {
+                "$TAG wifi retry post failed: ${brief(t)}"
+            }
+        }
+    }
+
+    /** The stock leaf has not been replaced by our Wi-Fi glyph yet (the retry condition). */
+    private fun hasOurWifiGlyph(signal: ImageView): Boolean {
+        val glyph = signal.drawable as? IosGlyphDrawable ?: return false
+        return glyph.kind == IosIconKind.WIFI
+    }
+
+    /** A once-only warning: exception class + a short message, never the view tree or user data. */
+    private fun warnOnce(key: String, message: () -> String) {
+        logOnce.once(key) {
+            warningCountForTest++
+            L.w(message())
+        }
+    }
+
+    /** Class + first line of the message, bounded so a native exception cannot flood the log. */
+    private fun brief(t: Throwable): String {
+        val text = t.message?.substringBefore('\n')?.trim()?.take(80)
+        return if (text.isNullOrEmpty()) t.javaClass.simpleName else "${t.javaClass.simpleName}: $text"
     }
 
     private fun registerById(root: ViewGroup, name: String) {
@@ -197,12 +358,14 @@ internal object IosExtras {
         }
         return try {
             root.findViewById<View>(id) as? ImageView
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            warnOnce("ios-extras-find-$name") { "$TAG '$name' lookup failed: ${brief(t)}" }
             null
         }
     }
 
     private fun idOf(view: View, name: String): Int {
+        idLookupForTest?.let { return it(name) }
         // The ROM's own SystemUI package first; the view context's package is only a fallback.
         val fallback = try {
             view.context.packageName
@@ -303,6 +466,11 @@ internal object IosExtras {
         views.clear()
         idCache.clear()
         registeredTotal = 0L
+        retrying.clear()
+        idLookupForTest = null
+        registerWifiForTest = null
+        warningCountForTest = 0
+        logOnce = LogOnce()
     }
 }
 
