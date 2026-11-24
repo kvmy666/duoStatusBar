@@ -3658,7 +3658,20 @@ internal class DuoIconHost(private val context: Context) {
      * [resetGeometry] = false keeps the captured slot base and size for that rebuild.
      */
     fun teardown(restoreStock: Boolean = true, resetGeometry: Boolean = true) {
-        L.i("teardown: removing Duo element and restoring stock icons (element=${element != null}, extras=${extras.size})")
+        L.i("teardown: removing Duo element and restoring stock icons (element=${element != null}, extras=${extras.size}, restoreStock=$restoreStock)")
+        // A pending re-hide and the "hidden for AOD" latch belong to the element that is going away.
+        // The caller saved the rebuild plan before this call (see [rebuildForLiveSettings]), so clearing
+        // it here cannot swallow a live change; it only stops stale state from leaking into the next
+        // attach.
+        try {
+            element?.ui?.removeCallbacks(rehideRunnable)
+            root?.removeCallbacks(rehideRunnable)
+        } catch (t: Throwable) {
+            L.w("teardown rehide cancel: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        rehidePosted = false
+        elementsHidden = false
+        pendingRebuild = LiveRebuild.NONE
         clearShadeRetry()
         cancelSurvivalTimer()
         cancelMainHandoff()

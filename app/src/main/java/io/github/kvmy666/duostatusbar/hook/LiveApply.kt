@@ -12,9 +12,10 @@ internal enum class LiveRebuild { NONE, DESIGN, ENGINE, SIZE }
  * Decides, without touching Android, whether a settings change can be applied to the live element.
  *
  * A design change always wins: the artwork is loaded once per element, so a fresh view is the only way
- * to draw the other drawing. An engine change needs the same fresh view. A size change is only live
- * when the user asked for live apply, or when the app is applying a per-orientation size that has to
- * be drawn now. No element means nothing to rebuild.
+ * to draw the other drawing. An engine change needs the same fresh view. A size change is rebuilt live
+ * only when the user asked for live apply and the change did not come from a rotation: [applySavedSize]
+ * means the per-orientation size is drawn by the existing in-place geometry path, so rebuilding there
+ * would tear down a working element on every rotation. No element means nothing to rebuild.
  */
 internal object LiveApply {
 
@@ -38,7 +39,7 @@ internal object LiveApply {
         if (DuoPrefs.normalizeEngine(previousEngine) != DuoPrefs.normalizeEngine(freshEngine)) {
             return LiveRebuild.ENGINE
         }
-        if (previousSize != freshSize && (liveApply || applySavedSize)) return LiveRebuild.SIZE
+        if (previousSize != freshSize && liveApply && !applySavedSize) return LiveRebuild.SIZE
         return LiveRebuild.NONE
     }
 }

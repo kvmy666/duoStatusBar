@@ -125,10 +125,18 @@ class LiveApplyPlanTest {
     }
 
     @Test
-    fun `a per-orientation size is drawn now even with live apply off`() {
+    fun `rotation keeps the in-place path even with live apply off`() {
         assertEquals(
-            LiveRebuild.SIZE,
-            plan(previousSize = 100, freshSize = 140, liveApply = false, applySavedSize = true)
+            LiveRebuild.NONE,
+            plan(previousSize = 135, freshSize = 130, liveApply = false, applySavedSize = true)
+        )
+    }
+
+    @Test
+    fun `rotation size does not rebuild even with live apply on`() {
+        assertEquals(
+            LiveRebuild.NONE,
+            plan(previousSize = 135, freshSize = 130, liveApply = true, applySavedSize = true)
         )
     }
 

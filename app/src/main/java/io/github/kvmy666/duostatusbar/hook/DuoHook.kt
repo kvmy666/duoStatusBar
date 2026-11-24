@@ -311,10 +311,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // the monitor refresh so the new element receives the current state.
                     val liveHost = host
                     if (liveHost != null && liveHost.hasPendingRebuild()) {
-                        val root = statusBarRoot
+                        val root = liveStatusBarRoot()
                         if (root == null) {
-                            L.w("live settings change with no status-bar root - retrying the attach")
+                            // Never tear the working element down for a rebuild that has no window to
+                            // draw into. The pending flag stays set; the next apply/attach retries.
+                            L.w("live settings change with no attached status-bar window - will retry")
                             scheduleAttach(attempt = 0)
+                            reporter.report(ctx, stage, settings)
                             return@guard
                         }
                         if (!liveHost.rebuildForLiveSettings(root)) {
@@ -776,6 +779,28 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     /**
+     * The status-bar window that is actually on screen right now.
+     *
+     * [statusBarRoot] is captured once and never cleared, so after the ROM recreates the status-bar
+     * window it can name a detached tree: a live rebuild would then inject into a window nobody sees.
+     * Keep the cached root only while it is attached; otherwise adopt a live `TYPE_STATUS_BAR` window
+     * if one exists.
+     */
+    private fun liveStatusBarRoot(): View? {
+        val cached = statusBarRoot
+        if (cached != null && cached.isAttachedToWindow) return cached
+        val found = AppContextResolver.findExistingWindow(AppContextResolver.TYPE_STATUS_BAR)
+        if (found != null && found.isAttachedToWindow) {
+            if (found !== cached) {
+                statusBarRoot = found
+                L.i("existing status bar window adopted: ${found.javaClass.name}")
+            }
+            return found
+        }
+        return null
+    }
+
+    /**
      * Captures the shade/keyguard window.
      *
      * Its layout listener is the trigger for [attachExtraBars]. When this window is captured after the
@@ -1102,7 +1127,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     val layoutParams = view.layoutParams ?: return
                     when (XposedHelpers.getIntField(layoutParams, "type")) {
                         AppContextResolver.TYPE_STATUS_BAR -> {
-                            if (statusBarRoot != null) return
+                            // A recreated window replaces a detached one; only an attached root that
+                            // is still the live bar is left alone.
+                            val existing = statusBarRoot
+                            if (existing != null && existing.isAttachedToWindow) return
                             statusBarRoot = view
                             L.i("status bar window found: ${view.javaClass.name}")
                             scheduleAttach(attempt = 0)
