@@ -210,8 +210,8 @@ class IosSlotLayoutRobolectricTest {
     fun setUp() {
         IosSlotLayout.resetForTest()
         IosSlotLayout.screenWidthOverrideForTest = 1272
-        // Production publishes the settings snapshot before a bind installs a slot (DuoHook).
-        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+        // Production activates the layout before a bind installs a slot (DuoHook).
+        IosSlotLayout.activate(ModuleSettings.DEFAULT)
     }
 
     @After
@@ -366,8 +366,42 @@ class IosSlotLayoutRobolectricTest {
         assertNull(IosSlotLayout.targetForTest(tree.wifiOuter))
         assertFalse("a register after restore must stay refused", IosSlotLayout.registerWifi(tree.wifiSignal))
 
+        IosSlotLayout.activate(ModuleSettings.DEFAULT)
+        assertTrue("activate must reopen the layout", IosSlotLayout.registerWifi(tree.wifiSignal))
+        assertEquals(78, lp(tree.wifiOuter).width)
+        assertNotNull(IosSlotLayout.targetForTest(tree.wifiOuter))
+    }
+
+    /**
+     * A late `IosBatteryV2`/`IosStackedSim` applySettings calls [IosSlotLayout.reapply] after iOS is
+     * switched off. That must stay inert: only the explicit [IosSlotLayout.activate] may re-arm it.
+     */
+    @Test
+    fun `reapply after restoreAll stays inert until activate`() {
+        val tree = Tree(context)
+        assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
+        assertEquals(78, lp(tree.wifiOuter).width)
+
+        IosSlotLayout.restoreAll()
+        val stockOuter = tree.wifiOuter.layoutParams
+        val stockSignal = tree.wifiSignal.layoutParams
+
         IosSlotLayout.reapply(ModuleSettings.DEFAULT)
-        assertTrue("reapply must reopen the layout", IosSlotLayout.registerWifi(tree.wifiSignal))
+
+        assertFalse("reapply must not re-arm the layout", IosSlotLayout.isActiveForTest)
+        assertNull(IosSlotLayout.targetForTest(tree.wifiOuter))
+        assertNull(IosSlotLayout.targetForTest(tree.container))
+        assertSameParams(stockOuter, tree.wifiOuter.layoutParams)
+        assertSameParams(stockSignal, tree.wifiSignal.layoutParams)
+        assertEquals(70, lp(tree.wifiOuter).width)
+        assertFalse(
+            "a register after an inert reapply must stay refused",
+            IosSlotLayout.registerWifi(tree.wifiSignal)
+        )
+
+        IosSlotLayout.activate(ModuleSettings.DEFAULT)
+        assertTrue("activate must re-arm the layout", IosSlotLayout.isActiveForTest)
+        assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
         assertEquals(78, lp(tree.wifiOuter).width)
         assertNotNull(IosSlotLayout.targetForTest(tree.wifiOuter))
     }

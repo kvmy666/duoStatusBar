@@ -87,12 +87,12 @@ internal object IosSlotLayout {
 
     private val logOnce = LogOnce()
 
-    /** The live settings snapshot; set by [reapply] on every settings apply/bind. */
+    /** The live settings snapshot; set by [activate]/[reapply] on every settings apply/bind. */
     @Volatile
     private var currentSettings: ModuleSettings? = null
 
     /**
-     * True between a non-null [reapply] and [restoreAll]. A bind that lands after iOS is switched off
+     * True between [activate] and [restoreAll]. A bind that lands after iOS is switched off
      * must not re-apply the stored geometry (the battery width feeds Duo's SlotGeometry).
      */
     @Volatile
@@ -651,16 +651,28 @@ internal object IosSlotLayout {
     // -------------------------------------------------------------------------------------- live
 
     /**
+     * Opens the layout and applies the snapshot. This is the one activation owner: DuoHook's V2
+     * activation path calls it when iOS is switched on. A late settings apply from another owner
+     * must call [reapply] instead, never this.
+     */
+    @Synchronized
+    fun activate(settings: ModuleSettings?) {
+        active = true
+        applySettings(settings)
+    }
+
+    /**
      * Stores the live settings and re-applies every registered slot. Called on every settings
      * broadcast/bind so a slider tick changes the real view size and the existing drawable redraws.
+     * Never activates: after [restoreAll] (iOS off) a late apply must stay inert.
      */
     @Synchronized
     fun reapply(settings: ModuleSettings?) {
-        if (settings != null) {
-            active = true
-        } else if (!active) {
-            return
-        }
+        if (!active) return
+        applySettings(settings)
+    }
+
+    private fun applySettings(settings: ModuleSettings?) {
         currentSettings = settings
         val live = try {
             synchronized(slots) { slots.entries.map { it.key to it.value } }
@@ -1215,6 +1227,9 @@ internal object IosSlotLayout {
 
     /** Test seam: number of registered slots. */
     internal val registeredForTest: Int get() = synchronized(slots) { slots.size }
+
+    /** Test seam: whether [activate] has opened the layout and [restoreAll] has not closed it. */
+    internal val isActiveForTest: Boolean get() = active
 
     /** Test seam: the target size recorded for [view], or null when nothing was applied to it. */
     internal fun targetForTest(view: View): IntArray? =

@@ -279,8 +279,8 @@ class IosR11LayoutRobolectricTest {
         IosSlotLayout.resetForTest()
         IosSlotLayout.screenWidthOverrideForTest = 1272
         IosSlotLayout.hostInkOverrideForTest = 33.48f
-        // Production calls reapply before a bind registers a slot (DuoHook).
-        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+        // Production calls activate before a bind registers a slot (DuoHook).
+        IosSlotLayout.activate(ModuleSettings.DEFAULT)
     }
 
     @After

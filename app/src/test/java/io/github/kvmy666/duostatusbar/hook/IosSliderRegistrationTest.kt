@@ -48,8 +48,8 @@ class IosSliderRegistrationTest {
         IosSlotLayout.screenWidthOverrideForTest = 1272
         // Step 1 base: the host clock cap on the owner's phone (31 px cap -> 33.48 px ink).
         IosSlotLayout.hostInkOverrideForTest = BASE_INK
-        // Production publishes the settings snapshot before a bind registers a slot (DuoHook).
-        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+        // Production activates the layout before a bind registers a slot (DuoHook).
+        IosSlotLayout.activate(ModuleSettings.DEFAULT)
         IosExtras.idLookupForTest = { name -> if (name == "wifi_signal") WIFI_SIGNAL_ID else 0 }
         shadowOf(Looper.getMainLooper()).idle()
     }

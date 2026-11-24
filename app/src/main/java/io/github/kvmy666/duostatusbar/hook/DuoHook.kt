@@ -654,7 +654,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // R11: the host clock is the one size owner; configure it before the first slot apply
             // so a bind and a slider tick already read the same cap.
             IosSlotLayout.configure(RomResources.id(ctx, rom, rom.clockId), rom.systemUiPackage)
-            IosSlotLayout.reapply(settings)
+            IosSlotLayout.activate(settings)
             IosBatteryV2.activate(
                 ctx,
                 rom,
