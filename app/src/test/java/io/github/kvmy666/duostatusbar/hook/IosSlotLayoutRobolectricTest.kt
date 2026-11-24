@@ -210,6 +210,8 @@ class IosSlotLayoutRobolectricTest {
     fun setUp() {
         IosSlotLayout.resetForTest()
         IosSlotLayout.screenWidthOverrideForTest = 1272
+        // Production publishes the settings snapshot before a bind installs a slot (DuoHook).
+        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
     }
 
     @After
@@ -322,6 +324,52 @@ class IosSlotLayoutRobolectricTest {
 
         assertNull(IosSlotLayout.targetForTest(tree.wifiOuter))
         assertNull(IosSlotLayout.targetForTest(tree.container))
+    }
+
+    @Test
+    fun `a late register after restoreAll writes nothing`() {
+        val tree = Tree(context)
+        assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
+        assertEquals(78, lp(tree.wifiOuter).width)
+        assertEquals(ImageView.ScaleType.FIT_XY, tree.wifiSignal.scaleType)
+
+        IosSlotLayout.restoreAll()
+        val stockOuter = tree.wifiOuter.layoutParams
+        val stockSignal = tree.wifiSignal.layoutParams
+        val stockContainer = tree.container.layoutParams
+        val stockScale = tree.wifiSignal.scaleType
+
+        // A bind that lands after the mode switch must not resurrect the iOS geometry.
+        assertFalse(IosSlotLayout.registerWifi(tree.wifiSignal))
+
+        assertEquals(70, lp(tree.wifiOuter).width)
+        assertSameParams(stockOuter, tree.wifiOuter.layoutParams)
+        assertSameParams(stockSignal, tree.wifiSignal.layoutParams)
+        assertSameParams(stockContainer, tree.container.layoutParams)
+        assertEquals(stockScale, tree.wifiSignal.scaleType)
+        assertTrue(tree.wifiCombo.clipChildren)
+        assertTrue(tree.container.clipChildren)
+        assertNull(IosSlotLayout.targetForTest(tree.wifiOuter))
+        assertNull(IosSlotLayout.targetForTest(tree.container))
+        assertEquals(0, IosSlotLayout.registeredForTest)
+    }
+
+    @Test
+    fun `restoreAll is idempotent and reapply reactivates the layout`() {
+        val tree = Tree(context)
+        assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
+
+        IosSlotLayout.restoreAll()
+        IosSlotLayout.restoreAll()
+        assertEquals(70, lp(tree.wifiOuter).width)
+        assertEquals(0, IosSlotLayout.registeredForTest)
+        assertNull(IosSlotLayout.targetForTest(tree.wifiOuter))
+        assertFalse("a register after restore must stay refused", IosSlotLayout.registerWifi(tree.wifiSignal))
+
+        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+        assertTrue("reapply must reopen the layout", IosSlotLayout.registerWifi(tree.wifiSignal))
+        assertEquals(78, lp(tree.wifiOuter).width)
+        assertNotNull(IosSlotLayout.targetForTest(tree.wifiOuter))
     }
 
     @Test

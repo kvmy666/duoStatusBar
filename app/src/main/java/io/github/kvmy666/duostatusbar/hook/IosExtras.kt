@@ -76,6 +76,17 @@ internal object IosExtras {
     private val retrying: MutableSet<ImageView> =
         Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ImageView, Boolean>()))
 
+    /** The retry task posted per leaf, so [deactivate] can remove the pending callback. */
+    private val retryTasks: MutableMap<ImageView, Runnable> =
+        Collections.synchronizedMap(WeakHashMap<ImageView, Runnable>())
+
+    /**
+     * True between [apply]`(true)` and [apply]`(false)`/[deactivate]. Every hook body reads it first:
+     * a bind or retry that lands after iOS is switched off must not re-register or write layout.
+     */
+    @Volatile
+    private var active = false
+
     /** Test seam: force the `wifi_signal` id lookup (Robolectric has no SystemUI resources). */
     internal var idLookupForTest: ((String) -> Int)? = null
 
@@ -240,6 +251,10 @@ internal object IosExtras {
     private fun viewHook(body: (ViewGroup) -> Unit): XC_MethodHook = object : XC_MethodHook() {
         override fun afterHookedMethod(param: MethodHookParam) {
             try {
+                if (!active) {
+                    refuseInactive("wifi view event")
+                    return
+                }
                 val root = param.thisObject as? ViewGroup ?: return
                 body(root)
             } catch (t: Throwable) {
@@ -255,17 +270,35 @@ internal object IosExtras {
     private fun onWifiBind(param: XC_MethodHook.MethodHookParam) {
         try {
             val group = param.args.firstOrNull { it is ViewGroup } as? ViewGroup ?: return
-            registerById(group, WIFI_LEFT)
-            registerById(group, WIFI_INOUT)
-            // R9: the group's own leaf drives the real slot size; iOS off restores it exactly.
-            registerWifiFrom(group)
+            bindWifi(group)
         } catch (t: Throwable) {
             warnOnce("ios-extras-wifi-bind") { "$TAG wifi bind failed: ${brief(t)}" }
         }
     }
 
+    /** The Wi-Fi bind body; shared with [bindWifiForTest] so a test runs the real hook path. */
+    private fun bindWifi(group: ViewGroup) {
+        if (!active) {
+            refuseInactive("wifi bind")
+            return
+        }
+        registerById(group, WIFI_LEFT)
+        registerById(group, WIFI_INOUT)
+        // R9: the group's own leaf drives the real slot size; iOS off restores it exactly.
+        registerWifiFrom(group)
+    }
+
+    /** Test seam: runs the same body the `bindEx` after-hook runs. */
+    internal fun bindWifiForTest(group: ViewGroup) {
+        bindWifi(group)
+    }
+
     private fun onMobileBind(param: XC_MethodHook.MethodHookParam) {
         try {
+            if (!active) {
+                refuseInactive("mobile bind")
+                return
+            }
             val signal = param.args.firstOrNull() as? ImageView ?: return
             val parent = signal.parent as? ViewGroup ?: return
             registerById(parent, DATA_INOUT)
@@ -281,6 +314,10 @@ internal object IosExtras {
      * after-hook and from the Wi-Fi outer view's attach event; returns true once the slot is applied.
      */
     internal fun registerWifiFrom(root: ViewGroup): Boolean {
+        if (!active) {
+            refuseInactive("wifi register")
+            return false
+        }
         val signal = imageById(root, WIFI_SIGNAL) ?: return false
         if (tryRegisterWifi(signal)) return true
         if (!hasOurWifiGlyph(signal)) scheduleWifiRetry(signal)
@@ -308,6 +345,10 @@ internal object IosExtras {
 
     /** Starts one bounded retry chain per leaf; a second trigger while it runs is a no-op. */
     private fun scheduleWifiRetry(signal: ImageView) {
+        if (!active) {
+            refuseInactive("wifi retry schedule")
+            return
+        }
         if (!retrying.add(signal)) return
         postWifiRetry(signal, 0)
     }
@@ -317,8 +358,15 @@ internal object IosExtras {
      * registers, when the leaf leaves its parent, or after the four tries; never an open loop.
      */
     private fun postWifiRetry(signal: ImageView, index: Int) {
+        if (!active) {
+            retrying.remove(signal)
+            retryTasks.remove(signal)
+            refuseInactive("wifi retry")
+            return
+        }
         if (index >= WIFI_RETRY_AT_MS.size) {
             retrying.remove(signal)
+            retryTasks.remove(signal)
             warnOnce("ios-extras-wifi-retry") {
                 "$TAG wifi slot still stock after ${WIFI_RETRY_AT_MS.size} retries"
             }
@@ -330,20 +378,52 @@ internal object IosExtras {
             WIFI_RETRY_AT_MS[index] - WIFI_RETRY_AT_MS[index - 1]
         }
         val retry = Runnable {
+            retryTasks.remove(signal)
+            if (!active) {
+                retrying.remove(signal)
+                refuseInactive("wifi retry")
+                return@Runnable
+            }
             if (signal.parent == null) {
                 retrying.remove(signal)
             } else if (!tryRegisterWifi(signal)) {
                 postWifiRetry(signal, index + 1)
             }
         }
+        retryTasks[signal] = retry
         try {
             mainHandler.postDelayed(retry, delay)
         } catch (t: Throwable) {
             retrying.remove(signal)
+            retryTasks.remove(signal)
             warnOnce("ios-extras-wifi-retry-post") {
                 "$TAG wifi retry post failed: ${brief(t)}"
             }
         }
+    }
+
+    /** Removes every retry callback this object posted and forgets the chains. */
+    private fun cancelWifiRetries() {
+        val tasks = try {
+            synchronized(retryTasks) { retryTasks.values.toList() }
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("extras.retrySnapshot", t)
+            emptyList()
+        }
+        for (task in tasks) {
+            try {
+                mainHandler.removeCallbacks(task)
+            } catch (t: Throwable) {
+                IosV2Log.failureOnce("extras.retryCancel", t)
+            }
+        }
+        retryTasks.clear()
+        retrying.clear()
+    }
+
+    /** A late hook body while iOS is off: counted/logged once, then the caller returns untouched. */
+    private fun refuseInactive(where: String) {
+        IosV2Log.branchOnce("ios-extras-inactive", "$where after deactivate - ignored")
     }
 
     /** The stock leaf has not been replaced by our Wi-Fi glyph yet (the retry condition). */
@@ -436,7 +516,12 @@ internal object IosExtras {
      * visibility, layout params or drawable is written here: the gate drawable supplies the pixels.
      */
     fun apply(hidden: Boolean) {
+        val wasActive = active
+        active = hidden
         this.hidden = hidden
+        if (!hidden) cancelWifiRetries()
+        // Deactivating an already-inactive object is a no-op (no second layout round).
+        if (!hidden && !wasActive) return
         val refresh = Runnable { refreshAll() }
         val main = Looper.getMainLooper()
         if (main != null && Looper.myLooper() == main) {
@@ -488,11 +573,14 @@ internal object IosExtras {
 
     /** Test seam: drops the registry and the gate; production never calls this. */
     internal fun resetForTest() {
+        active = false
+        cancelWifiRetries()
         hidden = false
         views.clear()
         idCache.clear()
         registeredTotal = 0L
         retrying.clear()
+        retryTasks.clear()
         idLookupForTest = null
         registerWifiForTest = null
         warningCountForTest = 0

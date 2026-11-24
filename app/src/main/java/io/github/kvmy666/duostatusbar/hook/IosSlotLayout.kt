@@ -92,6 +92,13 @@ internal object IosSlotLayout {
     private var currentSettings: ModuleSettings? = null
 
     /**
+     * True between a non-null [reapply] and [restoreAll]. A bind that lands after iOS is switched off
+     * must not re-apply the stored geometry (the battery width feeds Duo's SlotGeometry).
+     */
+    @Volatile
+    private var active = false
+
+    /**
      * Test seam: production always reads the display metrics. A test may pin a screen width so the
      * Robolectric sandbox (often 320 px) can still assert the owner's 1272 px numbers.
      */
@@ -565,6 +572,7 @@ internal object IosSlotLayout {
      */
     @Synchronized
     internal fun registerWifi(signal: ImageView): Boolean {
+        if (!active) return refusedInactive("wifi")
         val glyph = glyphOf(signal, IosIconKind.WIFI) ?: return unresolved("wifi")
         val combo = signal.parent as? ViewGroup ?: return unresolvedChain("wifi", "combo missing")
         val group = combo.parent as? ViewGroup ?: return unresolvedChain("wifi", "group missing")
@@ -589,6 +597,7 @@ internal object IosSlotLayout {
      */
     @Synchronized
     internal fun registerMobile(signal: ImageView, label: ImageView? = null): Boolean {
+        if (!active) return refusedInactive("mobile")
         val glyph = glyphOf(signal, IosIconKind.CELL) ?: return unresolved("mobile")
         val combo = signal.parent as? ViewGroup ?: return unresolvedChain("mobile", "combo missing")
         val group = combo.parent as? ViewGroup ?: return unresolvedChain("mobile", "group missing")
@@ -610,6 +619,7 @@ internal object IosSlotLayout {
     /** Registers the battery container/leaf pair. The stock container is `StatBatteryMeterView`. */
     @Synchronized
     internal fun registerBattery(container: View, leaf: ImageView): Boolean {
+        if (!active) return refusedInactive("battery")
         val glyph = glyphOf(leaf, IosIconKind.BATTERY) ?: return unresolved("battery")
         val slot = Slot(
             Kind.BATTERY,
@@ -646,6 +656,11 @@ internal object IosSlotLayout {
      */
     @Synchronized
     fun reapply(settings: ModuleSettings?) {
+        if (settings != null) {
+            active = true
+        } else if (!active) {
+            return
+        }
         currentSettings = settings
         val live = try {
             synchronized(slots) { slots.entries.map { it.key to it.value } }
@@ -918,6 +933,14 @@ internal object IosSlotLayout {
         targets.clear()
         restoreCaptured()
         applying = false
+        // A later bind must not re-apply the snapshot it just restored; the clock cap is re-measured
+        // on the next activation instead of surviving the mode switch.
+        active = false
+        currentSettings = null
+        clockRef = null
+        clockTextSize = Float.NaN
+        lastClockCapPx = 0
+        lastClockSource = "fallback"
     }
 
     private fun restoreSlot(slot: Slot) {
@@ -1024,6 +1047,12 @@ internal object IosSlotLayout {
         logOnce.once("ios-slot-unresolved-$what") {
             L.w("$TAG $what leaf is not our glyph; stock layout kept")
         }
+        return false
+    }
+
+    /** A register that lands after [restoreAll]: refused once, no view is touched. */
+    private fun refusedInactive(what: String): Boolean {
+        IosV2Log.branchOnce("ios-slot-inactive", "$what register after restoreAll - ignored")
         return false
     }
 
@@ -1172,6 +1201,7 @@ internal object IosSlotLayout {
         originals.clear()
         originalScaleType.clear()
         targets.clear()
+        active = false
         currentSettings = null
         screenWidthOverrideForTest = null
         hostInkOverrideForTest = null

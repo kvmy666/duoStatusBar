@@ -48,6 +48,8 @@ class IosSliderRegistrationTest {
         IosSlotLayout.screenWidthOverrideForTest = 1272
         // Step 1 base: the host clock cap on the owner's phone (31 px cap -> 33.48 px ink).
         IosSlotLayout.hostInkOverrideForTest = BASE_INK
+        // Production publishes the settings snapshot before a bind registers a slot (DuoHook).
+        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
         IosExtras.idLookupForTest = { name -> if (name == "wifi_signal") WIFI_SIGNAL_ID else 0 }
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -153,6 +155,7 @@ class IosSliderRegistrationTest {
     @Test
     fun `wifi slider registration reproduces the bind race and recovers on retry`() {
         val (outer, _, signal) = wifiTree()
+        IosExtras.apply(true)
         IosSlotLayout.reapply(ModuleSettings.DEFAULT.copy(iosWifiScale = 98))
 
         // The stock drawable is what `bindEx`'s after-hook sees: no slot, no target.
@@ -216,6 +219,7 @@ class IosSliderRegistrationTest {
     @Test
     fun `a registration exception warns once, not per bind`() {
         val (outer, _, _) = wifiTree()
+        IosExtras.apply(true)
         IosExtras.registerWifiForTest = { throw IllegalStateException("boom") }
 
         assertFalse(IosExtras.registerWifiFrom(outer))

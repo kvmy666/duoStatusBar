@@ -98,6 +98,8 @@ class IosV2DiagTest {
     private fun registerAll(tree: Tree) {
         IosSlotLayout.screenWidthOverrideForTest = 1272
         IosSlotLayout.hostInkOverrideForTest = 33.48f
+        // Production publishes the settings snapshot before a bind registers a slot (DuoHook).
+        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
 
         tree.wifiSignal.setImageDrawable(
             glyph(IosIconKind.WIFI, IosVisual(part = IosPart.WIFI, wifiLevel = 3f), 60, 51)
@@ -277,6 +279,7 @@ class IosV2DiagTest {
     fun `a swallowed failure logs exactly once with site and reason`() {
         val root = ThrowingGroup(context)
         root.fail = true
+        IosExtras.apply(true)
 
         assertFalse(IosExtras.registerWifiFrom(root))
         assertFalse(IosExtras.registerWifiFrom(root))
