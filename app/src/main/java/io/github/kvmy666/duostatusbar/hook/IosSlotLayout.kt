@@ -116,6 +116,25 @@ internal object IosSlotLayout {
     @Volatile
     private var clockTextSize: Float = Float.NaN
 
+    /** REL210: the last clock cap/source used by the live slot path (diagnostics only). */
+    @Volatile
+    private var lastClockCapPx: Int = 0
+
+    @Volatile
+    private var lastClockSource: String = "fallback"
+
+    /** REL210: the resolved host clock cap in px (0 when the fallback path was used). */
+    internal val clockCapForDiagnostics: Int get() = lastClockCapPx
+
+    /** REL210: "host" when the live clock sized the slots, "fallback" for screen-width metrics. */
+    internal val clockSourceForDiagnostics: String get() = lastClockSource
+
+    /** REL210: the clock id [configure] resolved; 0 means no host clock. */
+    internal val clockIdForDiagnostics: Int get() = clockResId
+
+    /** REL210: true when [configure] received a real clock id. */
+    internal val clockResolvedForDiagnostics: Boolean get() = clockResId != 0
+
     private enum class Kind { WIFI, MOBILE, BATTERY }
 
     /** Weak references only: the bar, keyguard and QS may drop any of these views at any time. */
@@ -446,6 +465,8 @@ internal object IosSlotLayout {
         clockTextSize = Float.NaN
         clockResId = clockId
         if (clockId == 0) {
+            lastClockCapPx = 0
+            lastClockSource = "fallback"
             logOnce.once("ios-host-clock-id") {
                 L.w("$TAG host clock id not resolved in $systemUiPackage; screen-width fallback")
             }
@@ -481,12 +502,16 @@ internal object IosSlotLayout {
         val clock = clockView(leaf)
         val cap = clock?.let { clockCapPx(it) }?.takeIf { it > 0f }
         if (cap == null) {
+            lastClockCapPx = 0
+            lastClockSource = "fallback"
             logOnce.once("ios-host-clock-fallback") {
                 L.w("$TAG host clock unreadable; screen-width fallback")
             }
             return null
         }
         val ink = HOST_INK_PER_CLOCK_CAP * cap
+        lastClockCapPx = cap.roundToInt()
+        lastClockSource = "host"
         logOnce.once("ios-host-clock") {
             L.i("$TAG host clock cap=${cap.roundToInt()}px target ink=${ink.roundToInt()}px")
         }
@@ -502,7 +527,8 @@ internal object IosSlotLayout {
         if (id == 0) return null
         val found = try {
             leaf.rootView.findViewById<View>(id) as? TextView
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.clockView", t)
             null
         }
         if (found != null) {
@@ -524,7 +550,8 @@ internal object IosSlotLayout {
                 paint.getTextBounds("H", 0, 1, bounds)
                 if (bounds.height() > 0) bounds.height().toFloat() else 0f
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.clockCap", t)
             0f
         }
     }
@@ -539,9 +566,9 @@ internal object IosSlotLayout {
     @Synchronized
     internal fun registerWifi(signal: ImageView): Boolean {
         val glyph = glyphOf(signal, IosIconKind.WIFI) ?: return unresolved("wifi")
-        val combo = signal.parent as? ViewGroup ?: return false
-        val group = combo.parent as? ViewGroup ?: return false
-        val outer = group.parent as? ViewGroup ?: return false
+        val combo = signal.parent as? ViewGroup ?: return unresolvedChain("wifi", "combo missing")
+        val group = combo.parent as? ViewGroup ?: return unresolvedChain("wifi", "group missing")
+        val outer = group.parent as? ViewGroup ?: return unresolvedChain("wifi", "outer missing")
         val slot = Slot(
             Kind.WIFI,
             WeakReference(outer),
@@ -563,9 +590,9 @@ internal object IosSlotLayout {
     @Synchronized
     internal fun registerMobile(signal: ImageView, label: ImageView? = null): Boolean {
         val glyph = glyphOf(signal, IosIconKind.CELL) ?: return unresolved("mobile")
-        val combo = signal.parent as? ViewGroup ?: return false
-        val group = combo.parent as? ViewGroup ?: return false
-        val outer = group.parent as? ViewGroup ?: return false
+        val combo = signal.parent as? ViewGroup ?: return unresolvedChain("mobile", "combo missing")
+        val group = combo.parent as? ViewGroup ?: return unresolvedChain("mobile", "group missing")
+        val outer = group.parent as? ViewGroup ?: return unresolvedChain("mobile", "outer missing")
         val type = label ?: (combo.getChildAt(combo.indexOfChild(signal) + 1) as? ImageView)
         val slot = Slot(
             Kind.MOBILE,
@@ -622,7 +649,8 @@ internal object IosSlotLayout {
         currentSettings = settings
         val live = try {
             synchronized(slots) { slots.entries.map { it.key to it.value } }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.reapply", t)
             return
         }
         for ((leaf, slot) in live) {
@@ -653,8 +681,14 @@ internal object IosSlotLayout {
         val screenW = screenWidth(leaf)
         val designRowHeight = rowHeight(screenW)
         // R11: the host clock owns the size; a null read keeps the legacy screen-width path exactly.
-        val hostInk = (hostInkOverrideForTest ?: hostInkPx(leaf))
+        val override = hostInkOverrideForTest
+        val hostInk = (override ?: hostInkPx(leaf))
             ?.takeIf { it.isFinite() && it > 0f }
+        if (override != null && hostInk != null) {
+            // Test seam only: name the source the production host path would have named.
+            lastClockSource = "host"
+            lastClockCapPx = (hostInk / HOST_INK_PER_CLOCK_CAP).roundToInt()
+        }
         val hostGap = hostInk?.times(HOST_GAP_PER_INK_HEIGHT)
         val slotMetrics = if (hostInk != null && hostGap != null) {
             when (slot.kind) {
@@ -875,7 +909,8 @@ internal object IosSlotLayout {
     fun restoreAll() {
         val slotList = try {
             synchronized(slots) { slots.values.toList() }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.restoreAll", t)
             emptyList()
         }
         for (slot in slotList) restoreSlot(slot)
@@ -950,7 +985,8 @@ internal object IosSlotLayout {
     private fun restoreCaptured() {
         val views = try {
             synchronized(originals) { originals.keys.toList() }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.restoreCaptured", t)
             emptyList()
         }
         for (view in views) restoreView(view)
@@ -991,6 +1027,12 @@ internal object IosSlotLayout {
         return false
     }
 
+    /** A measured chain that was not found: the stock layout stays, named once per branch. */
+    private fun unresolvedChain(what: String, reason: String): Boolean {
+        IosV2Log.branchOnce("layout.chain.$what", "$reason - stock layout kept")
+        return false
+    }
+
     private fun kindOf(kind: Kind): IosIconKind = when (kind) {
         Kind.WIFI -> IosIconKind.WIFI
         Kind.MOBILE -> IosIconKind.CELL
@@ -1001,7 +1043,8 @@ internal object IosSlotLayout {
         screenWidthOverrideForTest?.let { return it }
         return try {
             view.resources.displayMetrics.widthPixels
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.screenWidth", t)
             1272
         }
     }
@@ -1024,6 +1067,102 @@ internal object IosSlotLayout {
         return value.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET)
     }
 
+    // ----------------------------------------------------------------------------- diagnostics
+
+    /** One registered slot as resolved px, strings/ints only (REL210 dump block). */
+    internal class SlotDiag(
+        val kind: String,
+        val outerWidth: Int,
+        val outerHeight: Int,
+        val leafWidth: Int,
+        val leafHeight: Int,
+        val labelWidth: Int,
+        val labelHeight: Int
+    )
+
+    private class RootEntry(val root: View, val facts: SlotDiag)
+
+    /**
+     * REL210: a read-only snapshot of the registered slots grouped by `leaf.rootView`.
+     *
+     * [roots] carries the surface roots the caller already knows (home, keyguard, shade). A root that
+     * was supplied is always returned, with `slots=none` when it has no registered slot. Roots that
+     * were not supplied are appended by their root-view simple class name. Nothing here pins a view:
+     * the references are used only inside this call and the result is strings/ints.
+     */
+    internal fun diagnosticSurfaces(roots: List<Pair<String, View?>>): List<Pair<String, List<SlotDiag>>> {
+        val entries = try {
+            synchronized(slots) {
+                slots.values.mapNotNull { slot ->
+                    val leaf = slot.leaf.get() ?: return@mapNotNull null
+                    val root = leaf.rootView ?: return@mapNotNull null
+                    val outer = slot.outer.get()
+                    val label = slot.label?.get()?.takeIf { it.visibility != View.GONE }
+                    RootEntry(root, factsOf(slot, outer, leaf, label))
+                }
+            }
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.diagnosticSnapshot", t)
+            emptyList()
+        }
+        val out = ArrayList<Pair<String, List<SlotDiag>>>()
+        val claimed = ArrayList<View>()
+        for ((name, root) in roots) {
+            if (root == null) continue
+            if (claimed.any { it === root }) continue
+            claimed.add(root)
+            out.add(name to entries.filter { it.root === root }.map { it.facts })
+        }
+        val unknown = LinkedHashMap<String, MutableList<SlotDiag>>()
+        for (entry in entries) {
+            if (claimed.any { it === entry.root }) continue
+            val name = entry.root.javaClass.simpleName.ifBlank { "root" }
+            unknown.getOrPut(name) { ArrayList() }.add(entry.facts)
+        }
+        for ((name, facts) in unknown.entries.sortedBy { it.key }.take(3)) {
+            out.add(name to facts)
+        }
+        return out
+    }
+
+    private fun factsOf(slot: Slot, outer: View?, leaf: ImageView, label: ImageView?): SlotDiag =
+        SlotDiag(
+            kind = when (slot.kind) {
+                Kind.WIFI -> "wifi"
+                Kind.MOBILE -> "cell"
+                Kind.BATTERY -> "battery"
+            },
+            outerWidth = appliedWidth(outer),
+            outerHeight = appliedHeight(outer),
+            leafWidth = appliedWidth(leaf),
+            leafHeight = appliedHeight(leaf),
+            labelWidth = appliedWidth(label),
+            labelHeight = appliedHeight(label)
+        )
+
+    /** The px this module owns ([targets]), else the live params; never a negative match value. */
+    private fun appliedWidth(view: View?): Int = applied(view, 0)
+
+    private fun appliedHeight(view: View?): Int = applied(view, 1)
+
+    private fun applied(view: View?, index: Int): Int {
+        val target = view ?: return 0
+        val recorded = try {
+            synchronized(targets) { targets[target] }
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.diagTarget", t)
+            null
+        }
+        if (recorded != null) return recorded[index].coerceAtLeast(0)
+        return try {
+            val params = target.layoutParams ?: return 0
+            (if (index == 0) params.width else params.height).coerceAtLeast(0)
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("layout.diagParams", t)
+            0
+        }
+    }
+
     // ----------------------------------------------------------------------------------- test seams
 
     /** Test seam: reset every registry without writing any view. */
@@ -1039,6 +1178,8 @@ internal object IosSlotLayout {
         clockResId = 0
         clockRef = null
         clockTextSize = Float.NaN
+        lastClockCapPx = 0
+        lastClockSource = "fallback"
         applying = false
     }
 

@@ -117,6 +117,18 @@ internal object IosExtras {
 
     private val idCache = ConcurrentHashMap<String, Int>()
 
+    /** REL210: measured class names and whether they were resolved, for the diag block. */
+    private val classFacts: MutableSet<String> =
+        Collections.synchronizedSet(LinkedHashSet<String>())
+
+    /** REL210: "ok:…/missing:…" for the extras hook classes. */
+    internal val hookClassesForDiagnostics: String
+        get() = synchronized(classFacts) { classFacts.joinToString(",") }.ifBlank { "none" }
+
+    private fun noteClass(name: String, resolved: Boolean) {
+        classFacts.add((if (resolved) "ok:" else "missing:") + name)
+    }
+
     private val mainHandler: Handler by lazy { Handler(Looper.getMainLooper()) }
 
     /** Live registered leaves (diagnostics). */
@@ -143,6 +155,7 @@ internal object IosExtras {
         var failures = 0
         try {
             val wifi = XposedHelpers.findClass(WIFI_CLASS, classLoader)
+            noteClass(WIFI_CLASS.substringAfterLast('.'), true)
             val hooked = XposedBridge.hookAllMethods(wifi, WIFI_METHOD, imagesHook(this::onWifiBind))
             if (hooked.isNotEmpty()) {
                 methods++
@@ -151,6 +164,7 @@ internal object IosExtras {
             }
         } catch (t: Throwable) {
             failures++
+            noteClass(WIFI_CLASS.substringAfterLast('.'), false)
             logOnce.once("ios-extras-wifi-class") {
                 L.w("$TAG wifi binder unavailable: ${t.javaClass.simpleName}")
             }
@@ -160,6 +174,7 @@ internal object IosExtras {
         // class/method is normal off OxygenOS, so it stays one warning and the bind retry still runs.
         try {
             val outer = XposedHelpers.findClass(WIFI_VIEW_CLASS, classLoader)
+            noteClass(WIFI_VIEW_CLASS.substringAfterLast('.'), true)
             val attached = XposedBridge.hookAllMethods(
                 outer,
                 "onAttachedToWindow",
@@ -178,20 +193,24 @@ internal object IosExtras {
                 }
             }
         } catch (t: Throwable) {
+            noteClass(WIFI_VIEW_CLASS.substringAfterLast('.'), false)
             logOnce.once("ios-extras-wifi-view") {
                 L.w("$TAG wifi outer unavailable: ${brief(t)}; bind retry kept")
             }
         }
         for (name in MOBILE_BINDERS) {
             // One binder family missing is normal across OEM variants; the others still work.
+            val simple = name.substringAfterLast('.')
             val cls = try {
                 XposedHelpers.findClass(name, classLoader)
             } catch (t: Throwable) {
+                noteClass(simple, false)
                 logOnce.once("ios-extras-mobile-class-$name") {
                     L.w("$TAG binder ${name.substringAfterLast('.')} unavailable: ${t.javaClass.simpleName}")
                 }
                 continue
             }
+            noteClass(simple, true)
             try {
                 val hooked = XposedBridge.hookAllMethods(cls, MOBILE_METHOD, imagesHook(this::onMobileBind))
                 if (hooked.isEmpty()) {
@@ -370,7 +389,8 @@ internal object IosExtras {
         // The ROM's own SystemUI package first; the view context's package is only a fallback.
         val fallback = try {
             view.context.packageName
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("extras.contextPackage", t)
             ""
         }
         val romPackage = systemUiPackage
@@ -386,7 +406,8 @@ internal object IosExtras {
             if (cached != null && cached != 0) return cached
             val id = try {
                 view.resources.getIdentifier(name, "id", pkg)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.failureOnce("extras.identifier.$name", t)
                 0
             }
             if (id != 0) {
@@ -401,7 +422,8 @@ internal object IosExtras {
     internal fun register(view: ImageView) {
         val added = try {
             views.add(view)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("extras.register", t)
             false
         }
         if (added) registeredTotal++
@@ -422,8 +444,9 @@ internal object IosExtras {
         } else {
             try {
                 mainHandler.post(refresh)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 // No main looper (unexpected): the next real layout still reads the new gate.
+                IosV2Log.failureOnce("extras.applyPost", t)
             }
         }
     }
@@ -436,15 +459,17 @@ internal object IosExtras {
     private fun refreshAll() {
         val live = try {
             synchronized(views) { views.toList() }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("extras.refreshSnapshot", t)
             emptyList()
         }
         for (view in live) {
             try {
                 view.requestLayout()
                 view.invalidate()
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 // A detached/stale view is harmless; the weak registry drops it.
+                IosV2Log.failureOnce("extras.refreshView", t)
             }
         }
     }
@@ -490,7 +515,8 @@ internal class HiddenGateState(
     override fun newDrawable(res: Resources?, theme: Resources.Theme?): Drawable {
         val fresh = try {
             stock?.newDrawable(res, theme)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("extras.gateState", t)
             null
         }
         return HiddenGateDrawable(this, fresh)
@@ -499,7 +525,8 @@ internal class HiddenGateState(
     override fun getChangingConfigurations(): Int =
         try {
             stock?.changingConfigurations ?: 0
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("extras.gateConfigs", t)
             0
         }
 }

@@ -167,9 +167,15 @@ internal object IosStackedSim {
 
     /** @return the hooked overload count, 0 when the class exists but `emit` was not hookable, -1 if absent. */
     private fun hookLambda(classLoader: ClassLoader, className: String, fieldName: String): Int {
+        val simple = className.substringAfterLast('.').substringBefore("\$")
         val cls = try {
             XposedHelpers.findClass(className, classLoader)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            noteClass(simple, false)
+            IosV2Log.branchOnce(
+                "stacked.findClass.$simple",
+                "class missing - single-SIM rows kept"
+            )
             return -1
         }
         return try {
@@ -177,9 +183,12 @@ internal object IosStackedSim {
                 override fun afterHookedMethod(param: MethodHookParam) =
                     onEmit(param, fieldName)
             })
+            noteClass(simple, hooks.isNotEmpty())
             hooks.size
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             failureCount++
+            noteClass("$simple.$fieldName", false)
+            IosV2Log.failureOnce("stacked.hook.$simple", t)
             0
         }
     }
@@ -219,6 +228,17 @@ internal object IosStackedSim {
     /** The last data subId that produced a real plan; used only for the [swaps] counter. */
     private var lastPlanData = 0
 
+    /** REL210: measured binder classes and whether their emit lambda was hookable. */
+    private val classFacts: MutableSet<String> =
+        Collections.synchronizedSet(LinkedHashSet<String>())
+
+    internal val hookClassesForDiagnostics: String
+        get() = synchronized(classFacts) { classFacts.joinToString(",") }.ifBlank { "none" }
+
+    private fun noteClass(name: String, resolved: Boolean) {
+        classFacts.add((if (resolved) "ok:" else "missing:") + name)
+    }
+
     private val lock = Any()
 
     private val tracked: MutableMap<View, Tracked> =
@@ -247,7 +267,8 @@ internal object IosStackedSim {
     fun activate(context: Context, settings: ModuleSettings?) {
         val app = try {
             context.applicationContext ?: context
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("stacked.applicationContext", t)
             context
         }
         active = true
@@ -308,8 +329,9 @@ internal object IosStackedSim {
             }
             receiver = next
             receiverContext = context
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             failureCount++
+            IosV2Log.failureOnce("stacked.registerReceiver", t)
             receiver = null
             receiverContext = null
         }
@@ -323,8 +345,9 @@ internal object IosStackedSim {
         if (current != null && context != null) {
             try {
                 context.unregisterReceiver(current)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 // Already unregistered/destroyed; nothing to restore.
+                IosV2Log.failureOnce("stacked.unregisterReceiver", t)
             }
         }
     }
@@ -343,8 +366,9 @@ internal object IosStackedSim {
             try {
                 restoreHidden(view)
                 restoreDrawable(view, entry)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 failureCount++
+                IosV2Log.failureOnce("stacked.restoreAll", t)
             }
         }
         synchronized(tracked) { tracked.clear() }
@@ -366,8 +390,9 @@ internal object IosStackedSim {
             val field = fieldOf(thiz.javaClass, fieldName) ?: return
             val target = field.get(thiz) as? View ?: return
             reconcile(findOuter(target) ?: return)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             failureCount++
+            IosV2Log.failureOnce("stacked.onEmit", t)
         }
     }
 
@@ -378,8 +403,9 @@ internal object IosStackedSim {
                 val outer = findOuter(anchor) ?: return
                 val parent = outer.parent as? ViewGroup ?: return
                 reconcileContainer(parent, readDataSubId(), display)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 failureCount++
+                IosV2Log.failureOnce("stacked.reconcile", t)
             }
         }
     }
@@ -397,8 +423,9 @@ internal object IosStackedSim {
             val outer = findOuter(anchor) ?: return false
             val parent = outer.parent as? ViewGroup ?: return false
             reconcileContainer(parent, dataSubId, display)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             failureCount++
+            IosV2Log.failureOnce("stacked.reconcileViews", t)
             false
         }
     }
@@ -429,11 +456,13 @@ internal object IosStackedSim {
             lastPlanData = planData
         }
         if (decision == Plan.None) {
+            IosV2Log.branchOnce("stacked.plan", "no data SIM - stock rows kept")
             failSafe(outers)
             return false
         }
         val dataOuter = outers.firstOrNull { trackedFor(it)?.subId == planData }
         if (dataOuter == null || !applyPlan(decision, outers, dataOuter)) {
+            IosV2Log.branchOnce("stacked.plan", "plan not applicable - stock rows kept")
             failSafe(outers)
             return false
         }
@@ -692,14 +721,19 @@ internal object IosStackedSim {
                 it.isAccessible = true
                 subIdMethods[cls] = it
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             noSubId.add(cls)
+            IosV2Log.branchOnce(
+                "stacked.subIdOf.${cls.simpleName}",
+                "no getSubId - not a SIM outer"
+            )
             return 0
         }
         return try {
             (method.invoke(view) as? Int) ?: 0
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             failureCount++
+            IosV2Log.failureOnce("stacked.subIdInvoke", t)
             0
         }
     }
@@ -709,7 +743,8 @@ internal object IosStackedSim {
         cache[cls]?.let { return it }
         return try {
             cls.getDeclaredField(name).apply { isAccessible = true }.also { cache[cls] = it }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.branchOnce("stacked.field.$name", "field missing - stock rows kept")
             null
         }
     }
@@ -759,8 +794,9 @@ internal object IosStackedSim {
 
     private fun readDataSubId(): Int = try {
         SubscriptionManager.getDefaultDataSubscriptionId()
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
         failureCount++
+        IosV2Log.failureOnce("stacked.readDataSubId", t)
         0
     }
 

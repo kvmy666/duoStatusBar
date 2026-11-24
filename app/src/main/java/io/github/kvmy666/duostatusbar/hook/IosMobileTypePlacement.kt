@@ -87,6 +87,18 @@ internal object IosMobileTypePlacement {
     private val installedParams: MutableMap<View, FrameLayout.LayoutParams> =
         Collections.synchronizedMap(WeakHashMap<View, FrameLayout.LayoutParams>())
 
+    /** REL210: measured binder classes and whether they were resolved, for the diag block. */
+    private val classFacts: MutableSet<String> =
+        Collections.synchronizedSet(LinkedHashSet<String>())
+
+    /** REL210: "ok:…/missing:…" for the four placement binders. */
+    internal val hookClassesForDiagnostics: String
+        get() = synchronized(classFacts) { classFacts.joinToString(",") }.ifBlank { "none" }
+
+    private fun noteClass(name: String, resolved: Boolean) {
+        classFacts.add((if (resolved) "ok:" else "missing:") + name)
+    }
+
     // ---------------------------------------------------------------------------------- install
 
     /**
@@ -102,18 +114,26 @@ internal object IosMobileTypePlacement {
         var missing = 0
         var failures = 0
         for (name in BINDERS) {
+            val simple = name.substringAfterLast('.')
             val cls = try {
                 XposedHelpers.findClass(name, classLoader)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 missing++
+                noteClass(simple, false)
+                IosV2Log.branchOnce(
+                    "placement.findClass.$simple",
+                    "class missing - stock layout kept"
+                )
                 continue
             }
+            noteClass(simple, true)
             val hooked = try {
                 XposedBridge.hookAllMethods(cls, METHOD, object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) = onSignalIcon(param)
                 })
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 failures++
+                IosV2Log.failureOnce("placement.hook.$simple", t)
                 continue
             }
             if (hooked.isNotEmpty()) {
@@ -182,8 +202,9 @@ internal object IosMobileTypePlacement {
                 return
             }
             place(signal, type, iconWidth, iconHeight)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             // Whole body guarded: any unexpected failure leaves the stock layout untouched.
+            IosV2Log.failureOnce("placement.onSignalIcon", t)
         }
     }
 
@@ -193,10 +214,13 @@ internal object IosMobileTypePlacement {
         if (typeId != 0) {
             val byId = try {
                 parent.findViewById<ImageView>(typeId)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.failureOnce("placement.findType", t)
                 null
             }
             if (byId != null) return byId
+        } else {
+            IosV2Log.branchOnce("placement.typeId", "id missing - index fallback")
         }
         val index = parent.indexOfChild(signal)
         if (index < 0) return null
@@ -210,7 +234,8 @@ internal object IosMobileTypePlacement {
         if (cached != 0 && cachedTypePackage == pkg) return cached
         val id = try {
             signal.resources.getIdentifier(TYPE_ID_NAME, "id", pkg)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("placement.typeIdentifier", t)
             0
         }
         if (id != 0) {
@@ -294,8 +319,9 @@ internal object IosMobileTypePlacement {
             val original = synchronized(originalParams) { originalParams[view] } ?: continue
             try {
                 view.layoutParams = original
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 // A view that cannot accept its old params is left as the system has it.
+                IosV2Log.failureOnce("placement.restoreLayout", t)
             }
         }
         synchronized(installedParams) { installedParams.clear() }

@@ -267,6 +267,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         stopIosV2Owners()
                     }
                     // Activation left no live map: keep HOST with the stock icons and the old owner.
+                    IosV2Log.branchOnce("duohook.route", "V2 activation refused - HOST kept")
                     iosRoute = IosRoute.HOST
                     IosRouteDiagnostics.update(iosRoute, rom.id)
                 }
@@ -643,15 +644,23 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun stopIosV2Owners() {
         // R9: put every stock LayoutParams/clip flag/scale type back before the drawables are restored.
         runCatching { IosSlotLayout.restoreAll() }
+            .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.layout", it) }
         runCatching { IosStackedSim.deactivate() }
+            .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.stacked", it) }
         runCatching { IosExtras.deactivate() }
+            .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.extras", it) }
         // Restore the stock order, but do not release: the order hooks are the process-wide owner and
         // release belongs to the final iOS teardown.
         runCatching { IosIconOrder.restore() }
+            .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.order", it) }
         runCatching { IosDiagnostics.unregister(IosR8Report) }
+            .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.r8report", it) }
         runCatching { IosMobileTypePlacement.deactivate() }
+            .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.placement", it) }
         runCatching { IosBatteryV2.deactivate() }
+            .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.battery", it) }
         runCatching { IosResourceEngine.deactivate() }
+            .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.engine", it) }
         iosRoute = routeAfterStoppingV2Owners(iosRoute)
         IosRouteDiagnostics.update(iosRoute, rom.id)
     }
@@ -743,7 +752,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         iosRefreshPending = true
         try {
             handler.postDelayed(iosRefreshSoonRunnable, IOS_REFRESH_COALESCE_MS)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("duohook.refreshSoon", t)
             iosRefreshPending = false
         }
     }

@@ -154,7 +154,18 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     private var lastReading: IosBatteryReading? = null
     private var lastSaver = false
 
+    /** REL210: each resolved/missing measured class, in install order, for the diag block. */
+    private val classFacts: MutableList<String> = Collections.synchronizedList(ArrayList())
+
     val isActive: Boolean get() = active
+
+    /** REL210: "ok:…/missing:…" for the measured battery classes. */
+    internal val hookClassesForDiagnostics: String
+        get() = synchronized(classFacts) { classFacts.joinToString(",") }.ifBlank { "none" }
+
+    private fun noteClass(simpleName: String, resolved: Boolean) {
+        classFacts.add((if (resolved) "ok:" else "missing:") + simpleName)
+    }
 
     // ---------------------------------------------------------------------------------- install
 
@@ -169,6 +180,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         IosDiagnostics.register(this)
         try {
             val oplus = findClass(OPLUS_VIEW_CLASS, classLoader)
+            noteClass(OPLUS_VIEW_CLASS.substringAfterLast('.'), oplus != null)
             val oplusHooked = if (oplus != null) {
                 oplusClass = oplus
                 hookOplusView(oplus)
@@ -178,10 +190,12 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             }
 
             val binder = findClass(OPLUS_BINDER_CLASS, classLoader)
+            noteClass(OPLUS_BINDER_CLASS.substringAfterLast('.'), binder != null)
             if (binder != null) hookOplusBinder(binder, oplus) else
                 countFailure("no OxygenOS battery binder class")
 
             val aosp = findClass(AOSP_VIEW_CLASS, classLoader)
+            noteClass(AOSP_VIEW_CLASS.substringAfterLast('.'), aosp != null)
             val aospHooked = if (aosp != null) {
                 hookAospView(aosp)
             } else {
@@ -210,7 +224,11 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 
     private fun findClass(name: String, classLoader: ClassLoader): Class<*>? = try {
         XposedHelpers.findClass(name, classLoader)
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        IosV2Log.branchOnce(
+            "battery.findClass.${name.substringAfterLast('.')}",
+            "class missing - stock battery kept"
+        )
         null
     }
 
@@ -261,6 +279,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                         } catch (t: Throwable) {
                             // Covers the reassert path: a foreign push that cannot be repaired.
                             countFailure(t)
+                            IosV2Log.failureOnce("battery.binderPush", t)
                         }
                     }
                 })
@@ -312,6 +331,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             (param.thisObject as? View)?.let { controllerFor(it) }
         } catch (t: Throwable) {
             countFailure(t)
+            IosV2Log.failureOnce("battery.viewHook", t)
         }
     }
 
@@ -324,6 +344,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             controllerFor(view)
         } catch (t: Throwable) {
             countFailure(t)
+            IosV2Log.failureOnce("battery.onLayout", t)
         }
     }
 
@@ -335,6 +356,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             (param.thisObject as? View)?.let { controllers[it]?.setTint(color) }
         } catch (t: Throwable) {
             countFailure(t)
+            IosV2Log.failureOnce("battery.onDark", t)
         }
     }
 
@@ -449,6 +471,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             receiverContext = context
         } catch (t: Throwable) {
             countFailure(t)
+            IosV2Log.failureOnce("battery.registerReceiver", t)
             receiver = null
             receiverContext = null
         }
@@ -497,7 +520,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         if (current != null && context != null) {
             try {
                 context.unregisterReceiver(current)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.failureOnce("battery.unregisterReceiver", t)
             }
         }
     }
@@ -512,10 +536,14 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         val saver = try {
             (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)
                 ?.isPowerSaveMode ?: false
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("battery.powerSave", t)
             false
         }
-        if (reading == null) return
+        if (reading == null) {
+            IosV2Log.branchOnce("battery.sticky", "no sticky reading - battery stays stock")
+            return
+        }
         lastReading = reading
         lastSaver = saver
         lastLevel = reading.level
@@ -547,8 +575,14 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         synchronized(seen) { seen[view] = true }
         val state = synchronized(stateLock) {
             if (!active) return null
-            val ctx = contextRef ?: return null
-            val rom = romRef ?: return null
+            val ctx = contextRef ?: run {
+                IosV2Log.branchOnce("battery.context", "context missing - install deferred")
+                return null
+            }
+            val rom = romRef ?: run {
+                IosV2Log.branchOnce("battery.rom", "rom missing - install deferred")
+                return null
+            }
             ActiveState(
                 context = ctx,
                 rom = rom,
@@ -563,7 +597,10 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             )
         }
         // R7 P5: never install an invisible glyph. A missing sticky reading leaves the stock icon.
-        if (state.reading == null) return null
+        if (state.reading == null) {
+            IosV2Log.branchOnce("battery.install", "no reading - stock battery kept")
+            return null
+        }
 
         // One synchronized block for the check-and-create, so two hook callbacks cannot both install
         // a controller for the same view (the loser would overwrite the winner's original drawable).
@@ -639,13 +676,15 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             if (id == 0) return null
             return try {
                 view.findViewById<View>(id) as? ImageView
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.failureOnce("battery.iconById", t)
                 null
             }
         }
         val field = try {
             XposedHelpers.getObjectField(view, "mBatteryIconView") as? ImageView
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("battery.iconField", t)
             null
         }
         return field ?: firstImageView(view)
@@ -696,6 +735,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     private fun countRetry(reason: String) {
         retries++
         firstFailureOnce("retry $reason")
+        IosV2Log.retry("battery.install", reason)
     }
 
     /** Records and logs the first reason once; compacted to a single token for the dump (R11). */
@@ -980,7 +1020,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             for (id in boltIds) {
                 val bolt = try {
                     view.findViewById<View>(id)
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
+                    IosV2Log.failureOnce("battery.boltById", t)
                     null
                 }
                 if (bolt == null) continue
@@ -996,7 +1037,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             for ((bolt, visibility) in boltVisibility) {
                 try {
                     bolt.visibility = visibility
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
+                    IosV2Log.failureOnce("battery.restoreBolt", t)
                 }
             }
             boltVisibility.clear()

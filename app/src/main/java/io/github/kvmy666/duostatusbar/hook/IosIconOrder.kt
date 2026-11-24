@@ -84,6 +84,18 @@ internal object IosIconOrder {
     /** Diagnostics: `applyTo` passes that ran (session total). */
     private val passCount = AtomicInteger(0)
 
+    /** REL210: measured slot-list/container classes and whether they resolved. */
+    private val classFacts: MutableSet<String> =
+        Collections.synchronizedSet(LinkedHashSet<String>())
+
+    /** REL210: "ok:…/missing:…" for the order hook classes. */
+    internal val hookClassesForDiagnostics: String
+        get() = synchronized(classFacts) { classFacts.joinToString(",") }.ifBlank { "none" }
+
+    private fun noteClass(name: String, resolved: Boolean) {
+        classFacts.add((if (resolved) "ok:" else "missing:") + name)
+    }
+
 
     /** Containers scheduled for the next frame, so a move never runs inside a layout pass. */
     private val pending: MutableSet<ViewGroup> =
@@ -135,7 +147,9 @@ internal object IosIconOrder {
         try {
             var listClasses = 0
             for (name in SLOT_LIST_CLASSES) {
-                val cls = findClass(name, classLoader) ?: continue
+                val cls = findClass(name, classLoader)
+                noteClass(name.substringAfterLast('.'), cls != null)
+                if (cls == null) continue
                 listClasses++
                 val capture = object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
@@ -149,7 +163,9 @@ internal object IosIconOrder {
             }
             var containerClasses = 0
             for (name in CONTAINER_CLASSES) {
-                val cls = findClass(name, classLoader) ?: continue
+                val cls = findClass(name, classLoader)
+                noteClass(name.substringAfterLast('.'), cls != null)
+                if (cls == null) continue
                 containerClasses++
                 // Constructor: register only, never schedule.
                 val seen = object : XC_MethodHook() {
@@ -261,7 +277,8 @@ internal object IosIconOrder {
         for (unhook in snapshot) {
             try {
                 unhook.unhook()
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.failureOnce("order.releaseUnhook", t)
             }
         }
     }
@@ -349,13 +366,15 @@ internal object IosIconOrder {
             if (method.parameterCount == 0 && method.returnType == String::class.java) {
                 try {
                     method.isAccessible = true
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
                     // A public method on a public class does not need this; keep going either way.
+                    IosV2Log.failureOnce("order.slotNameAccess", t)
                 }
                 (method.invoke(entry) as? String)?.let { return it }
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             // No public getName(); fall through to the field.
+            IosV2Log.branchOnce("order.slotNameMethod", "no getName - field fallback")
         }
         for (fieldName in arrayOf("name", "mName")) {
             (readField(entry, fieldName) as? String)?.let { return it }
@@ -368,14 +387,16 @@ internal object IosIconOrder {
         while (cls != null && cls != Any::class.java) {
             val field = try {
                 cls.getDeclaredField(name)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.branchOnce("order.fieldMiss.$name", "field absent in this class")
                 null
             }
             if (field != null) {
                 return try {
                     field.isAccessible = true
                     field.get(instance)
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
+                    IosV2Log.failureOnce("order.readField.$name", t)
                     null
                 }
             }
@@ -446,8 +467,17 @@ internal object IosIconOrder {
                     field.isAccessible = true
                     @Suppress("UNCHECKED_CAST")
                     val raw = field.get(instance) as? MutableList<Any> ?: return null
-                    if (raw.all { slotNameOf(it) != null }) raw else null
-                } catch (_: Throwable) {
+                    if (raw.all { slotNameOf(it) != null }) {
+                        raw
+                    } else {
+                        IosV2Log.branchOnce(
+                            "order.readSlots",
+                            "slot name unresolved - order stays stock"
+                        )
+                        null
+                    }
+                } catch (t: Throwable) {
+                    IosV2Log.failureOnce("order.readSlots", t)
                     null
                 }
             }
@@ -548,10 +578,11 @@ internal object IosIconOrder {
         }
         try {
             container.post(move)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             posted.remove(container)
             pending.remove(container)
             // A view with no handler (unit tests, a detached copy) is still safe to move directly.
+            IosV2Log.branchOnce("order.schedule", "no handler - move applied directly")
             applyTo(container)
         }
     }
@@ -611,7 +642,8 @@ internal object IosIconOrder {
             val plan = wifiTarget(container, afterMobile) ?: return false
             val current = container.indexOfChild(plan.wifi)
             current != plan.index.coerceIn(0, container.childCount - 1)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("order.needsMove", t)
             false
         }
     }
@@ -640,7 +672,8 @@ internal object IosIconOrder {
         try {
             method.isAccessible = true
             method.invoke(container, enabled)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("order.setAnimation", t)
         }
     }
 
@@ -649,7 +682,11 @@ internal object IosIconOrder {
         while (current != null && current != Any::class.java) {
             try {
                 return current.getDeclaredMethod("setEnableAnimation", Boolean::class.javaPrimitiveType)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.branchOnce(
+                    "order.animationSetterMiss",
+                    "no setEnableAnimation in ${current?.simpleName ?: "?"}"
+                )
                 current = current.superclass
             }
         }
@@ -661,14 +698,19 @@ internal object IosIconOrder {
         while (cls != null && cls != Any::class.java) {
             val field = try {
                 cls.getDeclaredField("mEnableAnimation")
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.branchOnce(
+                    "order.animationFieldMiss.${cls?.simpleName ?: "?"}",
+                    "no mEnableAnimation - animation kept"
+                )
                 null
             }
             if (field != null) {
                 return try {
                     field.isAccessible = true
                     field.getBoolean(container)
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
+                    IosV2Log.failureOnce("order.readAnimation", t)
                     true
                 }
             }
@@ -681,7 +723,11 @@ internal object IosIconOrder {
 
     private fun findClass(name: String, classLoader: ClassLoader): Class<*>? = try {
         XposedHelpers.findClass(name, classLoader)
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        IosV2Log.branchOnce(
+            "order.findClass.${name.substringAfterLast('.')}",
+            "class missing - stock order kept"
+        )
         null
     }
 
@@ -689,7 +735,8 @@ internal object IosIconOrder {
         try {
             val added = block()
             synchronized(unhooks) { unhooks.addAll(added) }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("order.hook", t)
         }
     }
 

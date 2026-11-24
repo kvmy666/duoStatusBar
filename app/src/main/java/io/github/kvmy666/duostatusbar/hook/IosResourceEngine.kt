@@ -116,6 +116,16 @@ internal object IosResourceEngine : IosDiagnosticSource {
     /** R8 diagnostics: resolved hide-extras leaves in the live map (0 while inactive). */
     val hiddenEntries: Int get() = snapshot?.hiddenCount ?: 0
 
+    /** REL210: how many `loadDrawable` calls the hook saw (diagnostics only). */
+    internal val callsForDiagnostics: Long get() = calls
+
+    /** REL210: how many loads the live map replaced (diagnostics only). */
+    internal val hitsForDiagnostics: Long get() = hits
+
+    /** REL210: the hooked class, or its absence, for the additive diag block. */
+    internal val hookClassesForDiagnostics: String
+        get() = if (installedFlag) "ok:ResourcesImpl" else "missing:ResourcesImpl"
+
     // ---------------------------------------------------------------------------------- install
 
     /**
@@ -174,6 +184,10 @@ internal object IosResourceEngine : IosDiagnosticSource {
         var previousLive = false
         synchronized(stateLock) {
             if (!installedFlag || !IosV2Profile.engineFamily(rom.id)) {
+                IosV2Log.branchOnce(
+                    "engine.activate",
+                    "installed=$installedFlag family=${rom.id} - HOST kept"
+                )
                 deactivate()
                 return false
             }
@@ -187,7 +201,14 @@ internal object IosResourceEngine : IosDiagnosticSource {
             synchronized(stateLock) {
                 // Never publish an empty/failed build over a live map: V2->V2 keeps drawing the old
                 // snapshot until a successful rebuild replaces it.
-                if (gen == generation && built != null && built.size > 0) snapshot = built
+                if (gen == generation && built != null && built.size > 0) {
+                    snapshot = built
+                } else {
+                    IosV2Log.branchOnce(
+                        "engine.publish",
+                        "stale or empty build - previous map kept"
+                    )
+                }
             }
         }
         if (synchronous) {
@@ -247,8 +268,9 @@ internal object IosResourceEngine : IosDiagnosticSource {
             val wrapper = args[0] as? Resources ?: return
             val pkg = try {
                 wrapper.getResourcePackageName(id)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 badPackage += 1
+                IosV2Log.failureOnce("engine.packageName", t)
                 return
             }
             if (!snap.accepts(index, pkg)) {
@@ -260,8 +282,9 @@ internal object IosResourceEngine : IosDiagnosticSource {
                 param.result = result
                 hits += 1L
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
             // Whole body guarded: any unexpected failure leaves the stock load path untouched.
+            IosV2Log.failureOnce("engine.loadDrawable", t)
         }
     }
 
@@ -281,7 +304,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
         if (index < 0) return null
         val pkg = try {
             resources.getResourcePackageName(id)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("engine.handleForTest", t)
             return null
         }
         if (!snapshotForTest.accepts(index, pkg)) return null
@@ -319,7 +343,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
     private fun nightOf(resources: Resources): Boolean = try {
         (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        IosV2Log.failureOnce("engine.night", t)
         false
     }
 
@@ -363,7 +388,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
                 } else {
                     try {
                         resources.getIdentifier(spec.name, "drawable", pkg)
-                    } catch (_: Throwable) {
+                    } catch (t: Throwable) {
+                        IosV2Log.failureOnce("engine.identifier.${spec.name}", t)
                         0
                     }
                 }
@@ -376,7 +402,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
                 val isHidden = slot is IosResourceSlot.Hidden
                 val stock = try {
                     resources.getDrawable(id, null)
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
+                    IosV2Log.failureOnce("engine.getDrawable.${spec.name}", t)
                     null
                 } ?: continue
                 val widthPx = stock.intrinsicWidth
@@ -385,6 +412,10 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     // Never guess a size: an id with no intrinsic would draw in the wrong box. The
                     // measured h/r passpoint badges are legitimately empty `<vector/>`s.
                     if (isHidden) hiddenNoIntrinsic++ else noIntrinsic++
+                    IosV2Log.branchOnce(
+                        "engine.noIntrinsic",
+                        "id has no intrinsic size - entry skipped"
+                    )
                     continue
                 }
                 val stockState = if (isHidden) stock.constantState else null
@@ -392,6 +423,10 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     // A gate needs the stock state to put the badge back when the toggle is off. With
                     // no state it would be 0x0 in BOTH states, so the default (off) would change.
                     hiddenNoRestorable++
+                    IosV2Log.branchOnce(
+                        "engine.hiddenNoRestore",
+                        "no stock state - hide-extras entry stays stock"
+                    )
                     continue
                 }
                 resolved.add(
@@ -434,7 +469,12 @@ internal object IosResourceEngine : IosDiagnosticSource {
         IosResourceKind.WIFI -> IosResourceSlot.Wifi(spec.value)
         IosResourceKind.CELL -> IosResourceSlot.Cell(spec.value)
         IosResourceKind.LABEL ->
-            if (IosGeometry.DataLabel.supports(spec.label)) IosResourceSlot.Label(spec.label) else null
+            if (IosGeometry.DataLabel.supports(spec.label)) {
+                IosResourceSlot.Label(spec.label)
+            } else {
+                IosV2Log.branchOnce("engine.label.${spec.label}", "unsupported label - entry skipped")
+                null
+            }
         IosResourceKind.HIDDEN -> IosResourceSlot.Hidden
     }
 
@@ -525,7 +565,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
             if (densityArg > 0) return densityArg
             val dpi = try {
                 resources.displayMetrics.densityDpi
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.failureOnce("engine.displayDensity", t)
                 0
             }
             return if (dpi > 0) dpi else baseDensity.coerceAtLeast(1)

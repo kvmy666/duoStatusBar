@@ -71,7 +71,8 @@ internal object IosDiagnostics {
         for (source in sources.toList()) {
             val lines = try {
                 source.diagnosticLines()
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                IosV2Log.failureOnce("diag.source", t)
                 emptyList()
             }
             for (line in lines) {
@@ -290,6 +291,7 @@ internal object Diag {
             val iosSettings = settings ?: DuoSettingsClient.lastRead()
             appendLine("  iosMode=${iosSettings?.iosMode ?: false} iosAttempts=${IosGuard(context).attempts()}")
             appendIosLines(this, iosLines)
+            appendIosV2Block(this, context, settings, root, extraRoots)
             settings?.let {
                 appendLine("  settings: enabled=${it.enabled} useRive=${it.useRive} showPercent=${it.showPercent}")
                 appendLine("    size=${it.sizePercent}% offset=${it.offsetX}dp live=${it.liveApply} rev=${it.revision}")
@@ -316,6 +318,25 @@ internal object Diag {
         val seen = HashSet<String>()
         for (line in lines) {
             if (line.isBlank() || !seen.add(line)) continue
+            sb.appendLine("  $line")
+        }
+    }
+
+    /**
+     * REL210: the additive iOS v2 block, immediately after the existing `ios …` lines and only while
+     * iOS mode is on. An off dump is byte-identical to the historical one; the existing engine,
+     * battery, R8 and route lines are not touched.
+     */
+    private fun appendIosV2Block(
+        sb: StringBuilder,
+        context: Context,
+        settings: ModuleSettings?,
+        root: View?,
+        extraRoots: List<Pair<String, View?>>
+    ) {
+        if (!IosV2Report.enabled(settings)) return
+        val effective = settings ?: DuoSettingsClient.lastRead()
+        for (line in IosV2Report.lines(context, effective, root, extraRoots)) {
             sb.appendLine("  $line")
         }
     }
