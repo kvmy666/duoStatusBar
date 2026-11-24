@@ -281,7 +281,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 stopIosV2Owners()
                 iosRoute = routeAfterStoppingV2Owners(IosRoute.HOST)
                 IosRouteDiagnostics.update(iosRoute, rom.id)
-                val iosMain = ensureIosMain(ctx)
+                val iosMain = ensureIosMain(ctx) ?: return@guard
                 // R3 A3: install only while iOS owns the bar (A6: no iOS work when it is off).
                 IosIconOrder.install(lp.classLoader)
                 IosIconOrder.activate()
@@ -573,9 +573,20 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         null
     }
 
-    /** The main-bar iOS host for this process, created on first use (shares [iosSizeOwner], M15). */
-    private fun ensureIosMain(ctx: Context): IosReplaceHost =
-        iosMainHost ?: IosReplaceHost(
+    /**
+     * The main-bar iOS host for this process, created on first use (shares [iosSizeOwner], M15).
+     *
+     * M1: the route is re-read before *creation*, not only at attach. A live host is returned as-is
+     * (its own `allowed` lambda still refuses the attach); while V2 covers the ROM no new v1 host is
+     * ever constructed, so the zero-double-ownership invariant does not depend on a later re-check.
+     */
+    private fun ensureIosMain(ctx: Context): IosReplaceHost? {
+        iosMainHost?.let { return it }
+        if (!iosHostWorkAllowed(features, iosRoute)) {
+            if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
+            return null
+        }
+        return IosReplaceHost(
             ctx,
             classLoader = lp.classLoader,
             sizeOwner = iosSizeOwner,
@@ -583,22 +594,27 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // BUG C: a deferred v1 closure that runs after V2 activated is refused here too.
             allowed = { iosHostWorkAllowed(features, iosRoute) }
         ).also { iosMainHost = it }
+    }
 
     /**
      * One iOS host per extra surface (keyguard bar, shade header), all sharing [iosSizeOwner]. A separate
      * host is required because [IosReplaceHost] owns one overlay layer and one `isAttached` state.
      */
-    private fun ensureIosExtra(ctx: Context, surface: String): IosReplaceHost =
-        iosExtraHosts.getOrPut(surface) {
-            IosReplaceHost(
-                ctx,
-                classLoader = lp.classLoader,
-                sizeOwner = iosSizeOwner,
-                isMainBar = false,
-                surface = surface,
-                allowed = { iosHostWorkAllowed(features, iosRoute) }
-            )
+    private fun ensureIosExtra(ctx: Context, surface: String): IosReplaceHost? {
+        iosExtraHosts[surface]?.let { return it }
+        if (!iosHostWorkAllowed(features, iosRoute)) {
+            if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
+            return null
         }
+        return IosReplaceHost(
+            ctx,
+            classLoader = lp.classLoader,
+            sizeOwner = iosSizeOwner,
+            isMainBar = false,
+            surface = surface,
+            allowed = { iosHostWorkAllowed(features, iosRoute) }
+        ).also { iosExtraHosts[surface] = it }
+    }
 
     // ----------------------------------------------------------------------------- v2 routing
 
@@ -756,7 +772,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
                         false
                     } else {
-                        val host = ensureIosExtra(ctx, "oneplus qs")
+                        val host = ensureIosExtra(ctx, "oneplus qs") ?: return@whenLaidOut false
                         if (!iosHostWorkAllowed(features, iosRoute)) {
                             if (iosRoute == IosRoute.V2) {
                                 IosV2Log.branchOnce("ios-host-refused", "v2 active")
@@ -1087,7 +1103,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // Boot/initial attach with iOS already on: order before the first icon pass.
                 IosIconOrder.install(lp.classLoader)
                 IosIconOrder.activate()
-                ensureIosMain(ctx)
+                ensureIosMain(ctx) ?: return@guard
                 statusBarRoot?.let { scheduleAttach(attempt = 0) }
                 // A4/A1/A6: the panel-expansion hook is shared, so iOS must install it too. It is the
                 // only dynamic registration an iOS bar carries; every Duo-only key is absent.
@@ -1357,7 +1373,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // R3 A3: idempotent, and the process-wide owner keeps the order across surfaces.
                     IosIconOrder.install(lp.classLoader)
                     IosIconOrder.activate()
-                    val iosMain = ensureIosMain(ctx)
+                    val iosMain = ensureIosMain(ctx) ?: return@guard
                     iosMain.attach(root)
                     shadeRoot?.let { shade ->
                         attachExtraBars(shade)
@@ -1825,10 +1841,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             lastIosExtraAttachAt = now
             // Re-check immediately before the host work; the route may have moved since the caller.
             if (!iosHostWorkAllowed(features, iosRoute)) return
-            val kg = ensureIosExtra(iosCtx, "keyguard bar")
+            val kg = ensureIosExtra(iosCtx, "keyguard bar") ?: return
             if (!kg.attachedUsableIn(shade)) kg.attachSurface("keyguard bar", shade, "system_icons")
             val header = shadeHeader
-            val headerHost = ensureIosExtra(iosCtx, "shade header")
+            val headerHost = ensureIosExtra(iosCtx, "shade header") ?: return
             val headerAttached = header != null && attachIosShadeHeader(header)
             // Only fall back to the shade window when the header was not attached. A second host on a
             // strip the header host already owns would be refused (or fight it), and the QS expanded
@@ -1886,7 +1902,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             return false
         }
         return try {
-            val host = ensureIosExtra(ctx, "shade header")
+            val host = ensureIosExtra(ctx, "shade header") ?: return false
             // A live host on this window already owns the header surface; attaching again would tear
             // it down and rebuild it on every shade layout pass (iOS-LAG).
             if (host.attachedUsableIn(header)) return true
@@ -1931,7 +1947,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
         return try {
             // A separate surface from the notification header: both strips can be live in one shade.
-            val host = ensureIosExtra(ctx, "qs header")
+            val host = ensureIosExtra(ctx, "qs header") ?: return false
             if (host.attachedUsableIn(window)) {
                 iosShadeGate.noteSuccess()
                 return true
@@ -2054,7 +2070,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             attach = {
                 if (iosHostWorkAllowed(features, iosRoute)) {
                     val ctx = app ?: container.context
-                    val host = ensureIosMain(ctx)
+                    val host = ensureIosMain(ctx) ?: return@whenLaidOut false
                     // R6 item 4: this runs before `refreshIosHostSettings`, so without this the first
                     // frames would use the DEFAULT geometry for up to the 2.5 s delayed attach. Apply
                     // the last-read snapshot before the host draws (fail-silent via the helper).
