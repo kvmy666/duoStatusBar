@@ -720,6 +720,7 @@ internal class IosReplaceHost(
 
     /** Stores the user's iOS options and repaints from the last snapshot. A real change resets backoff. */
     fun refreshSettings(settings: ModuleSettings) {
+        if (hostRefused()) return
         val previous = this.settings
         val changed = previous != settings
         if (changed) {

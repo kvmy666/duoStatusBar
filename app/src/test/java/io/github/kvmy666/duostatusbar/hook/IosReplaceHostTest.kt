@@ -197,7 +197,8 @@ class IosReplaceHostTest {
         batterySource: (Context) -> IosBatteryReading? = { IosBatteryReading(50, false, 0) },
         cellSource: (Context) -> CellReading = { noCellReading() },
         wifiSource: (Context, Int, Boolean, Boolean, Boolean) -> WifiSample =
-            { _, _, _, _, _ -> wifiSample(validated = true) }
+            { _, _, _, _, _ -> wifiSample(validated = true) },
+        allowed: () -> Boolean = { true }
     ): IosReplaceHost = IosReplaceHost(
         context = context,
         classLoader = null,
@@ -206,7 +207,8 @@ class IosReplaceHostTest {
         surface = surface,
         batterySource = batterySource,
         cellSource = cellSource,
-        wifiSource = wifiSource
+        wifiSource = wifiSource,
+        allowed = allowed
     )
 
     @Test
@@ -2418,6 +2420,30 @@ class IosReplaceHostTest {
         host.teardown()
         assertEquals(View.VISIBLE, alarm.visibility)
         assertEquals(20, alarm.layoutParams.width)
+    }
+
+    @Test
+    fun `a refused host does not restore or re-apply through refreshSettings`() {
+        // BUG C: V2 activating after attach must leave the lingering v1 host fully inert, so a later
+        // settings push cannot restore a hidden stock icon or re-apply the hide list.
+        val (signal, _, strip) = combinedSignalAndBatteryStrip()
+        val key = StockIconKey.keyOf(signal.wifiOuter)
+        var allow = true
+        val host = host(cellSource = { oneSimReading(5) }, allowed = { allow })
+        host.refreshSettings(ModuleSettings.DEFAULT.copy(hiddenStockIcons = key))
+
+        assertTrue(host.attachIn(strip, null))
+        assertEquals(View.GONE, signal.wifiOuter.visibility)
+        assertFalse(host.recordKindsForTest().contains(IosIconKind.WIFI))
+        val records = host.recordCountForTest()
+
+        allow = false
+        host.refreshSettings(ModuleSettings.DEFAULT)
+
+        assertEquals(View.GONE, signal.wifiOuter.visibility)
+        assertEquals(records, host.recordCountForTest())
+        assertFalse(host.recordKindsForTest().contains(IosIconKind.WIFI))
+        host.teardown()
     }
 
     @Test
