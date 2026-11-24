@@ -50,4 +50,3 @@ class IosCellParityTest {
         assertEquals(listOf(1, 1, 2, 3, 4), (0..4).map { SignalMapping.cellDots(it, 5) })
     }
 }
-
