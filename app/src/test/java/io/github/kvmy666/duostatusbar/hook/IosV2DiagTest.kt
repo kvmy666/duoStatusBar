@@ -98,8 +98,8 @@ class IosV2DiagTest {
     private fun registerAll(tree: Tree) {
         IosSlotLayout.screenWidthOverrideForTest = 1272
         IosSlotLayout.hostInkOverrideForTest = 33.48f
-        // Production publishes the settings snapshot before a bind registers a slot (DuoHook).
-        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+        // Production activates the layout before a bind registers a slot (DuoHook).
+        IosSlotLayout.activate(ModuleSettings.DEFAULT)
 
         tree.wifiSignal.setImageDrawable(
             glyph(IosIconKind.WIFI, IosVisual(part = IosPart.WIFI, wifiLevel = 3f), 60, 51)

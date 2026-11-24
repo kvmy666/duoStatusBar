@@ -495,7 +495,7 @@ class ModeOwnerMatrixTest {
             IosIconOrder.onIconAdded(orderContainer)
             IosIconOrder.activate()
 
-            IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+            IosSlotLayout.activate(ModuleSettings.DEFAULT)
             assertTrue(IosSlotLayout.registerMobile(signal, label))
             assertTrue(IosSlotLayout.registerWifi(wifiSignal))
             assertTrue(IosSlotLayout.registerBattery(battery, batteryLeaf))
