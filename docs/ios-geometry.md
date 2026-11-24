@@ -674,7 +674,7 @@ The pure rule lives in `IosSlotLayout.metricsAtInk` / `mobileMetricsAtInk`:
 `leaf.top = round(outerH / 2 - (ink.top + ink.height / 2) x base x userScale)`, coerced to >= 0.
 The user scale multiplies the glyph and the ink width; **the gap is not scaled**. The user offset stays
 clamped to `+/-gap / 2`. `DuoHook.activateIosV2` calls
-`IosSlotLayout.configure(ctx, rom.systemUiPackage, rom.clockId)` before `reapply`; the cap is
+`IosSlotLayout.configure(RomResources.id(ctx, rom, rom.clockId), rom.systemUiPackage)` before `reapply`; the cap is
 `TextView.paint.getTextBounds("0")` (fallback "H"), re-read when the clock detaches or its text size
 changes, and `1.08 x` that is the target ink. An unreadable clock logs once and uses the legacy metrics.
 
