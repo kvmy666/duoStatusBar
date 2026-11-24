@@ -55,10 +55,16 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
         designStyle = DuoPrefs.normalizeDesignStyle(style)
     }
 
-    /** Pins the size and slot base for this run. Called once, at attach. */
+    /**
+     * Pins the size and slot base for this element. Called at attach.
+     *
+     * A live rebuild re-attaches while the stock icons are still hidden, so the battery can read 0 px;
+     * that must not overwrite the slot base captured on the first attach. The first attach always has a
+     * positive base (the [measuredWidth] fallback), so only a positive value replaces it.
+     */
     fun capture(sizePercent: Int, basePx: Int) {
         appliedSize = sizePercent
-        slotBasePx = basePx
+        if (basePx > 0) slotBasePx = basePx
     }
 
     /**

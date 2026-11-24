@@ -306,6 +306,32 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // installs them behind its one-shot guard and schedules the attach itself.
                 SettingsApplyAction.ENABLE -> enable(ctx, attempt = 0)
                 SettingsApplyAction.REFRESH -> {
+                    // A design/engine/live-size change is applied in-process: the host replaces its
+                    // element (fresh view, fresh art) instead of restarting System UI. Do this before
+                    // the monitor refresh so the new element receives the current state.
+                    val liveHost = host
+                    if (liveHost != null && liveHost.hasPendingRebuild()) {
+                        val root = statusBarRoot
+                        if (root == null) {
+                            L.w("live settings change with no status-bar root - retrying the attach")
+                            scheduleAttach(attempt = 0)
+                            return@guard
+                        }
+                        if (!liveHost.rebuildForLiveSettings(root)) {
+                            L.w("live settings rebuild failed - retrying the attach (no restart)")
+                            scheduleAttach(attempt = 0)
+                            reporter.report(ctx, stage, settings)
+                            return@guard
+                        }
+                        // The rebuild dropped every extra bar with the old element; rebuild them from
+                        // the current windows exactly as the attach path does.
+                        lastDuoExtraAttachAt = 0L
+                        shadeRoot?.let { attachExtraBars(it) }
+                        host?.setMainBarVisible(!shadedOrQsExpanded)
+                        if (qsExpanded || notificationExpanded) {
+                            host?.setPanelOwner(if (qsExpanded) "qs header" else "shade header")
+                        }
+                    }
                     monitor?.apply(features)
                     monitor?.refresh()
                     applyDuoRegistrations()

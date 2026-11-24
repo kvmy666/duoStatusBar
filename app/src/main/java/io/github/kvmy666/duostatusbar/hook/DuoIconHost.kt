@@ -437,8 +437,14 @@ internal class DuoIconHost(private val context: Context) {
     /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
     private val finder = ContainerFinder(context, rom, logOnce)
     private var settings = ModuleSettings.DEFAULT
-    /** The drawing the main element was created with; extras stay on it until a restart. */
-    private var appliedDesignStyle = settings.designStyle
+    /** The drawing the main element was created with; a live change rebuilds the element. */
+    private var appliedDesignStyle = DuoPrefs.normalizeDesignStyle(settings.designStyle)
+    /** The engine the main element was created with (auto/rive/canvas). */
+    private var appliedEngineMode = DuoPrefs.normalizeEngine(settings.engineMode)
+    /** The size the main element was created with, in the same physical percent [SlotGeometry] captured. */
+    private var appliedSizePercent = settings.sizePercent
+    /** A live change that needs a fresh element; consumed by [rebuildForLiveSettings]. */
+    private var pendingRebuild = LiveRebuild.NONE
 
     /**
      * The exact status icons the user selected in the per-icon list (A4), as stable
@@ -2197,33 +2203,24 @@ internal class DuoIconHost(private val context: Context) {
      */
     fun refreshSettings(applySavedSize: Boolean = false): ModuleSettings {
         val fresh = DuoSettingsClient.read(context)
-        val changed = fresh != settings
-        val previousDesign = settings.designStyle
-        val designChanged = changed && fresh.designStyle != previousDesign
+        val previous = settings
+        val changed = fresh != previous
         val hideModeChanged = changed &&
-            (fresh.hideOtherIcons != settings.hideOtherIcons ||
-                fresh.hiddenStockIcons != settings.hiddenStockIcons)
+            (fresh.hideOtherIcons != previous.hideOtherIcons ||
+                fresh.hiddenStockIcons != previous.hiddenStockIcons)
         val surfaceModeChanged = changed &&
-            (fresh.showInQs != settings.showInQs || fresh.showInShade != settings.showInShade)
-        val burnInChanged = changed && fresh.burnInEnabled != settings.burnInEnabled
+            (fresh.showInQs != previous.showInQs || fresh.showInShade != previous.showInShade)
+        val burnInChanged = changed && fresh.burnInEnabled != previous.burnInEnabled
+        // Pure decision: DESIGN always rebuilds, ENGINE always rebuilds, SIZE only live when asked for.
+        val rebuild = LiveApply.plan(
+            previous.designStyle, fresh.designStyle,
+            appliedEngineMode, fresh.engineMode,
+            appliedSizePercent, fresh.sizePercent,
+            fresh.liveApply, element != null, applySavedSize
+        )
         settings = fresh
         hiddenStockKeys = DuoPrefs.parseHiddenStockIcons(fresh.hiddenStockIcons).toSet()
-        if (designChanged) {
-            // A live DuoRiveView loaded one drawing at start and has no reload path; swapping the art
-            // would mean recreating (and reparenting) it, which is the resize path that took System UI
-            // down. Keep the current art and scale until the next start.
-            if (element == null) {
-                // No main element yet: any extra created from now on must use the current drawing,
-                // otherwise a QS/shade copy can be built with the default classic art and sit/size
-                // differently from the main bar.
-                geometry.applyDesignStyle(fresh.designStyle)
-                appliedDesignStyle = fresh.designStyle
-            } else {
-                L.i("design change needs restart ($previousDesign -> ${fresh.designStyle})")
-            }
-        }
         if (changed) {
-            // A settings change is a real change: a backed-off host may try again (IOS-LAG).
             resetThrash()
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
                     "percent=${fresh.showPercent}, percentHeight=${fresh.percentHeight}%, " +
@@ -2231,7 +2228,27 @@ internal class DuoIconHost(private val context: Context) {
                     "edge=${fresh.edgePadding}%, " +
                     "rive=${fresh.useRive}, live=${fresh.liveApply}"
             )
-            // A drag must not resize the Rive view (that restart loop is why size is restart-only).
+        }
+        if (rebuild != LiveRebuild.NONE) {
+            // The live element loaded this drawing/engine/size once. A fresh attach is the only way to
+            // change them without resizing a live Rive TextureView; DuoHook performs the rebuild in the
+            // same settings apply. Nothing here restarts System UI.
+            pendingRebuild = rebuild
+            L.i("live change pending: $rebuild - the element will be rebuilt in place")
+            return fresh
+        }
+        if (element == null) {
+            // No main element yet: any extra created from now on must use the current drawing,
+            // otherwise a QS/shade copy can be built with the default classic art and sit/size
+            // differently from the main bar.
+            geometry.applyDesignStyle(fresh.designStyle)
+            appliedDesignStyle = DuoPrefs.normalizeDesignStyle(fresh.designStyle)
+            appliedEngineMode = DuoPrefs.normalizeEngine(fresh.engineMode)
+            appliedSizePercent = fresh.sizePercent
+        }
+        if (changed) {
+            // A drag must not resize the Rive view (a live resize is what took System UI down); a
+            // changed size with live apply on rebuilds through the host instead (see LiveApply).
             // Rotation is one saved size for the orientation now on screen, so it is applied here.
             if (applySavedSize) geometry.applySize(fresh.sizePercent)
             if (fresh.liveApply || applySavedSize) {
@@ -2245,7 +2262,7 @@ internal class DuoIconHost(private val context: Context) {
                 // The safe path: size and position are saved but wait for the next start. Gestures and
                 // the clock's font are not geometry, so they can still change live.
                 installAllGestures()
-                L.i("live apply off - size/position take effect after Restart System UI")
+                L.i("live apply off - size/position take effect on the next start")
             }
             // The toggle is a translation-only change, so it can take effect even when size and
             // position are waiting for the next start.
@@ -3004,11 +3021,13 @@ internal class DuoIconHost(private val context: Context) {
             // The drawing is captured for this run just like the slot base: the Rive view loads its
             // artwork once, so the optical scale must match the art it was created with.
             geometry.applyDesignStyle(settings.designStyle)
-            appliedDesignStyle = settings.designStyle
+            appliedDesignStyle = DuoPrefs.normalizeDesignStyle(settings.designStyle)
+            appliedEngineMode = DuoPrefs.normalizeEngine(settings.engineMode)
             val candidate = createElement(statusBarRoot, stage, ringPart())
-            // Capture the size once per process: live size changes are deferred to a restart (see
-            // [SlotGeometry.appliedSize]) because resizing the Rive view live used to take System UI down.
+            // Capture the size for this element. A live size change rebuilds through the host instead
+            // (see LiveApply); resizing the Rive view live used to take System UI down.
             geometry.capture(settings.sizePercent, basePx)
+            appliedSizePercent = settings.sizePercent
             logOnce.once("facts") {
                 DuoSbFacts.report(context, statusBarRoot, target, geometry.widthPx(target))
             }
@@ -3070,11 +3089,67 @@ internal class DuoIconHost(private val context: Context) {
             candidate.onFailed { onElementFailed(candidate, target) }
             verifyAttachedBox(candidate, target, 0)
             forgetAttemptsAfterSurvival(candidate)
+            // A fresh element reads the current settings itself, so any pending rebuild is resolved.
+            pendingRebuild = LiveRebuild.NONE
             true
         } catch (t: Throwable) {
             L.e("attach failed: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
+    }
+
+    /** True when [refreshSettings] found a change that needs a fresh element (see [LiveApply]). */
+    fun hasPendingRebuild(): Boolean = pendingRebuild != LiveRebuild.NONE
+
+    /**
+     * Applies a pending design/engine/size change by replacing the live element in-process.
+     *
+     * [attach] remains the only creation path, so this is a teardown that preserves the hidden stock
+     * state and the captured geometry, followed by a fresh view (never a resize of a live Rive
+     * TextureView - C2). The old renderer is paused by its own teardown (C8). Nothing here kills or
+     * restarts System UI: on failure the stock bar is put back and the caller retries the attach.
+     */
+    fun rebuildForLiveSettings(barRoot: View): Boolean {
+        val plan = pendingRebuild
+        if (plan == LiveRebuild.NONE) return true
+        val oldDesign = DuoPrefs.normalizeDesignStyle(appliedDesignStyle)
+        val oldEngine = DuoPrefs.normalizeEngine(appliedEngineMode)
+        val oldSize = appliedSizePercent
+        L.i("live rebuild: $plan")
+        teardown(restoreStock = false, resetGeometry = false)
+        val attached = try {
+            attach(barRoot)
+        } catch (t: Throwable) {
+            L.w("live rebuild attach: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
+        if (!attached) {
+            // The old element is already gone, so never leave its stock icons hidden behind nothing.
+            L.w("live rebuild failed - restoring the stock bar and retrying the attach (no restart)")
+            try {
+                hider.restore()
+            } catch (t: Throwable) {
+                L.w("live rebuild restore: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            restoreAnchorVisibility()
+            try {
+                clock.restore()
+            } catch (t: Throwable) {
+                L.w("live rebuild clock restore: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            return false
+        }
+        pendingRebuild = LiveRebuild.NONE
+        when (plan) {
+            LiveRebuild.DESIGN ->
+                L.i("design $oldDesign -> ${DuoPrefs.normalizeDesignStyle(appliedDesignStyle)} applied live")
+            LiveRebuild.ENGINE ->
+                L.i("engine $oldEngine -> ${DuoPrefs.normalizeEngine(appliedEngineMode)} applied live")
+            LiveRebuild.SIZE -> L.i("size $oldSize% -> $appliedSizePercent% applied live")
+            LiveRebuild.NONE -> Unit
+        }
+        publishStockIcons()
+        return true
     }
 
     /** The element is live: now it is safe to take the stock icons out and fire the reveal (FR-08/25). */
@@ -3521,8 +3596,15 @@ internal class DuoIconHost(private val context: Context) {
         }
     }
 
-    /** Removes the element and puts the stock icons back exactly as they were. */
-    fun teardown() {
+    /**
+     * Removes the element and puts the stock icons back exactly as they were.
+     *
+     * [restoreStock] = false keeps the main hide state, the overlay anchor's remembered visibility and
+     * the clock font: an in-place rebuild (see [rebuildForLiveSettings]) replaces the element and then
+     * re-hides with the fresh settings. Extra bars are always dropped with their own stock pass.
+     * [resetGeometry] = false keeps the captured slot base and size for that rebuild.
+     */
+    fun teardown(restoreStock: Boolean = true, resetGeometry: Boolean = true) {
         L.i("teardown: removing Duo element and restoring stock icons (element=${element != null}, extras=${extras.size})")
         clearShadeRetry()
         cancelSurvivalTimer()
@@ -3552,12 +3634,14 @@ internal class DuoIconHost(private val context: Context) {
         mainBarVisible = true
         dropSpacer()
         element = null
-        hider.restore()
-        // The One UI 8 anchor is hidden directly (it is not in the strip the hider restores), so its own
-        // visibility is put back here or the stock cluster would be left invisible after teardown.
-        restoreAnchorVisibility()
-        clock.restore()
-        geometry.reset()
+        if (restoreStock) {
+            hider.restore()
+            // The One UI 8 anchor is hidden directly (it is not in the strip the hider restores), so its
+            // own visibility is put back here or the stock cluster would be left invisible after teardown.
+            restoreAnchorVisibility()
+            clock.restore()
+        }
+        if (resetGeometry) geometry.reset()
         host = null
         hideStrip = null
         overlay = false

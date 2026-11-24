@@ -19,8 +19,9 @@
     <string name="settings_percent_height">Percentage height</string>
     <string name="settings_percent_height_detail">Raise the number above a camera hole.</string>
     <string name="settings_size">Size</string>
-    <string name="settings_size_restart">Restart to apply the size.</string>
+    <string name="settings_size_live">Size and position apply live when Apply changes live is on - no restart needed.</string>
     <string name="settings_restart">Restart</string>
+    <string name="restart_safe_mode_warning">Restarting System UI counts as a crash in LSPosed. After 4 restarts per boot LSPosed switches the module to safe mode, so use this only when nothing else works.</string>
     <!-- Both restart routes failed; %1$s is the su/root reason (e.g. su path and errno). -->
     <string name="settings_restart_failed">Restart failed: %1$s.</string>
     <string name="settings_live_apply">Apply changes live</string>
@@ -256,7 +257,7 @@
     <string name="home_ring_design_detail">Four dots for Classic, eight for 2 SIM.</string>
     <string name="home_ring_design_classic">Classic (4 dots)</string>
     <string name="home_ring_design_dual">2 SIM (8 dots)</string>
-    <string name="home_ring_design_restart">Restart to apply the design.</string>
+    <string name="home_ring_design_live">The design changes as soon as you pick it - no restart needed.</string>
     <string name="customization_title">Custom</string>
     <string name="engine_title">Drawing</string>
     <string name="engine_current">Using %1$s</string>

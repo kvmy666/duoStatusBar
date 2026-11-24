@@ -32,7 +32,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -273,12 +272,9 @@ internal fun CustomizeSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
     matches: SearchGate,
-    onRestart: () -> Unit,
     enabled: Boolean = duoControlsEnabled(settings)
 ) {
     val previewRaw = rawResourceFor(settings.designStyle)
-    // A design change needs a System UI restart, exactly like the size change; the prompt is local.
-    var ringRestart by rememberSaveable { mutableStateOf(false) }
     if (matches(
             stringResource(R.string.section_customize), stringResource(R.string.section_element),
             stringResource(R.string.settings_master),
@@ -287,7 +283,7 @@ internal fun CustomizeSection(
             stringResource(R.string.home_ring_design_detail),
             stringResource(R.string.home_ring_design_classic),
             stringResource(R.string.home_ring_design_dual),
-            stringResource(R.string.home_ring_design_restart),
+            stringResource(R.string.home_ring_design_live),
             stringResource(R.string.settings_percent),
             stringResource(R.string.settings_percent_detail),
             stringResource(R.string.settings_percent_height),
@@ -334,17 +330,12 @@ internal fun CustomizeSection(
             RingDesignCard(
                 selected = settings.designStyle,
                 enabled = enabled,
-                restartRequired = ringRestart,
                 onSelect = { style ->
                     val normalized = DuoPrefs.normalizeDesignStyle(style)
                     if (normalized != settings.designStyle) {
                         onUpdate(settings.copy(designStyle = normalized))
-                        ringRestart = true
-                    } else {
-                        ringRestart = false
                     }
-                },
-                onRestart = onRestart
+                }
             )
             SettingSwitch(
                 label = stringResource(R.string.settings_percent),
@@ -405,7 +396,6 @@ internal fun CustomizeSection(
             SizeAndPositionControls(
                 settings = settings,
                 onUpdate = onUpdate,
-                onRestart = onRestart,
                 includeEdgePadding = true,
                 enabled = enabled
             )
@@ -417,9 +407,7 @@ internal fun CustomizeSection(
 private fun RingDesignCard(
     selected: String,
     enabled: Boolean,
-    restartRequired: Boolean,
-    onSelect: (String) -> Unit,
-    onRestart: () -> Unit
+    onSelect: (String) -> Unit
 ) {
     GlassCard(
         shape = RoundedCornerShape(DuoRadius.surface),
@@ -458,20 +446,11 @@ private fun RingDesignCard(
                     modifier = Modifier.weight(1f)
                 ) { onSelect(DuoPrefs.DESIGN_NEW) }
             }
-            if (restartRequired) {
-                Text(
-                    text = stringResource(R.string.home_ring_design_restart),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DuoColors.WineMist
-                )
-                OutlinedButton(
-                    onClick = onRestart,
-                    enabled = enabled,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(stringResource(R.string.settings_restart))
-                }
-            }
+            Text(
+                text = stringResource(R.string.home_ring_design_live),
+                style = MaterialTheme.typography.bodySmall,
+                color = DuoColors.TextSecondary
+            )
         }
     }
 }
@@ -525,7 +504,6 @@ private fun RingDesignOption(
 private fun SizeAndPositionControls(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
-    onRestart: () -> Unit,
     includeEdgePadding: Boolean,
     enabled: Boolean
 ) {
@@ -548,14 +526,9 @@ private fun SizeAndPositionControls(
         }
     ) { onUpdate(settings.copy(sizePercent = DuoPrefs.logicalToPhysical(it.toInt()))) }
     Text(
-        text = stringResource(R.string.settings_size_restart),
+        text = stringResource(R.string.settings_size_live),
         style = MaterialTheme.typography.bodySmall
     )
-    Button(
-        onClick = onRestart,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth()
-    ) { Text(stringResource(R.string.settings_restart)) }
 
     SettingSwitch(
         label = stringResource(R.string.settings_live_apply),

@@ -221,6 +221,10 @@ internal fun ModuleHealthCard(
                     OutlinedButton(onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.settings_restart))
                     }
+                    Text(
+                        stringResource(R.string.restart_safe_mode_warning),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     // Even without an injection there is an app-side report worth having (build, device, ROM,
                     // module state), so a user stuck here can still save it and send it on.
                     OutlinedButton(onClick = onExport, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
@@ -231,6 +235,10 @@ internal fun ModuleHealthCard(
                     Button(onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.settings_restart))
                     }
+                    Text(
+                        stringResource(R.string.restart_safe_mode_warning),
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     OutlinedButton(onClick = onReboot, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.settings_reboot))
                     }

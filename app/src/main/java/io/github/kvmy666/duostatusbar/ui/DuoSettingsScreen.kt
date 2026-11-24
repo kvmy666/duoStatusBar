@@ -525,9 +525,11 @@ fun DuoSettingsScreen(
                             clearingOverride = false
                             stageOverride = StageOverride.read(context)
                             if (stageOverride == null) {
-                                // The module re-reads on a settings broadcast, but the override lived in a
-                                // store it cached; a restart makes the change deterministic.
-                                restartSystemUi(context, "stage-override-clear")
+                                // DuoGuard.stage() reads Settings.Global fresh on every call, so a
+                                // settings broadcast + the bridge push make the module re-read it.
+                                // Nothing restarts System UI here.
+                                context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
+                                SettingsBridge.push(context)
                             } else {
                                 overrideFailed = true
                                 Toast.makeText(
@@ -551,8 +553,7 @@ fun DuoSettingsScreen(
             CustomizeSection(
                 settings = settings,
                 onUpdate = onUpdate,
-                matches = search,
-                onRestart = { restartSystemUi(context, "settings-restart") }
+                matches = search
             )
 
             AnimationsSection(
