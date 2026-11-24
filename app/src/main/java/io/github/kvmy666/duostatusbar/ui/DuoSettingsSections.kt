@@ -110,14 +110,32 @@ internal fun duoSimRowsEnabled(
 internal fun iosModeAvailable(drawingReady: Boolean = IosRenderers.DRAWING_READY): Boolean = drawingReady
 
 /**
+ * One mode owns the bar: OFF (both switches off), DUO (master on) or IOS (iOS on, Duo off).
  * While the mode is unavailable only switching it off is possible; a stale "on" click is ignored and
- * the exact same instance comes back, so no write happens.
+ * the exact same instance comes back, so no write happens. Turning iOS off always hands the bar to Duo.
  */
 internal fun applyIosModeToggle(
     settings: DuoSettings,
     requested: Boolean,
     available: Boolean = iosModeAvailable()
-): DuoSettings = if (requested && !available) settings else settings.copy(iosMode = requested)
+): DuoSettings = when {
+    requested && !available -> settings
+    requested -> settings.copy(iosMode = true, enabled = false)
+    else -> settings.copy(iosMode = false, enabled = true)
+}
+
+/**
+ * The Duo master switch owns the bar too: turning it on leaves iOS, turning it off is the OFF mode.
+ * (While iOS owns the bar the switch is disabled, so no write can enter here with `iosMode == true`.)
+ */
+internal fun applyDuoMasterToggle(
+    settings: DuoSettings,
+    requested: Boolean
+): DuoSettings = if (requested) {
+    settings.copy(enabled = true, iosMode = false)
+} else {
+    settings.copy(enabled = false)
+}
 
 // --------------------------------------------------------------------- iOS 27 mode
 @Composable
@@ -307,7 +325,7 @@ internal fun CustomizeSection(
                         rawRes = previewRaw
                     )
                 }
-            ) { onUpdate(settings.copy(enabled = it)) }
+            ) { onUpdate(applyDuoMasterToggle(settings, it)) }
             RingDesignCard(
                 selected = settings.designStyle,
                 enabled = enabled,
