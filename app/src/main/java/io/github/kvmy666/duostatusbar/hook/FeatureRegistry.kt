@@ -71,38 +71,6 @@ internal fun panelTransitionActions(features: FeatureSet): Set<PanelTransitionAc
     BarOwner.NONE -> emptySet()
 }
 
-/** A process-level owner transition that a settings apply has to perform. */
-internal enum class OwnerAction {
-    STOP_DUO_MONITOR,
-    TEARDOWN_DUO,
-    ATTACH_DUO,
-    TEARDOWN_IOS,
-    ATTACH_IOS
-}
-
-/**
- * The owner actions needed to move from [current] to [next].
- *
- * The diff is what makes a live Duo -> iOS -> Duo switch leave nothing behind: entering a mode stops
- * the other mode first, and leaving a mode always tears it down. Switching between Duo renderers (or
- * refreshing Duo settings) produces no owner action at all.
- */
-internal fun ownerActions(current: FeatureSet, next: FeatureSet): Set<OwnerAction> {
-    val out = LinkedHashSet<OwnerAction>()
-    if (!next.duoRuntime) {
-        out += OwnerAction.STOP_DUO_MONITOR
-        out += OwnerAction.TEARDOWN_DUO
-    } else if (!current.duoRuntime) {
-        out += OwnerAction.ATTACH_DUO
-    }
-    if (!next.iosRuntime) {
-        out += OwnerAction.TEARDOWN_IOS
-    } else if (!current.iosRuntime) {
-        out += OwnerAction.ATTACH_IOS
-    }
-    return out
-}
-
 /** What [RegistrationSet.apply] changed, so the runtime can log one line per real diff. */
 internal data class RegistrationDiff<K>(val added: Set<K>, val removed: Set<K>) {
     val isEmpty: Boolean get() = added.isEmpty() && removed.isEmpty()
@@ -192,7 +160,3 @@ internal fun desiredSurfaces(settings: ModuleSettings): Set<String> = buildSet {
 /** Live slots that the new settings no longer want; dropping one restores its stock icons. */
 internal fun surfacesToDrop(live: Collection<String>, settings: ModuleSettings): Set<String> =
     live.filter { it in EXTRA_SURFACES && it !in desiredSurfaces(settings) }.toSet()
-
-/** Desired extra surfaces that are not live; the next attach/layout creates them. */
-internal fun surfacesToCreate(live: Collection<String>, settings: ModuleSettings): Set<String> =
-    desiredSurfaces(settings) - live.toSet()

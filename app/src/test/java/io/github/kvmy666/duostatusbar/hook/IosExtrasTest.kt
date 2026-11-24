@@ -52,7 +52,6 @@ class IosExtrasTest {
     fun `apply flips the gate and requests layout on a registered leaf`() {
         val view = FakeView(context)
         IosExtras.register(view)
-        assertEquals(1, IosExtras.registeredCount)
 
         IosExtras.apply(true)
         shadowOf(Looper.getMainLooper()).idle()
@@ -72,12 +71,10 @@ class IosExtrasTest {
         IosExtras.register(view)
         IosExtras.apply(true)
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(1, IosExtras.registeredCount)
 
         IosExtras.deactivate()
         shadowOf(Looper.getMainLooper()).idle()
         assertFalse(IosExtras.hidden)
-        assertEquals(1, IosExtras.registeredCount) // not cleared: a later toggle still reaches it
     }
 
     @Test
@@ -93,6 +90,5 @@ class IosExtrasTest {
         val loader = javaClass.classLoader ?: ClassLoader.getSystemClassLoader()
         IosExtras.install(loader)
         IosExtras.install(loader)
-        assertEquals(0, IosExtras.registeredCount)
     }
 }

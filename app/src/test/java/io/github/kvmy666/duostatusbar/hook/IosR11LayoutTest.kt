@@ -480,7 +480,7 @@ class IosR11LayoutRobolectricTest {
         root.addView(clock, FrameLayout.LayoutParams(200, 94))
         root.addView(leaf, FrameLayout.LayoutParams(10, 10))
 
-        IosSlotLayout.configure(context, "android", "text1")
+        IosSlotLayout.configure(android.R.id.text1, "android")
         val bounds = Rect()
         clock.paint.getTextBounds("0", 0, 1, bounds)
         val expected = 1.08f * bounds.height()
@@ -496,7 +496,7 @@ class IosR11LayoutRobolectricTest {
 
     @Test
     fun anUnresolvedClockIdFallsBackToTheLegacyMetrics() {
-        IosSlotLayout.configure(context, "android", "r11_no_such_clock_id")
+        IosSlotLayout.configure(0, "android")
         val root = FrameLayout(context)
         val leaf = ImageView(context)
         root.addView(leaf, FrameLayout.LayoutParams(10, 10))

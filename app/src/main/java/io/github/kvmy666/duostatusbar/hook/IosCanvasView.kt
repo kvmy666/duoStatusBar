@@ -22,11 +22,9 @@ import android.view.View
 internal class IosCanvasView(
     context: Context,
     val kind: IosIconKind
-) : View(context), IosElement {
+) : View(context) {
 
     private var visual: IosVisual? = null
-    private var started = false
-    private var renderActive = true
 
     /**
      * Inset the glyph to [IosGeometry.Relative.sizeFor] inside this view's bounds. The view's size and
@@ -42,33 +40,18 @@ internal class IosCanvasView(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
-    override val ui: View get() = this
-
-    override val rendererName: String get() = "Canvas"
-
-    override val isReady: Boolean get() = started
-
-    override val canDraw: Boolean get() = true
-
-    override fun start(): Boolean {
-        started = true
+    fun start(): Boolean {
         invalidate()
         return true
     }
 
-    override fun render(v: IosVisual) {
+    fun render(v: IosVisual) {
         if (v == visual) return
         visual = v
-        if (renderActive) invalidate()
+        invalidate()
     }
 
-    override fun setRenderActive(active: Boolean) {
-        renderActive = active
-        if (active) invalidate()
-    }
-
-    override fun teardown() {
-        started = false
+    fun teardown() {
         visual = null
     }
 

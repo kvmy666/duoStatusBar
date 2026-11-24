@@ -8,8 +8,7 @@ import org.junit.Test
 /**
  * R3A A6: the QS and shade surfaces are optional. Turning one off must drop its live slot, and the
  * drop path restores that surface's stock icons (`DuoIconHost.dropSlot` calls `slot.stock.restore()`).
- * Turning it on again makes the next attach/layout create the slot. The rules live in
- * [desiredSurfaces]/[surfacesToDrop]/[surfacesToCreate], which the host and this test share.
+ * The rules live in [desiredSurfaces]/[surfacesToDrop], which the host and this test share.
  */
 class SurfaceFeatureTest {
 
@@ -27,7 +26,6 @@ class SurfaceFeatureTest {
     fun `turning QS off drops its live slot and keeps the shade`() {
         val qsOff = both.copy(showInQs = false)
         assertEquals(setOf(SURFACE_QS), surfacesToDrop(bothLive, qsOff))
-        assertTrue(surfacesToCreate(bothLive - SURFACE_QS, qsOff).isEmpty())
         assertFalse(surfaceEnabled(SURFACE_QS, qsOff))
         assertTrue(surfaceEnabled(SURFACE_SHADE, qsOff))
 
@@ -47,11 +45,7 @@ class SurfaceFeatureTest {
     @Test
     fun `turning a surface on recreates exactly that slot`() {
         val qsOnlyLive = setOf(SURFACE_QS)
-        assertEquals(setOf(SURFACE_SHADE), surfacesToCreate(qsOnlyLive, both))
         assertEquals(emptySet<String>(), surfacesToDrop(qsOnlyLive, both))
-
-        val noneLive = emptySet<String>()
-        assertEquals(bothLive, surfacesToCreate(noneLive, both))
     }
 
     @Test
@@ -59,7 +53,6 @@ class SurfaceFeatureTest {
         val off = both.copy(showInQs = false, showInShade = false)
         assertTrue(desiredSurfaces(off).isEmpty())
         assertEquals(bothLive, surfacesToDrop(bothLive, off))
-        assertTrue(surfacesToCreate(emptySet(), off).isEmpty())
     }
 
     @Test

@@ -27,12 +27,6 @@ internal interface IosDiagnosticSource {
 internal object IosDiagnostics {
     private val sources = ArrayList<IosDiagnosticSource>()
 
-    /**
-     * The last snapshot of a surface that never became (or stopped being) a live source, keyed by
-     * surface name. Strings only: a failed attach must leave the report behind without pinning a view.
-     */
-    private val attempts = LinkedHashMap<String, List<String>>()
-
     @Synchronized
     fun register(source: IosDiagnosticSource) {
         if (sources.none { it === source }) sources.add(source)
@@ -43,29 +37,10 @@ internal object IosDiagnostics {
         sources.removeAll { it === source }
     }
 
-    /** Persists the report of a surface that failed to attach, so a total failure is still visible. */
-    @Synchronized
-    fun recordAttempt(surface: String, lines: List<String>) {
-        val kept = lines.filter { it.isNotBlank() }
-        if (kept.isEmpty()) attempts.remove(surface) else attempts[surface] = kept
-    }
-
-    /** Drops a stale attempt once that surface attaches for real. */
-    @Synchronized
-    fun clearAttempt(surface: String) {
-        attempts.remove(surface)
-    }
-
-    /** Drops every retained attempt: leaving iOS mode, or the module being switched off. */
-    @Synchronized
-    fun clearAttempts() {
-        attempts.clear()
-    }
-
-    /** Live sources plus retained attempts, deduplicated by exact text, never throwing. */
+    /** Live sources, deduplicated by exact text, never throwing. */
     @Synchronized
     fun lines(): List<String> {
-        if (sources.isEmpty() && attempts.isEmpty()) return emptyList()
+        if (sources.isEmpty()) return emptyList()
         val out = ArrayList<String>()
         val seen = HashSet<String>()
         for (source in sources.toList()) {
@@ -79,19 +54,7 @@ internal object IosDiagnostics {
                 if (line.isNotBlank() && seen.add(line)) out.add(line)
             }
         }
-        for (lines in attempts.values) {
-            for (line in lines) {
-                if (line.isNotBlank() && seen.add(line)) out.add(line)
-            }
-        }
         return out
-    }
-
-    internal fun clearForTest() {
-        synchronized(this) {
-            sources.clear()
-            attempts.clear()
-        }
     }
 }
 
