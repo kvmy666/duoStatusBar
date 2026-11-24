@@ -86,9 +86,6 @@ internal object IosExtras {
     internal var warningCountForTest: Int = 0
         private set
 
-    @Volatile
-    private var installedFlag = false
-
     /**
      * The global hide-extras gate. Default false so a non-iOS bar is byte-for-byte stock; the
      * resource gate drawables read it directly, which is what makes the toggle live.
@@ -217,7 +214,6 @@ internal object IosExtras {
                 }
             }
         }
-        installedFlag = methods > 0
         L.i("$TAG: methods=$methods failures=$failures")
     }
 

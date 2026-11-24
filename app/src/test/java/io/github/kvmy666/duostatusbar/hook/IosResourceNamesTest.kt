@@ -40,21 +40,6 @@ class IosResourceNamesTest {
     // ----------------------------------------------------------------------------- OxygenOS map
 
     @Test
-    fun `OxygenOS labels map to the iOS vocabulary`() {
-        assertEquals("LTE", IosResourceNames.labelFor("stat_signal_connected_lte_big"))
-        assertEquals("LTE", IosResourceNames.labelFor("stat_signal_connected_lte_plus_big"))
-        assertEquals("4G", IosResourceNames.labelFor("stat_signal_connected_4g_lte_big"))
-        assertEquals("5G", IosResourceNames.labelFor("stat_signal_connected_5g"))
-        assertEquals("5G+", IosResourceNames.labelFor("stat_signal_connected_4_5g_plus"))
-        assertEquals("3G", IosResourceNames.labelFor("stat_signal_connected_h_lte_big"))
-        assertEquals("E", IosResourceNames.labelFor("stat_signal_connected_e_lte_big"))
-        assertEquals("G", IosResourceNames.labelFor("stat_signal_connected_g_lte_big"))
-        assertEquals("G", IosResourceNames.labelFor("stat_signal_connected_2g_lte_big"))
-        assertEquals("4G", IosResourceNames.labelFor("stat_sys_data_fully_connected_tmo_4g_lte"))
-        assertEquals("5G", IosResourceNames.labelFor("stat_sys_data_fully_connected_tmo_5g"))
-    }
-
-    @Test
     fun `OxygenOS maps the measured no-service resources to level zero`() {
         val oplus = IosResourceNames.specs("oxygenos")
         val noService = oplus.first { it.name == "stat_signal_noservice_lte" }

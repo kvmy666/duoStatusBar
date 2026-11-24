@@ -231,15 +231,8 @@ internal object RootLogs {
     }
 
     /**
-     * Restarts SystemUI through root. Used only when the module is not running: the module's own path (kill
-     * its process from inside SystemUI) needs no root, so this is the fallback that still works before
-     * LSPosed has injected anything — and it is the root prompt users of other modules expect.
-     */
-    fun restartSystemUi(): Boolean = restartSystemUiDetailed().ok
-
-    /**
-     * The same restart with the reason kept, so the settings screen can say why the button did nothing
-     * instead of leaving the user with silence. Never throws.
+     * Restarts SystemUI through root, with the reason kept, so the settings screen can say why the button
+     * did nothing instead of leaving the user with silence. Never throws.
      */
     fun restartSystemUiDetailed(): RestartOutcome {
         var su = "su"
