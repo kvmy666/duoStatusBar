@@ -107,7 +107,7 @@ internal object IosV2Report {
     }
 
     private fun settingsField(settings: ModuleSettings?): String {
-        val s = settings ?: ModuleSettings.DEFAULT
+        val s = settings ?: DuoSettingsClient.lastRead() ?: ModuleSettings.DEFAULT
         return "batteryScale=${s.iosBatteryScale} batteryOffset=${s.iosBatteryOffset} " +
             "wifiScale=${s.iosWifiScale} wifiOffset=${s.iosWifiOffset} " +
             "cellScale=${s.iosCellScale} cellOffset=${s.iosCellOffset} " +

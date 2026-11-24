@@ -1978,7 +1978,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // the last-read snapshot before the host draws (fail-silent via the helper).
                     val snapshot = try {
                         DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx)
-                    } catch (_: Throwable) {
+                    } catch (t: Throwable) {
+                        IosV2Log.failureOnce("duohook.firstFrameSettings", t)
                         ModuleSettings.DEFAULT
                     }
                     refreshIosHostSettings(snapshot, listOf(host))
@@ -2300,8 +2301,13 @@ internal fun refreshIosHostSettings(settings: ModuleSettings, hosts: Iterable<Io
     for (host in hosts) {
         try {
             host.refreshSettings(settings)
-        } catch (_: Throwable) {
-            // Fail silent: one surface's settings must never blank another.
+        } catch (t: Throwable) {
+            // One surface's settings must never blank another: the other surfaces stay alive, and the
+            // failure is reported once for this host.
+            IosV2Log.failureOnce(
+                "duohook.refreshHostSettings." + host.javaClass.simpleName.ifBlank { "host" },
+                t
+            )
         }
     }
 }

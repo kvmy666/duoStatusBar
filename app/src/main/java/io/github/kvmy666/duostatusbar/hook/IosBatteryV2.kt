@@ -421,7 +421,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         val raw = try {
             val id = context.resources.getIdentifier(LOW_THRESHOLD_RESOURCE, "integer", "android")
             if (id == 0) null else context.resources.getInteger(id)
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("battery.lowThreshold", t)
             null
         }
         val resolved = IosMapping.lowThreshold(raw ?: caller)

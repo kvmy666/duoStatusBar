@@ -164,7 +164,7 @@ class IosV2DiagTest {
         assertEquals(1, on.count { it.trim() == "ios v2 diag:" })
 
         val off = Diag.collect(context, tree.root, 0, ModuleSettings.DEFAULT, null)
-        assertFalse(off.contains("ios v2 diag:"))
+        assertFalse(off.lines().any { it.contains("ios v2 diag:") })
         // Two off dumps are byte-identical: nothing was added on the off path.
         assertEquals(off, Diag.collect(context, tree.root, 0, ModuleSettings.DEFAULT, null))
     }
