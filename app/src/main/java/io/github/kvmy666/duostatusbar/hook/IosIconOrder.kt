@@ -35,11 +35,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * stock order is left untouched and the reason is logged once. Nothing here guesses a class or an id:
  * the names are the measured ones from the device's SystemUI.
  *
- * A container is seen by a constructor, the existing `addView` hook, or its first `onLayout`. Every
- * later layout is a single weak-set lookup, so an already-ordered container does no per-frame work.
- * Moves are synchronous: [activate] moves every container before it permutes any slot list, the
- * `addView`/first-layout hooks move in the same callback, and [restore] moves before it restores the
- * slots. `container.post` is never the primary path; only an off-main [activate]/[restore] is posted.
+ * A container is seen by a constructor, the existing `addView` hook, or any `onLayout`. `onLayout`
+ * only registers/adopts and posts at most one coalesced main-thread pass; a live child is never
+ * removed or reparented from a layout callback (AGENTS-V2 3.3 #14). [activate], [onIconAdded] and
+ * [restore] stay synchronous on the main thread: they move every container before they permute or
+ * restore the slots, and never post a move. Only an off-main [activate]/[restore] is posted.
  */
 internal object IosIconOrder {
 
@@ -85,6 +85,13 @@ internal object IosIconOrder {
     private val layoutAdopted: MutableSet<ViewGroup> =
         Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>()))
 
+    /**
+     * Containers with a layout-triggered pass already posted. Repeated layouts coalesce into that
+     * one queued pass instead of moving a live child from inside `onLayout`.
+     */
+    private val pending: MutableSet<ViewGroup> =
+        Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>()))
+
     /** Diagnostics: child move passes that actually moved Wi-Fi (session total). */
     private val moveCount = AtomicInteger(0)
 
@@ -124,14 +131,15 @@ internal object IosIconOrder {
     val isActive: Boolean get() = active.get()
 
     /**
-     * Diagnostics: `"slot-list"` only while the order is active and at least one slot list was
-     * captured (only a captured list can be permuted); `"stock"` otherwise.
+     * Diagnostics: `"slot-list"` only when at least one captured list is actually permuted away from
+     * its stock snapshot; `"stock"` otherwise.
      */
     internal val source: String
-        get() = if (active.get() && synchronized(slotLists) { slotLists.isNotEmpty() }) {
-            "slot-list"
-        } else {
-            "stock"
+        get() {
+            val permuted = active.get() && synchronized(slotLists) {
+                slotLists.any { !sameOrder(it.list, it.stock) }
+            }
+            return if (permuted) "slot-list" else "stock"
         }
 
     /** Diagnostics: how many layout passes actually moved Wi-Fi this session. */
@@ -322,6 +330,7 @@ internal object IosIconOrder {
         syntheticSurfaceForTest = false
         synchronized(containers) { containers.clear() }
         synchronized(layoutAdopted) { layoutAdopted.clear() }
+        synchronized(pending) { pending.clear() }
         synchronized(slotLists) { slotLists.clear() }
         moveCount.set(0)
         passCount.set(0)
@@ -364,21 +373,45 @@ internal object IosIconOrder {
     }
 
     /**
-     * `StatusIconContainer.onLayout` path: the FIRST layout of a container adopts it and moves it
-     * synchronously. Every later layout returns after one weak-set lookup: no tree walk, no slot read.
+     * `StatusIconContainer.onLayout` path: register/adopt only. A live child is never removed or
+     * reparented from a layout callback (AGENTS-V2 3.3 #14); when a pass is needed it is posted to
+     * the main thread, coalesced per container, and the move runs after layout has returned.
      */
     fun onContainerLayout(container: ViewGroup) {
         if (!installed.get()) return
-        if (!layoutAdopted.add(container)) return
-        synchronized(containers) { containers.add(container) }
+        if (layoutAdopted.add(container)) {
+            synchronized(containers) { containers.add(container) }
+        }
         if (applying.get()) return
         if (!active.get() || synchronized(slotLists) { slotLists.isEmpty() }) return
-        if (slotPermutationNeeded()) {
-            activateOnMain()
-        } else {
-            movePass(container, afterMobile = true)
-            logActiveIfNeeded()
+        if (!slotPermutationNeeded() && !needsMove(container, afterMobile = true)) return
+        scheduleLayoutPass(container)
+    }
+
+    /**
+     * Queues at most one main-thread pass per container. The runnable re-checks the state after
+     * layout: a first activation and an already-permuted misordered bar both converge on the same
+     * atomic path, and repeated layouts join the pass that is already pending.
+     */
+    private fun scheduleLayoutPass(container: ViewGroup) {
+        if (!pending.add(container)) return
+        val posted = try {
+            container.post {
+                synchronized(pending) { pending.remove(container) }
+                if (!installed.get() || !active.get()) return@post
+                if (synchronized(slotLists) { slotLists.isEmpty() }) return@post
+                if (slotPermutationNeeded()) {
+                    activateOnMain()
+                } else if (needsMove(container, afterMobile = true)) {
+                    movePass(container, afterMobile = true)
+                    logActiveIfNeeded()
+                }
+            }
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("order.postLayoutPass", t)
+            false
         }
+        if (!posted) synchronized(pending) { pending.remove(container) }
     }
 
     // ---- main-thread handoff ----
@@ -774,7 +807,7 @@ internal object IosIconOrder {
             IosV2Log.failureOnce("order.iconGuard.child", t)
             return
         } ?: return
-        if (isIconManagerChildClass(child.javaClass.simpleName)) return
+        if (isIconManagerChildClass(child)) return
         logOnce.once("ios-order-icon-guard") {
             L.w(
                 "iOS order: IconManager.onSetIcon child ${child.javaClass.simpleName} at $index " +
@@ -794,6 +827,23 @@ internal object IosIconOrder {
     internal fun isIconManagerChildClass(simpleName: String?): Boolean =
         simpleName != null &&
             (simpleName.contains("StatusBarIconView") || simpleName == "StatIconView")
+
+    /**
+     * The type-chain form used by [guardIconManagerCall]: the child's class or any superclass must
+     * be a `StatusBarIconView` (or `StatIconView`). A wrapper whose own name merely contains the
+     * string is not enough unless its base class really is the cast target.
+     */
+    internal fun isIconManagerChildClass(type: Class<*>): Boolean {
+        var cls: Class<*>? = type
+        while (cls != null && cls != Any::class.java) {
+            if (isIconManagerChildClass(cls.simpleName)) return true
+            cls = cls.superclass
+        }
+        return false
+    }
+
+    internal fun isIconManagerChildClass(view: View): Boolean =
+        isIconManagerChildClass(view.javaClass)
 
     private fun logActiveIfNeeded() {
         if (loggedActive) return
@@ -983,6 +1033,7 @@ internal object IosIconOrder {
         syntheticSurfaceForTest = false
         synchronized(containers) { containers.clear() }
         synchronized(layoutAdopted) { layoutAdopted.clear() }
+        synchronized(pending) { pending.clear() }
         synchronized(slotLists) { slotLists.clear() }
         synchronized(unhooks) { unhooks.clear() }
         moveCount.set(0)

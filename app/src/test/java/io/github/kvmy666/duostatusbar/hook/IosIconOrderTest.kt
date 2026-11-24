@@ -322,6 +322,31 @@ class IosIconOrderTest {
     }
 
     @Test
+    fun `source is stock while the captured slot list was never permuted`() {
+        IosIconOrder.seedSlotListForTest(listOf("mobile", "wifi"))
+        IosIconOrder.markInstalledForTest()
+        IosIconOrder.markMovableSurfaceForTest()
+
+        IosIconOrder.activate()
+
+        assertTrue(IosIconOrder.isActive)
+        assertEquals("stock", IosIconOrder.source)
+    }
+
+    @Test
+    fun `source reports slot-list only after a captured list is permuted`() {
+        IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile"))
+        IosIconOrder.markInstalledForTest()
+        IosIconOrder.markMovableSurfaceForTest()
+
+        IosIconOrder.activate()
+        assertEquals("slot-list", IosIconOrder.source)
+
+        IosIconOrder.restore()
+        assertEquals("stock", IosIconOrder.source)
+    }
+
+    @Test
     fun `activation refuses to permute when no container surface can be moved`() {
         val live = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile"))
         IosIconOrder.markInstalledForTest()

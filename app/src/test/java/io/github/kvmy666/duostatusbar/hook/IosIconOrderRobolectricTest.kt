@@ -1,9 +1,11 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.app.Activity
 import android.content.Context
 import android.content.res.Resources
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -16,7 +18,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -38,6 +42,12 @@ class IosIconOrderRobolectricTest {
         fun getSlot(): String = slot
     }
 
+    /** Test-local base with the real cast target's simple name. */
+    open class StatusBarIconView(context: Context) : View(context)
+
+    /** A real icon subclass hidden behind a different own class name. */
+    class FakeStatusBarIconSubclass(context: Context) : StatusBarIconView(context)
+
     /** The measured container shape, plus the optional animation switch the hook suppresses. */
     class FakeContainer(context: Context) : LinearLayout(context) {
         @JvmField
@@ -47,6 +57,23 @@ class IosIconOrderRobolectricTest {
         fun setEnableAnimation(enabled: Boolean) {
             animationStates.add(enabled)
             mEnableAnimation = enabled
+        }
+    }
+
+    /**
+     * The production layout hook shape: the container's own `onLayout` calls the production path,
+     * exactly like the `afterHookedMethod` callback. The order is captured immediately after that
+     * call, so a synchronous remove/add from inside `onLayout` is visible.
+     */
+    class LayoutHookContainer(context: Context) : LinearLayout(context) {
+        var observedDuringLayout: List<View>? = null
+        var layoutCalls = 0
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            super.onLayout(changed, l, t, r, b)
+            IosIconOrder.onContainerLayoutForTest(this)
+            observedDuringLayout = (0 until childCount).map { getChildAt(it) }
+            layoutCalls++
         }
     }
 
@@ -87,6 +114,19 @@ class IosIconOrderRobolectricTest {
     private fun order(container: ViewGroup): List<View> =
         (0 until container.childCount).map { container.getChildAt(it) }
 
+    /** Runs the posted main-thread passes, where the layout path schedules its move. */
+    private fun flushMainThread() {
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun layout(container: View, width: Int = 300, height: Int = 60) {
+        container.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+        )
+        container.layout(0, 0, width, height)
+    }
+
     private fun assertOrder(expected: List<View>, actual: List<View>) {
         assertEquals(expected.size, actual.size)
         expected.forEachIndexed { index, view -> assertSame(view, actual[index]) }
@@ -121,7 +161,7 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(listOf(mobile, goneMobile, wifi, battery, info), order(container))
         assertEquals(before.size, container.childCount)
@@ -139,9 +179,9 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
         IosIconOrder.restore()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(stockOrder, order(container))
         assertEquals(listOf("wifi", "mobile", "battery"), slots)
@@ -163,7 +203,7 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(listOf(visible, gone, wifi, battery), order(container))
     }
@@ -179,7 +219,7 @@ class IosIconOrderRobolectricTest {
         IosIconOrder.onIconAdded(home)
         IosIconOrder.onIconAdded(qs)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(listOf(homeStock[1], homeStock[2], homeStock[0], homeStock[3], homeStock[4]), order(home))
         assertOrder(listOf(qsStock[1], qsStock[2], qsStock[0], qsStock[3], qsStock[4]), order(qs))
@@ -192,7 +232,7 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(stockOrder, order(container))
         assertTrue(IosIconOrder.isActive)
@@ -205,7 +245,7 @@ class IosIconOrderRobolectricTest {
         val stockOrder = order(container)
 
         IosIconOrder.onIconAdded(container)
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(stockOrder, order(container))
         assertTrue(!IosIconOrder.isActive)
@@ -219,13 +259,13 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
         val passes = IosIconOrder.passesForTest()
         val moves = IosIconOrder.movesForTest()
         assertEquals(1, passes)
 
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(listOf(stock[1], stock[2], stock[0], stock[3], stock[4]), order(container))
         assertEquals("a repeated activate must not schedule another pass", passes, IosIconOrder.passesForTest())
@@ -243,7 +283,7 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertEquals(1, IosIconOrder.passesForTest())
         assertEquals(1, IosIconOrder.movesForTest())
@@ -251,7 +291,7 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.resetCountersForTest()
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertEquals(0, IosIconOrder.passesForTest())
         assertEquals(0, IosIconOrder.movesForTest())
@@ -267,7 +307,7 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
         assertEquals(1, IosIconOrder.passesForTest())
         assertEquals(1, IosIconOrder.movesForTest())
         assertOrder(iosOrder, order(container))
@@ -280,7 +320,7 @@ class IosIconOrderRobolectricTest {
         assertOrder(stock, order(container))
 
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(iosOrder, order(container))
         assertEquals("exactly one recovery pass", 1, IosIconOrder.passesForTest())
@@ -289,7 +329,7 @@ class IosIconOrderRobolectricTest {
         // The recovered bar is correct now, so the next apply adds no work at all.
         IosIconOrder.resetCountersForTest()
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
         assertEquals(0, IosIconOrder.passesForTest())
         assertEquals(0, IosIconOrder.movesForTest())
         assertOrder(iosOrder, order(container))
@@ -318,7 +358,7 @@ class IosIconOrderRobolectricTest {
         IosIconOrder.onIconAdded(container)
         assertEquals(1, IosIconOrder.containerCountForTest())
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
         assertOrder(
             listOf(stock[1], stock[2], stock[0], stock[3], stock[4]),
             order(container)
@@ -338,7 +378,7 @@ class IosIconOrderRobolectricTest {
         IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile"))
         IosIconOrder.onIconAdded(container)
         IosIconOrder.activate()
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(listOf(mobile, wifi), order(container))
     }
@@ -346,7 +386,9 @@ class IosIconOrderRobolectricTest {
     @Test
     fun `the first layout adopts a container once and later layouts schedule no passes`() {
         IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val container = stockContainer()
+        activity.setContentView(container)
         val before = order(container)
         val expected = listOf(before[1], before[2], before[0], before[3], before[4])
 
@@ -354,7 +396,7 @@ class IosIconOrderRobolectricTest {
         // schedules exactly one pass.
         IosIconOrder.activate()
         IosIconOrder.onContainerLayoutForTest(container)
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertOrder(expected, order(container))
         assertEquals(1, IosIconOrder.containerCountForTest())
@@ -368,11 +410,61 @@ class IosIconOrderRobolectricTest {
         IosIconOrder.resetCountersForTest()
         repeat(25) {
             IosIconOrder.onContainerLayoutForTest(container)
-            IosIconOrder.flushForTest()
+            flushMainThread()
         }
         assertEquals(0, IosIconOrder.passesForTest())
         assertEquals(0, IosIconOrder.movesForTest())
         assertOrder(expected, order(container))
+    }
+
+    @Test
+    fun `onLayout only registers and the posted pass reorders after layout returns`() {
+        val slots = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val container = LayoutHookContainer(activity)
+        container.addView(FakeIcon(activity, "wifi"))
+        container.addView(FakeIcon(activity, "mobile"))
+        container.addView(FakeIcon(activity, "battery"))
+        val stock = order(container)
+
+        // No container is registered when activation happens; activation refuses and leaves the
+        // slots in stock order. The layout callback is the only way the surface becomes known.
+        IosIconOrder.activate()
+        assertTrue(IosIconOrder.isActive)
+        activity.setContentView(container)
+        layout(container)
+
+        // The layout callback must not remove/add a live child (AGENTS-V2 3.3 #14).
+        val duringLayout = container.observedDuringLayout
+        assertTrue("the container must have laid out", duringLayout != null)
+        assertOrder(stock, duringLayout!!)
+        assertOrder(stock, order(container))
+
+        // Only the posted pass, after layout returned, may move Wi-Fi.
+        flushMainThread()
+        assertOrder(listOf(stock[1], stock[0], stock[2]), order(container))
+        assertEquals(listOf("mobile", "wifi", "battery"), slots)
+    }
+
+    @Test
+    fun `repeated layouts while a pass is pending queue one pass`() {
+        IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val container = LayoutHookContainer(activity)
+        container.addView(FakeIcon(activity, "wifi"))
+        container.addView(FakeIcon(activity, "mobile"))
+        container.addView(FakeIcon(activity, "battery"))
+
+        IosIconOrder.activate()
+        activity.setContentView(container)
+        layout(container)
+        layout(container, width = 320)
+        layout(container, width = 340)
+        flushMainThread()
+
+        assertTrue("the container must have laid out repeatedly", container.layoutCalls >= 2)
+        assertEquals("one coalesced pass", 1, IosIconOrder.passesForTest())
+        assertEquals(1, IosIconOrder.movesForTest())
     }
 
     @Test
@@ -383,7 +475,7 @@ class IosIconOrderRobolectricTest {
 
         IosIconOrder.activate()
         IosIconOrder.onContainerSeenForTest(container)
-        IosIconOrder.flushForTest()
+        flushMainThread()
 
         assertEquals(1, IosIconOrder.containerCountForTest())
         assertEquals(0, IosIconOrder.passesForTest())
@@ -499,5 +591,13 @@ class IosIconOrderRobolectricTest {
         IosIconOrder.restore()
         assertEquals(listOf("battery", "wifi", "mobile"), slotNames(slots))
         assertEquals(listOf("battery", "wifi", "mobile"), childTags(container))
+    }
+
+    @Test
+    fun `the IconManager guard accepts a subclass of a StatusBarIconView base class`() {
+        assertTrue(IosIconOrder.isIconManagerChildClass(FakeStatusBarIconSubclass(context)))
+        assertTrue(IosIconOrder.isIconManagerChildClass(FakeStatusBarIconSubclass(context).javaClass))
+        assertFalse(IosIconOrder.isIconManagerChildClass(FakeIcon(context, "wifi")))
+        assertFalse(IosIconOrder.isIconManagerChildClass(WifiCompositeView(context)))
     }
 }
