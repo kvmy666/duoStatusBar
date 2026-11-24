@@ -10,6 +10,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
+import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import java.lang.ref.WeakReference
 import java.util.Collections
@@ -434,27 +436,40 @@ internal object IosSlotLayout {
     // ------------------------------------------------------------------------------ host clock
 
     /**
-     * Resolves the host clock id by [clockIdName] in [systemUiPackage]. The clock is looked up lazily
-     * from each leaf's root view, so one configure covers the home, keyguard and QS bars.
+     * R11 host clock: [clockId] is already resolved by the caller through [RomResources.id] (one
+     * lookup route, AGENTS m1); [systemUiPackage] is only used for the warning. The clock itself is
+     * looked up lazily from each leaf's root view, so one configure covers home, keyguard and QS.
      */
     @Synchronized
-    internal fun configure(context: Context, systemUiPackage: String, clockIdName: String) {
+    internal fun configure(clockId: Int, systemUiPackage: String = "") {
         clockRef = null
         clockTextSize = Float.NaN
-        clockResId = try {
-            val id = context.resources.getIdentifier(clockIdName, "id", systemUiPackage)
-            if (id == 0) {
-                logOnce.once("ios-host-clock-id") {
-                    L.w("$TAG clock id '$clockIdName' not found in $systemUiPackage; screen-width fallback")
-                }
-            }
-            id
-        } catch (t: Throwable) {
+        clockResId = clockId
+        if (clockId == 0) {
             logOnce.once("ios-host-clock-id") {
-                L.w("$TAG clock id lookup failed: ${t.javaClass.simpleName}; screen-width fallback")
+                L.w("$TAG host clock id not resolved in $systemUiPackage; screen-width fallback")
             }
-            0
         }
+    }
+
+    /** Test-only convenience: resolve [clockIdName] in [systemUiPackage], then configure it. */
+    @Synchronized
+    internal fun configure(context: Context, systemUiPackage: String, clockIdName: String) {
+        configure(
+            RomResources.id(
+                context,
+                RomAdapter(
+                    id = "test",
+                    label = "test",
+                    systemUiPackage = systemUiPackage,
+                    containerIds = emptyList(),
+                    batteryId = "",
+                    notes = "test-only clock id lookup"
+                ),
+                clockIdName
+            ),
+            systemUiPackage
+        )
     }
 
     /**

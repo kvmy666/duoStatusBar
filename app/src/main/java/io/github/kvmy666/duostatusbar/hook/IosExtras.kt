@@ -41,9 +41,10 @@ internal object IosExtras {
 
     /**
      * The Wi-Fi outer composite that owns the `wifi_group -> wifi_combo -> wifi_signal` chain
-     * (decoded `new_status_bar_wifi_group.xml`). The simple name is measured in the R11 dump; the
-     * FQCN comes from the layout and is UNVERIFIED on the device until a report confirms it, so it is
-     * resolved by [XposedHelpers.findClass] and only one warning is logged when absent.
+     * (`res/layout/new_status_bar_wifi_group.xml:2`). Verified against the decoded 16.99.12 device
+     * SystemUI (`reverse/decoded/oneplus-phone`, `apktool.yml:10-11`, matching
+     * `.pm/device/r11/last_dump.txt:17`), so the FQCN is measured, not guessed. It is still resolved
+     * by [XposedHelpers.findClass] and only one warning is logged when absent.
      */
     private const val WIFI_VIEW_CLASS =
         "com.oplus.systemui.statusbar.phone.signal.widget.OplusModernStatusBarWifiView"

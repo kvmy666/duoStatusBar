@@ -22,14 +22,16 @@ import org.robolectric.annotation.Config
 import java.time.Duration
 
 /**
- * R11 step 3 (sliders): the live `IosSlotLayout` boxes must follow the Wi-Fi and cell sliders.
+ * R11 step 3 (sliders): the live `IosSlotLayout` boxes must follow the Wi-Fi and cell sliders on top
+ * of the step-1 host base (`1.08 x` the clock cap = 33.48 px here, gap 16.74 px).
  *
  * The Wi-Fi case is reproduced first: the measured OxygenOS `bindEx` after-hook runs before the
  * image coroutine writes `wifi_signal`, so the first registration sees the stock drawable and the
  * bounded retry (0/50/150/400 ms) is what makes the slider reach the live view.
  *
- * The mobile cases prove the existing cell registration: single and stacked dual (`DUAL`/`BOTH`)
- * leaves/outers must match [IosSlotLayout.metrics] at 70/100/150 %.
+ * Every case asserts the production `applySlot` path (via `registerWifi`/`registerMobile` + `reapply`)
+ * against both the hard-coded absolute px at 70/100/150 % and the pure `metricsAtInk` /
+ * `mobileMetricsAtInk` functions, so the test is not merely self-referential.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -44,6 +46,8 @@ class IosSliderRegistrationTest {
         IosExtras.resetForTest()
         IosSlotLayout.resetForTest()
         IosSlotLayout.screenWidthOverrideForTest = 1272
+        // Step 1 base: the host clock cap on the owner's phone (31 px cap -> 33.48 px ink).
+        IosSlotLayout.hostInkOverrideForTest = BASE_INK
         IosExtras.idLookupForTest = { name -> if (name == "wifi_signal") WIFI_SIGNAL_ID else 0 }
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -88,19 +92,62 @@ class IosSliderRegistrationTest {
         return Triple(outer, combo, signal)
     }
 
-    private fun assertWifiBox(outer: FrameLayout, signal: ImageView, scale: Int) {
-        val metrics = IosSlotLayout.metrics(
-            IosIconKind.WIFI, wifiVisual, 1272, scale, 0, 63
+    /** One absolute row of the 70/100/150 % table, computed from the pure metrics. */
+    private data class Expected(
+        val scale: Int,
+        val leafWidth: Int,
+        val leafHeight: Int,
+        val outerWidth: Int,
+        val outerHeight: Int
+    )
+
+    private fun assertWifiBox(outer: FrameLayout, signal: ImageView, row: Expected) {
+        val metrics = IosSlotLayout.metricsAtInk(
+            IosIconKind.WIFI, wifiVisual, BASE_INK, GAP, row.scale, 0, ROW
         )
-        assertEquals("outer width @$scale", metrics.outerWidth, outer.layoutParams.width)
-        assertEquals("outer height @$scale", metrics.outerHeight, outer.layoutParams.height)
+        // Cross-check: the pure function agrees with the hard-coded table.
+        assertEquals("metrics outer width @${row.scale}", row.outerWidth, metrics.outerWidth)
+        assertEquals("metrics outer height @${row.scale}", row.outerHeight, metrics.outerHeight)
+        assertEquals("metrics leaf width @${row.scale}", row.leafWidth, metrics.leaf.width)
+        assertEquals("metrics leaf height @${row.scale}", row.leafHeight, metrics.leaf.height)
+
+        // Production applySlot wrote exactly these px onto the live stock views.
+        assertEquals("outer width @${row.scale}", row.outerWidth, outer.layoutParams.width)
+        assertEquals("outer height @${row.scale}", row.outerHeight, outer.layoutParams.height)
         assertArrayEquals(
-            "outer target @$scale",
-            intArrayOf(metrics.outerWidth, metrics.outerHeight),
+            "outer target @${row.scale}",
+            intArrayOf(row.outerWidth, row.outerHeight),
             IosSlotLayout.targetForTest(outer)
         )
-        assertEquals("leaf width @$scale", metrics.leaf.width, signal.layoutParams.width)
-        assertEquals("leaf height @$scale", metrics.leaf.height, signal.layoutParams.height)
+        assertEquals("leaf width @${row.scale}", row.leafWidth, signal.layoutParams.width)
+        assertEquals("leaf height @${row.scale}", row.leafHeight, signal.layoutParams.height)
+    }
+
+    private fun assertCellScales(visual: IosVisual, table: List<Expected>) {
+        val (outer, _, signal) = mobileTree(visual)
+        assertTrue(IosSlotLayout.registerMobile(signal))
+        for (row in table) {
+            IosSlotLayout.reapply(ModuleSettings.DEFAULT.copy(iosCellScale = row.scale))
+            val metrics = IosSlotLayout.mobileMetricsAtInk(
+                visual, null, BASE_INK, GAP, row.scale, 0, 100, 0, ROW
+            )
+            // Cross-check: the pure function agrees with the hard-coded table.
+            assertEquals("metrics outer width @${row.scale}", row.outerWidth, metrics.outerWidth)
+            assertEquals("metrics outer height @${row.scale}", row.outerHeight, metrics.outerHeight)
+            assertEquals("metrics leaf width @${row.scale}", row.leafWidth, metrics.leaf.width)
+            assertEquals("metrics leaf height @${row.scale}", row.leafHeight, metrics.leaf.height)
+
+            // Production registerMobile -> reapply wrote exactly these px.
+            assertEquals("outer width @${row.scale}", row.outerWidth, outer.layoutParams.width)
+            assertEquals("outer height @${row.scale}", row.outerHeight, outer.layoutParams.height)
+            assertArrayEquals(
+                "outer target @${row.scale}",
+                intArrayOf(row.outerWidth, row.outerHeight),
+                IosSlotLayout.targetForTest(outer)
+            )
+            assertEquals("leaf width @${row.scale}", row.leafWidth, signal.layoutParams.width)
+            assertEquals("leaf height @${row.scale}", row.leafHeight, signal.layoutParams.height)
+        }
     }
 
     @Test
@@ -124,20 +171,27 @@ class IosSliderRegistrationTest {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
 
         assertEquals(1, IosSlotLayout.registeredForTest)
-        assertWifiBox(outer, signal, 98)
+        assertWifiBox(outer, signal, Expected(98, 44, 33, 61, 63))
 
         IosSlotLayout.reapply(ModuleSettings.DEFAULT.copy(iosWifiScale = 100))
-        assertWifiBox(outer, signal, 100)
+        assertWifiBox(outer, signal, Expected(100, 45, 34, 61, 63))
         IosSlotLayout.reapply(ModuleSettings.DEFAULT.copy(iosWifiScale = 70))
-        assertWifiBox(outer, signal, 70)
+        assertWifiBox(outer, signal, Expected(70, 31, 24, 48, 63))
         IosSlotLayout.reapply(ModuleSettings.DEFAULT.copy(iosWifiScale = 150))
-        assertWifiBox(outer, signal, 150)
+        assertWifiBox(outer, signal, Expected(150, 67, 50, 84, 63))
     }
 
     @Test
     fun `single cell slider resizes the live leaf and outer at 70 100 150`() {
-        val visual = IosVisual(part = IosPart.CELL, cellBars = 4f)
-        assertCellScales(visual)
+        val visual = IosVisual(part = IosPart.CELL, cellMode = IosCellMode.SINGLE, cellBars = 4f)
+        assertCellScales(
+            visual,
+            listOf(
+                Expected(70, 38, 27, 53, 63),
+                Expected(100, 54, 38, 68, 63),
+                Expected(150, 81, 57, 94, 63)
+            )
+        )
     }
 
     @Test
@@ -149,25 +203,14 @@ class IosSliderRegistrationTest {
             cellBars = 4f,
             cellDots = 1f
         )
-        assertCellScales(visual)
-    }
-
-    private fun assertCellScales(visual: IosVisual) {
-        val (outer, _, signal) = mobileTree(visual)
-        assertTrue(IosSlotLayout.registerMobile(signal))
-        for (scale in listOf(70, 100, 150)) {
-            IosSlotLayout.reapply(ModuleSettings.DEFAULT.copy(iosCellScale = scale))
-            val metrics = IosSlotLayout.metrics(IosIconKind.CELL, visual, 1272, scale, 0, 63)
-            assertEquals("outer width @$scale", metrics.outerWidth, outer.layoutParams.width)
-            assertEquals("outer height @$scale", metrics.outerHeight, outer.layoutParams.height)
-            assertArrayEquals(
-                "outer target @$scale",
-                intArrayOf(metrics.outerWidth, metrics.outerHeight),
-                IosSlotLayout.targetForTest(outer)
+        assertCellScales(
+            visual,
+            listOf(
+                Expected(70, 34, 24, 50, 63),
+                Expected(100, 49, 34, 65, 63),
+                Expected(150, 73, 51, 89, 63)
             )
-            assertEquals("leaf width @$scale", metrics.leaf.width, signal.layoutParams.width)
-            assertEquals("leaf height @$scale", metrics.leaf.height, signal.layoutParams.height)
-        }
+        )
     }
 
     @Test
@@ -183,5 +226,8 @@ class IosSliderRegistrationTest {
 
     private companion object {
         const val WIFI_SIGNAL_ID = 0x7f0f0001
+        const val BASE_INK = 33.48f
+        const val GAP = 16.74f
+        const val ROW = 63
     }
 }
