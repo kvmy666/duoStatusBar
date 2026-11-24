@@ -1,5 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import de.robv.android.xposed.XC_MethodHook
@@ -21,10 +23,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * in step:
  *
  *  1. capture every `StatusBarIconList.mSlots` instance and snapshot its stock order,
- *  2. on [activate], permute `mSlots` in place and move the same Wi-Fi view after the last `mobile`
- *     child of every registered `StatusIconContainer`,
- *  3. on [restore], put the captured slot order back (keeping any slot the system created after the
- *     snapshot) and move Wi-Fi before the first `mobile` child.
+ *  2. on [activate], move the same Wi-Fi view after the last `mobile` child of every registered
+ *     `StatusIconContainer`, then permute `mSlots` in place (one main-thread call),
+ *  3. on [restore], move Wi-Fi before the first `mobile` child, then put the captured slot order back
+ *     (keeping any slot the system created after the snapshot).
  *
  * The order is owned by the process, not by a surface: tearing down the QS header while iOS stays on
  * must not restore the stock order. Only [restore] (leaving iOS, or the module being turned off) does.
@@ -33,10 +35,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * stock order is left untouched and the reason is logged once. Nothing here guesses a class or an id:
  * the names are the measured ones from the device's SystemUI.
  *
- * A container is seen by a constructor, the existing `addView` hook, or its first `onLayout`. Only
- * that first layout may schedule anything; every later layout is a single weak-set lookup, so an
- * already-ordered container does no per-frame work. Moves are scheduled only from the `addView` hook,
- * a slot-list capture/permutation change, or [activate]/[restore].
+ * A container is seen by a constructor, the existing `addView` hook, or its first `onLayout`. Every
+ * later layout is a single weak-set lookup, so an already-ordered container does no per-frame work.
+ * Moves are synchronous: [activate] moves every container before it permutes any slot list, the
+ * `addView`/first-layout hooks move in the same callback, and [restore] moves before it restores the
+ * slots. `container.post` is never the primary path; only an off-main [activate]/[restore] is posted.
  */
 internal object IosIconOrder {
 
@@ -54,6 +57,10 @@ internal object IosIconOrder {
         "com.android.systemui.statusbar.phone.StatusIconContainer",
         "com.android.systemui.statusbar.views.MiuiStatusIconContainer"
     )
+
+    /** The last-resort guard against a slot index pointing at a non-icon child. */
+    private val ICON_MANAGER_CLASS = "com.android.systemui.statusbar.phone.IconManager"
+    private const val ICON_MANAGER_METHOD = "onSetIcon"
 
     private val installed = AtomicBoolean(false)
     private val active = AtomicBoolean(false)
@@ -81,7 +88,7 @@ internal object IosIconOrder {
     /** Diagnostics: child move passes that actually moved Wi-Fi (session total). */
     private val moveCount = AtomicInteger(0)
 
-    /** Diagnostics: `applyTo` passes that ran (session total). */
+    /** Diagnostics: `movePass` passes that ran (session total). */
     private val passCount = AtomicInteger(0)
 
     /** REL210: measured slot-list/container classes and whether they resolved. */
@@ -97,13 +104,11 @@ internal object IosIconOrder {
     }
 
 
-    /** Containers scheduled for the next frame, so a move never runs inside a layout pass. */
-    private val pending: MutableSet<ViewGroup> =
-        Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>()))
-
-    /** Containers with a post already queued, so repeated icon adds do not stack work. */
-    private val posted: MutableSet<ViewGroup> =
-        Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>()))
+    /**
+     * Test-only stand-in for a registered container, so the pure slot-list tests can exercise
+     * `activate()` without an Android view tree. Production never sets this.
+     */
+    private var syntheticSurfaceForTest = false
 
     private val slotLists = ArrayList<SlotListSnapshot>()
 
@@ -174,8 +179,7 @@ internal object IosIconOrder {
                     }
                 }
                 // Existing containers are adopted on their FIRST layout pass; every later layout is
-                // a weak-set lookup and returns without scheduling. The move itself is posted, so
-                // this never changes the tree inside the layout callback.
+                // a weak-set lookup and returns without work.
                 val laidOut = object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         (param.thisObject as? ViewGroup)?.let { onContainerLayout(it) }
@@ -183,6 +187,18 @@ internal object IosIconOrder {
                 }
                 hookSafely { XposedBridge.hookAllConstructors(cls, seen) }
                 hookSafely { XposedBridge.hookAllMethods(cls, "onLayout", laidOut) }
+            }
+            // Last-resort guard (bug B): if the slot list and the children ever disagree, the next
+            // IconManager.onSetIcon must not cast the Wi-Fi composite to StatusBarIconView.
+            val iconManager = findClass(ICON_MANAGER_CLASS, classLoader)
+            noteClass("IconManager", iconManager != null)
+            if (iconManager != null) {
+                val guard = object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        guardIconManagerCall(param)
+                    }
+                }
+                hookSafely { XposedBridge.hookAllMethods(iconManager, ICON_MANAGER_METHOD, guard) }
             }
             if (listClasses == 0) {
                 logOnce.once("ios-order-no-slot-class") {
@@ -202,10 +218,20 @@ internal object IosIconOrder {
     }
 
     /**
-     * iOS owns the bar: permute the captured slot lists and move Wi-Fi after the last mobile child
-     * of every registered container. Idempotent; safe to call on every settings apply/attach.
+     * iOS owns the bar: move the Wi-Fi child on every registered container first, then permute the
+     * captured slot lists, in one main-thread call. Idempotent; safe to call on every settings
+     * apply/attach. Moving and permuting across two frames is what let `IconManager.onSetIcon` see a
+     * permuted index whose child was the OPLUS Wi-Fi composite (bug B).
      */
     fun activate() {
+        if (!isMainThread()) {
+            postToMain { activateOnMain() }
+            return
+        }
+        activateOnMain()
+    }
+
+    private fun activateOnMain() {
         val wasActive = active.getAndSet(true)
         if (!wasActive) {
             loggedActive = false
@@ -219,26 +245,53 @@ internal object IosIconOrder {
             }
             return
         }
-        val changed = applySlotPermutation()
-        // A repeated settings apply on an unchanged, already-adopted bar must schedule nothing; the
-        // first activation still schedules because the views may not have been moved yet. The one
-        // exception is a container the ROM re-ordered without an addView (no hook fired) and with no
-        // later first layout: a read-only target check recovers exactly those containers.
-        if (shouldScheduleOnActivate(wasActive, changed)) {
-            scheduleAll()
+        val needsPermute = slotPermutationNeeded()
+        if (needsPermute) {
+            val moved = moveAllForActivate()
+            if (!moved.safe) {
+                // Never leave a permuted slot list over stock children. Children were moved first, so
+                // put them back before restoring the (still stock) slot order.
+                moveAll(afterMobile = false)
+                restoreSlotLists()
+                if (!moved.surface) {
+                    logOnce.once("ios-order-refused") {
+                        L.w("iOS order: refused (no movable surface) - stock order")
+                    }
+                } else {
+                    logOnce.once("ios-order-refused-failed") {
+                        L.w("iOS order: refused (move failed) - stock order")
+                    }
+                }
+                return
+            }
+            applySlotPermutation()
+            logActiveIfNeeded()
         } else {
-            scheduleMisordered()
+            // A repeated settings apply on an unchanged, already-adopted bar must move nothing; the
+            // first activation still moves because the views may not have been moved yet. The one
+            // exception is a container the ROM re-ordered without an addView: recover exactly those.
+            if (!wasActive) moveAll(afterMobile = true) else moveMisordered()
+            logActiveIfNeeded()
         }
     }
 
     /**
-     * iOS no longer owns the bar: put the captured stock slot order back and move Wi-Fi before the
-     * first mobile child. Idempotent; a no-op when iOS was never active.
+     * iOS no longer owns the bar: move Wi-Fi before the first mobile child, then put the captured
+     * stock slot order back. Idempotent; a no-op when iOS was never active.
      */
     fun restore() {
+        if (!isMainThread()) {
+            postToMain { restoreOnMain() }
+            return
+        }
+        restoreOnMain()
+    }
+
+    private fun restoreOnMain() {
         if (!active.getAndSet(false)) return
+        // Move first, then restore the slots (the exact inverse of activateOnMain).
+        moveAll(afterMobile = false)
         restoreSlotLists()
-        scheduleAll()
         loggedActive = false
         // Only one log per leave event; restore() returns above when there was nothing to restore.
         L.i("iOS order restored")
@@ -247,27 +300,26 @@ internal object IosIconOrder {
     /**
      * Unhooks every class-level order hook and drops the captured state (C).
      *
-     * Called by the iOS teardown after [restore]. A second call is safe and does nothing. A pending
-     * restore move is flushed before its queue is cleared, otherwise the posted frame would be dropped
-     * and the Wi-Fi child would stay in the iOS position.
+     * Called by the iOS teardown after [restore]. A second call is safe and does nothing.
      */
-    @Synchronized
     fun release() {
+        if (!isMainThread()) {
+            postToMain { releaseOnMain() }
+            return
+        }
+        releaseOnMain()
+    }
+
+    @Synchronized
+    private fun releaseOnMain() {
         // Stop new capture/registration before touching any state, then restore what this session
         // changed. A caller may release without a prior restore; never leave the stock order permuted.
         installed.set(false)
-        restore()
+        restoreOnMain()
         active.set(false)
         applying.set(false)
         loggedActive = false
-        val queued = synchronized(pending) { pending.toList() }
-        for (container in queued) {
-            pending.remove(container)
-            posted.remove(container)
-            applyTo(container)
-        }
-        synchronized(pending) { pending.clear() }
-        synchronized(posted) { posted.clear() }
+        syntheticSurfaceForTest = false
         synchronized(containers) { containers.clear() }
         synchronized(layoutAdopted) { layoutAdopted.clear() }
         synchronized(slotLists) { slotLists.clear() }
@@ -285,7 +337,7 @@ internal object IosIconOrder {
 
     /**
      * Called from the existing `StatusIconContainer.addView` hook for every child the ROM adds.
-     * Registers the container and, while iOS owns the bar, schedules one idempotent move pass.
+     * Registers the container and, while iOS owns the bar, moves it synchronously in this callback.
      */
     fun onIconAdded(container: ViewGroup) {
         // A6: iOS code does nothing while iOS is off. The Duo-only process keeps this a single
@@ -295,26 +347,65 @@ internal object IosIconOrder {
         // Our own remove/add during a reorder must not queue another pass.
         if (applying.get()) return
         if (!active.get() || synchronized(slotLists) { slotLists.isEmpty() }) return
-        schedule(container)
+        if (slotPermutationNeeded()) {
+            // The first activation was refused with no surface (or the ROM re-stocked the slots);
+            // this container is the movable surface that lets the whole swap run atomically.
+            activateOnMain()
+        } else {
+            movePass(container, afterMobile = true)
+            logActiveIfNeeded()
+        }
     }
 
-    /** Constructor path: remember the container for activate()/scheduleAll(); never schedules. */
+    /** Constructor path: remember the container for activate(); never moves. */
     fun onContainerSeen(container: ViewGroup) {
         if (!installed.get()) return
         synchronized(containers) { containers.add(container) }
     }
 
     /**
-     * `StatusIconContainer.onLayout` path: the FIRST layout of a container adopts it (register + at
-     * most one schedule). Every later layout returns after one weak-set lookup: no post, no tree walk,
-     * no slot read.
+     * `StatusIconContainer.onLayout` path: the FIRST layout of a container adopts it and moves it
+     * synchronously. Every later layout returns after one weak-set lookup: no tree walk, no slot read.
      */
     fun onContainerLayout(container: ViewGroup) {
         if (!installed.get()) return
         if (!layoutAdopted.add(container)) return
         synchronized(containers) { containers.add(container) }
+        if (applying.get()) return
         if (!active.get() || synchronized(slotLists) { slotLists.isEmpty() }) return
-        schedule(container)
+        if (slotPermutationNeeded()) {
+            activateOnMain()
+        } else {
+            movePass(container, afterMobile = true)
+            logActiveIfNeeded()
+        }
+    }
+
+    // ---- main-thread handoff ----
+
+    /**
+     * True on SystemUI's main thread. A unit-test JVM has no looper, and running in place there is
+     * exactly what the pure tests need.
+     */
+    private fun isMainThread(): Boolean = try {
+        val main = Looper.getMainLooper()
+        main == null || Looper.myLooper() == main
+    } catch (_: Throwable) {
+        true
+    }
+
+    /** Off-main callers queue one main-thread pass; every SystemUI path is already main. */
+    private fun postToMain(block: () -> Unit) {
+        try {
+            val main = Looper.getMainLooper()
+            if (main == null) {
+                block()
+                return
+            }
+            Handler(main).post(block)
+        } catch (_: Throwable) {
+            block()
+        }
     }
 
     // ---- pure rules (unit-tested without Android) ----
@@ -436,14 +527,14 @@ internal object IosIconOrder {
         val added = synchronized(slotLists) {
             if (slotLists.none { it.list === list }) {
                 slotLists.add(SlotListSnapshot(list, list.toList()))
-                if (active.get()) applySlotPermutationLocked()
                 true
             } else {
                 false
             }
         }
-        // A list captured after activation (late injection) still gets the pending view moves.
-        if (added && active.get()) scheduleAll()
+        // A list captured after activation (late injection) must be moved and permuted in the same
+        // main-thread pass, exactly like the first activation.
+        if (added && active.get()) activate()
     }
 
     /**
@@ -486,11 +577,14 @@ internal object IosIconOrder {
         return null
     }
 
-    private fun applySlotPermutation(): Boolean = synchronized(slotLists) {
-        applySlotPermutationLocked()
+    /** True when at least one captured list would actually change under the iOS rule. */
+    private fun slotPermutationNeeded(): Boolean = synchronized(slotLists) {
+        slotLists.any { snapshot ->
+            !sameOrder(permutedEntries(snapshot.list) { slotNameOf(it) }, snapshot.list)
+        }
     }
 
-    private fun applySlotPermutationLocked(): Boolean {
+    private fun applySlotPermutation(): Boolean = synchronized(slotLists) {
         var changed = false
         for (snapshot in slotLists) {
             val target = permutedEntries(snapshot.list) { slotNameOf(it) }
@@ -548,79 +642,94 @@ internal object IosIconOrder {
 
     // ---- view moves ----
 
-    private fun scheduleAll() {
+    /** What one synchronous move pass achieved. */
+    private enum class MoveResult {
+        MOVED,
+        ALREADY,
+        NOT_APPLICABLE,
+        FAILED,
+        SKIPPED
+    }
+
+    /** Whether a move surface existed, and whether any container failed to move. */
+    private class SurfaceResult(val surface: Boolean, val failed: Boolean) {
+        val safe: Boolean get() = surface && !failed
+    }
+
+    private fun moveAll(afterMobile: Boolean) {
         val snapshot = synchronized(containers) { containers.toList() }
-        snapshot.forEach { schedule(it) }
+        for (container in snapshot) movePass(container, afterMobile)
     }
 
     /**
-     * Queues only the registered containers whose Wi-Fi child is not already at the iOS target index.
-     *
-     * This is the repeat-activation recovery: a container can be re-ordered into stock order without
-     * an `addView` (so no hook fires) and without another layout, leaving the views wrong even though
-     * the slot list is unchanged. An already-correct container is not queued, so a normal settings
-     * apply still adds no pass.
+     * Moves every registered container synchronously. `surface` is true when at least one container
+     * was aligned with the requested order (moved or already correct); `failed` is true when a
+     * container that should be movable could not be moved.
      */
-    private fun scheduleMisordered() {
+    private fun moveAllForActivate(): SurfaceResult {
         val snapshot = synchronized(containers) { containers.toList() }
-        snapshot.forEach { container ->
-            if (needsMove(container, afterMobile = true)) schedule(container)
+        var surface = syntheticSurfaceForTest
+        var failed = false
+        for (container in snapshot) {
+            when (movePass(container, afterMobile = true)) {
+                MoveResult.MOVED, MoveResult.ALREADY -> surface = true
+                MoveResult.FAILED -> failed = true
+                MoveResult.NOT_APPLICABLE, MoveResult.SKIPPED -> Unit
+            }
+        }
+        return SurfaceResult(surface, failed)
+    }
+
+    /**
+     * Moves only the registered containers whose Wi-Fi child is not already at the iOS target index.
+     * This is the repeat-activation recovery: a container can be re-ordered into stock order without
+     * an `addView` and without another layout, leaving the views wrong even though the slot list is
+     * unchanged. An already-correct container is not touched, so a normal apply adds no pass.
+     */
+    private fun moveMisordered() {
+        val snapshot = synchronized(containers) { containers.toList() }
+        for (container in snapshot) {
+            if (needsMove(container, afterMobile = true)) movePass(container, afterMobile = true)
         }
     }
 
-    /** Queue one move pass for the next frame; repeated calls coalesce per container. */
-    private fun schedule(container: ViewGroup) {
-        synchronized(pending) { pending.add(container) }
-        if (!posted.add(container)) return
-        val move = Runnable {
-            posted.remove(container)
-            if (pending.remove(container)) applyTo(container)
-        }
-        try {
-            container.post(move)
-        } catch (t: Throwable) {
-            posted.remove(container)
-            pending.remove(container)
-            // A view with no handler (unit tests, a detached copy) is still safe to move directly.
-            IosV2Log.branchOnce("order.schedule", "no handler - move applied directly")
-            applyTo(container)
-        }
-    }
-
-    /** One idempotent move pass for [container]; never called from inside a layout callback. */
-    private fun applyTo(container: ViewGroup) {
-        if (!applying.compareAndSet(false, true)) return
+    /**
+     * One idempotent, synchronous move pass for [container]. `afterMobile = true` is the iOS order,
+     * `false` is the stock order. The same view instance is moved; visibility and drawable are
+     * untouched. Never posts: the caller's callback is the frame boundary.
+     */
+    private fun movePass(container: ViewGroup, afterMobile: Boolean): MoveResult {
+        if (!applying.compareAndSet(false, true)) return MoveResult.SKIPPED
         passCount.incrementAndGet()
         val animate = hasAnimationSetter(container)
         val previousAnimation = readAnimation(container)
         if (animate) setAnimation(container, false)
         try {
-            if (active.get()) {
-                if (synchronized(slotLists) { slotLists.isEmpty() }) return
-                moveWifi(container, afterMobile = true)
-                logActiveIfNeeded()
-            } else {
-                moveWifi(container, afterMobile = false)
+            val plan = wifiTarget(container, afterMobile) ?: return MoveResult.NOT_APPLICABLE
+            val current = container.indexOfChild(plan.wifi)
+            val target = plan.index.coerceIn(0, container.childCount - 1)
+            if (current == target) return MoveResult.ALREADY
+            moveCount.incrementAndGet()
+            container.removeView(plan.wifi)
+            try {
+                container.addView(plan.wifi, plan.index.coerceIn(0, container.childCount))
+            } catch (t: Throwable) {
+                // A rejected addView must not orphan the Wi-Fi child: put it back where it was.
+                if (container.indexOfChild(plan.wifi) < 0) {
+                    runCatching { container.addView(plan.wifi, current.coerceIn(0, container.childCount)) }
+                }
+                throw t
             }
+            return MoveResult.MOVED
         } catch (t: Throwable) {
             logOnce.once("ios-order-move-failed") {
                 L.w("iOS order: move failed (${t.javaClass.simpleName}: ${t.message})")
             }
+            return MoveResult.FAILED
         } finally {
             if (animate) setAnimation(container, previousAnimation)
             applying.set(false)
         }
-    }
-
-    private fun moveWifi(container: ViewGroup, afterMobile: Boolean) {
-        val plan = wifiTarget(container, afterMobile) ?: return
-        val current = container.indexOfChild(plan.wifi)
-        val clamp = plan.index.coerceIn(0, container.childCount - 1)
-        if (current == clamp) return
-        // Move the same instance: identity, visibility and drawable are untouched.
-        moveCount.incrementAndGet()
-        container.removeView(plan.wifi)
-        container.addView(plan.wifi, plan.index.coerceIn(0, container.childCount))
     }
 
     /** The Wi-Fi child of [container] and the index it belongs at, or null when unresolvable. */
@@ -634,7 +743,7 @@ internal object IosIconOrder {
     }
 
     /**
-     * Read-only form of [moveWifi]: true when the Wi-Fi child is not at its target index. Every read
+     * Read-only form of [movePass]: true when the Wi-Fi child is not at its target index. Every read
      * is guarded, so an odd tree is reported as "no move" rather than throwing inside System UI.
      */
     private fun needsMove(container: ViewGroup, afterMobile: Boolean): Boolean {
@@ -649,6 +758,42 @@ internal object IosIconOrder {
     }
 
     private class WifiTarget(val wifi: View, val index: Int)
+
+    /**
+     * Last-resort guard for bug B: `IconManager.onSetIcon(index)` casts `getChildAt(index)` to
+     * `StatusBarIconView`. If a stale/permuted index points at the OPLUS Wi-Fi composite (or any
+     * other non-icon child), restore the stock order and skip the cast instead of crashing SystemUI.
+     */
+    private fun guardIconManagerCall(param: XC_MethodHook.MethodHookParam) {
+        if (!active.get()) return
+        val index = param.args.firstOrNull() as? Int ?: return
+        val group = param.thisObject as? ViewGroup ?: return
+        val child = try {
+            group.getChildAt(index)
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("order.iconGuard.child", t)
+            return
+        } ?: return
+        if (isIconManagerChildClass(child.javaClass.simpleName)) return
+        logOnce.once("ios-order-icon-guard") {
+            L.w(
+                "iOS order: IconManager.onSetIcon child ${child.javaClass.simpleName} at $index " +
+                    "is not a StatusBarIconView - restoring stock order"
+            )
+        }
+        restore()
+        param.result = null
+    }
+
+    /**
+     * Cheap class-name predicate for the `IconManager` cast target. AOSP/OEM `StatusBarIconView`
+     * subclasses (e.g. `SingleBindableStatusBarIconView`) pass by name; the OPLUS composite
+     * (`OplusModernStatusBarWifiView`) and every other child do not. `StatIconView` is OxygenOS's
+     * opaque icon and casts cleanly.
+     */
+    internal fun isIconManagerChildClass(simpleName: String?): Boolean =
+        simpleName != null &&
+            (simpleName.contains("StatusBarIconView") || simpleName == "StatIconView")
 
     private fun logActiveIfNeeded() {
         if (loggedActive) return
@@ -800,14 +945,15 @@ internal object IosIconOrder {
     /** Runs the production slot-list capture for a fake holder; no Android class required. */
     internal fun captureSlotListForTest(instance: Any?) = captureSlotList(instance)
 
-    /** Runs every queued move pass synchronously, instead of waiting for a frame. */
-    internal fun flushForTest() {
-        val queued = synchronized(pending) { pending.toList() }
-        for (container in queued) {
-            pending.remove(container)
-            posted.remove(container)
-            applyTo(container)
-        }
+    /** Kept for older tests: every move pass is synchronous now, so there is nothing to flush. */
+    internal fun flushForTest() = Unit
+
+    /**
+     * Test-only movable surface for the pure tests: `activate()` now refuses to permute slots when no
+     * container could be moved, and a JVM test has no view tree. Never used by the module.
+     */
+    internal fun markMovableSurfaceForTest() {
+        syntheticSurfaceForTest = true
     }
 
     /** Production constructor sighting, for the Robolectric tests. */
@@ -834,10 +980,9 @@ internal object IosIconOrder {
         applying.set(false)
         installed.set(false)
         loggedActive = false
+        syntheticSurfaceForTest = false
         synchronized(containers) { containers.clear() }
         synchronized(layoutAdopted) { layoutAdopted.clear() }
-        synchronized(pending) { pending.clear() }
-        synchronized(posted) { posted.clear() }
         synchronized(slotLists) { slotLists.clear() }
         synchronized(unhooks) { unhooks.clear() }
         moveCount.set(0)

@@ -126,6 +126,7 @@ class IosIconOrderTest {
         val live = IosIconOrder.seedSlotEntriesForTest(
             listOf(wifi, mobile, vowifi, volte, battery)
         )
+        IosIconOrder.markMovableSurfaceForTest()
 
         IosIconOrder.activate()
 
@@ -151,6 +152,7 @@ class IosIconOrderTest {
         val mobile = FakeSlot("mobile")
         val battery = FakeSlot("battery")
         val live = IosIconOrder.seedSlotEntriesForTest(listOf(wifi, mobile, battery))
+        IosIconOrder.markMovableSurfaceForTest()
         // What StatusBarIconList.findOrInsertSlot does for a slot created after the snapshot.
         val dynamic = FakeSlot("dynamic_info")
         live.add(0, dynamic)
@@ -192,6 +194,7 @@ class IosIconOrderTest {
         val mobile = HyperOsSlot("mobile")
         val battery = HyperOsSlot("battery")
         val live = IosIconOrder.seedSlotEntriesForTest(listOf(wifi, mobile, battery))
+        IosIconOrder.markMovableSurfaceForTest()
 
         val slots = arrayListOf<Any>(HyperOsSlot("wifi"), HyperOsSlot("mobile"))
         assertSame(slots, IosIconOrder.readSlotsForTest(SlotListHolder(slots)))
@@ -213,6 +216,7 @@ class IosIconOrderTest {
     @Test
     fun `a string slot list still permutes through activate`() {
         val live = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
+        IosIconOrder.markMovableSurfaceForTest()
 
         IosIconOrder.activate()
 
@@ -245,6 +249,7 @@ class IosIconOrderTest {
     fun `release clears the process state, gates capture, and a later install works again`() {
         val live = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile"))
         IosIconOrder.markInstalledForTest()
+        IosIconOrder.markMovableSurfaceForTest()
         IosIconOrder.activate()
         assertEquals(listOf("mobile", "wifi"), live)
         assertTrue(IosIconOrder.isActive)
@@ -270,6 +275,7 @@ class IosIconOrderTest {
         // A later iOS session installs and activates again.
         val liveAgain = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile"))
         IosIconOrder.markInstalledForTest()
+        IosIconOrder.markMovableSurfaceForTest()
         IosIconOrder.activate()
         assertEquals(listOf("mobile", "wifi"), liveAgain)
         IosIconOrder.restore()
@@ -303,5 +309,26 @@ class IosIconOrderTest {
         val holder = SlotListHolder(arrayListOf<Any>(OpaqueEntry()))
 
         assertNull(IosIconOrder.readSlotsForTest(holder))
+    }
+
+    @Test
+    fun `the IconManager guard accepts icon views and rejects the OPLUS wifi composite`() {
+        assertTrue(IosIconOrder.isIconManagerChildClass("StatusBarIconView"))
+        assertTrue(IosIconOrder.isIconManagerChildClass("SingleBindableStatusBarIconView"))
+        assertTrue(IosIconOrder.isIconManagerChildClass("StatIconView"))
+        assertFalse(IosIconOrder.isIconManagerChildClass("OplusModernStatusBarWifiView"))
+        assertFalse(IosIconOrder.isIconManagerChildClass("StatIconViewWrapper"))
+        assertFalse(IosIconOrder.isIconManagerChildClass(null))
+    }
+
+    @Test
+    fun `activation refuses to permute when no container surface can be moved`() {
+        val live = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile"))
+        IosIconOrder.markInstalledForTest()
+
+        IosIconOrder.activate()
+
+        assertEquals(listOf("wifi", "mobile"), live)
+        assertTrue(IosIconOrder.isActive)
     }
 }

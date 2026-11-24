@@ -390,4 +390,114 @@ class IosIconOrderRobolectricTest {
         assertEquals(0, IosIconOrder.movesForTest())
         assertOrder(stockOrder, order(container))
     }
+
+    /** A live `StatusBarIconList.Slot` stand-in: the name is read through `getName()`. */
+    class NamedSlot(private val name: String) {
+        fun getName(): String = name
+        override fun toString(): String = "Slot($name)"
+    }
+
+    /** The OPLUS Wi-Fi composite: a real child that is not a `StatusBarIconView`. */
+    class WifiCompositeView(context: Context) : View(context) {
+        fun getSlot(): String = "wifi"
+    }
+
+    /** A plain status icon child: the class `IconManager` is allowed to cast. */
+    class PlainIconView(context: Context, private val slot: String) : View(context) {
+        fun getSlot(): String = slot
+    }
+
+    private fun namedSlots(vararg names: String): MutableList<Any> =
+        IosIconOrder.seedSlotEntriesForTest(names.map { NamedSlot(it) })
+
+    private fun namedContainer(names: List<String>): FakeContainer {
+        val container = FakeContainer(context)
+        names.forEach { name ->
+            if (name == "wifi") container.addView(WifiCompositeView(context))
+            else container.addView(PlainIconView(context, name))
+        }
+        return container
+    }
+
+    private fun slotNames(slots: List<Any>): List<String> =
+        slots.map { (it as NamedSlot).getName() }
+
+    private fun childTags(container: ViewGroup): List<String?> =
+        (0 until container.childCount).map { StockIconKey.slotTagOf(container.getChildAt(it)) }
+
+    /** Every child tag must line up with the same-named slot, in the live slot-list order. */
+    private fun assertChildrenMatchSlots(container: ViewGroup, slots: List<Any>, case: String) {
+        val tags = childTags(container)
+        val expected = slotNames(slots).filter { it in tags }
+        assertEquals("child order must follow the slot list: $case", expected, tags)
+    }
+
+    /** Emulates `IconManager`: the slot name gives the index, the index gives the cast target. */
+    private fun iconManagerChild(container: ViewGroup, slots: List<Any>, slot: String): View {
+        val index = slotNames(slots).indexOf(slot)
+        assertTrue("slot $slot must be in the list", index >= 0)
+        return container.getChildAt(index)
+    }
+
+    @Test
+    fun `activation moves the wifi composite before the slot list so IconManager never casts it`() {
+        val slots = namedSlots("wifi", "mobile", "mobile", "battery")
+        val container = namedContainer(slotNames(slots))
+        IosIconOrder.onIconAdded(container)
+
+        IosIconOrder.activate()
+        // Deliberately no looper idle / flush: this is the main-thread state IconManager sees.
+        val mobileChild = iconManagerChild(container, slots, "mobile")
+        assertTrue(
+            "IconManager would cast ${mobileChild.javaClass.simpleName}",
+            mobileChild is PlainIconView
+        )
+        assertChildrenMatchSlots(container, slots, "first activation")
+    }
+
+    @Test
+    fun `child order follows every add and remove around wifi across repeated activate and restore`() {
+        val slots = namedSlots("battery", "wifi", "mobile")
+        val container = namedContainer(slotNames(slots))
+        IosIconOrder.onIconAdded(container)
+        IosIconOrder.activate()
+        assertChildrenMatchSlots(container, slots, "initial activation")
+
+        // A plain slot added before Wi-Fi.
+        slots.add(1, NamedSlot("alarm"))
+        container.addView(PlainIconView(context, "alarm"), 1)
+        IosIconOrder.onIconAdded(container)
+        assertChildrenMatchSlots(container, slots, "add before wifi")
+
+        // A plain slot added after Wi-Fi (and after the last mobile).
+        slots.add(NamedSlot("vpn"))
+        container.addView(PlainIconView(context, "vpn"))
+        IosIconOrder.onIconAdded(container)
+        assertChildrenMatchSlots(container, slots, "add after wifi")
+
+        // A second activation is a no-op for order but must keep the invariant.
+        IosIconOrder.activate()
+        assertChildrenMatchSlots(container, slots, "second activation")
+
+        // Remove the plain slot before Wi-Fi.
+        val alarmIndex = slotNames(slots).indexOf("alarm")
+        slots.removeAt(alarmIndex)
+        container.removeViewAt(alarmIndex)
+        IosIconOrder.onIconAdded(container)
+        assertChildrenMatchSlots(container, slots, "remove before wifi")
+
+        // Remove the plain slot after Wi-Fi.
+        val vpnIndex = slotNames(slots).indexOf("vpn")
+        slots.removeAt(vpnIndex)
+        container.removeViewAt(vpnIndex)
+        IosIconOrder.onIconAdded(container)
+        assertChildrenMatchSlots(container, slots, "remove after wifi")
+
+        IosIconOrder.activate()
+        assertChildrenMatchSlots(container, slots, "third activation")
+
+        IosIconOrder.restore()
+        assertEquals(listOf("battery", "wifi", "mobile"), slotNames(slots))
+        assertEquals(listOf("battery", "wifi", "mobile"), childTags(container))
+    }
 }
