@@ -647,6 +647,69 @@ builds without moving it aside (the scene already contains its content). Rive 1.
 inline bolt is a sample hole because RML cannot clear pixels; its 40 x 59 geometry is exact. Digit
 contours are now stored as cubics, not flattened.
 
+## R11 — host-clock sizing (2.0.9)
+
+R11 replaces the R9 screen-width size owner with the **host bar's own clock**. R9 set one design unit
+`screenW x 0.03489 / 100` (0.4438 px at 1272), which made the battery ink 44.4 px against a 31 px clock
+cap: `1.45 x cap`, and the owner sees that as "huge". The production target is now
+`icon ink = 1.08 x clock cap`, and the R9 screen-width metrics stay only as the unreadable-clock
+fallback (unchanged numbers).
+
+| Quantity | Target @1272 (clock cap 31) | Formula / source |
+|---|---:|---|
+| Host clock cap | 31 px | `now.png` 25 % ink threshold (30 full rows + 1 antialias row; 30 at 50 %) |
+| Base ink (battery body) | **33.48 px** | `1.08 x 31`; iPhone dark ref 41/38 = 1.079 |
+| Equal ink gap | **16.74 px** | `0.50 x base ink` (requested; measured iPhone 0.44-0.46, see below) |
+| Battery | ink 33.48, leaf **70 x 34**, outer **86** | artboard 209.2 x 102 x `33.48 / 100` |
+| Cell dual `BOTH` | ink 33.48, leaf **49 x 34**, outer **65** | artboard 150.1 x 105.6 x `33.48 / 103.3` |
+| Cell single | ink 33.48, leaf **54 x 38**, outer **68** | artboard 150.1 x 105.6 x `33.48 / 92.9` |
+| Wi-Fi glyph | ink **32.81** (`0.98 x` base), leaf **45 x 34**, outer **61-62** | `0.98 x 33.48 / wifi ink height` |
+| 5G data label | cap **23.9** (`0.714 x` base), leaf **40 x 32** | `33.48 / 100` (R10A cap 71.4 keeps the ratio) |
+| Label-mode mobile | outer **120-121** | cell ink + gap + label ink + gap |
+| Row | 63 px | `system_icons` / keyguard / QS rows |
+
+The pure rule lives in `IosSlotLayout.metricsAtInk` / `mobileMetricsAtInk`:
+`leaf = artboard x base x userScale`, `inkW = ink.width x base x userScale`,
+`outerW = inkW + gap`, and one centre line for every kind (the 5G label included):
+`leaf.top = round(outerH / 2 - (ink.top + ink.height / 2) x base x userScale)`, coerced to >= 0.
+The user scale multiplies the glyph and the ink width; **the gap is not scaled**. The user offset stays
+clamped to `+/-gap / 2`. `DuoHook.activateIosV2` calls
+`IosSlotLayout.configure(ctx, rom.systemUiPackage, rom.clockId)` before `reapply`; the cap is
+`TextView.paint.getTextBounds("0")` (fallback "H"), re-read when the clock detaches or its text size
+changes, and `1.08 x` that is the target ink. An unreadable clock logs once and uses the legacy metrics.
+
+**Measured evidence.** `now.png` (2.0.8, CPH2747): clock cap 31 px, centre y 82; battery 45 px, cell 47,
+Wi-Fi 51 -> **+34 / +40 / +52 %** over 33.5. The iPhone dark reference
+(`iphone-dark-charging.jpg`, 1272 wide) measures clock 38 and cell / Wi-Fi / battery 41 each ->
+`41 / 38 = 1.079`, so 1.08 is the measured target. Its ink gaps are 18 and 19 px over 41 px =
+**0.44-0.46**, not the 0.49-0.53 first stated in the PM brief (`0.49-0.53` is gap / clock cap, 19/38 =
+0.50, or the 91 close-up's gap / fill height, 62/116 = 0.53). R11 still implements the requested
+`gap = 0.50 x icon height` (16.74 px) and records the measured 0.44-0.46 as the discrepancy; the pixels
+are 16-17 px in the evidence row.
+
+**Battery parent +7/+9.** The dump places `battery_icon_view` 93 x 45 at +17/+18 from its 113 x 63
+container (`StatBatteryMeterView`). The old leaf margins were 10/9, so the parent contributed +7/+9.
+`reverse/decoded/oneplus-phone/res/layout/stat_system_battery.xml:2` shows a `LinearLayout` with
+`gravity=start|center` and a child with only width/height/margins; no decoded code sets its padding, so
+the exact padding source is **UNVERIFIED**, but the offset is measured. `applyLeaf` now subtracts the
+immediate parent's `paddingLeft`/`paddingTop` from the leaf margins and pins the child gravity to
+`START|TOP` for both `FrameLayout.LayoutParams` and `LinearLayout.LayoutParams`, so the computed top is
+absolute on the real parent. Pre-fix reproduction: the same 113 x 63 padded parent with the legacy
+10/9 margins put the ink centre at **44.5 px** instead of 31.5; the failure log is
+`.pm/out-r11/pre-fix-layout.txt`. Post-fix at the host target the battery leaf is 70 x 34, its computed
+top is 14, the parent's +9 padding is subtracted from the margin, and the ink centre is **31.1 px**.
+
+**Evidence renders.** `R11EvidenceRenderTest` (Robolectric NATIVE, gated by `IOS_RENDER_OUT`) renders the
+runtime `IosGlyphRenderer` at these leaf boxes: `r11-battery-{70,100,150}.png`,
+`r11-cell-{70,100,150}.png`, `r11-wifi-{70,100,150}.png`, `r11-label-5g.png`, the composed
+`r11-row-base.png` (measured ink gaps 17 / 16 px) and `r11-metrics.json`. Those PNGs are evidence, not
+committed runtime output.
+
+**Device install is UNVERIFIED.** R11 steps 1-2 are proven by the pure and Robolectric tests at the
+owner's 1272 px numbers; no build has been installed on the owner's phone, so the clock view lookup on
+the live OxygenOS 16 SystemUI, the actual clock text height (31 vs 30 full rows) and the +7/+9 padding
+compensation are not yet confirmed on device.
+
 ## UNVERIFIED / caveats
 
 - **Cap at 100 %:** the light reference draws the cap at full neutral ink (alpha 1.0). The owner rule
