@@ -314,7 +314,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 override != null,
                 DuoSettingsClient.providerUnreachable,
                 DuoSettingsClient.servedFromBridge,
-                host?.duo != null || iosLive
+                // BUG D: only a real Duo element counts. A live iOS host made this true, so switching
+                // iOS off for Duo read as REFRESH and the never-recreated Duo host stayed absent.
+                host?.duo != null
             )
             if (next.owner == BarOwner.NONE && action == SettingsApplyAction.KEEP_UNREACHABLE) {
                 // The unreachable read is ModuleSettings.DEFAULT; applying it would visually reset the
@@ -352,6 +354,18 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             if (!refreshed.duoRuntime) {
                 stopDuoRuntime()
                 applyDuoRegistrations()
+                reporter.report(ctx, stage, settings)
+                return@guard
+            }
+            // BUG D: the iosTeardown above removed the Duo host. A switch back to Duo (or a REFRESH
+            // with no host at all) must attach one instead of poking a null monitor.
+            if (host == null) {
+                if (iosLive) {
+                    logOnce.once("mode-ios-duo-reattach") {
+                        L.i("mode ios -> duo: attaching the Duo host")
+                    }
+                }
+                enable(ctx, attempt = 0)
                 reporter.report(ctx, stage, settings)
                 return@guard
             }
@@ -468,7 +482,17 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         override: Int?,
         next: FeatureSet
     ) {
+        // Capture the previous owner before assigning, so exactly one mode line describes the switch.
+        val previous = features
         features = next
+        if (previous.owner != next.owner) {
+            val teardown = ownerActions(previous, next)
+                .map { it.name }
+                .sorted()
+                .joinToString(",")
+                .ifEmpty { "none" }
+            L.i("mode ${previous.owner.tag} -> ${next.owner.tag} (teardown: $teardown)")
+        }
         val revision = settings?.revision ?: -1L
         if (revision == loggedFeatureRevision && next.owner == loggedFeatureOwner) return
         loggedFeatureRevision = revision
@@ -555,7 +579,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             ctx,
             classLoader = lp.classLoader,
             sizeOwner = iosSizeOwner,
-            isMainBar = true
+            isMainBar = true,
+            // BUG C: a deferred v1 closure that runs after V2 activated is refused here too.
+            allowed = { iosHostWorkAllowed(features, iosRoute) }
         ).also { iosMainHost = it }
 
     /**
@@ -569,7 +595,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 classLoader = lp.classLoader,
                 sizeOwner = iosSizeOwner,
                 isMainBar = false,
-                surface = surface
+                surface = surface,
+                allowed = { iosHostWorkAllowed(features, iosRoute) }
             )
         }
 
@@ -711,9 +738,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         onRefused: () -> Unit
     ): Boolean {
         val ctx = app ?: cluster.context
-        if (!features.iosRuntime) return false
-        // R7 P4: the native route owns the icons; the host must never attach on top of it.
-        if (iosRoute == IosRoute.V2) return false
+        // BUG C: re-read both the mode and the route. V2 may have activated since this hand-over.
+        if (!iosHostWorkAllowed(features, iosRoute)) {
+            if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
+            return false
+        }
         return try {
             // R5: the vendor hook fires before the cluster has a box. Attaching then tears the host
             // down and lets stock draw first, so the same attach waits for the first laid-out frame.
@@ -721,12 +750,21 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val accepted = IosFirstFrameAttach.whenLaidOut(
                 cluster,
                 attach = {
-                    // The pre-draw runs after this hand-over, so re-check the mode before creating a host.
-                    if (features.iosRuntime) {
-                        ensureIosExtra(ctx, "oneplus qs")
-                            .attachCluster("oneplus qs", cluster, battery, source)
-                    } else {
+                    // The pre-draw runs after this hand-over, so re-check the mode and the route
+                    // before creating a host: V2 can activate in between (BUG C).
+                    if (!iosHostWorkAllowed(features, iosRoute)) {
+                        if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
                         false
+                    } else {
+                        val host = ensureIosExtra(ctx, "oneplus qs")
+                        if (!iosHostWorkAllowed(features, iosRoute)) {
+                            if (iosRoute == IosRoute.V2) {
+                                IosV2Log.branchOnce("ios-host-refused", "v2 active")
+                            }
+                            false
+                        } else {
+                            host.attachCluster("oneplus qs", cluster, battery, source)
+                        }
                     }
                 },
                 onRefused = onRefused
@@ -1777,13 +1815,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         if (iosRoute == IosRoute.V2) return
         // iOS owns the bar in its own mode; each surface gets its own host, all sharing one size owner.
         val iosCtx = app ?: shade.context
-        if (features.iosRuntime) {
+        // BUG C: the mode AND the route gate every deferred iOS attach (helper, not iosRuntime alone).
+        if (iosHostWorkAllowed(features, iosRoute)) {
             // The shade fires a layout pass on every frame. Re-attaching a live host tears it down and
             // rebuilds its Rive views each pass (global-ref exhaustion -> SIGABRT, iOS-LAG), so only a
             // dead attachment is replaced. The replacement/rotation path still runs when this is false.
             val now = SystemClock.uptimeMillis()
             if (now - lastIosExtraAttachAt < IOS_EXTRA_ATTACH_MIN_MS) return
             lastIosExtraAttachAt = now
+            // Re-check immediately before the host work; the route may have moved since the caller.
+            if (!iosHostWorkAllowed(features, iosRoute)) return
             val kg = ensureIosExtra(iosCtx, "keyguard bar")
             if (!kg.attachedUsableIn(shade)) kg.attachSurface("keyguard bar", shade, "system_icons")
             val header = shadeHeader
@@ -1839,9 +1880,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun attachIosShadeHeader(header: View): Boolean {
         val ctx = app ?: header.context
-        if (!features.iosRuntime) return false
-        // R7 P4: the native route owns every stock icon; no header host may attach.
-        if (iosRoute == IosRoute.V2) return false
+        // BUG C: mode AND route. A stale deferred header closure must not draw over V2.
+        if (!iosHostWorkAllowed(features, iosRoute)) {
+            if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
+            return false
+        }
         return try {
             val host = ensureIosExtra(ctx, "shade header")
             // A live host on this window already owns the header surface; attaching again would tear
@@ -1858,6 +1901,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 iosHeaderFailedAt = now
                 return false
             }
+            if (!iosHostWorkAllowed(features, iosRoute)) return false
             val attached = host.attachSurface("shade header", header, id)
             if (attached) {
                 iosHeaderFailed = null
@@ -1880,9 +1924,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun attachIosShadeWindow(window: View): Boolean {
         val ctx = app ?: window.context
-        if (!features.iosRuntime) return false
-        // R7 P4: the native route owns every stock icon; no shade-window host may attach.
-        if (iosRoute == IosRoute.V2) return false
+        // BUG C: mode AND route; a stale deferred shade-window closure must not draw over V2.
+        if (!iosHostWorkAllowed(features, iosRoute)) {
+            if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
+            return false
+        }
         return try {
             // A separate surface from the notification header: both strips can be live in one shade.
             val host = ensureIosExtra(ctx, "qs header")
@@ -1902,6 +1948,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 iosShadeGate.noteFailure(window, now)
                 return false
             }
+            if (!iosHostWorkAllowed(features, iosRoute)) return false
             val attached = host.attachSurface("qs header", window, id)
             if (attached) {
                 iosShadeGate.noteSuccess()
@@ -1957,7 +2004,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // 2.5 s retry. The keyguard/shade containers share this class, so only the
                         // captured status-bar root may take this path. First-frame attach remains
                         // pre-R7 only; V2 is covered by its constructor/onLayout hooks.
-                        if (iosRoute != IosRoute.V2 && features.iosRuntime && container != null &&
+                        if (iosHostWorkAllowed(features, iosRoute) && container != null &&
                             IosImmediateAttach.isMainBarContainer(container, statusBarRoot)
                         ) {
                             attachIosMainFirstFrame(container)
@@ -1967,7 +2014,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // it is off, but the explicit gate keeps a slow async callback from reaching a
                         // host created for the other mode during a live switch.
                         if (features.duoRuntime) host?.onStatusIconAdded(child)
-                        if (iosRoute != IosRoute.V2 && features.iosRuntime) {
+                        if (iosHostWorkAllowed(features, iosRoute)) {
                             iosMainHost?.onStockIconAdded(child)
                             iosExtraHosts.values.toList().forEach { it.onStockIconAdded(child) }
                         }
@@ -1996,13 +2043,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * log is emitted once per process and says which outcome was chosen.
      */
     private fun attachIosMainFirstFrame(container: ViewGroup) {
-        // R7 P4: the native route has no main host to attach on a pre-draw.
-        if (iosRoute == IosRoute.V2) return
+        // BUG C: mode AND route. The closure is scheduled and can run after V2 activates.
+        if (!iosHostWorkAllowed(features, iosRoute)) {
+            if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
+            return
+        }
         val laidOut = IosFirstFrameAttach.isLaidOut(container)
         val accepted = IosFirstFrameAttach.whenLaidOut(
             container,
             attach = {
-                if (features.iosRuntime) {
+                if (iosHostWorkAllowed(features, iosRoute)) {
                     val ctx = app ?: container.context
                     val host = ensureIosMain(ctx)
                     // R6 item 4: this runs before `refreshIosHostSettings`, so without this the first
@@ -2015,8 +2065,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         ModuleSettings.DEFAULT
                     }
                     refreshIosHostSettings(snapshot, listOf(host))
-                    host.attach(container.rootView ?: container)
+                    // Re-check immediately before the attach: V2 can activate while the settings read
+                    // and host creation above run.
+                    if (!iosHostWorkAllowed(features, iosRoute)) {
+                        if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
+                        false
+                    } else {
+                        host.attach(container.rootView ?: container)
+                    }
                 } else {
+                    if (iosRoute == IosRoute.V2) IosV2Log.branchOnce("ios-host-refused", "v2 active")
                     false
                 }
             }

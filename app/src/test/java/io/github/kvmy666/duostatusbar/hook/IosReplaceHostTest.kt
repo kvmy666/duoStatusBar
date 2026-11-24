@@ -209,6 +209,25 @@ class IosReplaceHostTest {
         wifiSource = wifiSource
     )
 
+    @Test
+    fun `a host refused by the route gate touches nothing`() {
+        // BUG C: once V2 owns the icons the pre-R7 host must be inert, including on a race.
+        val host = IosReplaceHost(
+            context = context,
+            classLoader = null,
+            surface = "main bar",
+            allowed = { false }
+        )
+        val strip = FrameLayout(context)
+        assertFalse(host.attachIn(strip, null))
+        assertFalse(host.attach(strip))
+        assertFalse(host.attachCluster("oneplus qs", strip, null, "test"))
+        host.refresh() // must be a no-op, not throw or draw
+        assertEquals(0, host.recordCountForTest())
+        assertFalse(host.attached)
+        host.teardown()
+    }
+
     private fun wifiSample(validated: Boolean, dots: Int = 2): WifiSample = WifiSample(
         rssi = -55,
         calc5 = 4,

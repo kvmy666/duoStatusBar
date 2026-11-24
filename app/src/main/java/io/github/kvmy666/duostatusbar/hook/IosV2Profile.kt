@@ -96,3 +96,13 @@ internal fun iosV2HasNoHosts(
     iosMainHostPresent: Boolean,
     extraHostCount: Int
 ): Boolean = route != IosRoute.V2 || (!iosMainHostPresent && extraHostCount == 0)
+
+/**
+ * True only while the pre-R7 iOS host may do work for this feature set and route (BUG C).
+ *
+ * A deferred host closure captures the mode when it is scheduled, and V2 can activate before that
+ * closure runs. Re-reading both the feature set and the route is the one gate that keeps the v1 host
+ * from drawing a second owner over the same slot. Pure, so the matrix is unit-tested.
+ */
+internal fun iosHostWorkAllowed(features: FeatureSet, route: IosRoute): Boolean =
+    features.iosRuntime && route != IosRoute.V2

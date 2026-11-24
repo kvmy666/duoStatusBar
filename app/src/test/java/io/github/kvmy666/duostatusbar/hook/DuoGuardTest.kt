@@ -6,6 +6,7 @@ import android.content.Context
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
@@ -122,5 +123,21 @@ class DuoGuardTest {
             DuoGuard.OFF,
             DuoGuard.stageFor(enabled = true, iosMode = true, engineMode = DuoPrefs.ENGINE_RIVE, useRive = true)
         )
+    }
+
+    /** Requirement: the adb override maps through the same owner decision, even when the app is off. */
+    @Test
+    fun `an adb override resolves through featureSetFor even when the app is disabled`() {
+        register(DuoSettings(enabled = false, engineMode = DuoPrefs.ENGINE_RIVE, useRive = true))
+        try {
+            Settings.Global.putInt(context.contentResolver, DuoGuard.KEY_STAGE, DuoGuard.ICONS_ONLY)
+            assertEquals(DuoGuard.ICONS_ONLY, DuoGuard(context).stage())
+            Settings.Global.putInt(context.contentResolver, DuoGuard.KEY_STAGE, DuoGuard.RIVE)
+            assertEquals(DuoGuard.RIVE, DuoGuard(context).stage())
+            Settings.Global.putInt(context.contentResolver, DuoGuard.KEY_STAGE, DuoGuard.OFF)
+            assertEquals(DuoGuard.OFF, DuoGuard(context).stage())
+        } finally {
+            Settings.Global.putInt(context.contentResolver, DuoGuard.KEY_STAGE, DuoGuard.OFF)
+        }
     }
 }

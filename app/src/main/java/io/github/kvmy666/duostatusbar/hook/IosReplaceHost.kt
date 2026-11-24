@@ -124,7 +124,14 @@ internal class IosReplaceHost(
             IosReadings.wifi(ctx, level, on, active, validated)
         },
     private val survivalDelayMs: Long = 5_000L,
-    private val idleDelayMs: Long = 3_000L
+    private val idleDelayMs: Long = 3_000L,
+    /**
+     * The one owner gate (BUG C). The runtime passes
+     * `{ iosHostWorkAllowed(features, iosRoute) }`; a stale deferred v1 closure then touches nothing
+     * once V2 has activated. Defaults to allowed so every existing test and the pre-R7 path is
+     * unchanged. Deliberately a plain lambda: this class stays free of DuoHook/route types.
+     */
+    private val allowed: () -> Boolean = { true }
 ) : IosDiagnosticSource, IosBroadcastTarget {
 
     internal companion object {
@@ -269,6 +276,18 @@ internal class IosReplaceHost(
     private val logOnce = LogOnce()
     private val handler = Handler(Looper.getMainLooper())
     private val records = ArrayList<Record>()
+
+    /**
+     * BUG C: the route/mode gate refused this host. Touch nothing and say so once; the class only
+     * knows "refused", and the runtime's V2 route is the only reason a live host is refused.
+     */
+    private fun hostRefused(): Boolean {
+        if (allowed()) return false
+        logOnce.once("host-refused") {
+            L.w("iOS host attach refused: v2 active")
+        }
+        return true
+    }
 
     /** Every view carrying [layoutListener], so teardown removes exactly what attach added. */
     private val layoutHosts = ArrayList<View>()
@@ -445,6 +464,7 @@ internal class IosReplaceHost(
 
     /** Attaches over the home status bar. A live attachment for the same window is kept as-is. */
     fun attach(root: View): Boolean {
+        if (hostRefused()) return false
         composed?.let { return it.attach(root) }
         if (thrashBlocked(root)) return false
         if (isAttached && attachedAlive(root)) return true
@@ -473,6 +493,7 @@ internal class IosReplaceHost(
      * requested in that window (IOS-LAG: the shade fires a layout pass per frame).
      */
     fun attachSurface(name: String, root: View, stripId: String = "system_icons"): Boolean {
+        if (hostRefused()) return false
         composed?.let { return it.attachSurface(name, root, stripId) }
         if (thrashBlocked(root)) return false
         // R3 A1: a strip entry name can exist several times in the shade window; the first DFS hit is
@@ -534,6 +555,7 @@ internal class IosReplaceHost(
      * only added when it is a real battery icon outside the cluster; it is never written.
      */
     fun attachCluster(surface: String, cluster: ViewGroup, battery: View?, source: String): Boolean {
+        if (hostRefused()) return false
         composed?.let { return it.attachCluster(surface, cluster, battery, source) }
         if (thrashBlocked(cluster)) return false
         // R5A item 3: only the strip this host already owns may take the fast path. A different
@@ -680,6 +702,7 @@ internal class IosReplaceHost(
      * [overlayParent] is allowed; only OVERLAY records need one.
      */
     internal fun attachIn(strip: ViewGroup, overlayParent: FrameLayout?): Boolean {
+        if (hostRefused()) return false
         composed?.let { delegate -> return delegate.attachIn(strip, overlayParent ?: return false) }
         if (isAttached) {
             if (this.strip === strip) return true
@@ -755,6 +778,7 @@ internal class IosReplaceHost(
 
     /** Reads one snapshot and updates every adopted drawing. Debounced from broadcasts/layout. */
     fun refresh() {
+        if (hostRefused()) return
         composed?.let {
             it.refresh()
             return

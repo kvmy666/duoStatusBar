@@ -3,7 +3,6 @@ package io.github.kvmy666.duostatusbar.hook
 import android.content.Context
 import android.provider.Settings
 import io.github.kvmy666.duostatusbar.L
-import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 
 /**
  * The safety valve for a failure that `try`/`catch` cannot reach.
@@ -58,13 +57,15 @@ internal class DuoGuard(private val context: Context) {
      * user path arrives over the provider instead — see `settings/DuoPrefs.kt`.
      */
     fun stage(): Int {
-        globalStage()?.let { override ->
+        val override = globalStage()
+        if (override != null) {
+            // One owner decision: the override is fed through featureSetFor, exactly like the runtime.
             L.i("stage $override (adb override)")
-            return override
+            return stageOf(featureSetFor(null, override, IosRenderers.DRAWING_READY, false))
         }
         val app = DuoSettingsClient.read(context)
         val ios = effectiveIosMode(app.iosMode)
-        val resolved = resolvedStage(app.enabled, app.iosMode, app.engineMode, app.useRive)
+        val resolved = stageOf(featureSetFor(app, null, IosRenderers.DRAWING_READY, false))
         if (ios) {
             L.i("stage $resolved (iOS mode on - Duo element off)")
         } else {
@@ -240,21 +241,48 @@ internal class DuoGuard(private val context: Context) {
             engineMode: String,
             useRive: Boolean,
             drawingReady: Boolean = IosRenderers.DRAWING_READY
-        ): Int = stageFor(enabled, effectiveIosMode(iosMode, drawingReady), engineMode, useRive)
+        ): Int = stageForSettings(enabled, iosMode, engineMode, useRive, drawingReady)
 
         /**
          * The pure resolution behind [stage], so the gate is unit-tested without a settings provider.
          *
-         * iOS mode is checked first: the two modes are mutually exclusive (rule 7), and turning iOS on
-         * must turn the Duo element off. The adb override is resolved before this function is called,
-         * so an explicit `duo_statusbar_stage` still wins (C10): override 2 with iOS mode on means Duo
-         * draws and iOS is suppressed.
+         * It is the same one owner decision as the runtime: [featureSetFor] resolves the owner and the
+         * renderer, and [stageOf] maps that to the three adb stages. There is no second matrix here.
+         *
+         * The adb override is resolved before this function is called, so an explicit
+         * `duo_statusbar_stage` still wins (C10): override 2 with iOS mode on means Duo draws and iOS is
+         * suppressed.
          */
-        internal fun stageFor(enabled: Boolean, iosMode: Boolean, engineMode: String, useRive: Boolean): Int = when {
-            iosMode -> OFF
-            !enabled -> OFF
-            engineMode == DuoPrefs.ENGINE_CANVAS || !useRive -> ICONS_ONLY
-            else -> RIVE
+        internal fun stageFor(enabled: Boolean, iosMode: Boolean, engineMode: String, useRive: Boolean): Int =
+            stageForSettings(enabled, iosMode, engineMode, useRive, IosRenderers.DRAWING_READY)
+
+        private fun stageForSettings(
+            enabled: Boolean,
+            iosMode: Boolean,
+            engineMode: String,
+            useRive: Boolean,
+            drawingReady: Boolean
+        ): Int {
+            val settings = ModuleSettings.DEFAULT.copy(
+                enabled = enabled,
+                iosMode = iosMode,
+                engineMode = engineMode,
+                useRive = useRive
+            )
+            return stageOf(
+                featureSetFor(
+                    settings,
+                    adbOverride = null,
+                    iosDrawingReady = drawingReady,
+                    otherOrientationEnabled = false
+                )
+            )
+        }
+
+        /** The single owner/renderer -> stage mapping shared by [stage] and [stageFor]. */
+        internal fun stageOf(features: FeatureSet): Int = when (features.owner) {
+            BarOwner.NONE, BarOwner.IOS -> OFF
+            BarOwner.DUO -> if (features.renderer == DuoRenderer.RIVE) RIVE else ICONS_ONLY
         }
 
         /**

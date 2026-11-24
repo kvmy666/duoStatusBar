@@ -94,6 +94,24 @@ class IosRouteTest {
     }
 
     @Test
+    fun `ios host work is allowed only on the host route`() {
+        // BUG C: a deferred v1 closure must re-read the route; V2 owns every icon once it activates.
+        val ios = FeatureSet(BarOwner.IOS, DuoRenderer.NONE, emptySet(), emptySet())
+        assertTrue(iosHostWorkAllowed(ios, IosRoute.HOST))
+        assertFalse(iosHostWorkAllowed(ios, IosRoute.V2))
+    }
+
+    @Test
+    fun `no other owner allows ios host work on any route`() {
+        val duo = FeatureSet(BarOwner.DUO, DuoRenderer.RIVE, emptySet(), emptySet())
+        val none = FeatureSet(BarOwner.NONE, DuoRenderer.NONE, emptySet(), emptySet())
+        for (route in IosRoute.entries) {
+            assertFalse("duo/$route", iosHostWorkAllowed(duo, route))
+            assertFalse("none/$route", iosHostWorkAllowed(none, route))
+        }
+    }
+
+    @Test
     fun `a failed v2 boot activation always falls through to host`() {
         // R7 P5: a thrown activation calls deactivateIosV2 and leaves NONE behind; an engine refusal
         // leaves V2. The boot HOST block runs in both cases and must report HOST, never the NONE the
