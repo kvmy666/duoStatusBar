@@ -587,6 +587,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             // R9: the live layout owns the per-icon scale; publish the snapshot before any owner
             // installs/reapplies so a bind and a slider tick use the same numbers.
+            // R11: the host clock is the one size owner; configure it before the first slot apply
+            // so a bind and a slider tick already read the same cap.
+            IosSlotLayout.configure(ctx, rom.systemUiPackage, rom.clockId)
             IosSlotLayout.reapply(settings)
             IosBatteryV2.activate(
                 ctx,

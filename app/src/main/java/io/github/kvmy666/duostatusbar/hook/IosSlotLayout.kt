@@ -1,10 +1,14 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.content.Context
+import android.graphics.Rect
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import java.lang.ref.WeakReference
@@ -66,6 +70,19 @@ internal object IosSlotLayout {
      */
     const val ROW_HEIGHT_PER_SCREEN_WIDTH = 63f / 1272f
 
+    /**
+     * R11 size owner: every icon ink height is `1.08 x` the host bar's clock cap (the measured iPhone
+     * dark reference is `41 / 38 = 1.079`). The clock cap is read from the live `TextView`, so our
+     * icons follow the owner's own bar instead of the iPhone screen width (the R9 "huge" bug).
+     */
+    internal const val HOST_INK_PER_CLOCK_CAP = 1.08f
+
+    /** R11 equal ink gap: `0.50 x` the icon ink height (the requested ratio; see the docs caveat). */
+    internal const val HOST_GAP_PER_INK_HEIGHT = 0.50f
+
+    /** R11 Wi-Fi ink height: `0.98 x` the battery ink (the cell dual block = battery exactly). */
+    internal const val WIFI_INK_TO_BASE_INK = 0.98f
+
     private val logOnce = LogOnce()
 
     /** The live settings snapshot; set by [reapply] on every settings apply/bind. */
@@ -78,6 +95,24 @@ internal object IosSlotLayout {
      */
     @Volatile
     internal var screenWidthOverrideForTest: Int? = null
+
+    /**
+     * Test seam: when set, the host path uses this target ink (px) instead of reading the clock view.
+     * Cleared by [resetForTest]; production keeps it null.
+     */
+    @Volatile
+    internal var hostInkOverrideForTest: Float? = null
+
+    /** The clock id resolved by [configure]; 0 means no host clock and the legacy path. */
+    @Volatile
+    private var clockResId: Int = 0
+
+    /** The live host clock, re-resolved when it is detached or its text size changes. */
+    @Volatile
+    private var clockRef: WeakReference<TextView>? = null
+
+    @Volatile
+    private var clockTextSize: Float = Float.NaN
 
     private enum class Kind { WIFI, MOBILE, BATTERY }
 
@@ -259,6 +294,226 @@ internal object IosSlotLayout {
         )
     }
 
+    // ------------------------------------------------------------------------- host-ink metrics
+
+    /**
+     * R11 one icon sized from the host clock: [baseInkPx] is the target battery-body ink height, and
+     * every kind derives its px-per-artboard-unit from it:
+     *
+     * - battery `baseInkPx / ink.height`;
+     * - cell `baseInkPx / 92.9` (single) or `/ 103.3` (dual stacked block);
+     * - Wi-Fi `0.98 * baseInkPx / ink.height`; a data-type label `baseInkPx / 100` (cap 0.714 x base).
+     *
+     * The ink gap is [gapPx] for every ink and is NOT multiplied by the user scale. The leaf is the
+     * artboard x base x user scale, and its top puts the ink centre on the outer centre line:
+     * `round(outerH / 2 - (ink.top + ink.height / 2) * base * scale)`. This is the new path only;
+     * [metrics] keeps the legacy R9 top rule as the fallback.
+     */
+    fun metricsAtInk(
+        kind: IosIconKind,
+        visual: IosVisual,
+        baseInkPx: Float,
+        gapPx: Float,
+        scalePercent: Int,
+        offsetPercent: Int,
+        stockRowHeight: Int
+    ): IosSlotMetrics {
+        val k = scalePercent.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE) / 100f
+        val ink = IosGeometry.inkBox(kind, visual)
+        val base = basePxPerUnit(kind, visual, baseInkPx)
+        val artW = IosGlyphRenderer.artboardWidth(kind, visual)
+        val artH = IosGlyphRenderer.artboardHeight(kind, visual)
+        val inkW = ink.width * base * k
+        val leafH = (artH * base * k).roundToInt().coerceAtLeast(1)
+        val outerW = (inkW + gapPx).roundToInt().coerceAtLeast(1)
+        val outerH = max(stockRowHeight.coerceAtLeast(0), leafH).coerceAtLeast(1)
+        val dx = (offsetPercent.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET) /
+            100f * inkW).coerceIn(-gapPx / 2f, gapPx / 2f)
+        return IosSlotMetrics(
+            outerWidth = outerW,
+            outerHeight = outerH,
+            leaf = IosSlotBox(
+                width = (artW * base * k).roundToInt().coerceAtLeast(1),
+                height = leafH,
+                left = (gapPx / 2f - ink.left * base * k + dx).roundToInt().coerceAtLeast(0),
+                top = (outerH / 2f - (ink.top + ink.height / 2f) * base * k)
+                    .roundToInt().coerceAtLeast(0)
+            )
+        )
+    }
+
+    /**
+     * R11 label-mode mobile slot sized from the host clock. The cell uses the cell denominator and
+     * the label the data-label one; both leaves are centred on the one row centre line (the 5G label
+     * included), and the ink gap between cell, label and the next slot is the same [gapPx].
+     */
+    fun mobileMetricsAtInk(
+        cellVisual: IosVisual,
+        labelVisual: IosVisual?,
+        baseInkPx: Float,
+        gapPx: Float,
+        cellScalePercent: Int,
+        cellOffsetPercent: Int,
+        labelScalePercent: Int,
+        labelOffsetPercent: Int,
+        stockRowHeight: Int
+    ): IosSlotMetrics {
+        if (labelVisual == null) {
+            return metricsAtInk(
+                IosIconKind.CELL,
+                cellVisual,
+                baseInkPx,
+                gapPx,
+                cellScalePercent,
+                cellOffsetPercent,
+                stockRowHeight
+            )
+        }
+        val cellK = cellScalePercent.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE) / 100f
+        val labelK = labelScalePercent.coerceIn(DuoPrefs.MIN_ICON_SCALE, DuoPrefs.MAX_ICON_SCALE) / 100f
+        val cellInk = IosGeometry.inkBox(IosIconKind.CELL, cellVisual)
+        val labelInk = IosGeometry.inkBox(IosIconKind.WIFI, labelVisual)
+        val cellBase = basePxPerUnit(IosIconKind.CELL, cellVisual, baseInkPx)
+        val labelBase = basePxPerUnit(IosIconKind.WIFI, labelVisual, baseInkPx)
+        val cellInkW = cellInk.width * cellBase * cellK
+        val labelInkW = labelInk.width * labelBase * labelK
+        val cellDx = (cellOffsetPercent.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET) /
+            100f * cellInkW).coerceIn(-gapPx / 2f, gapPx / 2f)
+        val labelDx = (labelOffsetPercent.coerceIn(DuoPrefs.MIN_ICON_OFFSET, DuoPrefs.MAX_ICON_OFFSET) /
+            100f * labelInkW).coerceIn(-gapPx / 2f, gapPx / 2f)
+        val cellLeafH = (IosGlyphRenderer.artboardHeight(IosIconKind.CELL, cellVisual) * cellBase * cellK)
+            .roundToInt().coerceAtLeast(1)
+        val labelLeafH = (IosGlyphRenderer.artboardHeight(IosIconKind.WIFI, labelVisual) * labelBase * labelK)
+            .roundToInt().coerceAtLeast(1)
+        val outerW = (cellInkW + gapPx + labelInkW + gapPx).roundToInt().coerceAtLeast(1)
+        val outerH = max(max(stockRowHeight.coerceAtLeast(0), cellLeafH), labelLeafH)
+            .coerceAtLeast(1)
+        return IosSlotMetrics(
+            outerWidth = outerW,
+            outerHeight = outerH,
+            leaf = IosSlotBox(
+                width = (IosGlyphRenderer.artboardWidth(IosIconKind.CELL, cellVisual) * cellBase * cellK)
+                    .roundToInt().coerceAtLeast(1),
+                height = cellLeafH,
+                left = (gapPx / 2f - cellInk.left * cellBase * cellK + cellDx)
+                    .roundToInt().coerceAtLeast(0),
+                top = (outerH / 2f - (cellInk.top + cellInk.height / 2f) * cellBase * cellK)
+                    .roundToInt().coerceAtLeast(0)
+            ),
+            label = IosSlotBox(
+                width = (IosGlyphRenderer.artboardWidth(IosIconKind.WIFI, labelVisual) * labelBase * labelK)
+                    .roundToInt().coerceAtLeast(1),
+                height = labelLeafH,
+                left = (gapPx / 2f + cellInkW + gapPx - labelInk.left * labelBase * labelK + labelDx)
+                    .roundToInt().coerceAtLeast(0),
+                top = (outerH / 2f - (labelInk.top + labelInk.height / 2f) * labelBase * labelK)
+                    .roundToInt().coerceAtLeast(0)
+            )
+        )
+    }
+
+    /** R11 px per artboard unit for [kind], derived from the target battery-body ink [baseInkPx]. */
+    private fun basePxPerUnit(kind: IosIconKind, visual: IosVisual, baseInkPx: Float): Float {
+        val ink = IosGeometry.inkBox(kind, visual)
+        val base = when (kind) {
+            IosIconKind.BATTERY -> baseInkPx / ink.height
+            IosIconKind.CELL -> baseInkPx / if (visual.cellMode == IosCellMode.SINGLE) {
+                IosGeometry.Cell.SINGLE_BAR_BOTTOM - IosGeometry.Cell.TOP
+            } else {
+                IosGeometry.Cell.DUAL_BLOCK_H
+            }
+            IosIconKind.WIFI -> if (visual.wifiSlot is IosWifiSlot.DataType) {
+                baseInkPx / IosGeometry.Battery.BODY_H
+            } else {
+                WIFI_INK_TO_BASE_INK * baseInkPx / ink.height
+            }
+        }
+        return base.takeIf { it.isFinite() && it > 0f } ?: (baseInkPx / IosGeometry.Battery.BODY_H)
+    }
+
+    // ------------------------------------------------------------------------------ host clock
+
+    /**
+     * Resolves the host clock id by [clockIdName] in [systemUiPackage]. The clock is looked up lazily
+     * from each leaf's root view, so one configure covers the home, keyguard and QS bars.
+     */
+    @Synchronized
+    internal fun configure(context: Context, systemUiPackage: String, clockIdName: String) {
+        clockRef = null
+        clockTextSize = Float.NaN
+        clockResId = try {
+            val id = context.resources.getIdentifier(clockIdName, "id", systemUiPackage)
+            if (id == 0) {
+                logOnce.once("ios-host-clock-id") {
+                    L.w("$TAG clock id '$clockIdName' not found in $systemUiPackage; screen-width fallback")
+                }
+            }
+            id
+        } catch (t: Throwable) {
+            logOnce.once("ios-host-clock-id") {
+                L.w("$TAG clock id lookup failed: ${t.javaClass.simpleName}; screen-width fallback")
+            }
+            0
+        }
+    }
+
+    /**
+     * The host target ink in px (`1.08 x` the clock digit cap), or null when the clock view or its
+     * paint is unreadable (the caller then keeps the legacy screen-width metrics). Cached and
+     * re-resolved when the clock detaches or its text size changes.
+     */
+    internal fun hostInkPx(leaf: View): Float? {
+        val clock = clockView(leaf)
+        val cap = clock?.let { clockCapPx(it) }?.takeIf { it > 0f }
+        if (cap == null) {
+            logOnce.once("ios-host-clock-fallback") {
+                L.w("$TAG host clock unreadable; screen-width fallback")
+            }
+            return null
+        }
+        val ink = HOST_INK_PER_CLOCK_CAP * cap
+        logOnce.once("ios-host-clock") {
+            L.i("$TAG host clock cap=${cap.roundToInt()}px target ink=${ink.roundToInt()}px")
+        }
+        return ink
+    }
+
+    private fun clockView(leaf: View): TextView? {
+        val cached = clockRef?.get()
+        if (cached != null && cached.isAttachedToWindow && cached.textSize == clockTextSize) {
+            return cached
+        }
+        val id = clockResId
+        if (id == 0) return null
+        val found = try {
+            leaf.rootView.findViewById<View>(id) as? TextView
+        } catch (_: Throwable) {
+            null
+        }
+        if (found != null) {
+            clockRef = WeakReference(found)
+            clockTextSize = found.textSize
+        }
+        return found
+    }
+
+    /** The digit cap in px from the clock's own paint ("0", then "H"); 0 when unreadable. */
+    private fun clockCapPx(clock: TextView): Float {
+        val paint = clock.paint ?: return 0f
+        val bounds = Rect()
+        return try {
+            paint.getTextBounds("0", 0, 1, bounds)
+            if (bounds.height() > 0) {
+                bounds.height().toFloat()
+            } else {
+                paint.getTextBounds("H", 0, 1, bounds)
+                if (bounds.height() > 0) bounds.height().toFloat() else 0f
+            }
+        } catch (_: Throwable) {
+            0f
+        }
+    }
+
     // ----------------------------------------------------------------------------------- registry
 
     /**
@@ -370,25 +625,65 @@ internal object IosSlotLayout {
         if (outer.visibility == View.GONE && outer.layoutParams?.width == 0) return
         val visual = glyph.visualForTest ?: return
         val settings = currentSettings
+        val label = slot.label?.get()
+        val labelVisual = if (slot.kind == Kind.MOBILE) {
+            val labelGlyph = label?.drawable as? IosGlyphDrawable
+            labelGlyph
+                ?.takeIf { it.kind == IosIconKind.WIFI && label.visibility != View.GONE }
+                ?.visualForTest
+                ?.takeIf { it.wifiSlot is IosWifiSlot.DataType }
+        } else {
+            null
+        }
         val screenW = screenWidth(leaf)
         val designRowHeight = rowHeight(screenW)
-        val slotMetrics = when (slot.kind) {
-            Kind.WIFI -> metrics(
-                IosIconKind.WIFI,
-                visual,
-                screenW,
-                scalePercent(settings, IosIconKind.WIFI),
-                offsetPercent(settings, IosIconKind.WIFI),
-                designRowHeight
-            )
-            Kind.MOBILE -> {
-                val label = slot.label?.get()
-                val labelGlyph = label?.drawable as? IosGlyphDrawable
-                val labelVisual = labelGlyph
-                    ?.takeIf { it.kind == IosIconKind.WIFI && label.visibility != View.GONE }
-                    ?.visualForTest
-                    ?.takeIf { it.wifiSlot is IosWifiSlot.DataType }
-                mobileMetrics(
+        // R11: the host clock owns the size; a null read keeps the legacy screen-width path exactly.
+        val hostInk = (hostInkOverrideForTest ?: hostInkPx(leaf))
+            ?.takeIf { it.isFinite() && it > 0f }
+        val hostGap = hostInk?.times(HOST_GAP_PER_INK_HEIGHT)
+        val slotMetrics = if (hostInk != null && hostGap != null) {
+            when (slot.kind) {
+                Kind.WIFI -> metricsAtInk(
+                    IosIconKind.WIFI,
+                    visual,
+                    hostInk,
+                    hostGap,
+                    scalePercent(settings, IosIconKind.WIFI),
+                    offsetPercent(settings, IosIconKind.WIFI),
+                    designRowHeight
+                )
+                Kind.MOBILE -> mobileMetricsAtInk(
+                    visual,
+                    labelVisual,
+                    hostInk,
+                    hostGap,
+                    scalePercent(settings, IosIconKind.CELL),
+                    offsetPercent(settings, IosIconKind.CELL),
+                    scalePercent(settings, IosIconKind.WIFI),
+                    offsetPercent(settings, IosIconKind.WIFI),
+                    designRowHeight
+                )
+                Kind.BATTERY -> metricsAtInk(
+                    IosIconKind.BATTERY,
+                    visual,
+                    hostInk,
+                    hostGap,
+                    scalePercent(settings, IosIconKind.BATTERY),
+                    offsetPercent(settings, IosIconKind.BATTERY),
+                    designRowHeight
+                )
+            }
+        } else {
+            when (slot.kind) {
+                Kind.WIFI -> metrics(
+                    IosIconKind.WIFI,
+                    visual,
+                    screenW,
+                    scalePercent(settings, IosIconKind.WIFI),
+                    offsetPercent(settings, IosIconKind.WIFI),
+                    designRowHeight
+                )
+                Kind.MOBILE -> mobileMetrics(
                     visual,
                     labelVisual,
                     screenW,
@@ -398,15 +693,15 @@ internal object IosSlotLayout {
                     offsetPercent(settings, IosIconKind.WIFI),
                     designRowHeight
                 )
+                Kind.BATTERY -> metrics(
+                    IosIconKind.BATTERY,
+                    visual,
+                    screenW,
+                    scalePercent(settings, IosIconKind.BATTERY),
+                    offsetPercent(settings, IosIconKind.BATTERY),
+                    designRowHeight
+                )
             }
-            Kind.BATTERY -> metrics(
-                IosIconKind.BATTERY,
-                visual,
-                screenW,
-                scalePercent(settings, IosIconKind.BATTERY),
-                offsetPercent(settings, IosIconKind.BATTERY),
-                designRowHeight
-            )
         }
         if (!begin()) return
         try {
@@ -449,6 +744,11 @@ internal object IosSlotLayout {
      * Sizes the artboard leaf and positions its ink at the slot's left margin. `FIT_XY` is required:
      * the stock `wifi_signal` is `scaleType=center` and the other leaves default to `FIT_CENTER`, both
      * of which would re-scale/draw the glyph inside the new artboard-sized leaf.
+     *
+     * R11: the measured battery parent (`StatBatteryMeterView`, a `LinearLayout` with
+     * `gravity=start|center`) contributes a +7/+9 padding of its own, so the leaf margins subtract the
+     * immediate parent's `paddingLeft`/`paddingTop` and the gravity is pinned to `START|TOP`. The leaf
+     * then lands at the computed top on every parent, including the padded battery one.
      */
     private fun applyLeaf(view: ImageView, box: IosSlotBox) {
         val params = view.layoutParams ?: return
@@ -464,18 +764,25 @@ internal object IosSlotLayout {
         }
         val margins = params as? ViewGroup.MarginLayoutParams
         if (margins != null) {
-            if (margins.leftMargin != box.left || margins.marginStart != box.left) {
-                margins.leftMargin = box.left
-                margins.marginStart = box.left
+            val parent = view.parent as? View
+            val left = box.left - (parent?.paddingLeft ?: 0)
+            val top = box.top - (parent?.paddingTop ?: 0)
+            if (margins.leftMargin != left || margins.marginStart != left) {
+                margins.leftMargin = left
+                margins.marginStart = left
                 changed = true
             }
-            if (margins.topMargin != box.top) {
-                margins.topMargin = box.top
+            if (margins.topMargin != top) {
+                margins.topMargin = top
                 changed = true
             }
-            if (params is FrameLayout.LayoutParams) {
-                val gravity = Gravity.START or Gravity.TOP
-                if (params.gravity != gravity) {
+            val gravity = Gravity.START or Gravity.TOP
+            when (params) {
+                is FrameLayout.LayoutParams -> if (params.gravity != gravity) {
+                    params.gravity = gravity
+                    changed = true
+                }
+                is LinearLayout.LayoutParams -> if (params.gravity != gravity) {
                     params.gravity = gravity
                     changed = true
                 }
@@ -614,8 +921,16 @@ internal object IosSlotLayout {
             margins.marginStart = original.marginStart
             margins.marginEnd = original.marginEnd
         }
-        if (params is FrameLayout.LayoutParams) params.gravity = original.gravity
+        when (params) {
+            is FrameLayout.LayoutParams -> params.gravity = original.gravity
+            is LinearLayout.LayoutParams -> params.gravity = original.gravity
+        }
     }
+
+    private fun gravityOf(params: ViewGroup.LayoutParams): Int =
+        (params as? FrameLayout.LayoutParams)?.gravity
+            ?: (params as? LinearLayout.LayoutParams)?.gravity
+            ?: 0
 
     private fun restoreCaptured() {
         val views = try {
@@ -643,7 +958,7 @@ internal object IosSlotLayout {
             bottomMargin = margins?.bottomMargin ?: 0,
             marginStart = margins?.marginStart ?: 0,
             marginEnd = margins?.marginEnd ?: 0,
-            gravity = (params as? FrameLayout.LayoutParams)?.gravity ?: 0,
+            gravity = gravityOf(params),
             clipChildren = (view as? ViewGroup)?.clipChildren,
             clipToPadding = (view as? ViewGroup)?.clipToPadding
         )
@@ -705,6 +1020,10 @@ internal object IosSlotLayout {
         targets.clear()
         currentSettings = null
         screenWidthOverrideForTest = null
+        hostInkOverrideForTest = null
+        clockResId = 0
+        clockRef = null
+        clockTextSize = Float.NaN
         applying = false
     }
 
