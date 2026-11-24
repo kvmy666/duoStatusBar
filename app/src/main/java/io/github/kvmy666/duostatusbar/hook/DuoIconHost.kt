@@ -2301,7 +2301,10 @@ internal class DuoIconHost(private val context: Context) {
             // A drag must not resize the Rive view (a live resize is what took System UI down); a
             // changed size with live apply on rebuilds through the host instead (see LiveApply).
             // Rotation is one saved size for the orientation now on screen, so it is applied here.
-            if (applySavedSize) geometry.applySize(fresh.sizePercent)
+            if (applySavedSize) {
+                geometry.applySize(fresh.sizePercent)
+                appliedSizePercent = fresh.sizePercent
+            }
             if (fresh.liveApply || applySavedSize) {
                 applyLayout()
                 syncIndicators()
