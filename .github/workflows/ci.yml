@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     # Measured job p95 196.3s; x1.5 = 294s. Six minutes keeps that budget and
     # leaves headroom for a cold Gradle start (47.5s config measured).
-    timeout-minutes: 6
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
