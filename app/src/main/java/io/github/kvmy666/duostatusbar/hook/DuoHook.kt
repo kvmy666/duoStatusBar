@@ -567,9 +567,18 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.engine", it) }
     }
 
-    /** Leaves iOS mode: stops the v2 owners and records the NONE route. */
-    private fun deactivateIosV2() {
+    /**
+     * Leaves iOS mode: stops the v2 owners and records the NONE route.
+     *
+     * [releaseOrder] also releases the process-wide order hooks; only the final iOS teardown may do
+     * that, so an activation failure keeps them installed for the next attempt.
+     */
+    private fun deactivateIosV2(releaseOrder: Boolean = false) {
         stopIosV2Owners()
+        if (releaseOrder) {
+            runCatching { IosIconOrder.release() }
+                .onFailure { IosV2Log.failureOnce("duohook.deactivate.orderRelease", it) }
+        }
         iosRoute = IosRoute.NONE
         IosRouteDiagnostics.update(iosRoute, rom.id)
     }
@@ -607,7 +616,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * nothing owns the bar afterwards (D).
      */
     private fun iosTeardown(next: FeatureSet = features) {
-        deactivateIosV2()
+        deactivateIosV2(releaseOrder = true)
         if (!keepShadeLayoutListener(next)) detachShadeLayoutListener()
     }
 
@@ -706,7 +715,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         if (shadeRoot != null) return
         shadeRoot = view
         L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
-        if (monitor != null || iosRoute == IosRoute.V2) {
+        if (monitor != null) {
             attachExtraBars(view)
             addShadeLayoutListener(view)
         }
@@ -1451,10 +1460,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 val settle = Runnable {
                     shadeSettle = null
                     L.guard("DuoHook shade settle") {
-                            if (!shadeSettleHeaderAttempted) {
-                                shadeSettleHeaderAttempted = true
-                                if (duo) shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
-                            }
+                        if (!shadeSettleHeaderAttempted) {
+                            shadeSettleHeaderAttempted = true
+                            if (duo) shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                        }
                         if (duo) {
                             // The settle is the one full hide pass after the transition; the per-layout
                             // callback above is only a cheap re-show check.
