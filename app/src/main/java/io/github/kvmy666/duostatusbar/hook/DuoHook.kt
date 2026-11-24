@@ -210,6 +210,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // Activation left no live map: keep the stock bar and name the missing piece.
                     logIosV2Unavailable(next)
                     stopIosV2Owners()
+                    iosRoute = IosRoute.NONE
+                    IosRouteDiagnostics.update(iosRoute, rom.id)
                     applyDuoRegistrations()
                     settingsRereadAttempt = 0
                     reporter.report(ctx, stage, iosSettings)
@@ -806,6 +808,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // iOS on but v2 cannot take the bar: keep the stock bar and name the missing piece
                 // once. No host is created and nothing is scheduled to attach.
                 logIosV2Unavailable(features)
+                iosRoute = IosRoute.NONE
+                IosRouteDiagnostics.update(iosRoute, rom.id)
                 applyDuoRegistrations()
                 return@guard
             }
