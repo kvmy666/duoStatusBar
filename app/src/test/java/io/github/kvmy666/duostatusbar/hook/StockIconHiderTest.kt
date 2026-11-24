@@ -279,6 +279,40 @@ class StockIconHiderTest {
     }
 
     @Test
+    fun `re-added same-count views need a reapply`() {
+        val strip = LinearLayout(context)
+        strip.addView(FakeIcon(context, "wifi"))
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+        assertFalse(hider.needsReapply(strip))
+
+        // Keyguard/unlock re-inflates the strip with new view objects but the same child count.
+        strip.removeAllViews()
+        strip.addView(FakeIcon(context, "wifi"))
+
+        assertTrue(hider.needsReapply(strip))
+    }
+
+    @Test
+    fun `hide re-applies to the re-added views after a keyguard cycle`() {
+        val strip = LinearLayout(context)
+        strip.addView(FakeIcon(context, "wifi"))
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+
+        strip.removeAllViews()
+        val newWifi = FakeIcon(context, "wifi")
+        val newAlarm = FakeIcon(context, "alarm_clock")
+        strip.addView(newWifi)
+        strip.addView(newAlarm)
+
+        hider.hideReplaced(strip, keep = null)
+
+        assertEquals(View.GONE, newWifi.visibility)
+        assertEquals(View.VISIBLE, newAlarm.visibility)
+    }
+
+    @Test
     fun `restore clears the pass so the next layout runs the full walk`() {
         val strip = LinearLayout(context)
         strip.addView(FakeIcon(context, "wifi"))

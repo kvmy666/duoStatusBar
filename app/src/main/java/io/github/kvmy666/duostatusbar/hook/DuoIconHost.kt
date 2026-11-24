@@ -472,6 +472,25 @@ internal class DuoIconHost(private val context: Context) {
     private val thrash = ThrashGuard()
     private var thrashTripped = false
 
+    /**
+     * PART C: true while every element view is intentionally off the display (screen off/AOD). The bar
+     * still fires layout passes there, so a 0x0 box must not count as a suppress/restore loop and the
+     * stock icons must not be restored: the hiding is intentional, not a failure.
+     */
+    private var elementsHidden = false
+
+    /** One queued re-hide after the views come back; never post a second one while it is pending. */
+    private var rehidePosted = false
+    private val rehideRunnable = Runnable {
+        rehidePosted = false
+        if (elementsHidden) return@Runnable
+        try {
+            reapplyHiding()
+        } catch (t: Throwable) {
+            L.w("rehide: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
     /** Restyles the status-bar clock and remembers its original so switching off restores it. */
     private val clock = ClockFontController(context, rom)
 
@@ -2103,10 +2122,26 @@ internal class DuoIconHost(private val context: Context) {
      * half-drawn.
      */
     fun setElementsVisible(on: Boolean) {
+        val wasHidden = elementsHidden
         logOnce.once(if (on) "elements-visible" else "elements-hidden") {
             L.i("element views ${if (on) "shown" else "hidden"} on ${allElements().size} surface(s)")
         }
-        if (!on) cancelMainHandoff()
+        if (!on) {
+            cancelMainHandoff()
+            // Drop a pending re-hide: the next show schedules a fresh one.
+            if (rehidePosted) {
+                element?.ui?.let { view ->
+                    try {
+                        view.removeCallbacks(rehideRunnable)
+                    } catch (t: Throwable) {
+                        L.w("rehide cancel: ${t.javaClass.simpleName}: ${t.message}")
+                    }
+                }
+                rehidePosted = false
+            }
+            // Mark hidden first: a layout pass during the transition must not restore the stock icons.
+            elementsHidden = true
+        }
         for (target in allElements()) {
             try {
                 target.ui.visibility = if (on) View.VISIBLE else View.GONE
@@ -2115,6 +2150,22 @@ internal class DuoIconHost(private val context: Context) {
                 target.setRenderActive(on)
             } catch (t: Throwable) {
                 L.w("visibility: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+        if (HidePassPolicy.resetOnShow(wasHidden, on)) {
+            // Coming back after a screen-off/AOD cycle is a real change: give the guard a fresh budget
+            // and re-hide the stock views the ROM re-inflated while the element was off the display.
+            elementsHidden = false
+            resetThrash()
+            val view = element?.ui
+            if (view != null && !rehidePosted) {
+                rehidePosted = true
+                try {
+                    view.post(rehideRunnable)
+                } catch (t: Throwable) {
+                    rehidePosted = false
+                    L.w("rehide schedule: ${t.javaClass.simpleName}: ${t.message}")
+                }
             }
         }
     }
@@ -3401,6 +3452,8 @@ internal class DuoIconHost(private val context: Context) {
      * 10 s window trips [thrash] and backs off completely (no hide, no restore) until a real change.
      */
     private fun restoreStockGuarded(reason: String) {
+        // PART C: off-screen hiding is intentional, not a suppress/restore event. Never count it.
+        if (!HidePassPolicy.allowsStockRestore(elementsHidden)) return
         if (thrashTripped) return
         if (thrash.record(SystemClock.uptimeMillis())) {
             thrashTripped = true
@@ -3419,7 +3472,7 @@ internal class DuoIconHost(private val context: Context) {
      * this runs again on layout changes rather than only once.
      */
     fun reapplyHiding() {
-        if (thrashTripped) return
+        if (!HidePassPolicy.allowsHidePass(elementsHidden, thrashTripped)) return
         // FR-03b: the keyguard bar and the shade header are re-shown on every shade/lock transition,
         // so they get the same pass.
         reapplyExtraHiding()
@@ -3471,7 +3524,7 @@ internal class DuoIconHost(private val context: Context) {
      * so the full pass always follows a transition.
      */
     fun reapplyHidingIfNeeded() {
-        if (thrashTripped) return
+        if (!HidePassPolicy.allowsHidePass(elementsHidden, thrashTripped)) return
         val strip = hideStrip ?: host
         val mainNeeded = strip != null && hider.needsReapply(strip)
         val extraNeeded = extras.any { slot ->

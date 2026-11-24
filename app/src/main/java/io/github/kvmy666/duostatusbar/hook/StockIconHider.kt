@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.hook
 import android.view.View
 import android.view.ViewGroup
 import io.github.kvmy666.duostatusbar.L
+import java.lang.ref.WeakReference
 
 /**
  * Hides the stock status-bar views and puts them back exactly as they were (FR-08/21).
@@ -24,6 +25,13 @@ internal class StockIconHider {
 
     /** Every container the last full passes covered, with the child count seen, for [needsReapply]. */
     private val appliedContainers = java.util.IdentityHashMap<ViewGroup, Int>()
+
+    /**
+     * The exact views a pass hid, per container. A keyguard/unlock re-inflates the strip with new view
+     * objects but the same child count; without this the remembered hidden views (now detached, still
+     * GONE) would make [needsReapply] say false and the re-added stock icons would stay visible.
+     */
+    private val appliedViews = HashMap<ViewGroup, MutableList<WeakReference<View>>>()
 
     /**
      * Hides every child of [container] except [keep], remembering each one's original state.
@@ -102,12 +110,32 @@ internal class StockIconHider {
     fun needsReapply(container: ViewGroup): Boolean {
         val childCount = appliedContainers[container] ?: return true
         if (container.childCount != childCount) return true
-        return hiddenOriginals.any { it.appliedVisibility != it.view.visibility }
+        if (hiddenOriginals.any { it.appliedVisibility != it.view.visibility }) return true
+        val refs = appliedViews[container] ?: return true
+        return refs.any { ref ->
+            val view = ref.get()
+            view == null || !isWithin(view, container)
+        }
     }
 
-    /** Remembers that a full pass just ran for [container]. */
+    /** Remembers that a full pass just ran for [container], with the views it left hidden. */
     private fun noteApplied(container: ViewGroup) {
         appliedContainers[container] = container.childCount
+        val refs = ArrayList<WeakReference<View>>()
+        for (state in hiddenOriginals) {
+            if (isWithin(state.view, container)) refs.add(WeakReference(state.view))
+        }
+        appliedViews[container] = refs
+    }
+
+    /** True when [view] is still in [container]'s tree (a re-inflated strip detaches the old views). */
+    private fun isWithin(view: View, container: ViewGroup): Boolean {
+        var parent: View? = view
+        while (parent != null) {
+            if (parent === container) return true
+            parent = parent.parent as? View
+        }
+        return false
     }
 
     /**
@@ -187,6 +215,7 @@ internal class StockIconHider {
         }
         hiddenOriginals.clear()
         appliedContainers.clear()
+        appliedViews.clear()
     }
 
     /**

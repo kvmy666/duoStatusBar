@@ -566,6 +566,11 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         val before = liveEvents.active
         L.i("unlock received enabled=${host.eventEnabled(LiveEventType.UNLOCK)} active=${before?.type}")
         val event = liveEvents.offer(LiveEventType.UNLOCK, source = "ACTION_USER_PRESENT")
+        // PART C: a keyguard -> unlock cycle re-inflates the strip, so the stock icons can reappear
+        // after the element was off the display. The cycle is a real change: clear the backoff and
+        // re-hide idempotently (the hidden/thrash guards still apply).
+        host.resetThrash()
+        host.reapplyHiding()
         if (event == null) {
             L.w("unlock ignored by arbiter enabled=${host.eventEnabled(LiveEventType.UNLOCK)}")
             return
