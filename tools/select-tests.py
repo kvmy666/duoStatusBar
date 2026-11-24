@@ -647,9 +647,10 @@ def _selftest_cases(index, root):
         # (IosElement.kt:42), and IosVisual uses IosWifiSlot.Wifi (IosVisual.kt:48), whose simple
         # name also matches the same-package IosGeometry.Wifi (IosGeometry.kt:255). That last hop is
         # the selector's conservative name match, not an under-selection. Pin the exact set: an
-        # unrelated settings test must not be swept in, and none of these four may silently drop out.
+        # unrelated settings test must not be swept in, and none of these five may silently drop out.
         # Over-selection is acceptable; under-selection is not.
         expected_settings = {
+            test_fqn("HideExtrasSettingsTest"),
             test_fqn("IosColumnSkewTest"),
             test_fqn("IosIconSettingsTest"),
             test_fqn("SettingsBridgeSkewTest"),

@@ -1,16 +1,16 @@
-# Duo Status Bar 2.0.2
+# Duo Status Bar 2.1.0
 
-A maintenance release on top of 2.0.1.
+This release adds an iOS 27 status bar mode alongside the existing Duo ring mode, which is unchanged.
 
-## Fixes
+## New
 
-- **Restart / QS / shade**: the element is not hidden or reported attached until it has a real laid-out box. A 0x0 element falls back to the simple Canvas drawing; if that also fails, the stock icons are restored instead of leaving a gap. Panel reveal/handoff retries for a bounded window and no longer treats alpha 0 as "no view".
-- **ROM profiles**: measured OxygenOS and HyperOS profiles now require their measured SDK (OxygenOS 16 / SDK 36, HyperOS 3 / SDK 37). OxygenOS 13 is unverified and uses the generic ids.
-- **Classic fallback**: the Canvas fallback honors Classic (one SIM row) instead of always drawing the dual-SIM row.
-- **DND**: with middle=percent, Do Not Disturb keeps its normal middle seat instead of the inverted low/scaled seat.
-- **Report upload**: 2.0.1 and 2.0.2 builds carry the relay key; full-log upload is configured.
+- iOS 27 status bar mode with stacked dual-SIM icons and the iPhone icon order.
+- 5G placement options for the cellular indicators.
+- A toggle to hide extra icons from the status bar.
+- Icon sizes follow the host clock size by default.
+- Per-icon size and offset sliders for finer adjustment.
+- Charging colours for the battery indicator.
 
-## Known limitations
+## Improved
 
-- ColorOS 17 "both bars hidden" and the Xiaomi Fold lag/restart reports still need the user's ZIP or tombstone to prove the cause.
-- Android 13 OxygenOS may still fall back to Canvas if Rive cannot load its asset.
+- Diagnostic output is more detailed, so reports can identify the cause faster.
