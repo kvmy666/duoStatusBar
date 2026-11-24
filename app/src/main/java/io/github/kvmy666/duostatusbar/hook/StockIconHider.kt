@@ -121,6 +121,11 @@ internal class StockIconHider {
     /** Remembers that a full pass just ran for [container], with the views it left hidden. */
     private fun noteApplied(container: ViewGroup) {
         appliedContainers[container] = container.childCount
+        // An earlier inflation of this container leaves the views it hid detached: they can never be
+        // restored or seen again. Prune only those; a hidden view can be outside this container and
+        // still valid for the same hider (the QS battery sits beside `statusIcons` in the outer
+        // cluster), so attachment decides while `isWithin` stays the only tree check.
+        hiddenOriginals.removeAll { !it.view.isAttachedToWindow && !isWithin(it.view, container) }
         val refs = ArrayList<WeakReference<View>>()
         for (state in hiddenOriginals) {
             if (isWithin(state.view, container)) refs.add(WeakReference(state.view))

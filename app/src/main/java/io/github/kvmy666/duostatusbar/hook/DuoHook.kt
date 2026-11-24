@@ -1166,7 +1166,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
         handler.postDelayed({
             L.guard("DuoHook attach #$attempt") {
-                val root = statusBarRoot ?: return@guard
+                val root = liveStatusBarRoot() ?: return@guard
                 // Prefer the Application, but fall back to the bar window's own context: on a ROM where
                 // the module is injected late the Application may never have been captured.
                 val ctx = app ?: root.context

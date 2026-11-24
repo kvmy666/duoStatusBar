@@ -1,7 +1,9 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.app.Activity
 import android.content.Context
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
@@ -9,6 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -321,5 +324,56 @@ class StockIconHiderTest {
         hider.restore()
 
         assertTrue(hider.needsReapply(strip))
+    }
+
+    @Test
+    fun `a re-inflation drops the detached views an earlier pass hid`() {
+        val strip = LinearLayout(context)
+        val old = FakeIcon(context, "wifi")
+        strip.addView(old)
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+        assertEquals(View.GONE, old.visibility)
+
+        // The ROM re-inflates the same container with new view objects (same child count).
+        strip.removeAllViews()
+        val fresh = FakeIcon(context, "wifi")
+        strip.addView(fresh)
+        hider.hideReplaced(strip, keep = null)
+
+        hider.restore()
+        assertEquals(View.VISIBLE, fresh.visibility)
+        assertEquals("a detached view must not be resurrected", View.GONE, old.visibility)
+    }
+
+    @Test
+    fun `a nested pass keeps the sibling battery the same hider hid`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val outer = FrameLayout(activity)
+        val icons = LinearLayout(activity)
+        val wifi = FakeIcon(activity, "wifi")
+        icons.addView(wifi)
+        val battery = FakeIcon(activity, "battery").apply {
+            layoutParams = FrameLayout.LayoutParams(40, 30)
+        }
+        outer.addView(icons)
+        outer.addView(battery)
+        activity.setContentView(outer)
+        outer.layout(0, 0, 1080, 200)
+
+        val hider = StockIconHider()
+        // The QS cluster hides the inner statusIcons before the outer cluster is noted; a later pass
+        // walks the inner container first again, and the sibling battery must survive that prune.
+        hider.hideReplaced(icons, keep = null)
+        hider.hideKeepLayout(battery)
+        hider.notePass(outer)
+        hider.hideReplaced(icons, keep = null)
+        hider.hideKeepLayout(battery)
+        hider.notePass(outer)
+
+        hider.restore()
+        assertEquals(View.VISIBLE, battery.visibility)
+        assertEquals(View.VISIBLE, wifi.visibility)
+        assertEquals(40, battery.layoutParams.width)
     }
 }

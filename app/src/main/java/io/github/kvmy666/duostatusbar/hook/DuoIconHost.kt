@@ -447,6 +447,13 @@ internal class DuoIconHost(private val context: Context) {
     private var pendingRebuild = LiveRebuild.NONE
 
     /**
+     * A live rebuild tore the old element down with `restoreStock = false`, so the old hider still owns
+     * the icons it hid. The fresh element's first ready pass must restore that state before hiding with
+     * the current mode/keys, or a simultaneous hide-mode change could only hide and never un-hide.
+     */
+    private var rebuiltAwaitingHideReset = false
+
+    /**
      * The exact status icons the user selected in the per-icon list (A4), as stable
      * [StockIconKey] keys. Kept in step with the settings so an arrival, a layout pass and the
      * settings screen all agree on which view a key names. Empty means "only the replaced icons".
@@ -3170,6 +3177,8 @@ internal class DuoIconHost(private val context: Context) {
         val oldEngine = DuoPrefs.normalizeEngine(appliedEngineMode)
         val oldSize = appliedSizePercent
         L.i("live rebuild: $plan")
+        // Arm the reset before teardown so the fresh element sees it on its very first ready pass.
+        rebuiltAwaitingHideReset = true
         teardown(restoreStock = false, resetGeometry = false)
         val attached = try {
             attach(barRoot)
@@ -3185,6 +3194,7 @@ internal class DuoIconHost(private val context: Context) {
             } catch (t: Throwable) {
                 L.w("live rebuild restore: ${t.javaClass.simpleName}: ${t.message}")
             }
+            rebuiltAwaitingHideReset = false
             restoreAnchorVisibility()
             try {
                 clock.restore()
@@ -3209,6 +3219,18 @@ internal class DuoIconHost(private val context: Context) {
     /** The element is live: now it is safe to take the stock icons out and fire the reveal (FR-08/25). */
     private fun onElementReady(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
+        if (rebuiltAwaitingHideReset) {
+            // A live rebuild kept the old hide state on purpose while there was no element. Reset it
+            // here, synchronously before the fresh hide pass: the new pass then applies the current
+            // hide mode and keys, and icons the old mode hid are put back first.
+            try {
+                hider.restore()
+            } catch (t: Throwable) {
+                L.w("live rebuild hide reset: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            rebuiltAwaitingHideReset = false
+            L.i("live rebuild: hide state reset before the fresh element hides")
+        }
         if (!hasBox(candidate.ui) || !(candidate.ui.parent === target || candidate.ui.parent === host)) {
             L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} - not ready; scheduling fallback")
             L.w("Duo box detail: target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"} ready=${candidate.isReady}")
@@ -3675,6 +3697,9 @@ internal class DuoIconHost(private val context: Context) {
         rehidePosted = false
         elementsHidden = false
         pendingRebuild = LiveRebuild.NONE
+        // A rebuild teardown keeps the armed hide reset for the fresh element; any other teardown ends
+        // that cycle and drops it.
+        if (restoreStock) rebuiltAwaitingHideReset = false
         clearShadeRetry()
         cancelSurvivalTimer()
         cancelMainHandoff()
