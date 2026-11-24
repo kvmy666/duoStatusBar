@@ -111,51 +111,14 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private var host: DuoIconHost? = null
 
     /**
-     * The iOS replacement hosts, separate from [host] because the two modes are mutually exclusive
-     * (rule 7): when iOS mode is on, `DuoGuard.stage()` is OFF and no Duo element exists at all.
-     *
-     * The runtime is now the in-place replacement host ([IosReplaceHost]): it draws inside the stock
-     * battery/Wi-Fi/cellular views and creates no Rive layer. The host is single-surface
-     * (`isAttached`/one overlay layer), so the main bar, the keyguard bar and the shade header each get
-     * their own host. All of them share [iosSizeOwner] so every surface draws the home bar's glyph size
-     * (M15).
-     */
-    private var iosMainHost: IosReplaceHost? = null
-    private val iosExtraHosts = HashMap<String, IosReplaceHost>()
-
-    /**
      * R7 P4: how iOS mode is delivered right now. [IosRoute.V2] is the system-native resource engine
-     * + battery hook (no host); [IosRoute.HOST] is the pre-R7 replace host; [IosRoute.NONE] is iOS
-     * off. Every old-host entry point checks this so exactly one owner ever touches an icon.
+     * + battery hook; [IosRoute.NONE] is iOS off or an unsupported family (the stock bar is kept).
      */
     @Volatile
     private var iosRoute: IosRoute = IosRoute.NONE
 
-    /** One size owner for the main and extra iOS bars, so the keyguard/shade glyph matches the home bar (M15). */
-    private val iosSizeOwner = IosSizeOwner()
-
-    /** IOS-LAG: at most one extra-surface attach attempt per [IOS_EXTRA_ATTACH_MIN_MS]. */
-    private var lastIosExtraAttachAt = 0L
-
-    /**
-     * R6 item 4: `StatusBarIconView.onDarkChanged` fires once per icon per appearance change. One
-     * coalesced repaint per burst replaces a full refresh per icon.
-     */
-    private var iosRefreshPending = false
-    private val iosRefreshSoonRunnable = Runnable {
-        iosRefreshPending = false
-        if (features.iosRuntime) iosRefreshAll()
-    }
-
     /** R3 A6: the same bound for the plain-Duo extra bars, which had no throttle at all. */
     private var lastDuoExtraAttachAt = 0L
-
-    /** The shade header whose strip was not attachable, and when, so it is retried only after 5 s. */
-    private var iosHeaderFailed: View? = null
-    private var iosHeaderFailedAt = 0L
-
-    /** The qs/shade window whose strip was not attachable (R3 A1), with the same 5 s memo. */
-    private val iosShadeGate = IosShadeAttachGate(IOS_HEADER_RETRY_MS)
 
     /** The orientation whose settings are currently applied, so a config change can switch sets. */
     private var appliedOrientation = Configuration.ORIENTATION_UNDEFINED
@@ -237,72 +200,35 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 val previousRoute = iosRoute
                 iosRoute = resolveIosRoute(next)
                 if (iosRoute == IosRoute.V2) {
-                    // R8: after V2 activates the order, a live order is ours, not a leftover HOST;
-                    // counting it would make every later V2 apply tear down synchronously.
-                    val oldHostsLive = iosMainHost != null || iosExtraHosts.isNotEmpty() ||
-                        (previousRoute != IosRoute.V2 && IosIconOrder.isActive)
-                    // R7 P5: HOST -> V2 may not tear the host down before a map is live, or a failed
-                    // async build leaves no owner at all. Activate synchronously first when this is
-                    // not an already-live V2 session (V2 -> V2 may keep its old map and stay async).
-                    val synchronousActivation = previousRoute != IosRoute.V2 || oldHostsLive
-                    if (activateIosV2(ctx, iosSettings, synchronous = synchronousActivation)) {
-                        // R7 P4: only a successful activation may release a live host/order from a
-                        // previous HOST session, so no icon is ever drawn by two owners. R8: the order
-                        // just activated belongs to V2, so the teardown must not restore/release it.
-                        if (oldHostsLive) teardownIosHosts(next, releaseOrder = false)
-                        // R7 P5: the zero-double-ownership invariant is the post-condition here. After
-                        // the teardown and activation a V2 route must have no host left; a host that
-                        // survived the teardown would fight V2 for the same icon, so log once and keep
-                        // that live host (the fall-through below runs the normal HOST path).
-                        if (iosV2HasNoHosts(iosRoute, iosMainHost != null, iosExtraHosts.size)) {
-                            IosBatteryV2.refresh()
-                            applyDuoRegistrations()
-                            settingsRereadAttempt = 0
-                            reporter.report(ctx, stage, iosSettings)
-                            return@guard
-                        }
-                        logOnce.once("ios-v2-hosts-left") {
-                            L.w("iOS v2 active with a host still present - falling back to HOST")
-                        }
-                        stopIosV2Owners()
+                    if (activateIosV2(ctx, iosSettings, synchronous = previousRoute != IosRoute.V2)) {
+                        IosBatteryV2.refresh()
+                        applyDuoRegistrations()
+                        settingsRereadAttempt = 0
+                        reporter.report(ctx, stage, iosSettings)
+                        return@guard
                     }
-                    // Activation left no live map: keep HOST with the stock icons and the old owner.
-                    IosV2Log.branchOnce("duohook.route", "V2 activation refused - HOST kept")
-                    iosRoute = IosRoute.HOST
-                    IosRouteDiagnostics.update(iosRoute, rom.id)
+                    // Activation left no live map: keep the stock bar and name the missing piece.
+                    logIosV2Unavailable(next)
+                    stopIosV2Owners()
+                    applyDuoRegistrations()
+                    settingsRereadAttempt = 0
+                    reporter.report(ctx, stage, iosSettings)
+                    return@guard
                 }
-                // HOST families keep the pre-R7 path exactly as today; a stale v2 owner from a prior
-                // configuration is released first (defensive, so exactly one owner remains). R7 P5:
-                // stopping the owners must not clobber the route we just selected (HOST).
+                // iOS on but v2 cannot take the bar (uncovered family or missing hook): keep the
+                // stock bar, release any stale v2 owner and name the missing piece once.
+                logIosV2Unavailable(next)
                 stopIosV2Owners()
-                iosRoute = routeAfterStoppingV2Owners(IosRoute.HOST)
-                IosRouteDiagnostics.update(iosRoute, rom.id)
-                val iosMain = ensureIosMain(ctx)
-                // R3 A3: install only while iOS owns the bar (A6: no iOS work when it is off).
-                IosIconOrder.install(lp.classLoader)
-                IosIconOrder.activate()
-                statusBarRoot?.let { iosMain.attach(it) }
-                shadeRoot?.let { shade ->
-                    attachExtraBars(shade)
-                    // D: re-arm the shared layout listener if a NONE period detached it.
-                    addShadeLayoutListener(shade)
-                }
-                refreshIosHostSettings(
-                    iosSettings,
-                    listOfNotNull(iosMainHost) + iosExtraHosts.values
-                )
-                iosRefreshAll()
                 applyDuoRegistrations()
                 settingsRereadAttempt = 0
                 reporter.report(ctx, stage, iosSettings)
                 return@guard
             }
             // C11: decide the action before touching the live iOS attachment. An unreachable provider
-            // reads as DEFAULT (owner NONE), and the old order tore the iOS host down for that - exactly
-            // the "unreachable looks like off" regression. A live iOS host counts as an element here so
-            // the existing keep-and-retry branch also protects it. R7 P4: a live native owner counts too,
-            // so an unreachable read cannot silently release the resource map/battery.
-            val iosLive = iosMainHost != null || iosExtraHosts.isNotEmpty() || IosIconOrder.isActive ||
+            // reads as DEFAULT (owner NONE), and the old order tore iOS down for that - exactly the
+            // "unreachable looks like off" regression. A live iOS owner counts as an element here, so
+            // an unreachable read cannot silently release the resource map/battery.
+            val iosLive = IosIconOrder.isActive ||
                 IosResourceEngine.isActive || IosBatteryV2.isActive ||
                 IosMobileTypePlacement.isActive
             val action = settingsApplyAction(
@@ -529,30 +455,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         null
     }
 
-    /** The main-bar iOS host for this process, created on first use (shares [iosSizeOwner], M15). */
-    private fun ensureIosMain(ctx: Context): IosReplaceHost =
-        iosMainHost ?: IosReplaceHost(
-            ctx,
-            classLoader = lp.classLoader,
-            sizeOwner = iosSizeOwner,
-            isMainBar = true
-        ).also { iosMainHost = it }
-
-    /**
-     * One iOS host per extra surface (keyguard bar, shade header), all sharing [iosSizeOwner]. A separate
-     * host is required because [IosReplaceHost] owns one overlay layer and one `isAttached` state.
-     */
-    private fun ensureIosExtra(ctx: Context, surface: String): IosReplaceHost =
-        iosExtraHosts.getOrPut(surface) {
-            IosReplaceHost(
-                ctx,
-                classLoader = lp.classLoader,
-                sizeOwner = iosSizeOwner,
-                isMainBar = false,
-                surface = surface
-            )
-        }
-
     // ----------------------------------------------------------------------------- v2 routing
 
     /**
@@ -639,7 +541,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /**
      * Stops the v2 owners and restores the stock drawables, without touching the route. The caller
-     * decides the route (R7 P5: the HOST fall-through keeps HOST, it does not become NONE).
+     * decides the route.
      */
     private fun stopIosV2Owners() {
         // R9: put every stock LayoutParams/clip flag/scale type back before the drawables are restored.
@@ -661,8 +563,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.battery", it) }
         runCatching { IosResourceEngine.deactivate() }
             .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.engine", it) }
-        iosRoute = routeAfterStoppingV2Owners(iosRoute)
-        IosRouteDiagnostics.update(iosRoute, rom.id)
     }
 
     /** Leaves iOS mode: stops the v2 owners and records the NONE route. */
@@ -673,144 +573,40 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     /**
-     * The OnePlus vendor QS cluster, handed to the iOS shade-header host.
-     *
-     * This is the same hand-over Duo uses: [OnePlusShadeHooks] resolves the vendor cluster and passes
-     * it here instead of re-walking the tree, while `attachExtraBars`/`PanelHandoff` stay the generic
-     * trigger/fallback. The mode check uses only the cached settings snapshot and the adb override, and
-     * creates no host when iOS is off, so the Duo path is untouched on every non-iOS boot.
-     *
-     * R5: the cluster is handed over before it has a box, so [IosFirstFrameAttach] runs the attach on
-     * its first laid-out frame instead. Returning true keeps the vendor route on IOS; if the scheduled
-     * attempt later gives up, [onRefused] lets the vendor hook route the cluster to Duo instead.
+     * One line naming why v2 could not take the bar, so a stock bar in iOS mode is diagnosable.
+     * Engine-level failures log their specific class/method/resource from inside the engine.
      */
-    private fun attachOnePlusIos(
-        cluster: ViewGroup,
-        battery: View?,
-        source: String,
-        onRefused: () -> Unit
-    ): Boolean {
-        val ctx = app ?: cluster.context
-        if (!features.iosRuntime) return false
-        // R7 P4: the native route owns the icons; the host must never attach on top of it.
-        if (iosRoute == IosRoute.V2) return false
-        return try {
-            // R5: the vendor hook fires before the cluster has a box. Attaching then tears the host
-            // down and lets stock draw first, so the same attach waits for the first laid-out frame.
-            val laidOut = IosFirstFrameAttach.isLaidOut(cluster)
-            val accepted = IosFirstFrameAttach.whenLaidOut(
-                cluster,
-                attach = {
-                    // The pre-draw runs after this hand-over, so re-check the mode before creating a host.
-                    if (features.iosRuntime) {
-                        ensureIosExtra(ctx, "oneplus qs")
-                            .attachCluster("oneplus qs", cluster, battery, source)
-                    } else {
-                        false
-                    }
-                },
-                onRefused = onRefused
-            )
-            if (accepted) {
-                // Bounded by the two measured vendor sources; no line per layout pass.
-                logOnce.once("ios-oneplus-first-frame:$source") {
-                    L.i(
-                        "iOS oneplus qs: ${if (laidOut) "attached" else "scheduled"} " +
-                            "${cluster.javaClass.name} ($source)"
-                    )
-                }
-            }
-            accepted
-        } catch (t: Throwable) {
-            logOnce.once("ios-oneplus-attach") {
-                L.w("oneplus qs: iOS attach failed (${t.javaClass.simpleName}: ${t.message})")
-            }
-            false
+    private fun logIosV2Unavailable(next: FeatureSet) {
+        if (!features.iosRuntime && !next.iosRuntime) return
+        when {
+            !IosV2Profile.engineFamily(rom.id) ->
+                IosV2Log.branchOnce("ios.route", "v2 missing family=${rom.id} - stock bar kept")
+            !IosResourceEngine.installed ->
+                IosV2Log.branchOnce("ios.route", "v2 missing class=IosResourceEngine - stock bar kept")
+            !IosBatteryV2.installed ->
+                IosV2Log.branchOnce("ios.route", "v2 missing class=IosBatteryV2 - stock bar kept")
+            else ->
+                IosV2Log.branchOnce(
+                    "ios.route",
+                    "v2 activation refused - stock bar kept (see engine failure lines)"
+                )
         }
     }
 
-    /** Repaints every live iOS host. No-op when the mode is off and no host was ever created. */
+    /** Repaints the live iOS battery owner; v2 has no host and the resource map is already published. */
     private fun iosRefreshAll() {
-        // R7 P4: the v2 route has no host; the battery re-reads its own sticky state and the resource
-        // map is already published, so the only refresh that matters is the battery.
-        if (iosRoute == IosRoute.V2) {
-            IosBatteryV2.refresh()
-            return
-        }
-        iosMainHost?.refresh()
-        iosExtraHosts.values.forEach { it.refresh() }
+        IosBatteryV2.refresh()
     }
 
     /**
-     * R6 item 4: coalesces the per-icon `onDarkChanged` burst into one repaint. Settings and panel-edge
-     * refreshes stay immediate; only the appearance burst is debounced.
-     */
-    private fun iosRefreshAllSoon() {
-        // R7 P4: v2 owns tint through the battery hook's own onDarkChanged; no host repaint to coalesce.
-        if (iosRoute == IosRoute.V2) return
-        if (iosRefreshPending) return
-        iosRefreshPending = true
-        try {
-            handler.postDelayed(iosRefreshSoonRunnable, IOS_REFRESH_COALESCE_MS)
-        } catch (t: Throwable) {
-            IosV2Log.failureOnce("duohook.refreshSoon", t)
-            iosRefreshPending = false
-        }
-    }
-
-    /**
-     * Tears every iOS host down and restores every replaced stock drawing. Idempotent:
-     * `IosReplaceHost.teardown` is itself idempotent and the maps are cleared, so a second call does
-     * nothing.
+     * Leaves iOS mode: stops the v2 owners and restores every replaced stock drawing.
      *
      * [next] is the owner the apply is moving to, so the shared shade listener is removed only when
      * nothing owns the bar afterwards (D).
      */
     private fun iosTeardown(next: FeatureSet = features) {
-        // R7 P4: leaving iOS restores the battery drawable/bolt visibility and clears the resource map
-        // before the host/order teardown, so no stock icon is left half-replaced.
         deactivateIosV2()
-        teardownIosHosts(next)
-    }
-
-    /**
-     * The pre-R7 host teardown alone (no v2 deactivation). The HOST -> V2 transition uses this to
-     * restore the stock icons before the native owners attach.
-     *
-     * [releaseOrder] `false` keeps the process-wide [IosIconOrder] active for the V2 route (the
-     * HOST -> V2 transition has just activated it); every other caller restores and releases.
-     */
-    private fun teardownIosHosts(next: FeatureSet = features, releaseOrder: Boolean = true) {
-        iosMainHost?.teardown()
-        iosMainHost = null
-        iosExtraHosts.values.forEach { it.teardown() }
-        iosExtraHosts.clear()
-        // R3 A5.3: a retained failed-attach snapshot belongs to this iOS session only. Leaving iOS (or
-        // the module being switched off) must not leave a stale `ios surface=` line in later reports.
-        IosDiagnostics.clearAttempts()
-        // R3 A3: leaving iOS (or the module being switched off) is the only event that restores the
-        // stock order. A QS-header teardown while iOS stays on never reaches this method.
-        if (releaseOrder) {
-            IosIconOrder.restore()
-            // C: the order hooks are process-wide and retained. Release them with the session so a
-            // later iOS enable installs a fresh set and no callback mutates a container while iOS is
-            // off.
-            IosIconOrder.release()
-        }
-        // Do not leave the process-wide ImageView push/tint hooks registered with zero views.
-        IosPushHooks.releaseWhenEmpty()
         if (!keepShadeLayoutListener(next)) detachShadeLayoutListener()
-    }
-
-    /** R3 A1: a panel transition (or a new shade/header) is when a failed strip may be attachable. */
-    private fun resetIosAttachMemos() {
-        // F: header construction/inflate runs on every boot; iOS-off must not touch iOS state.
-        if (!features.iosRuntime) return
-        // R7 P4: the v2 route has no surface memos to reset (and no host to retry).
-        if (iosRoute == IosRoute.V2) return
-        iosShadeGate.reset()
-        iosHeaderFailed = null
-        iosHeaderFailedAt = 0L
     }
 
     /** Installs the boot hook set once per process. Shared by the Duo and iOS enable paths. */
@@ -820,13 +616,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         // OnePlus keeps the visible QS cluster outside the generic ShadeHeaderController surface.
         // These vendor hooks hand that cluster over directly; hookShadeHeader above stays the
         // fallback for every other ROM and for a build where the vendor classes change.
-        OnePlusShadeHooks(
-            lp,
-            { host },
-            { cluster, battery, source, onRefused ->
-                attachOnePlusIos(cluster, battery, source, onRefused)
-            }
-        ).install()
+        OnePlusShadeHooks(lp, { host }).install()
         // Flashlight/screenshot/unlock/panel-expansion are Duo-only and installed by the feature diff
         // (A6), never here: an iOS boot must not register them at all.
         hookStatusIconContainer()
@@ -892,10 +682,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 statusBarRoot = found
                 L.i("existing status bar window found: ${found.javaClass.name}")
                 scheduleAttach(attempt = 0)
-                // R6 item 4: a late injection already has the children inflated, so the icon hook saw
-                // a null statusBarRoot. Hand the existing window to the first-frame path; the closure
-                // is iOS-gated and the pre-draw attach is what prevents a stock frame.
-                if (found is ViewGroup) attachIosMainFirstFrame(found)
                 // Now that a SystemUI-owned context exists, the bootstrap can succeed even when the
                 // ActivityThread lookups did not.
                 bootstrap()
@@ -918,8 +704,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         if (shadeRoot != null) return
         shadeRoot = view
         L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
-        resetIosAttachMemos()
-        if (monitor != null || iosMainHost != null) {
+        if (monitor != null || iosRoute == IosRoute.V2) {
             attachExtraBars(view)
             addShadeLayoutListener(view)
         }
@@ -1012,25 +797,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             installHooksOnce()
             if (features.iosRuntime) {
                 // R7 P4: the native route is activated synchronously on the boot path so the very
-                // first inflation already sees our map; it installs no host, order or attach timer.
+                // first inflation already sees our map; it installs no host or attach timer.
                 iosRoute = resolveIosRoute(features)
                 if (iosRoute == IosRoute.V2 && activateIosV2(ctx, settings, synchronous = true)) {
                     applyDuoRegistrations()
                     return@guard
                 }
-                // Activation failed: fall back to the host with the stock bar restored. The failure may
-                // have left NONE behind (a thrown activation calls deactivateIosV2) or V2 (the engine
-                // refused a map); the HOST block below owns the bar in both cases, so the route is HOST
-                // unconditionally - mirroring the settings-apply fall-through.
-                iosRoute = bootFallbackRoute(iosRoute)
-                IosRouteDiagnostics.update(iosRoute, rom.id)
-                // Boot/initial attach with iOS already on: order before the first icon pass.
-                IosIconOrder.install(lp.classLoader)
-                IosIconOrder.activate()
-                ensureIosMain(ctx)
-                statusBarRoot?.let { scheduleAttach(attempt = 0) }
-                // A4/A1/A6: the panel-expansion hook is shared, so iOS must install it too. It is the
-                // only dynamic registration an iOS bar carries; every Duo-only key is absent.
+                // iOS on but v2 cannot take the bar: keep the stock bar and name the missing piece
+                // once. No host is created and nothing is scheduled to attach.
+                logIosV2Unavailable(features)
                 applyDuoRegistrations()
                 return@guard
             }
@@ -1235,13 +1010,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             statusBarRoot = view
                             L.i("status bar window found: ${view.javaClass.name}")
                             scheduleAttach(attempt = 0)
-                            // R6 item 4: AOSP/OPLUS inflate the status-bar children BEFORE this
-                            // addView call, so the icon hook already fired with a null
-                            // `statusBarRoot` and missed. The window hook is therefore the guaranteed
-                            // first-frame handoff: hand the real window to IosFirstFrameAttach before
-                            // its first draw. The icon hook still covers later icon batches, and the
-                            // 2.5 s path stays the fallback if iOS is not yet enabled at the pre-draw.
-                            if (view is ViewGroup) attachIosMainFirstFrame(view)
                         }
                         AppContextResolver.TYPE_NOTIFICATION_SHADE -> adoptShadeWindow(view)
                     }
@@ -1279,28 +1047,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // the module is injected late the Application may never have been captured.
                 val ctx = app ?: root.context
                 if (features.iosRuntime) {
-                    // R7 P4: the native route has no host to attach and no retry to run.
-                    if (iosRoute == IosRoute.V2) return@guard
-                    // iOS has its own lifecycle. If the drawing is unavailable, `attach` returns false
-                    // and touches nothing, so a false result is the expected state - never retry it and
-                    // never report it as a Duo attach failure.
-                    // R3 A3: idempotent, and the process-wide owner keeps the order across surfaces.
-                    IosIconOrder.install(lp.classLoader)
-                    IosIconOrder.activate()
-                    val iosMain = ensureIosMain(ctx)
-                    iosMain.attach(root)
-                    shadeRoot?.let { shade ->
-                        attachExtraBars(shade)
-                        addShadeLayoutListener(shade)
-                    }
-                    refreshIosHostSettings(
-                        DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx),
-                        listOfNotNull(iosMainHost) + iosExtraHosts.values
-                    )
-                    iosMain.refresh()
-                    logOnce.once("ios-attach") {
-                        L.i("iOS attach attempt $attempt (Duo element suppressed)")
-                    }
+                    // v2 has no host to attach; the native owners are already in place.
                     return@guard
                 }
                 // A6: nothing attaches while no owner is named (off, kill switch, unreachable).
@@ -1462,12 +1209,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         val changed = shadedOrQsExpanded != expanded
                         shadedOrQsExpanded = expanded
                         if (changed &&
-                            PanelTransitionAction.IOS_REFRESH in panelTransitionActions(features)
+                            PanelTransitionAction.IOS_REFRESH in panelTransitionActions(features) &&
+                            iosRoute == IosRoute.V2
                         ) {
-                            // iOS branch only: drop the shared reading snapshot, allow a failed attach
-                            // memo to retry and repaint the live iOS surfaces. No Duo host access.
-                            resetIosAttachMemos()
-                            IosReadings.invalidate()
+                            // iOS branch only: repaint the live v2 surfaces. No Duo host access.
                             iosRefreshAll()
                         }
                         // A6: the Duo part of this shared registration must not touch the torn-down
@@ -1575,13 +1320,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 val changed = (wasPanelExpanded != null &&
                                     wasPanelExpanded != expanded) || wasCovered != covered
                                 if (changed &&
-                                    PanelTransitionAction.IOS_REFRESH in panelTransitionActions(features)
+                                    PanelTransitionAction.IOS_REFRESH in panelTransitionActions(features) &&
+                                    iosRoute == IosRoute.V2
                                 ) {
-                                    // iOS branch only (R3 A4/A1): a real panel edge is when a stale
-                                    // Wi-Fi/cell level or a failed attach memo becomes visible. No Duo
-                                    // host or monitor work is reached here.
-                                    resetIosAttachMemos()
-                                    IosReadings.invalidate()
+                                    // iOS branch only (R3 A4/A1): repaint the live v2 surfaces on a real
+                                    // panel edge. No Duo host or monitor work is reached here.
                                     iosRefreshAll()
                                 }
                                 // A6: this callback is shared; the Duo part runs only while Duo owns
@@ -1704,11 +1447,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 val settle = Runnable {
                     shadeSettle = null
                     L.guard("DuoHook shade settle") {
-                        if (!shadeSettleHeaderAttempted) {
-                            shadeSettleHeaderAttempted = true
-                            if (duo) shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
-                            if (ios) shadeHeader?.let { attachIosShadeHeader(it) }
-                        }
+                            if (!shadeSettleHeaderAttempted) {
+                                shadeSettleHeaderAttempted = true
+                                if (duo) shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
+                            }
                         if (duo) {
                             // The settle is the one full hide pass after the transition; the per-layout
                             // callback above is only a cheap re-show check.
@@ -1741,28 +1483,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * why the lock screen and the shade looked untouched until they were handled.
      */
     private fun attachExtraBars(shade: View) {
-        // R7 P4: no host attach on the native route (one owner per icon).
-        if (iosRoute == IosRoute.V2) return
-        // iOS owns the bar in its own mode; each surface gets its own host, all sharing one size owner.
-        val iosCtx = app ?: shade.context
-        if (features.iosRuntime) {
-            // The shade fires a layout pass on every frame. Re-attaching a live host tears it down and
-            // rebuilds its Rive views each pass (global-ref exhaustion -> SIGABRT, iOS-LAG), so only a
-            // dead attachment is replaced. The replacement/rotation path still runs when this is false.
-            val now = SystemClock.uptimeMillis()
-            if (now - lastIosExtraAttachAt < IOS_EXTRA_ATTACH_MIN_MS) return
-            lastIosExtraAttachAt = now
-            val kg = ensureIosExtra(iosCtx, "keyguard bar")
-            if (!kg.attachedUsableIn(shade)) kg.attachSurface("keyguard bar", shade, "system_icons")
-            val header = shadeHeader
-            val headerHost = ensureIosExtra(iosCtx, "shade header")
-            val headerAttached = header != null && attachIosShadeHeader(header)
-            // Only fall back to the shade window when the header was not attached. A second host on a
-            // strip the header host already owns would be refused (or fight it), and the QS expanded
-            // panel still routes through the header ids inside attachIosShadeHeader.
-            if (!headerAttached && !headerHost.attachedIn(shade)) attachIosShadeWindow(shade)
-            return
-        }
         if (!features.duoRuntime) return
         // R3 A6: the shade fires a layout pass per frame. The Duo extra bars had no throttle, so every
         // pass re-resolved strips and re-ran `attachExtra`/`attachShadeHeader`. One attempt per 500 ms
@@ -1796,94 +1516,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
         val result = host.attachShadeHeader(header, shade)
         ShadeProbe.logOnce("shadeProbe:attachShadeHeader:$result", "attachShadeHeader result=$result")
-    }
-
-    /**
-     * Attaches iOS replacement to the shade header's own icon strip. The header has its own host
-     * because [IosReplaceHost] is single-surface; it shares [iosSizeOwner] so the glyph keeps the home
-     * bar's size (M15). `shade_header_system_icons` is the measured header strip id; if the ROM does not have it,
-     * fall back to `system_icons`, then to the vendor `quick_qs_status_icons`. Every attempt is fail-silent
-     * (stub wave returns false); the first success is reported.
-     */
-    private fun attachIosShadeHeader(header: View): Boolean {
-        val ctx = app ?: header.context
-        if (!features.iosRuntime) return false
-        // R7 P4: the native route owns every stock icon; no header host may attach.
-        if (iosRoute == IosRoute.V2) return false
-        return try {
-            val host = ensureIosExtra(ctx, "shade header")
-            // A live host on this window already owns the header surface; attaching again would tear
-            // it down and rebuild it on every shade layout pass (iOS-LAG).
-            if (host.attachedUsableIn(header)) return true
-            // This header had no attachable strip a moment ago: do not re-resolve it on every pass.
-            val now = SystemClock.uptimeMillis()
-            if (header === iosHeaderFailed && now - iosHeaderFailedAt < IOS_HEADER_RETRY_MS) return false
-            val id = IosSurfaceRouting.firstAttachable(host, header, IosSurfaceRouting.HEADER_IDS)
-            if (id == null) {
-                // None of the three strips is attachable right now: memoise it so the tree walks are
-                // not repeated on every shade pass; a real attach or a new header clears the memo.
-                iosHeaderFailed = header
-                iosHeaderFailedAt = now
-                return false
-            }
-            val attached = host.attachSurface("shade header", header, id)
-            if (attached) {
-                iosHeaderFailed = null
-            } else {
-                iosHeaderFailed = header
-                iosHeaderFailedAt = now
-            }
-            attached
-        } catch (t: Throwable) {
-            logOnce.once("ios-shade-header-attach") {
-                L.w("shade header: iOS attach failed (${t.javaClass.simpleName}: ${t.message})")
-            }
-            false
-        }
-    }
-
-    /**
-     * Last-resort iOS attach from the shade window itself, for a ROM whose header is not handed over (or
-     * whose header carries no resolvable icon strip). Only runs while iOS owns the bar, and never throws.
-     */
-    private fun attachIosShadeWindow(window: View): Boolean {
-        val ctx = app ?: window.context
-        if (!features.iosRuntime) return false
-        // R7 P4: the native route owns every stock icon; no shade-window host may attach.
-        if (iosRoute == IosRoute.V2) return false
-        return try {
-            // A separate surface from the notification header: both strips can be live in one shade.
-            val host = ensureIosExtra(ctx, "qs header")
-            if (host.attachedUsableIn(window)) {
-                iosShadeGate.noteSuccess()
-                return true
-            }
-            // R3 A1: a strip that was not attachable a moment ago (usually the invisible header copy)
-            // is not re-resolved on every shade pass. A panel transition/new window clears the memo.
-            val now = SystemClock.uptimeMillis()
-            if (!iosShadeGate.shouldAttempt(window, now)) return false
-            // QS expanded header first (`quick_qs_status_icons` inside
-            // `qs_status_bar_container_layout`), then the shade header and shared strip. The host's
-            // usable-copy resolution rejects the invisible/zero-area copy.
-            val id = IosSurfaceRouting.firstAttachable(host, window, IosSurfaceRouting.WINDOW_IDS)
-            if (id == null) {
-                iosShadeGate.noteFailure(window, now)
-                return false
-            }
-            val attached = host.attachSurface("qs header", window, id)
-            if (attached) {
-                iosShadeGate.noteSuccess()
-            } else {
-                iosShadeGate.noteFailure(window, now)
-            }
-            attached
-        } catch (t: Throwable) {
-            iosShadeGate.noteFailure(window, SystemClock.uptimeMillis())
-            logOnce.once("ios-shade-window-attach") {
-                L.w("shade window: iOS attach failed (${t.javaClass.simpleName}: ${t.message})")
-            }
-            false
-        }
     }
 
     /**
@@ -1921,24 +1553,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         if (container != null) {
                             IosIconOrder.onIconAdded(container)
                         }
-                        // R6 item 4: style the main bar on the first laid-out frame instead of the
-                        // 2.5 s retry. The keyguard/shade containers share this class, so only the
-                        // captured status-bar root may take this path. First-frame attach remains
-                        // pre-R7 only; V2 is covered by its constructor/onLayout hooks.
-                        if (iosRoute != IosRoute.V2 && features.iosRuntime && container != null &&
-                            IosImmediateAttach.isMainBarContainer(container, statusBarRoot)
-                        ) {
-                            attachIosMainFirstFrame(container)
-                        }
                         val child = param.args.firstOrNull() as? View ?: return@guard
                         // A6: feed only the owner that is live. The other mode's fields are null while
                         // it is off, but the explicit gate keeps a slow async callback from reaching a
                         // host created for the other mode during a live switch.
                         if (features.duoRuntime) host?.onStatusIconAdded(child)
-                        if (iosRoute != IosRoute.V2 && features.iosRuntime) {
-                            iosMainHost?.onStockIconAdded(child)
-                            iosExtraHosts.values.toList().forEach { it.onStockIconAdded(child) }
-                        }
                     }
                 }
             }
@@ -1952,50 +1571,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 }
             }
             L.i("status icon container hooks installed: $hooked")
-        }
-    }
-
-    /**
-     * R6 item 4: runs the main-bar attach before the first frame draws.
-     *
-     * [IosFirstFrameAttach] attaches immediately when the container is already laid out, otherwise on
-     * the container's first laid-out pre-draw. Either way the first drawn status bar is ours, making
-     * the 2.5 s [scheduleAttach] delay irrelevant for iOS (it stays for Duo and as a fallback). The
-     * log is emitted once per process and says which outcome was chosen.
-     */
-    private fun attachIosMainFirstFrame(container: ViewGroup) {
-        // R7 P4: the native route has no main host to attach on a pre-draw.
-        if (iosRoute == IosRoute.V2) return
-        val laidOut = IosFirstFrameAttach.isLaidOut(container)
-        val accepted = IosFirstFrameAttach.whenLaidOut(
-            container,
-            attach = {
-                if (features.iosRuntime) {
-                    val ctx = app ?: container.context
-                    val host = ensureIosMain(ctx)
-                    // R6 item 4: this runs before `refreshIosHostSettings`, so without this the first
-                    // frames would use the DEFAULT geometry for up to the 2.5 s delayed attach. Apply
-                    // the last-read snapshot before the host draws (fail-silent via the helper).
-                    val snapshot = try {
-                        DuoSettingsClient.lastRead() ?: DuoSettingsClient.read(ctx)
-                    } catch (t: Throwable) {
-                        IosV2Log.failureOnce("duohook.firstFrameSettings", t)
-                        ModuleSettings.DEFAULT
-                    }
-                    refreshIosHostSettings(snapshot, listOf(host))
-                    host.attach(container.rootView ?: container)
-                } else {
-                    false
-                }
-            }
-        )
-        if (accepted) {
-            logOnce.once("ios-main-first-frame") {
-                L.i(
-                    "iOS main first-frame attach: " +
-                        (if (laidOut) "attached" else "scheduled")
-                )
-            }
         }
     }
 
@@ -2023,11 +1598,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // mode's redraw is branched.
                         if (color != 0 && BarTint.update(color)) {
                             if (features.duoRuntime) monitor?.onBarAppearanceChanged()
-                            if (features.iosRuntime &&
-                                (iosMainHost != null || iosExtraHosts.isNotEmpty())
-                            ) {
-                                iosRefreshAllSoon()
-                            }
                         }
                     } catch (t: Throwable) {
                         L.w("bar tint: ${t.javaClass.simpleName}: ${t.message}")
@@ -2173,12 +1743,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             ShadeProbe.tree("header (ctor)", view)
                             L.i("shade header view: ${view.javaClass.name}")
                             shadeHeader = view
-                            resetIosAttachMemos()
-                            // R5: adopt a new header on its first laid-out frame; a reused header is
-                            // not touched here, so opening a panel neither rebuilds nor re-attaches.
-                            if (features.iosRuntime) {
-                                IosFirstFrameAttach.whenLaidOut(view, attach = { attachIosShadeHeader(view) })
-                            }
                             if (features.duoRuntime) {
                                 view.post {
                                     shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
@@ -2212,11 +1776,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 ShadeProbe.tree("header (stub)", view)
                                 L.i("shade header inflated from a stub: ${view.javaClass.name}")
                                 shadeHeader = view
-                                resetIosAttachMemos()
-                                // R5: same first-frame adoption as the controller ctor above.
-                                if (features.iosRuntime) {
-                                    IosFirstFrameAttach.whenLaidOut(view, attach = { attachIosShadeHeader(view) })
-                                }
                                 if (features.duoRuntime) {
                                     view.post {
                                         shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
@@ -2252,47 +1811,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         const val RETRY_MS = 2_000L
         const val MAX_ATTEMPTS = 6
 
-        /** IOS-LAG: the extra-surface (keyguard/shade) attach is throttled to this cadence. */
-        const val IOS_EXTRA_ATTACH_MIN_MS = 500L
-
-        /** R6 item 4: one repaint per `onDarkChanged` burst instead of one per icon. */
-        const val IOS_REFRESH_COALESCE_MS = 32L
-
         /** R3 A6: the plain-Duo extra bars use the same cadence. */
         const val DUO_EXTRA_ATTACH_MIN_MS = 500L
-
-        /** IOS-LAG: a header with no attachable strip is retried only after this long. */
-        const val IOS_HEADER_RETRY_MS = 5_000L
-    }
-}
-
-/**
- * R3 A1: a strip that could not be attached is not re-resolved on every shade layout pass. The memo
- * is keyed by the exact window/header view and expires after [retryMs]; a panel transition or a new
- * shade/header identity resets it, because that is when the tree may have become attachable.
- */
-internal class IosShadeAttachGate(private val retryMs: Long) {
-
-    private var failedView: View? = null
-    private var failedAt = 0L
-
-    /** True when [view] may be attempted now (never failed, or the memo has expired). */
-    fun shouldAttempt(view: View, now: Long): Boolean =
-        failedView !== view || now - failedAt >= retryMs
-
-    fun noteFailure(view: View, now: Long) {
-        failedView = view
-        failedAt = now
-    }
-
-    fun noteSuccess() {
-        failedView = null
-        failedAt = 0L
-    }
-
-    fun reset() {
-        failedView = null
-        failedAt = 0L
     }
 }
 
