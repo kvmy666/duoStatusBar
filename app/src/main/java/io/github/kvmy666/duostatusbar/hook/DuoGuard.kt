@@ -230,7 +230,7 @@ internal class DuoGuard(private val context: Context) {
          */
         internal fun effectiveIosMode(
             iosMode: Boolean,
-            drawingReady: Boolean = IosRenderers.DRAWING_READY
+            drawingReady: Boolean = true
         ): Boolean = iosMode && drawingReady
 
         /** The stage resolution actually used by [stage]: an unavailable iOS mode falls through to Duo. */
@@ -239,7 +239,7 @@ internal class DuoGuard(private val context: Context) {
             iosMode: Boolean,
             engineMode: String,
             useRive: Boolean,
-            drawingReady: Boolean = IosRenderers.DRAWING_READY
+            drawingReady: Boolean = true
         ): Int = stageFor(enabled, effectiveIosMode(iosMode, drawingReady), engineMode, useRive)
 
         /**

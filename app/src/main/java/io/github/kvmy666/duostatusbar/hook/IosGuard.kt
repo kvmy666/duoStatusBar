@@ -130,7 +130,7 @@ internal class IosGuard(private val context: Context) {
         fun active(
             iosMode: Boolean,
             adbOverride: Int?,
-            drawingReady: Boolean = IosRenderers.DRAWING_READY
+            drawingReady: Boolean = true
         ): Boolean = drawingReady && adbOverride == null && iosMode
     }
 }

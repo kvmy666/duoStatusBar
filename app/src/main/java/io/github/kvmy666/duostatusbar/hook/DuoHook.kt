@@ -186,7 +186,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // One fresh snapshot per apply: the owner decision, the feature diff and the monitor
             // registration all come from the same settings revision, never from different reads.
             val snapshot = DuoSettingsClient.read(ctx)
-            val next = featureSetFor(snapshot, override, IosRenderers.DRAWING_READY, false)
+            val next = featureSetFor(snapshot, override, true, false)
 
             if (next.iosRuntime) {
                 commitFeatures(stage, snapshot, override, next)
@@ -269,7 +269,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val settings = host?.refreshSettings(applySavedSize) ?: snapshot
             // refreshSettings reads the provider itself; trust its owner when it differs from the
             // snapshot above (a live toggle can land between the two reads).
-            val refreshed = featureSetFor(settings, override, IosRenderers.DRAWING_READY, false)
+            val refreshed = featureSetFor(settings, override, true, false)
             commitFeatures(stage, settings, override, refreshed)
             if (!refreshed.duoRuntime) {
                 stopDuoRuntime()
@@ -388,7 +388,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             stage,
             settings,
             override,
-            featureSetFor(settings, override, IosRenderers.DRAWING_READY, false)
+            featureSetFor(settings, override, true, false)
         )
     }
 
@@ -1813,22 +1813,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
         /** R3 A6: the plain-Duo extra bars use the same cadence. */
         const val DUO_EXTRA_ATTACH_MIN_MS = 500L
-    }
-}
-
-/** R3 A4: every iOS surface follows the same user settings, main and extras alike. */
-internal fun refreshIosHostSettings(settings: ModuleSettings, hosts: Iterable<IosReplaceHost>) {
-    for (host in hosts) {
-        try {
-            host.refreshSettings(settings)
-        } catch (t: Throwable) {
-            // One surface's settings must never blank another: the other surfaces stay alive, and the
-            // failure is reported once for this host.
-            IosV2Log.failureOnce(
-                "duohook.refreshHostSettings." + host.javaClass.simpleName.ifBlank { "host" },
-                t
-            )
-        }
     }
 }
 
