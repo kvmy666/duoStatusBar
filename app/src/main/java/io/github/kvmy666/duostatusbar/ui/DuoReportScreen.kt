@@ -179,6 +179,7 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
             .padding(start = 20.dp, end = 20.dp, top = 48.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        val categoryLabel = stringResource(category)
         Text(stringResource(R.string.report_ticket_created), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.report_ticket_keep), style = MaterialTheme.typography.bodyMedium)
         GlassCard(Modifier.fillMaxWidth()) {
@@ -194,7 +195,6 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
         }
         val copiedText = stringResource(R.string.report_ticket_copied)
         val shareChooserText = stringResource(R.string.report_share_chooser)
-        val categoryLabel = stringResource(category)
         val publicTextBody = stringResource(R.string.report_ticket_prefix, ticket) + "\n" +
             stringResource(R.string.report_label_prefix, categoryLabel) + "\n" +
             stringResource(R.string.report_status_prefix, stringResource(R.string.report_status_open)) + "\n\n" + problem
