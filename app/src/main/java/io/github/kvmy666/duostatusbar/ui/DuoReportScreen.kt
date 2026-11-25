@@ -110,6 +110,7 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
             val collectingText = stringResource(R.string.report_collecting)
             val sentText = stringResource(R.string.report_sent)
             val failedText = stringResource(R.string.report_failed)
+            val categoryLabel = stringResource(category)
             Button(
                 onClick = {
                     if (problem.isBlank() || sending) return@Button
@@ -137,7 +138,6 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                                 DuoPrefs.dump(context)
                             )
                         }
-                        val categoryLabel = stringResource(category)
                         val handle = telegramUser.trim().let {
                             if (it.isBlank()) "" else if (it.startsWith("@")) it else "@$it"
                         }
@@ -185,7 +185,6 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.report_ticket_label), style = MaterialTheme.typography.labelMedium)
                 Text(ticket, style = MaterialTheme.typography.headlineMedium)
-                val categoryLabel = stringResource(category)
                 Text("$categoryLabel · ${problem.take(120)}", style = MaterialTheme.typography.bodySmall)
                 if (telegramUser.isNotBlank()) {
                     Text(stringResource(R.string.report_telegram_user, telegramUser), style = MaterialTheme.typography.bodySmall)
@@ -195,6 +194,10 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
         }
         val copiedText = stringResource(R.string.report_ticket_copied)
         val shareChooserText = stringResource(R.string.report_share_chooser)
+        val categoryLabel = stringResource(category)
+        val publicTextBody = stringResource(R.string.report_ticket_prefix, ticket) + "\n" +
+            stringResource(R.string.report_label_prefix, categoryLabel) + "\n" +
+            stringResource(R.string.report_status_prefix, stringResource(R.string.report_status_open)) + "\n\n" + problem
         Button(
             onClick = {
                 clipboard.setText(AnnotatedString(ticket))
@@ -204,13 +207,9 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
         ) { Text(stringResource(R.string.report_copy_ticket)) }
         OutlinedButton(
             onClick = {
-                val categoryLabel = stringResource(category)
-                val publicText = stringResource(R.string.report_ticket_prefix, ticket) + "\n" +
-                    stringResource(R.string.report_label_prefix, categoryLabel) + "\n" +
-                    stringResource(R.string.report_status_prefix, stringResource(R.string.report_status_open)) + "\n\n$problem"
                 val send = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, publicText)
+                    putExtra(Intent.EXTRA_TEXT, publicTextBody)
                 }
                 context.startActivity(Intent.createChooser(send, shareChooserText))
             },
