@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
@@ -28,19 +28,27 @@ jobs:
       - name: Build debug APK
         run: chmod +x ./gradlew && ./gradlew :app:assembleDebug --build-cache --console=plain
 
-      - name: Build release APK (unsigned)
-        run: ./gradlew :app:assembleRelease --build-cache --console=plain
-        continue-on-error: true
-
-      - name: Collect APKs
+      - name: Collect APK
         run: |
           mkdir -p out
-          find app/build/outputs/apk -name '*.apk' -exec cp {} out/ \;
+          find app/build/outputs/apk/debug -name '*.apk' -exec cp {} out/duo-statusbar-zh-debug.apk \;
           ls -la out/
 
-      - name: Upload APK
+      - name: Upload as artifact
         uses: actions/upload-artifact@v4
         with:
           name: duo-statusbar-apk
           path: out/*.apk
           if-no-files-found: error
+
+      - name: Publish to rolling release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-latest"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$TAG" out/duo-statusbar-zh-debug.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Latest build (zh-rCN)" \
+            --notes "Automated debug build with Simplified Chinese localization. Commit: $GITHUB_SHA" \
+            --prerelease
