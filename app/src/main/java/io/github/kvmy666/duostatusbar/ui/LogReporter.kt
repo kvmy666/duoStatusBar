@@ -42,7 +42,7 @@ internal fun sendLogOnTelegram(context: Context, report: String) {
     val file = writeDiagnostics(context, report)
     // Preferred: the bot uploads it straight to the developer's chat, no user step.
     if (file != null &&
-        TelegramLog.send(context, file, "Duo Status Bar fallback report") == TelegramLog.Result.SENT
+        TelegramLog.send(context, file, context.getString(R.string.log_fallback_report)) == TelegramLog.Result.SENT
     ) return
     // Bot not configured or offline: hand the file to Telegram if installed, else open the chat.
     val uri = file?.let { fileUri(context, it) }
@@ -53,7 +53,7 @@ internal fun sendLogOnTelegram(context: Context, report: String) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TEXT, "Duo Status Bar log")
+            putExtra(Intent.EXTRA_TEXT, context.getString(R.string.log_report_caption))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             setPackage(telegram)
         }
@@ -86,7 +86,7 @@ internal fun openLsposed(context: Context): Boolean {
 /** Opens a new GitHub issue with the device and status pre-filled; the report file can be attached there. */
 internal fun openGitHubIssue(context: Context, fallback: String, status: String) {
     val body = buildString {
-        appendLine("Duo Status Bar fallback report")
+        appendLine(context.getString(R.string.log_fallback_report))
         appendLine()
         appendLine("fallback: $fallback")
         appendLine("status: $status")
@@ -94,7 +94,7 @@ internal fun openGitHubIssue(context: Context, fallback: String, status: String)
             "device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, " +
                 "Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})"
         )
-        append("Attach the log from the About section.")
+        append(context.getString(R.string.log_github_issue_hint))
     }
     val url = "$GITHUB_NEW_ISSUE?body=${Uri.encode(body)}"
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -153,7 +153,7 @@ internal fun buildDiagnostics(
     moduleLoadAt: Long
 ): String =
     buildString {
-        appendLine("Duo Status Bar diagnostics")
+        appendLine(context.getString(R.string.log_diagnostics))
         appendLine("settings: $settings")
         appendLine(
             "module load: " + moduleLoadLine(
@@ -267,7 +267,7 @@ internal fun shareText(context: Context, report: String) {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, report)
     }
-    context.startActivity(Intent.createChooser(send, "Share log"))
+    context.startActivity(Intent.createChooser(send, context.getString(R.string.log_share_chooser)))
 }
 
 /**
@@ -278,7 +278,7 @@ internal fun shareLog(context: Context, file: Uri) {
     val share = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_STREAM, file)
-        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar log, @kvmy1")
+        putExtra(Intent.EXTRA_TEXT, context.getString(R.string.log_report_caption))
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(

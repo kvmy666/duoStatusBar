@@ -331,4 +331,23 @@
     <string name="settings_sim_display_single">Single SIM</string>
     <string name="settings_sim_display_dual">Dual SIM</string>
 
+    <!-- Hardcoded label extraction -->
+    <string name="report_category_bug">Bug</string>
+    <string name="report_category_device">Device support</string>
+    <string name="report_category_feature">Feature request</string>
+    <string name="report_ticket_prefix">Ticket: %1$s</string>
+    <string name="report_label_prefix">Label: %1$s</string>
+    <string name="report_status_prefix">Status: %1$s</string>
+    <string name="report_status_open">Open</string>
+    <string name="anim_speed_slow">Slow</string>
+    <string name="anim_speed_relaxed">Relaxed</string>
+    <string name="anim_speed_normal">Normal</string>
+    <string name="anim_speed_brisk">Brisk</string>
+    <string name="anim_speed_fast">Fast</string>
+    <string name="log_report_caption">Duo Status Bar log</string>
+    <string name="log_fallback_report">Duo Status Bar fallback report</string>
+    <string name="log_diagnostics">Duo Status Bar diagnostics</string>
+    <string name="log_share_chooser">Share log</string>
+    <string name="log_github_issue_hint">Attach the log from the About section.</string>
+    <string name="xposed_description">Duo Status Bar — replaces the system battery, Wi-Fi and signal icons with Apple\'s combined \'Duo\' element, animated with Rive. Tested on OnePlus 15 / OxygenOS 16 (Android 16).</string>
 </resources>

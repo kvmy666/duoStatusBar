@@ -39,7 +39,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val REPORT_CATEGORIES = listOf("Bug", "Device support", "Feature request")
+private val REPORT_CATEGORY_IDS = listOf(
+    R.string.report_category_bug,
+    R.string.report_category_device,
+    R.string.report_category_feature
+)
 
 /**
  * In-app report form. The ticket number is created locally and copied into the Telegram log
@@ -53,7 +57,7 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var problem by rememberSaveable { mutableStateOf("") }
     var telegramUser by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf(REPORT_CATEGORIES.first()) }
+    var category by rememberSaveable { mutableStateOf(R.string.report_category_bug) }
     var sending by remember { mutableStateOf(false) }
     var ticket by rememberSaveable { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
@@ -77,10 +81,11 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
             )
             Text(stringResource(R.string.report_label), style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                REPORT_CATEGORIES.forEach { label ->
+                REPORT_CATEGORY_IDS.forEach { labelRes ->
+                    val label = stringResource(labelRes)
                     FilterChip(
-                        selected = category == label,
-                        onClick = { category = label },
+                        selected = category == labelRes,
+                        onClick = { category = labelRes },
                         label = { Text(label) }
                     )
                 }
@@ -105,6 +110,7 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
             val collectingText = stringResource(R.string.report_collecting)
             val sentText = stringResource(R.string.report_sent)
             val failedText = stringResource(R.string.report_failed)
+            val categoryLabel = stringResource(category)
             Button(
                 onClick = {
                     if (problem.isBlank() || sending) return@Button
@@ -135,7 +141,7 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                         val handle = telegramUser.trim().let {
                             if (it.isBlank()) "" else if (it.startsWith("@")) it else "@$it"
                         }
-                        val caption = "Ticket #PENDING · [$category]${if (handle.isBlank()) "" else " $handle"} · ${problem.take(180)}"
+                        val caption = "Ticket #PENDING · [$categoryLabel]${if (handle.isBlank()) "" else " $handle"} · ${problem.take(180)}"
                         val result = if (zip != null) {
                             withContext(Dispatchers.IO) {
                                 TelegramLog.sendWithTicket(context, zip, caption)
@@ -173,13 +179,14 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
             .padding(start = 20.dp, end = 20.dp, top = 48.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        val categoryLabel = stringResource(category)
         Text(stringResource(R.string.report_ticket_created), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.report_ticket_keep), style = MaterialTheme.typography.bodyMedium)
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.report_ticket_label), style = MaterialTheme.typography.labelMedium)
                 Text(ticket, style = MaterialTheme.typography.headlineMedium)
-                Text("$category · ${problem.take(120)}", style = MaterialTheme.typography.bodySmall)
+                Text("$categoryLabel · ${problem.take(120)}", style = MaterialTheme.typography.bodySmall)
                 if (telegramUser.isNotBlank()) {
                     Text(stringResource(R.string.report_telegram_user, telegramUser), style = MaterialTheme.typography.bodySmall)
                 }
@@ -188,6 +195,9 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
         }
         val copiedText = stringResource(R.string.report_ticket_copied)
         val shareChooserText = stringResource(R.string.report_share_chooser)
+        val publicTextBody = stringResource(R.string.report_ticket_prefix, ticket) + "\n" +
+            stringResource(R.string.report_label_prefix, categoryLabel) + "\n" +
+            stringResource(R.string.report_status_prefix, stringResource(R.string.report_status_open)) + "\n\n" + problem
         Button(
             onClick = {
                 clipboard.setText(AnnotatedString(ticket))
@@ -197,10 +207,9 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
         ) { Text(stringResource(R.string.report_copy_ticket)) }
         OutlinedButton(
             onClick = {
-                val publicText = "Ticket: $ticket\nLabel: $category\nStatus: Open\n\n$problem"
                 val send = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, publicText)
+                    putExtra(Intent.EXTRA_TEXT, publicTextBody)
                 }
                 context.startActivity(Intent.createChooser(send, shareChooserText))
             },
@@ -228,7 +237,7 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                 problem = ""
                 telegramUser = ""
                 status = ""
-                category = REPORT_CATEGORIES.first()
+                category = REPORT_CATEGORY_IDS.first()
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text(stringResource(R.string.report_create_another)) }

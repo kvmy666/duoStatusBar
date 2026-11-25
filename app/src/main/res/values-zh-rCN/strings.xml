@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">双环状态栏</string>
+    <string name="app_tagline">电池、Wi-Fi 和信号，尽在环中。</string>
+
+    <!-- Search -->
+    <string name="settings_search">搜索设置</string>
+    <string name="settings_orientation_portrait">旋转设备以进入横屏设置。</string>
+    <string name="settings_orientation_landscape">旋转设备以进入竖屏设置。</string>
+
+    <!-- Battery icon -->
+    <string name="section_element">电池图标</string>
+    <string name="settings_master">使用双环状态栏</string>
+    <string name="settings_master_detail">开启或关闭环形指示器。</string>
+    <string name="settings_percent">显示电池百分比</string>
+    <string name="settings_percent_detail">在环中显示电量数字。</string>
+    <string name="settings_show_charging_bolt">显示充电闪电图标</string>
+    <string name="settings_show_charging_bolt_detail">充电时显示闪电图标。</string>
+    <string name="settings_percent_height">百分比高度</string>
+    <string name="settings_percent_height_detail">把数字抬高，避开摄像头开孔。</string>
+    <string name="settings_size">大小</string>
+    <string name="settings_size_live">开启“即时应用更改”后，大小和位置会即时生效，无需重启。</string>
+    <string name="settings_restart">重启</string>
+    <string name="restart_safe_mode_warning">重启 System UI 会被 LSPosed 计为一次崩溃。每次开机重启 4 次后，LSPosed 会把模块切换到安全模式，请仅在其它方法都无效时使用。</string>
+    <string name="settings_restart_failed">重启失败：%1$s。</string>
+    <string name="settings_live_apply">即时应用更改</string>
+    <string name="settings_live_apply_detail">立即应用大小和位置的修改。</string>
+    <string name="settings_position">位置</string>
+    <string name="settings_position_hint">左右拖动。</string>
+    <string name="settings_split">环外图标</string>
+    <string name="settings_split_detail">把 Wi-Fi 和信号图标移到环外。</string>
+    <string name="settings_lock_ring">锁定环位置</string>
+    <string name="settings_burn_in">防烧屏保护</string>
+    <string name="settings_burn_in_detail">每小时让环轻微移动一点。</string>
+    <string name="settings_lock_ring_detail">让环保持在中间。</string>
+    <string name="settings_ring_position">环位置</string>
+    <string name="settings_ring_position_hint">拖动环。</string>
+    <string name="settings_ring_position_locked_hint">从中间的零位开始拖动。</string>
+    <string name="settings_indicators_position">图标位置</string>
+    <string name="settings_indicators_position_hint">拖动图标。</string>
+    <string name="settings_edge_padding">边缘间距</string>
+    <string name="settings_edge_padding_detail">为其它状态图标留出空间。</string>
+    <string name="settings_position_reset">重置</string>
+    <string name="settings_position_value">位置 %1$d</string>
+
+    <!-- Animations -->
+    <string name="section_animations">动画</string>
+    <string name="settings_animations">动画</string>
+    <string name="settings_animations_detail">开启或关闭所有动效。</string>
+    <string name="settings_anim_speed">速度</string>
+    <string name="settings_anim_arrival">出现</string>
+    <string name="settings_anim_arrival_detail">亮屏时回弹。</string>
+    <string name="settings_anim_departure">消失</string>
+    <string name="settings_anim_departure_detail">灭屏时缩小。</string>
+
+    <!-- Appearance -->
+    <string name="section_look">外观</string>
+    <string name="settings_icon_color">图标颜色</string>
+    <string name="settings_icon_color_auto">跟随状态栏</string>
+    <string name="settings_icon_color_black">黑色</string>
+    <string name="settings_icon_color_white">白色</string>
+    <string name="settings_middle_slot">环中心内容</string>
+    <string name="settings_middle_slot_detail">选择显示在环里的内容。</string>
+    <string name="middle_slot_auto">自动</string>
+    <string name="middle_slot_wifi">Wi-Fi</string>
+    <string name="middle_slot_cell">蜂窝信号</string>
+    <string name="middle_slot_percent">电量 %</string>
+    <string name="middle_slot_clock">时钟</string>
+    <string name="settings_show_airplane">飞行模式</string>
+    <string name="settings_show_dnd">勿扰模式</string>
+    <string name="settings_dnd_detail">勿扰月亮显示的位置。</string>
+    <string name="settings_dnd_off">关闭</string>
+    <string name="settings_dnd_middle">环中心</string>
+    <string name="settings_dnd_dots">信号点</string>
+    <string name="settings_sim">蜂窝线路</string>
+    <string name="settings_sim_detail">信号跟随哪张 SIM。</string>
+    <string name="settings_sim_auto">自动（数据卡）</string>
+    <string name="settings_sim_1">SIM 1</string>
+    <string name="settings_sim_2">SIM 2</string>
+    <string name="settings_wifi_dots">信号点跟随 Wi-Fi</string>
+    <string name="settings_wifi_dots_detail">飞行模式下信号点显示 Wi-Fi 状态。</string>
+
+    <!-- Customize -->
+    <string name="section_customize">自定义双环</string>
+    <string name="settings_customize_detail">大小、位置和颜色。</string>
+
+    <!-- Tap actions -->
+    <string name="section_actions">点击操作</string>
+    <string name="settings_gestures_note">自动展开会处理点击。</string>
+    <string name="settings_gestures_missing">点击操作需要开启自动展开。</string>
+    <string name="settings_ring_actions">点击环</string>
+    <string name="settings_indicator_actions">点击图标</string>
+    <string name="settings_download_tap_note">点击环查看下载。</string>
+    <string name="settings_tap">单击</string>
+    <string name="settings_double_tap">双击</string>
+    <string name="settings_long_press">长按</string>
+
+    <!-- Status bar icons (issue #4) -->
+    <string name="section_surfaces">显示位置</string>
+    <string name="settings_show_in_qs">在控制中心显示</string>
+    <string name="settings_show_in_qs_detail">关闭可保持控制中心标题栏原样。</string>
+    <string name="settings_show_in_shade">在通知栏面板显示</string>
+    <string name="settings_show_in_shade_detail">关闭可保持通知面板标题栏原样。</string>
+    <string name="section_icons">状态栏图标</string>
+    <string name="settings_hide_other_icons">隐藏其它状态图标</string>
+    <string name="settings_hide_other_icons_detail">只显示环。</string>
+    <string name="settings_stock_icons_detail">选择双环要隐藏哪些图标。</string>
+    <string name="settings_stock_icons_empty">开启双环后，再打开状态栏。</string>
+    <string name="settings_show_wifi_glyph">Wi-Fi 图形</string>
+    <string name="settings_show_wifi_glyph_detail">在环内绘制 Wi-Fi 符号。</string>
+    <string name="settings_show_cell_dots">蜂窝信号点</string>
+    <string name="settings_show_cell_dots_detail">在环内绘制蜂窝信号点。</string>
+    <string name="settings_hide_icons">隐藏系统状态图标</string>
+    <string name="settings_hide_icons_detail">隐藏手机自带的图标。</string>
+    <string name="settings_icons_no_shizuku">Shizuku 未在运行。</string>
+    <string name="settings_icons_need_permission">在下方授予 Shizuku 访问权限。</string>
+    <string name="settings_icons_grant">允许 Shizuku 访问</string>
+    <string name="settings_icons_ready">Shizuku 已就绪。</string>
+    <string name="settings_icons_failed">Shizuku 无法更改图标。</string>
+
+    <!-- Diagnostics capture (root / Shizuku) -->
+    <string name="settings_root_detail">在报告中附上系统日志。</string>
+    <string name="settings_root_allow">允许 root 访问</string>
+    <string name="settings_root_granted">已允许 root，报告中将包含日志。</string>
+    <string name="settings_root_shizuku">Shizuku 将收集日志。</string>
+    <string name="settings_root_denied">未允许 root。</string>
+    <string name="settings_root_checking">正在检查 root…</string>
+    <string name="settings_root_result_ok">已允许 root 访问。</string>
+    <string name="settings_root_result_failed">请按以下步骤允许 root。</string>
+    <string name="settings_root_guide_steps">在你的 root 应用里允许双环使用 Superuser。</string>
+    <string name="settings_root_guide_note">用于反馈 bug，或双环始终不生效的情况。</string>
+    <string name="settings_root_guide_image">KernelSU Next 的 Superuser 开关</string>
+
+    <!-- Fallback alert -->
+    <string name="fallback_title">双环使用基础绘制</string>
+    <string name="fallback_message">动画版无法启动。</string>
+    <string name="fallback_telegram">通过 Telegram 发送日志</string>
+    <string name="fallback_github">在 GitHub 上报告</string>
+    <string name="fallback_dismiss">忽略</string>
+
+    <!-- Updates -->
+    <string name="settings_check_updates">检查更新</string>
+    <string name="settings_check_updates_detail">有新版本时提醒你。</string>
+    <string name="settings_check_now">立即检查更新</string>
+    <string name="settings_checking">正在检查…</string>
+    <string name="settings_update_uptodate">已是最新版本（v%1$s）。</string>
+    <string name="settings_update_available">有新版本 v%1$s 可用。</string>
+    <string name="settings_update_failed">无法检查更新。</string>
+    <string name="settings_update_download">下载安装</string>
+    <string name="settings_update_no_apk">改为打开发布页。</string>
+    <string name="update_notification_title">双环状态栏更新</string>
+    <string name="update_notification_text">点按打开 %1$s 版本。</string>
+    <string name="update_action_download">下载</string>
+    <string name="update_downloading_title">正在下载更新</string>
+    <string name="update_downloading_text">正在下载双环状态栏 %1$s…</string>
+    <string name="update_ready_title">更新已就绪，可安装</string>
+    <string name="update_ready_text">点按安装双环状态栏 %1$s。</string>
+    <string name="update_failed_title">更新下载失败</string>
+    <string name="update_failed_text">无法下载双环状态栏 %1$s。</string>
+
+    <!-- About -->
+    <string name="section_about">关于</string>
+    <string name="settings_status">状态</string>
+    <string name="settings_module_never">请在 LSPosed 中开启双环，然后重启。</string>
+    <string name="settings_module_loaded">双环自 %1$s 起正在运行。</string>
+    <string name="settings_reboot">重启手机</string>
+    <string name="settings_report_bug">发送问题报告</string>
+    <string name="module_health_restart_title">需要重启</string>
+    <string name="module_health_restart_text">重启手机以完成设置。</string>
+    <string name="module_health_noreport_title">双环无响应</string>
+    <string name="module_health_noreport_text">重启手机即可修复。</string>
+    <string name="module_health_never_title">双环未运行</string>
+    <string name="module_health_never_text">请在 LSPosed 中启用双环并重启。</string>
+    <string name="module_health_disabled_title">双环已关闭</string>
+    <string name="module_health_disabled_text">开启双环以显示环形指示器。</string>
+    <string name="module_health_open_lsposed">打开 LSPosed</string>
+    <string name="module_health_scope_hint">开启双环并选择状态栏。</string>
+    <string name="module_health_contact">通过 Telegram 联系</string>
+    <string name="module_health_contact_hint">如果仍不生效，请在此处联系。</string>
+    <string name="module_health_export">导出我的日志</string>
+    <string name="settings_log_sent">日志已发送。</string>
+    <string name="settings_log_wait">请等一分钟再重新发送。</string>
+    <string name="settings_export_log">将日志导出到文件</string>
+    <string name="settings_log_saved">日志已保存。</string>
+    <string name="settings_log_save_failed">无法保存日志。</string>
+    <string name="settings_collecting">正在收集…</string>
+    <string name="settings_donate">捐赠</string>
+    <string name="settings_log_share_title">发送双环日志</string>
+    <string name="settings_version">双环状态栏 %1$s</string>
+    <!-- A test override pins the module to the simple drawing. -->
+    <string name="settings_override_title">测试强制项已开启</string>
+    <string name="settings_override_message">测试强制项已开启，级别 %1$d。</string>
+    <string name="settings_override_clear">清除强制项</string>
+    <string name="settings_override_clearing">正在清除…</string>
+    <string name="settings_override_failed">请手动执行：%1$s。</string>
+    <string name="settings_override_command">命令：%1$s</string>
+
+    <!-- Live events -->
+    <string name="section_live_events">实时事件</string>
+    <string name="settings_live_events_detail">为每个事件显示一个动画图标。</string>
+    <string name="settings_event_alarm">闹钟</string>
+    <string name="settings_event_alarm_detail">闹钟响铃时显示图标。</string>
+    <string name="settings_event_flashlight">手电筒</string>
+    <string name="settings_event_flashlight_detail">手电筒开启时显示图标。</string>
+    <string name="settings_event_screenshot">截屏</string>
+    <string name="settings_event_screenshot_detail">每次截屏时显示图标。</string>
+    <string name="settings_event_unlock">解锁</string>
+    <string name="settings_event_unlock_detail">解锁时显示图标。</string>
+
+    <!-- Download progress (PHDP) -->
+    <string name="section_download_progress">下载进度</string>
+    <string name="settings_download_progress">显示下载进度</string>
+    <string name="settings_download_progress_detail">安装 PHDP 后可用。</string>
+    <string name="settings_download_progress_missing">请先安装 PHDP 才能使用此开关。</string>
+    <string name="settings_download_latest">PHDP 最新版本</string>
+    <string name="settings_download_install_phdp">安装 PHDP</string>
+    <string name="settings_download_open_phdp">打开 PHDP</string>
+    <string name="settings_download_simulate">在 PHDP 中模拟</string>
+    <string name="settings_download_simulate_note">打开 PHDP，可在那里测试。</string>
+
+    <!-- Backup -->
+    <string name="section_backup">备份</string>
+    <string name="settings_backup_detail">保存或恢复你的设置。</string>
+    <string name="settings_backup_export">导出设置</string>
+    <string name="settings_backup_import">导入设置</string>
+    <string name="settings_backup_exported">设置已保存。</string>
+    <string name="settings_backup_failed">无法保存设置。</string>
+    <string name="settings_backup_invalid">备份文件无效。</string>
+    <string name="settings_backup_imported">设置已恢复。</string>
+    <string name="settings_backup_confirm_title">替换设置？</string>
+    <string name="settings_backup_confirm_body">这会替换你当前的设置。</string>
+    <string name="settings_backup_replace">替换</string>
+    <string name="settings_backup_cancel">取消</string>
+
+    <!-- CUS-011 shell -->
+    <string name="nav_home">主页</string>
+    <string name="nav_engine">自定义</string>
+    <string name="nav_report">反馈</string>
+    <string name="nav_settings">设置</string>
+    <string name="settings_back">返回</string>
+    <string name="home_tagline">环显示电池、Wi-Fi 和信号。</string>
+    <string name="home_setup_title">设置双环</string>
+    <string name="home_setup_step_1">1. 在 LSPosed 中开启双环状态栏。</string>
+    <string name="home_setup_step_2">2. 为双环勾选 System UI。</string>
+    <string name="home_setup_step_3">3. 重启手机。</string>
+    <string name="home_disabled_hint">请在设置中开启双环。</string>
+    <string name="home_live_preview">实时预览控件</string>
+    <string name="home_live_preview_detail">体验电池、信号和模式切换。</string>
+    <string name="home_live_preview_note">模拟操作不会更改你的设置。</string>
+    <string name="home_live_sim_invert">反转中心内容</string>
+    <string name="home_status_running">运行中</string>
+    <string name="home_status_setup">需要设置</string>
+    <string name="home_status_restart">需要重启</string>
+    <string name="home_status_off">已关闭</string>
+    <string name="home_status_no_report">无响应</string>
+    <string name="home_camera">摄像头</string>
+    <string name="home_camera_detail">环会围绕前置摄像头。</string>
+    <string name="home_ring_design">环的设计</string>
+    <string name="home_ring_design_detail">经典款 4 个点，双卡款 8 个点。</string>
+    <string name="home_ring_design_classic">经典（4 个点）</string>
+    <string name="home_ring_design_dual">双卡（8 个点）</string>
+    <string name="home_ring_design_live">选定后设计立即改变，无需重启。</string>
+    <string name="customization_title">自定义</string>
+    <string name="engine_title">绘制引擎</string>
+    <string name="engine_current">当前使用 %1$s</string>
+    <string name="engine_auto_note">如果环卡住，请尝试“兼容”引擎。</string>
+    <string name="engine_fallback">上次回退至：%1$s</string>
+    <string name="engine_mode">模式</string>
+    <string name="engine_mode_detail">选择环的绘制方式。</string>
+    <string name="engine_auto">自动</string>
+    <string name="engine_rive">动画</string>
+    <string name="engine_canvas">兼容</string>
+
+    <!-- Report screen -->
+    <string name="report_title">报告问题</string>
+    <string name="report_intro">选择一个标签，描述问题，然后发送。</string>
+    <string name="report_label">标签</string>
+    <string name="report_describe">描述问题</string>
+    <string name="report_telegram_username">Telegram 用户名（可选）</string>
+    <string name="report_telegram_hint">填写后开发者可以联系到你。</string>
+    <string name="report_collecting">正在收集设备数据和日志…</string>
+    <string name="report_sent">已发送，请保留工单编号。</string>
+    <string name="report_failed">报告已保存，但上传失败。</string>
+    <string name="report_send">发送报告</string>
+    <string name="report_sending">正在发送…</string>
+    <string name="report_telegram_user">Telegram：%1$s</string>
+    <string name="report_ticket_created">工单已创建</string>
+    <string name="report_ticket_keep">后续跟进请保留此编号。</string>
+    <string name="report_ticket_label">工单</string>
+    <string name="report_copy_ticket">复制工单编号</string>
+    <string name="report_ticket_copied">工单编号已复制</string>
+    <string name="report_share_public">分享公开更新（无需用户名）</string>
+    <string name="report_contact_developer">联系开发者</string>
+    <string name="report_follow_telegram">在 Telegram 上跟踪此反馈</string>
+    <string name="report_create_another">再建一个报告</string>
+    <string name="report_share_chooser">分享公开更新</string>
+
+    <!-- Preview -->
+    <string name="preview_replay">再播放一次</string>
+    <string name="preview_battery">电量 %1$d%%</string>
+    <string name="preview_charging">充电中</string>
+    <string name="preview_saver">省电模式</string>
+    <string name="preview_airplane">飞行模式</string>
+    <string name="preview_dnd">勿扰模式</string>
+    <string name="preview_dnd_dots">月亮显示在信号点上</string>
+    <string name="preview_wifi">Wi-Fi %1$d / 3</string>
+    <string name="preview_cell">蜂窝信号 %1$d / 4</string>
+    <string name="preview_wifi_off">Wi-Fi 已关闭</string>
+    <string name="preview_wifi_dots">信号点跟随 Wi-Fi</string>
+    <string name="preview_network">网络 %1$s</string>
+
+    <!-- iOS 27 status bar -->
+    <string name="section_ios">iOS 27 状态栏</string>
+    <string name="settings_ios_mode">iOS 27 风格状态栏</string>
+    <string name="settings_ios_mode_detail">使用 iOS 图标代替环。</string>
+    <string name="settings_ios_icons">图标微调</string>
+    <string name="settings_ios_icons_detail">移动或缩放每个图标。</string>
+    <string name="settings_ios_offset">水平偏移</string>
+    <string name="settings_ios_scale">缩放</string>
+    <string name="ios_icon_battery">电池</string>
+    <string name="ios_icon_wifi">Wi-Fi</string>
+    <string name="ios_icon_cell">蜂窝信号</string>
+    <string name="settings_ios_percent_inside">百分比显示在电池内</string>
+    <string name="settings_ios_percent_inside_detail">把电量数字放进电池图标里。</string>
+    <string name="settings_ios_hide_extras">隐藏附加图标</string>
+    <string name="settings_ios_hide_extras_detail">隐藏 Wi-Fi 6 标识和数据箭头</string>
+
+    <!-- SIM &amp; signal -->
+    <string name="section_sim">SIM 与信号</string>
+    <string name="settings_sim_display">SIM 显示</string>
+    <string name="settings_sim_display_detail">图标显示几张 SIM。</string>
+    <string name="settings_sim_display_auto">自动</string>
+    <string name="settings_sim_display_single">单卡</string>
+    <string name="settings_sim_display_dual">双卡</string>
+
+    <!-- Hardcoded label extraction -->
+    <string name="report_category_bug">Bug</string>
+    <string name="report_category_device">设备支持</string>
+    <string name="report_category_feature">功能建议</string>
+    <string name="report_ticket_prefix">工单：%1$s</string>
+    <string name="report_label_prefix">标签：%1$s</string>
+    <string name="report_status_prefix">状态：%1$s</string>
+    <string name="report_status_open">未处理</string>
+    <string name="anim_speed_slow">慢</string>
+    <string name="anim_speed_relaxed">舒缓</string>
+    <string name="anim_speed_normal">正常</string>
+    <string name="anim_speed_brisk">轻快</string>
+    <string name="anim_speed_fast">快</string>
+    <string name="log_report_caption">双环状态栏日志</string>
+    <string name="log_fallback_report">双环状态栏回退报告</string>
+    <string name="log_diagnostics">双环状态栏诊断</string>
+    <string name="log_share_chooser">分享日志</string>
+    <string name="log_github_issue_hint">附上“关于”页中的日志。</string>
+    <string name="xposed_description">双环状态栏——用苹果风格的组合“Duo”环形指示器替换系统电池、Wi-Fi 和信号图标，支持 Rive 动画。已在 OnePlus 15 / OxygenOS 16（Android 16）上测试。</string>
+</resources>

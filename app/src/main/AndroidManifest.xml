@@ -127,7 +127,7 @@
 
         <meta-data
             android:name="xposeddescription"
-            android:value="Duo Status Bar — replaces the system battery, Wi-Fi and signal icons with Apple's combined 'Duo' element, animated with Rive. Tested on OnePlus 15 / OxygenOS 16 (Android 16)." />
+            android:value="@string/xposed_description" />
 
         <meta-data
             android:name="xposedminversion"
