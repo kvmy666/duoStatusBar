@@ -302,7 +302,7 @@ fun DuoSettingsScreen(
                 if (file == null) {
                     shareText(context, report)
                 } else {
-                    val caption = message.take(200).ifBlank { "Duo Status Bar log" }
+                    val caption = message.take(200).ifBlank { context.getString(R.string.log_report_caption) }
                     val result = withContext(Dispatchers.IO) { TelegramLog.send(context, file, caption) }
                     when (result) {
                         TelegramLog.Result.SENT -> {
@@ -316,7 +316,7 @@ fun DuoSettingsScreen(
                     }
                 }
             } else {
-                val caption = message.take(200).ifBlank { "Duo Status Bar log" }
+                val caption = message.take(200).ifBlank { context.getString(R.string.log_report_caption) }
                 val result = withContext(Dispatchers.IO) { TelegramLog.send(context, zip, caption) }
                 when (result) {
                     TelegramLog.Result.SENT -> {

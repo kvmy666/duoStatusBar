@@ -642,7 +642,7 @@ internal fun AnimationsSection(
             val speedIndex = (DuoPrefs.REVEAL_CHOICES.size - 1 -
                     DuoPrefs.REVEAL_CHOICES.indexOf(settings.revealMs).coerceAtLeast(0))
             LabelledSlider(
-                label = "${stringResource(R.string.settings_anim_speed)}: ${SPEED_LABELS[speedIndex]}",
+                label = "${stringResource(R.string.settings_anim_speed)}: ${stringResource(SPEED_LABELS[speedIndex])}",
                 value = speedIndex.toFloat(),
                 range = 0f..(DuoPrefs.REVEAL_CHOICES.size - 1).toFloat(),
                 steps = DuoPrefs.REVEAL_CHOICES.size - 2,
@@ -1442,4 +1442,10 @@ internal fun BackupSection(
 private const val DEMO_LEVEL = 40
 
 /** FR-25: the five arrival speeds, slowest first, matching [DuoPrefs.REVEAL_CHOICES] reversed. */
-private val SPEED_LABELS = listOf("Slow", "Relaxed", "Normal", "Brisk", "Fast")
+private val SPEED_LABELS = listOf(
+    R.string.anim_speed_slow,
+    R.string.anim_speed_relaxed,
+    R.string.anim_speed_normal,
+    R.string.anim_speed_brisk,
+    R.string.anim_speed_fast
+)
