@@ -28,6 +28,9 @@ internal object TelegramLog {
 
     data class SendResult(val result: Result, val ticket: String? = null)
 
+    /** The automatic reporter's outcome, with a stable reason for the reporter-failure fingerprint. */
+    data class RelaySendResult(val sent: Boolean, val error: String = "")
+
     private const val API = "https://api.telegram.org"
 
     /**
@@ -101,6 +104,25 @@ internal object TelegramLog {
     fun send(context: Context, file: File, caption: String): Result =
         sendWithTicket(context, file, caption).result
 
+    /**
+     * The automatic reporter's send path: relay only, never the direct bot-token route, and no manual
+     * cooldown (the pulse owns its own daily cap). Returns a stable reason so a failure becomes a
+     * `reporter_failure` fingerprint that the next pulse retries.
+     */
+    fun sendRelayOnly(file: File, caption: String): RelaySendResult {
+        val relay = BuildConfig.TELEGRAM_RELAY_URL
+        val relayKey = BuildConfig.TELEGRAM_RELAY_KEY
+        if (relay.isBlank() || relayKey.isBlank()) return RelaySendResult(false, "not-configured")
+        val outcome = postMultipartOutcome(
+            relay,
+            file,
+            caption,
+            extraFields = emptyMap(),
+            headers = mapOf("X-Duo-Key" to relayKey)
+        )
+        return if (outcome.ok) RelaySendResult(true) else RelaySendResult(false, outcome.error)
+    }
+
     /** The chat id of the most recent message sent to the bot, or null. See the class note. */
     private fun discoverChatId(token: String): String? = try {
         val result = JSONObject(httpGet("$API/bot$token/getUpdates")).optJSONArray("result")
@@ -127,7 +149,21 @@ internal object TelegramLog {
         caption: String,
         extraFields: Map<String, String>,
         headers: Map<String, String> = emptyMap()
-    ): String? = try {
+    ): String? = postMultipartOutcome(url, file, caption, extraFields, headers).body
+
+    private data class PostOutcome(val body: String?, val ok: Boolean, val error: String)
+
+    /**
+     * The one multipart upload. [PostOutcome.error] is a stable token (`not-configured`, `http-403`,
+     * an exception class) that the automatic reporter stores in its fingerprint.
+     */
+    private fun postMultipartOutcome(
+        url: String,
+        file: File,
+        caption: String,
+        extraFields: Map<String, String>,
+        headers: Map<String, String> = emptyMap()
+    ): PostOutcome = try {
         val boundary = "----duo" + UUID.randomUUID().toString().replace("-", "")
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -152,10 +188,14 @@ internal object TelegramLog {
             L.i("log delivered (${file.length()} bytes)")
         }
         conn.disconnect()
-        if (code in 200..299) body else null
+        if (code in 200..299) {
+            PostOutcome(body, true, "")
+        } else {
+            PostOutcome(null, false, "http-$code")
+        }
     } catch (t: Throwable) {
         L.w("telegram send: ${t.javaClass.simpleName}: ${t.message}")
-        null
+        PostOutcome(null, false, t.javaClass.simpleName)
     }
 
     private fun field(out: OutputStream, boundary: String, name: String, value: String) {

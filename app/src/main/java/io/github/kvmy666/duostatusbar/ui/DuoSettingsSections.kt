@@ -1076,6 +1076,8 @@ internal fun AboutSection(
     onExport: () -> Unit,
     checkUpdates: Boolean,
     onToggleUpdates: (Boolean) -> Unit,
+    autoReport: Boolean,
+    onToggleAutoReport: (Boolean) -> Unit,
     checkingUpdate: Boolean,
     onCheckNow: () -> Unit,
     updateMessage: String,
@@ -1085,7 +1087,8 @@ internal fun AboutSection(
     val context = LocalContext.current
     if (matches(stringResource(R.string.section_about), stringResource(R.string.settings_status),
             stringResource(R.string.settings_export_log),
-            stringResource(R.string.settings_check_updates), stringResource(R.string.settings_donate))
+            stringResource(R.string.settings_check_updates), stringResource(R.string.settings_donate),
+            stringResource(R.string.settings_auto_report))
     ) GlassCard(
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
@@ -1127,6 +1130,13 @@ internal fun AboutSection(
                 detail = stringResource(R.string.settings_check_updates_detail),
                 checked = checkUpdates
             ) { on -> onToggleUpdates(on) }
+            // Opt-in automatic problem reports. The switch is the consent answer: on schedules the
+            // first pulse now, off cancels every scheduled pulse immediately.
+            SettingSwitch(
+                label = stringResource(R.string.settings_auto_report),
+                detail = stringResource(R.string.settings_auto_report_detail),
+                checked = autoReport
+            ) { on -> onToggleAutoReport(on) }
             OutlinedButton(
                 onClick = onCheckNow,
                 enabled = !checkingUpdate,

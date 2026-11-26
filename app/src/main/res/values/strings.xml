@@ -323,6 +323,16 @@
     <string name="settings_ios_hide_extras">Hide extra icons</string>
     <string name="settings_ios_hide_extras_detail">Hides Wi-Fi 6 badge and data arrows</string>
 
+    <!-- Automatic problem reports (opt-in) -->
+    <string name="consent_title">Help fix bugs</string>
+    <string name="consent_question">Help fix bugs: allow Duo Status Bar to collect diagnostic logs and send them automatically when a problem is detected?</string>
+    <string name="consent_yes">Yes (Recommended)</string>
+    <string name="consent_no">No</string>
+    <!-- Whole seconds left before either consent button can be pressed. -->
+    <string name="consent_countdown">%1$d…</string>
+    <string name="settings_auto_report">Automatic problem reports</string>
+    <string name="settings_auto_report_detail">Collect logs and send them automatically when a problem is detected.</string>
+
     <!-- SIM &amp; signal -->
     <string name="section_sim">SIM &amp; signal</string>
     <string name="settings_sim_display">SIM display</string>

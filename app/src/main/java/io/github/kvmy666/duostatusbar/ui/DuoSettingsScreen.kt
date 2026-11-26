@@ -51,6 +51,9 @@ import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RestartOutcome
 import io.github.kvmy666.duostatusbar.RootLogs
+import io.github.kvmy666.duostatusbar.settings.AutoReportManager
+import io.github.kvmy666.duostatusbar.settings.AutoReportStore
+import io.github.kvmy666.duostatusbar.settings.ConsentGate
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.BackupCodec
@@ -125,6 +128,9 @@ fun DuoSettingsScreen(
         mutableStateOf(DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted())
     }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
+    var autoReport by remember {
+        mutableStateOf(ConsentGate.enabled(AutoReportStore.consent(context)))
+    }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -227,6 +233,7 @@ fun DuoSettingsScreen(
             stageOverride = StageOverride.read(context)
             moduleHealth = ModuleHealthCheck.of(context)
             accessGranted = DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted()
+            autoReport = ConsentGate.enabled(AutoReportStore.consent(context))
         }
     }
 
@@ -648,6 +655,12 @@ fun DuoSettingsScreen(
                 if (on && android.os.Build.VERSION.SDK_INT >= 33) {
                     notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
+            },
+            autoReport = autoReport,
+            onToggleAutoReport = { on ->
+                autoReport = on
+                // Turning on triggers the first pulse; turning off cancels every scheduled pulse.
+                AutoReportManager.answerConsent(context, on)
             },
             checkingUpdate = checkingUpdate,
             onCheckNow = {

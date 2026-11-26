@@ -7,7 +7,16 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import io.github.kvmy666.duostatusbar.settings.AutoReportManager
+import io.github.kvmy666.duostatusbar.settings.AutoReportStore
+import io.github.kvmy666.duostatusbar.settings.ConsentGate
+import io.github.kvmy666.duostatusbar.ui.ConsentDialog
 import io.github.kvmy666.duostatusbar.ui.DuoShell
 import io.github.kvmy666.duostatusbar.ui.DuoTheme
 
@@ -28,7 +37,18 @@ class MainActivity : ComponentActivity() {
         setContent {
             DuoTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    val context = LocalContext.current
+                    // Shown only while the question is unanswered; a stored yes/no is never re-asked.
+                    var showConsent by remember {
+                        mutableStateOf(ConsentGate.shouldShow(AutoReportStore.consent(context)))
+                    }
                     DuoShell()
+                    if (showConsent) {
+                        ConsentDialog { allow ->
+                            AutoReportManager.answerConsent(context, allow)
+                            showConsent = false
+                        }
+                    }
                 }
             }
         }

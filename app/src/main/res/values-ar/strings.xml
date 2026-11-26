@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Automatic problem reports (opt-in) -->
+    <string name="consent_title">ساعد في إصلاح الأخطاء</string>
+    <string name="consent_question">ساعد في إصلاح الأخطاء: هل تسمح لـ Duo Status Bar بجمع سجلات التشخيص وإرسالها تلقائيًا عند اكتشاف مشكلة؟</string>
+    <string name="consent_yes">نعم (موصى به)</string>
+    <string name="consent_no">لا</string>
+    <!-- Whole seconds left before either consent button can be pressed. -->
+    <string name="consent_countdown">%1$d…</string>
+    <string name="settings_auto_report">تقارير المشاكل التلقائية</string>
+    <string name="settings_auto_report_detail">اجمع السجلات وأرسلها تلقائيًا عند اكتشاف مشكلة.</string>
+</resources>
