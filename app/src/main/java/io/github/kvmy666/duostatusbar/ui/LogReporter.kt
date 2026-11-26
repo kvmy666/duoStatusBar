@@ -7,6 +7,10 @@ import androidx.core.content.FileProvider
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.diagnostics.Redact
+import io.github.kvmy666.duostatusbar.diagnostics.ReportCompleteness
+import io.github.kvmy666.duostatusbar.diagnostics.ReportFacts
+import io.github.kvmy666.duostatusbar.diagnostics.RootCapture
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
@@ -15,6 +19,7 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
+import io.github.kvmy666.duostatusbar.settings.SettingsHistory
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import java.io.File
 import java.text.SimpleDateFormat
@@ -150,36 +155,67 @@ internal fun buildDiagnostics(
     status: String,
     history: List<String>,
     dump: String,
-    moduleLoadAt: Long
-): String =
-    buildString {
+    moduleLoadAt: Long,
+    /** The structured capture, when the caller has it. Its section states feed the completeness header. */
+    capture: RootCapture? = null,
+    /** The rendered capture, for callers that only kept the text. */
+    captureText: String = "",
+    /** Set when the capture itself threw; every capture section then says so. */
+    captureFailure: String? = null
+): String {
+    val loadAt = DuoPrefs.moduleLoadTime(context)
+    val heartbeatAt = DuoPrefs.heartbeat(context)
+    val now = System.currentTimeMillis()
+    val loadLine = moduleLoadLine(moduleLoadAt, status, history, loadAt, heartbeatAt, now)
+    val sections = ReportCompleteness.build(
+        status = status,
+        history = history,
+        dump = dump,
+        moduleLoad = loadLine,
+        capture = capture,
+        captureText = captureText,
+        captureFailure = captureFailure
+    )
+    val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
+    val lastChange = runCatching { SettingsHistory.read(context) }.getOrNull()
+    val revision = runCatching { DuoPrefs.revision(context) }.getOrDefault(0L)
+    val perPiece = ReportFacts.perPieceStatus(
+        status = status,
+        dump = dump,
+        settings = settings,
+        health = health,
+        lastChange = lastChange,
+        revision = revision,
+        capture = capture,
+        captureText = captureText,
+        captureFailure = captureFailure,
+        formatTimestamp = ::formatTimestamp
+    )
+    val raw = buildString {
         appendLine("Duo Status Bar diagnostics")
+        appendLine(ReportCompleteness.render(sections))
         appendLine("settings: $settings")
-        appendLine(
-            "module load: " + moduleLoadLine(
-                moduleLoadAt,
-                status,
-                history,
-                DuoPrefs.moduleLoadTime(context),
-                DuoPrefs.heartbeat(context),
-                System.currentTimeMillis()
-            )
-        )
+        appendLine("module load: $loadLine")
         appendLine("module: ").append(status.ifEmpty { "no report yet" })
         if (history.isNotEmpty()) {
             appendLine("history:")
             history.forEach { appendLine("  $it") }
         }
+        appendLine()
+        append(perPiece)
+        appendLine()
         // Always present, so even a report with no module log says exactly which build, device and
         // module state it came from - the facts that fix a "nothing happens" report.
-        appendLine()
         append(appEnvironment(context))
-        // The debug build's full dump (build identity, id probes, view tree, readers). Empty in release.
+        // The full dump (build identity, id probes, view tree, readers). Empty in release.
         if (dump.isNotEmpty()) {
             appendLine()
             append(labelStaleDump(dump, BuildConfig.VERSION_NAME))
         }
     }
+    // Defense in depth: the builders return redacted text, and the ZIP/document writers redact again.
+    return Redact.text(raw)
+}
 
 /**
  * The ROM adapter for this device, with the SDK gate applied. Both the app environment and the report
@@ -224,7 +260,14 @@ internal fun appEnvironment(context: Context): String = buildString {
     appendLine("rom adapter: ${rom?.id ?: "unknown"} (measured=${rom?.measured ?: false})")
     val lsposed = hasPackage(context, "org.lsposed.manager")
     appendLine("lsposed manager installed: $lsposed")
-    append("module state: ${runCatching { ModuleHealthCheck.of(context).state }.getOrDefault("unknown")}")
+    val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
+    append(
+        "module state: " + if (health != null) {
+            "${health.state} (${health.mode.label})"
+        } else {
+            "unknown (off)"
+        }
+    )
 }
 
 private fun packageVersion(context: Context, pkg: String): String? = try {
@@ -246,17 +289,36 @@ internal fun buildFullReport(
     history: List<String>,
     dump: String,
     moduleLoadAt: Long,
-    logs: String
-): String = buildString {
-    val message = problem.trim()
-    if (message.isNotEmpty()) {
-        appendLine("user message:")
-        appendLine(message)
-        appendLine()
+    logs: String,
+    /** The structured capture, when the caller kept it; otherwise [logs] is parsed. */
+    capture: RootCapture? = null,
+    /** Set when collecting the capture threw. */
+    captureFailure: String? = null
+): String {
+    val raw = buildString {
+        val message = problem.trim()
+        if (message.isNotEmpty()) {
+            appendLine("user message:")
+            appendLine(message)
+            appendLine()
+        }
+        append(
+            buildDiagnostics(
+                context,
+                settings,
+                status,
+                history,
+                dump,
+                moduleLoadAt,
+                capture = capture,
+                captureText = logs,
+                captureFailure = captureFailure
+            )
+        )
+        append("\n\n===== device capture =====\n")
+        append(logs)
     }
-    append(buildDiagnostics(context, settings, status, history, dump, moduleLoadAt))
-    append("\n\n===== device capture =====\n")
-    append(logs)
+    return Redact.text(raw)
 }
 
 internal fun formatTimestamp(ms: Long): String =
@@ -296,7 +358,7 @@ internal fun shareLog(context: Context, file: Uri) {
 internal fun writeDiagnostics(context: Context, report: String): File? = try {
     val dir = context.getExternalFilesDir("diagnostics") ?: return null
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-    File(dir, "duo-diagnostics-$stamp.txt").apply { writeText(report) }
+    File(dir, "duo-diagnostics-$stamp.txt").apply { writeText(Redact.text(report)) }
 } catch (t: Throwable) {
     L.w("diagnostics file: ${t.javaClass.simpleName}: ${t.message}")
     null
@@ -367,7 +429,9 @@ internal fun writeReportZip(
         logcat = logs,
         diagnosticsDump = dump.takeIf { it.isNotBlank() }
             ?.let { labelStaleDump(it, BuildConfig.VERSION_NAME) },
-        screenshotPng = null
+        screenshotPng = null,
+        // The header is the one schema both the manual and the automatic report understand.
+        completeness = ReportCompleteness.parseHeader(report)
     )
 
     DuoReport.writeZip(destination, inputs)

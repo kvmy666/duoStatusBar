@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import io.github.kvmy666.duostatusbar.diagnostics.Redact
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -21,7 +22,9 @@ internal data class DuoReportInputs(
     val moduleLog: String,
     val logcat: String,
     val diagnosticsDump: String? = null,
-    val screenshotPng: ByteArray? = null
+    val screenshotPng: ByteArray? = null,
+    /** Optional section -> `state reason=…` map, so an automatic report carries the completeness. */
+    val completeness: Map<String, String> = emptyMap()
 )
 
 /**
@@ -79,6 +82,9 @@ internal object DuoReport {
                 val entries = JSONArray()
                 for (name in entryNames) entries.put(name)
                 manifest.put("entries", entries)
+                val completeness = JSONObject()
+                for ((name, state) in inputs.completeness) completeness.put(name, state)
+                manifest.put("completeness", completeness)
 
                 val manifestText = try {
                     manifest.toString(2)
@@ -108,7 +114,9 @@ internal object DuoReport {
 
     private fun writeTextEntry(zos: ZipOutputStream, name: String, text: String) {
         zos.putNextEntry(ZipEntry(name))
-        zos.write(text.toByteArray(Charsets.UTF_8))
+        // The single privacy choke point for every ZIP text entry (diagnostics, module log, logcat,
+        // dump). Redact is idempotent, so the builders' own pass is harmless.
+        zos.write(Redact.text(text).toByteArray(Charsets.UTF_8))
         zos.closeEntry()
     }
 

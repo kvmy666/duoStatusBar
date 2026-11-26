@@ -699,6 +699,7 @@ object DuoPrefs {
         orientation: DuoOrientation = DuoOrientation.of(context)
     ): Long {
         val p = prefs(context)
+        val previous = read(context, orientation)
         val next = revision(context) + 1
         val effectiveEngine = when {
             settings.engineMode == ENGINE_AUTO && !settings.useRive -> ENGINE_CANVAS
@@ -735,6 +736,8 @@ object DuoPrefs {
         editor.writeFields(prefix(orientation), clamped)
         if (orientation == DuoOrientation.LANDSCAPE) editor.putBoolean(KEY_LANDSCAPE_SET, true)
         editor.putLong(KEY_REVISION, next).apply()
+        // The only history write: setting writes, never the hot path.
+        SettingsHistory.record(context, previous, clamped, orientation = orientation)
         return next
     }
 

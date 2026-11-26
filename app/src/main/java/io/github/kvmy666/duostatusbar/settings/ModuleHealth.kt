@@ -14,8 +14,8 @@ internal enum class ModuleState {
     NEEDS_RESTART,
 
     /**
-     * The module loaded and heartbeats, but the user turned "Use Duo Status Bar" off in both
-     * orientations: nothing is broken, the ring is simply not wanted.
+     * The module loaded and heartbeats, but neither Duo nor iOS is switched on: nothing is broken,
+     * the element is simply not wanted.
      */
     DISABLED,
 
@@ -23,7 +23,19 @@ internal enum class ModuleState {
     NOT_REPORTING
 }
 
-internal data class ModuleHealth(val state: ModuleState, val loadedAt: Long, val appUpdatedAt: Long)
+internal data class ModuleHealth(
+    val state: ModuleState,
+    val loadedAt: Long,
+    val appUpdatedAt: Long,
+    val mode: ModuleMode = ModuleMode.OFF
+)
+
+/** Which host owns the bar, as the report labels it. */
+internal enum class ModuleMode(val label: String) {
+    DUO("Duo active"),
+    IOS("iOS active"),
+    OFF("off")
+}
 
 /**
  * Diagnoses the module from stores the app can always read, even when the settings provider is
@@ -48,12 +60,24 @@ internal object ModuleHealthCheck {
         val heartbeat = DuoPrefs.heartbeat(context)
         // The module is effectively on when either orientation is on: an unsaved landscape copy reads
         // the portrait one, so reading both never reports "off" while the bar is drawing.
-        val settingsEnabled = DuoPrefs.read(context, DuoOrientation.PORTRAIT).enabled ||
-            DuoPrefs.read(context, DuoOrientation.LANDSCAPE).enabled
+        val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
+        val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
+        val duoEnabled = portrait.enabled || landscape.enabled
+        // iOS owns the bar when its switch is on, even if the Duo switch is off (the field reports).
+        val iosEnabled = portrait.iosMode || landscape.iosMode
         return ModuleHealth(
-            decide(loadedAt, updatedAt, statusBlank, heartbeat, System.currentTimeMillis(), settingsEnabled),
+            decide(
+                loadedAt,
+                updatedAt,
+                statusBlank,
+                heartbeat,
+                System.currentTimeMillis(),
+                settingsEnabled = duoEnabled,
+                iosEnabled = iosEnabled
+            ),
             loadedAt,
-            updatedAt
+            updatedAt,
+            modeFor(duoEnabled, iosEnabled)
         )
     }
 
@@ -66,11 +90,13 @@ internal object ModuleHealthCheck {
      * it. Both are [ModuleState.NEVER_LOADED], so a report taken then cannot ship the previous run's
      * dump/status as if the module were healthy (measured: unscope, restart, send -> full but stale).
      *
-     * [settingsEnabled] is the user's own switch. It is checked *after* the load/heartbeat conditions
-     * because a module that never loaded is a setup problem, not a turned-off one: telling that user to
-     * "turn it on" would skip the LSPosed steps they actually need. It is also checked after
-     * [ModuleState.NEEDS_RESTART] because an APK update still needs the restart regardless of the
-     * switch — the running code is the old build either way.
+     * [settingsEnabled] is the legacy name for the Duo switch ([duoEnabled]); [iosEnabled] is the iOS
+     * switch. The switches are checked *after* the load/heartbeat conditions because a module that never
+     * loaded is a setup problem, not a turned-off one: telling that user to "turn it on" would skip the
+     * LSPosed steps they actually need. They are also checked after [ModuleState.NEEDS_RESTART] because
+     * an APK update still needs the restart regardless of a switch — the running code is the old build
+     * either way. iOS owning the bar is healthy even when the Duo switch is off; [ModuleState.DISABLED]
+     * means neither mode is on.
      */
     fun decide(
         loadedAt: Long,
@@ -78,16 +104,27 @@ internal object ModuleHealthCheck {
         statusBlank: Boolean,
         heartbeatAt: Long = 0L,
         nowMs: Long = 0L,
-        settingsEnabled: Boolean = true
+        settingsEnabled: Boolean = true,
+        iosEnabled: Boolean = false,
+        duoEnabled: Boolean = settingsEnabled
     ): ModuleState = when {
         loadedAt <= 0L -> ModuleState.NEVER_LOADED
         heartbeatAt <= 0L -> ModuleState.NEVER_LOADED
         nowMs > 0L && nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS -> ModuleState.NEVER_LOADED
         // The APK changed after the module last loaded, so System UI is running the previous build.
         appUpdatedAt > loadedAt -> ModuleState.NEEDS_RESTART
-        !settingsEnabled -> ModuleState.DISABLED
+        !duoEnabled && !iosEnabled -> ModuleState.DISABLED
+        // iOS owns the bar: healthy even when the Duo switch is off (the old DISABLED field report).
+        iosEnabled -> ModuleState.OK
         statusBlank -> ModuleState.NOT_REPORTING
         else -> ModuleState.OK
+    }
+
+    /** The configured owner: iOS takes precedence over Duo, matching the runtime feature gate. */
+    fun modeFor(duoEnabled: Boolean, iosEnabled: Boolean): ModuleMode = when {
+        iosEnabled -> ModuleMode.IOS
+        duoEnabled -> ModuleMode.DUO
+        else -> ModuleMode.OFF
     }
 
     @Suppress("DEPRECATION")

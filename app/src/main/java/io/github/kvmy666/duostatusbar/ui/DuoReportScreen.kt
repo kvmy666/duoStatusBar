@@ -112,7 +112,13 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                     status = collectingText
                     scope.launch {
                         val settings = DuoPrefs.read(context)
-                        val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
+                        val captured = withContext(Dispatchers.IO) {
+                            runCatching { RootLogs.collectSections(context) }
+                        }
+                        val capture = captured.getOrNull()
+                        val captureFailure = captured.exceptionOrNull()
+                            ?.let { "${it.javaClass.simpleName}: ${it.message}" }
+                        val logs = capture?.render().orEmpty()
                         val report = buildFullReport(
                             context,
                             problem,
@@ -121,7 +127,9 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                             DuoPrefs.statusHistory(context),
                             DuoPrefs.dump(context),
                             0L,
-                            logs
+                            logs,
+                            capture = capture,
+                            captureFailure = captureFailure
                         )
                         val zip = withContext(Dispatchers.IO) {
                             writeReportZip(

@@ -102,6 +102,31 @@ class DuoReportTest {
     }
 
     @Test
+    fun `manifest carries the optional completeness map`() {
+        val dest = File(tmp.root, "completeness.zip")
+        DuoReport.writeZip(
+            dest,
+            inputs().copy(
+                completeness = mapOf(
+                    "module status" to "present reason=reported",
+                    "crash records" to "unreadable reason=Permission denied"
+                )
+            )
+        )
+        ZipFile(dest).use { zf ->
+            val m = JSONObject(
+                zf.getInputStream(zf.getEntry("manifest.json")).bufferedReader().readText()
+            )
+            val completeness = m.getJSONObject("completeness")
+            assertEquals("present reason=reported", completeness.getString("module status"))
+            assertEquals(
+                "unreadable reason=Permission denied",
+                completeness.getString("crash records")
+            )
+        }
+    }
+
+    @Test
     fun createsParentDirectories() {
         val dest = File(tmp.root, "nested/sub/dir/report.zip")
         DuoReport.writeZip(dest, inputs())
