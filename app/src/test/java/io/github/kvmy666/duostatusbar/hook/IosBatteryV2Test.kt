@@ -491,4 +491,50 @@ class IosBatteryV2Test {
         assertTrue(batteryHookInstalled(oplusConstructorHook = true, aospConstructorHook = false))
         assertTrue(batteryHookInstalled(oplusConstructorHook = false, aospConstructorHook = true))
     }
+
+    // ------------------------------------------------------------------ R4 per-family owner
+
+    @Test
+    fun `oxygenos probes the Oplus classes and samsung probes only its AOSP owner`() {
+        assertEquals(
+            listOf(
+                IosBatteryProbe.OPLUS_VIEW,
+                IosBatteryProbe.OPLUS_BINDER,
+                IosBatteryProbe.AOSP_VIEW
+            ),
+            batteryProbePlan("oxygenos")
+        )
+        // Samsung must not probe the Oplus view/binder: the absent classes are not Samsung failures
+        // and must not show as foreign `missing:` entries in `hooks ... battery=`.
+        assertEquals(listOf(IosBatteryProbe.AOSP_VIEW), batteryProbePlan("samsung"))
+        // An empty/unknown family keeps today's any-class probe.
+        assertEquals(batteryProbePlan("oxygenos"), batteryProbePlan(""))
+        assertEquals(batteryProbePlan("oxygenos"), batteryProbePlan("hyperos"))
+    }
+
+    @Test
+    fun `a Samsung owner-only install satisfies samsung but not oxygenos`() {
+        IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = true)
+        try {
+            assertTrue(IosBatteryV2.installedFor("samsung"))
+            assertFalse(IosBatteryV2.installedFor("oxygenos"))
+            // Back-compat: `installed` is still "either owner".
+            assertTrue(IosBatteryV2.installed)
+        } finally {
+            IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = false)
+        }
+    }
+
+    @Test
+    fun `activation is refused when only the foreign owner installed`() {
+        IosBatteryV2.setOwnerHooksForTest(oplusHooked = true, aospHooked = false)
+        try {
+            // Samsung's owner is AOSP, so an Oplus-only install must not activate its battery.
+            IosBatteryV2.activate(context, rom("samsung"), percentInside = false, lowThreshold = 20)
+            assertFalse(IosBatteryV2.isActive)
+        } finally {
+            IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = false)
+            IosBatteryV2.deactivate()
+        }
+    }
 }

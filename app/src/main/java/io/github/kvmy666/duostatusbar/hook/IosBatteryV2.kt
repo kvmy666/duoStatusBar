@@ -55,6 +55,18 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     /** The AOSP-shaped battery view used by Samsung/Nothing/Motorola (and dormant elsewhere). */
     private const val AOSP_VIEW_CLASS = "com.android.systemui.battery.BatteryMeterView"
 
+    /**
+     * R4: Samsung's configuration listener. The measured smali
+     * (`reverse/smali/samsung/smali/com/android/systemui/battery/BatteryMeterViewController$1.smali:32,123,273`)
+     * removes `mBatteryIconView` and installs a fresh `SamsungBatteryMeterDrawable` on the **same**
+     * `ImageView` on a density/font-scale change; `BatteryMeterViewController` registers this listener
+     * (`BatteryMeterViewController.smali:515-527`, `ConfigurationControllerImpl.smali:442-458,528`).
+     * Re-asserting our drawable after it gives the custom density a chance to replace our glyph.
+     * Static proof only: main-process invocation is UNVERIFIED.
+     */
+    private const val SAMSUNG_CONTROLLER_CLASS =
+        "com.android.systemui.battery.BatteryMeterViewController\$1"
+
     /** OxygenOS icon leaf name; the numeric id drifts between builds, so it is resolved by name. */
     private const val OPLUS_ICON_NAME = "battery_icon_view"
 
@@ -79,11 +91,32 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     /** True once at least one battery view class was resolved in this process. */
     val installed: Boolean get() = installedFlag
 
+    /**
+     * R4: true only when **this family's** battery owner installed. `installed` stays "either" for the
+     * diagnostic/back-compat, but selection and activation must never be satisfied by a foreign hook.
+     */
+    internal fun installedFor(familyId: String): Boolean = IosV2Profile.batteryOwnerInstalled(
+        familyId,
+        oplusConstructorHooked,
+        aospConstructorHooked
+    )
+
     private var installDone = false
 
     // The OxygenOS view class, used only to recognise a hooked instance in a binder argument.
     @Volatile
     private var oplusClass: Class<*>? = null
+
+    /**
+     * R4: the two constructor-hook results tracked separately. [installed] stays "either" for
+     * back-compat/diagnostics, but route/activation trust only the family's own owner through
+     * [installedFor]; an Oplus hook on Samsung (or the reverse) must not select the route.
+     */
+    @Volatile
+    private var oplusConstructorHooked = false
+
+    @Volatile
+    private var aospConstructorHooked = false
 
     private val stateLock = Any()
 
@@ -172,36 +205,59 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     /**
      * Installs the process-wide battery hooks once. Never throws: a missing class leaves the stock
      * battery alive and counts one failure, and the diagnostic source is registered either way.
+     *
+     * R4: only the family's own owner is probed. `oxygenos` keeps the measured Oplus view/binder +
+     * AOSP view probe and its exact failure messages; `samsung` probes only the AOSP view (an absent
+     * Oplus class is not a Samsung failure and must not appear in `hooks ... battery=`). An
+     * empty/unknown family keeps the historical any-class probe.
      */
     @Synchronized
-    fun install(classLoader: ClassLoader) {
+    fun install(classLoader: ClassLoader, familyId: String = "") {
         if (installDone) return
         installDone = true
         IosDiagnostics.register(this)
         try {
-            val oplus = findClass(OPLUS_VIEW_CLASS, classLoader)
-            noteClass(OPLUS_VIEW_CLASS.substringAfterLast('.'), oplus != null)
-            val oplusHooked = if (oplus != null) {
-                oplusClass = oplus
-                hookOplusView(oplus)
-            } else {
-                countFailure("no OxygenOS battery view class")
-                false
+            val plan = batteryProbePlan(familyId)
+            var oplusHooked = false
+            var aospHooked = false
+            var oplus: Class<*>? = null
+
+            if (IosBatteryProbe.OPLUS_VIEW in plan) {
+                oplus = findClass(OPLUS_VIEW_CLASS, classLoader)
+                noteClass(OPLUS_VIEW_CLASS.substringAfterLast('.'), oplus != null)
+                oplusHooked = if (oplus != null) {
+                    oplusClass = oplus
+                    hookOplusView(oplus)
+                } else {
+                    countFailure("no OxygenOS battery view class")
+                    false
+                }
             }
 
-            val binder = findClass(OPLUS_BINDER_CLASS, classLoader)
-            noteClass(OPLUS_BINDER_CLASS.substringAfterLast('.'), binder != null)
-            if (binder != null) hookOplusBinder(binder, oplus) else
-                countFailure("no OxygenOS battery binder class")
-
-            val aosp = findClass(AOSP_VIEW_CLASS, classLoader)
-            noteClass(AOSP_VIEW_CLASS.substringAfterLast('.'), aosp != null)
-            val aospHooked = if (aosp != null) {
-                hookAospView(aosp)
-            } else {
-                countFailure("no AOSP battery view class")
-                false
+            if (IosBatteryProbe.OPLUS_BINDER in plan) {
+                val binder = findClass(OPLUS_BINDER_CLASS, classLoader)
+                noteClass(OPLUS_BINDER_CLASS.substringAfterLast('.'), binder != null)
+                if (binder != null) hookOplusBinder(binder, oplus) else
+                    countFailure("no OxygenOS battery binder class")
             }
+
+            if (IosBatteryProbe.AOSP_VIEW in plan) {
+                val aosp = findClass(AOSP_VIEW_CLASS, classLoader)
+                noteClass(AOSP_VIEW_CLASS.substringAfterLast('.'), aosp != null)
+                aospHooked = if (aosp != null) {
+                    hookAospView(aosp)
+                } else {
+                    countFailure("no AOSP battery view class")
+                    false
+                }
+            }
+
+            oplusConstructorHooked = oplusHooked
+            aospConstructorHooked = aospHooked
+            // R4: Samsung re-creates its icon ImageView drawable on a density/font change; re-assert
+            // after that listener so our glyph survives the configuration rebuild. A missing
+            // controller class/method is reported once and is explicitly not a failure.
+            if (familyId == "samsung" && aospHooked) hookSamsungController(classLoader)
 
             // R7 P5: a resolved class is not a working hook. V2 may only be selected when at least
             // one constructor hook was actually installed; otherwise the host stays the owner.
@@ -313,6 +369,74 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         return constructors
     }
 
+    /**
+     * R4: Samsung's `BatteryMeterViewController$1.onDensityOrFontScaleChanged` rebuilds the icon
+     * drawable; re-assert ours after it. Missing class/method is a normal "not on this build" fact,
+     * logged once, and must never be counted as a failure (AGENTS rule 5).
+     */
+    private fun hookSamsungController(classLoader: ClassLoader) {
+        val cls = try {
+            XposedHelpers.findClass(SAMSUNG_CONTROLLER_CLASS, classLoader)
+        } catch (t: Throwable) {
+            logOnce.once("ios-battery-samsung-controller-missing") {
+                L.i("$TAG: samsung controller=missing class - drawable not re-asserted")
+            }
+            return
+        }
+        val hooked = try {
+            XposedBridge.hookAllMethods(
+                cls,
+                "onDensityOrFontScaleChanged",
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        reassertAllOwned()
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            logOnce.once("ios-battery-samsung-controller-missing") {
+                L.i("$TAG: samsung controller=missing method - drawable not re-asserted")
+            }
+            return
+        }
+        if (hooked.isNotEmpty()) {
+            logOnce.once("ios-battery-samsung-controller-ok") {
+                L.i("$TAG: samsung controller=ok")
+            }
+        } else {
+            logOnce.once("ios-battery-samsung-controller-missing") {
+                L.i("$TAG: samsung controller=missing method - drawable not re-asserted")
+            }
+        }
+    }
+
+    /**
+     * R4: the Samsung configuration listener replaced the icon drawable. Repair every live controller
+     * in place; a controller that is not installed is ignored by [Controller.reassert]. Guarded
+     * because this runs from a SystemUI configuration callback.
+     *
+     * Restore caveat: [Controller.restore] returns the drawable captured at install, not the
+     * Samsung drawable this listener minted later.
+     */
+    private fun reassertAllOwned() {
+        val live = try {
+            synchronized(controllers) { controllers.values.toList() }
+        } catch (t: Throwable) {
+            countFailure(t)
+            return
+        }
+        var repaired = 0
+        for (controller in live) {
+            try {
+                if (controller.reassert()) repaired++
+            } catch (t: Throwable) {
+                countFailure(t)
+                IosV2Log.failureOnce("battery.reassertAll", t)
+            }
+        }
+        if (repaired > 0) reasserts += repaired
+    }
+
     private inline fun hookSafely(what: String, block: () -> Collection<*>): Boolean {
         return try {
             block().isNotEmpty()
@@ -378,7 +502,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         settings: ModuleSettings? = null,
         transform: IosUserTransform = IosUserTransform.IDENTITY
     ) {
-        if (!installedFlag || !IosV2Profile.batteryFamily(rom.id)) {
+        if (!IosV2Profile.batteryFamily(rom.id) || !installedFor(rom.id)) {
             deactivate()
             return
         }
@@ -766,6 +890,16 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         firstFailure = null
     }
 
+    /**
+     * Test seam (R4): publish the two constructor-hook results without Xposed, so the owner rule can
+     * be exercised. Call with `false, false` in a `finally` to restore the process state.
+     */
+    internal fun setOwnerHooksForTest(oplusHooked: Boolean, aospHooked: Boolean) {
+        oplusConstructorHooked = oplusHooked
+        aospConstructorHooked = aospHooked
+        installedFlag = batteryHookInstalled(oplusHooked, aospHooked)
+    }
+
     // -------------------------------------------------------------------------------- diagnostics
 
     override fun diagnosticLines(): List<String> {
@@ -1050,6 +1184,32 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 /**
  * R7 P5: the battery owner exists only when a constructor hook was really installed. A class that was
  * merely found is not enough; otherwise the V2 route could be picked with a battery that never binds.
+ * R4: this stays the "either owner" back-compat result; selection uses
+ * [IosV2Profile.batteryOwnerInstalled] per family.
  */
 internal fun batteryHookInstalled(oplusConstructorHook: Boolean, aospConstructorHook: Boolean): Boolean =
     oplusConstructorHook || aospConstructorHook
+
+/** R4: the battery classes the install pass may probe on a family. */
+internal enum class IosBatteryProbe { OPLUS_VIEW, OPLUS_BINDER, AOSP_VIEW }
+
+/**
+ * R4: which measured battery classes to probe for [familyId].
+ *
+ * OxygenOS probes the Oplus view + binder and then the AOSP view exactly as before; Samsung probes
+ * only its own AOSP-shaped view (so the absent Oplus classes never appear as `missing:` or as
+ * failures); an empty/unknown family keeps the historical any-class probe.
+ */
+internal fun batteryProbePlan(familyId: String): List<IosBatteryProbe> = when (familyId) {
+    "oxygenos" -> listOf(
+        IosBatteryProbe.OPLUS_VIEW,
+        IosBatteryProbe.OPLUS_BINDER,
+        IosBatteryProbe.AOSP_VIEW
+    )
+    "samsung" -> listOf(IosBatteryProbe.AOSP_VIEW)
+    else -> listOf(
+        IosBatteryProbe.OPLUS_VIEW,
+        IosBatteryProbe.OPLUS_BINDER,
+        IosBatteryProbe.AOSP_VIEW
+    )
+}

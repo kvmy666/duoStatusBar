@@ -190,7 +190,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // One fresh snapshot per apply: the owner decision, the feature diff and the monitor
             // registration all come from the same settings revision, never from different reads.
             val snapshot = DuoSettingsClient.read(ctx)
-            val next = featureSetFor(snapshot, override, true, false)
+            // R6/D13/D14: an explicit iOS-off is a turn-off even when no iOS owner is live (for
+            // example after an activation failure fell back to Duo), so it clears the refusal and a
+            // later request can try the route again.
+            if (!snapshot.iosMode) IosAvailability.routeFailed = false
+            val next = featureSetFor(snapshot, override, IosAvailability.effective(), false)
 
             if (next.iosRuntime) {
                 commitFeatures(stage, snapshot, override, next)
@@ -203,31 +207,43 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 val iosSettings = snapshot
                 val previousRoute = iosRoute
                 iosRoute = resolveIosRoute(next)
+                reportIosCapability(ctx, iosSettings.revision)
                 if (iosRoute == IosRoute.V2) {
                     if (activateIosV2(ctx, iosSettings, synchronous = previousRoute != IosRoute.V2)) {
                         IosBatteryV2.refresh()
                         applyDuoRegistrations()
                         settingsRereadAttempt = 0
+                        reportIosCapability(ctx, iosSettings.revision)
                         reporter.report(ctx, stage, iosSettings)
                         return@guard
                     }
-                    // Activation left no live map: keep the stock bar and name the missing piece.
+                    // Activation left no live map. Name the missing piece, record the failure, then
+                    // fall back to Duo: an unavailable route must never leave the bar ownerless.
                     logIosV2Unavailable(next)
                     stopIosV2Owners()
                     iosRoute = IosRoute.NONE
+                    IosAvailability.routeFailed = true
                     IosRouteDiagnostics.update(iosRoute, rom.id)
                     applyDuoRegistrations()
                     settingsRereadAttempt = 0
+                    reportIosCapability(ctx, iosSettings.revision)
                     reporter.report(ctx, stage, iosSettings)
+                    // Recompute with effective=false -> Duo and attach the host on this same apply.
+                    enable(ctx, attempt = 0)
                     return@guard
                 }
-                // iOS on but v2 cannot take the bar (uncovered family or missing hook): keep the
-                // stock bar, release any stale v2 owner and name the missing piece once.
+                // iOS on but v2 cannot take the bar (uncovered family or missing hook): release any
+                // stale v2 owner, record the failure and fall back to Duo rather than nothing.
                 logIosV2Unavailable(next)
                 stopIosV2Owners()
+                iosRoute = IosRoute.NONE
+                IosAvailability.routeFailed = true
+                IosRouteDiagnostics.update(iosRoute, rom.id)
                 applyDuoRegistrations()
                 settingsRereadAttempt = 0
+                reportIosCapability(ctx, iosSettings.revision)
                 reporter.report(ctx, stage, iosSettings)
+                enable(ctx, attempt = 0)
                 return@guard
             }
             // C11: decide the action before touching the live iOS attachment. An unreachable provider
@@ -278,7 +294,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val settings = host?.refreshSettings(applySavedSize) ?: snapshot
             // refreshSettings reads the provider itself; trust its owner when it differs from the
             // snapshot above (a live toggle can land between the two reads).
-            val refreshed = featureSetFor(settings, override, true, false)
+            val refreshed = featureSetFor(settings, override, IosAvailability.effective(), false)
             commitFeatures(stage, settings, override, refreshed)
             if (!refreshed.duoRuntime) {
                 stopDuoRuntime()
@@ -398,8 +414,19 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             AppContextResolver.resolveAppContext()?.let { noteLoadStamp(it) }
             L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
             IosResourceEngine.install(lp.classLoader)
-            IosBatteryV2.install(lp.classLoader)
-            IosMobileTypePlacement.install(lp.classLoader)
+            // R4: the battery owner and the Oplus placement binder are per-family pieces. A skipped
+            // family logs one `unsupported` line (never on OxygenOS, whose log is frozen) and keeps
+            // the stock piece; the resource engine stays process-wide as before.
+            if (IosV2Profile.batteryFamily(rom.id)) {
+                IosBatteryV2.install(lp.classLoader, rom.id)
+            } else {
+                logIosPieceUnsupported("battery")
+            }
+            if (IosV2Profile.typePlacementFamily(rom.id)) {
+                IosMobileTypePlacement.install(lp.classLoader)
+            } else {
+                logIosPieceUnsupported("placement")
+            }
             IosDiagnostics.register(IosRouteDiagnostics)
             // The window hook goes in *now*, not from Application.onCreate. On HyperOS 16 and One UI the
             // Application is created before LSPosed injects the module, so an Application.onCreate hook
@@ -418,6 +445,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             L.i("install step: start-existing")
             bootstrap()
             L.i("install step: bootstrap")
+            // R6/D13/D14: now that the process-wide engine/battery hooks have had their one install
+            // attempt, record whether iOS is deliverable on this family. `start()` may already have set
+            // it (it runs above when the Application exists); recomputing here covers the late case.
+            IosAvailability.supported = iosDeliverable()
+            AppContextResolver.resolveAppContext()?.let { reportIosCapability(it) }
             L.i("install step: done")
         }
     }
@@ -451,6 +483,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 .ifEmpty { "none" }
             L.i("mode ${previous.owner.tag} -> ${next.owner.tag} (teardown: $teardown)")
         }
+        // R6/D13/D14: the app's owner/support verdict follows every committed feature set. The
+        // reporter de-duplicates (ignoring `at`), so a repeated apply writes nothing.
+        app?.let { reportIosCapability(it, settings?.revision) }
         val revision = settings?.revision ?: -1L
         if (revision == loggedFeatureRevision && next.owner == loggedFeatureOwner) return
         loggedFeatureRevision = revision
@@ -464,7 +499,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             stage,
             settings,
             override,
-            featureSetFor(settings, override, true, false)
+            featureSetFor(settings, override, IosAvailability.effective(), false)
         )
     }
 
@@ -534,6 +569,31 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     // ----------------------------------------------------------------------------- v2 routing
 
     /**
+     * R6/D13/D14: whether the family and both process-wide hooks make the v2 route deliverable.
+     *
+     * Uses the family's own battery owner ([IosBatteryV2.installedFor]); a foreign hook never counts.
+     */
+    private fun iosDeliverable(): Boolean =
+        IosV2Profile.engineFamily(rom.id) &&
+            IosResourceEngine.installed &&
+            IosBatteryV2.installedFor(rom.id)
+
+    /**
+     * Writes the live capability report with the real feature owner and route.
+     *
+     * [revision] defaults to the last successful settings read, matching the boot-line revision when
+     * the caller does not already have the snapshot.
+     */
+    private fun reportIosCapability(
+        ctx: Context,
+        revision: Long? = null,
+        featureSet: FeatureSet = features
+    ) {
+        val rev = revision ?: DuoSettingsClient.lastRead()?.revision ?: -1L
+        IosCapabilityReporter.report(ctx, featureSet, rom.id, iosRoute, rev)
+    }
+
+    /**
      * The one route decision per settings apply (R7 P4). Pure [iosRoute] plus the process-wide hook
      * flags; the diagnostics line is refreshed from here so a dump always names the live route.
      */
@@ -542,7 +602,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             next.iosRuntime,
             rom.id,
             IosResourceEngine.installed,
-            IosBatteryV2.installed
+            // R4: the family's own battery owner, never "any battery class was hooked".
+            IosBatteryV2.installedFor(rom.id)
         )
         IosRouteDiagnostics.update(route, rom.id)
         return route
@@ -584,8 +645,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // R8 owners are installed only on the iOS path; a Duo user pays nothing for them. The boot
             // activate is synchronous (before first inflation), so these hooks are in place before the
             // first bind; a late V2 switch installs them here and the next bind reconciles.
-            IosStackedSim.install(lp.classLoader)
-            IosExtras.install(lp.classLoader, rom.systemUiPackage)
+            // R4: the stacked-SIM and hide-extras binder hooks are measured Oplus classes only, so they
+            // are installed only on a family that owns them (never on Samsung).
+            val stackedSupported = IosV2Profile.stackedFamily(rom.id)
+            val extrasSupported = IosV2Profile.extrasFamily(rom.id)
+            if (stackedSupported) IosStackedSim.install(lp.classLoader)
+            if (extrasSupported) IosExtras.install(lp.classLoader, rom.systemUiPackage)
             // R8: only OxygenOS has both measured order containers. On a family with the slot list
             // but no container, permuting the slots without moving the child desynchronises the
             // slot/view indices, so leave its stock order alone (restore is a no-op when inactive).
@@ -596,15 +661,28 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             } else {
                 IosIconOrder.restore()
             }
-            // A repeat apply must not reset the swap counter, so a live owner takes the settings path.
-            if (IosStackedSim.isActive) {
-                IosStackedSim.applySettings(settings)
+            // R4: activate only when the family owns the piece and (for stacked) the binder installed.
+            if (stackedSupported && IosStackedSim.installed) {
+                // A repeat apply must not reset the swap counter, so a live owner takes the settings path.
+                if (IosStackedSim.isActive) {
+                    IosStackedSim.applySettings(settings)
+                } else {
+                    IosStackedSim.activate(ctx, settings)
+                }
             } else {
-                IosStackedSim.activate(ctx, settings)
+                IosStackedSim.deactivate()
+                if (!stackedSupported) logIosPieceUnsupported("stacked")
             }
-            IosExtras.apply(settings.hideExtras)
+            if (extrasSupported) {
+                IosExtras.apply(settings.hideExtras)
+            } else {
+                IosExtras.deactivate()
+                logIosPieceUnsupported("extras")
+            }
             IosDiagnostics.register(IosR8Report)
             iosRoute = IosRoute.V2
+            // R6/D13/D14: a successful activation clears any earlier route refusal.
+            IosAvailability.routeFailed = false
             IosRouteDiagnostics.update(iosRoute, rom.id)
             logOnce.once("ios-v2-active") { L.i("iOS v2 active: family=${rom.id}") }
             true
@@ -654,6 +732,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 .onFailure { IosV2Log.failureOnce("duohook.deactivate.orderRelease", it) }
         }
         iosRoute = IosRoute.NONE
+        // R6/D13/D14: turning iOS off (or a fresh activation, which sets it true again on failure)
+        // clears the route refusal, so the next request is not permanently refused.
+        IosAvailability.routeFailed = false
         IosRouteDiagnostics.update(iosRoute, rom.id)
     }
 
@@ -668,14 +749,34 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 IosV2Log.branchOnce("ios.route", "v2 missing family=${rom.id} - stock bar kept")
             !IosResourceEngine.installed ->
                 IosV2Log.branchOnce("ios.route", "v2 missing class=IosResourceEngine - stock bar kept")
-            !IosBatteryV2.installed ->
-                IosV2Log.branchOnce("ios.route", "v2 missing class=IosBatteryV2 - stock bar kept")
+            !IosBatteryV2.installedFor(rom.id) ->
+                // R4: name the family's own missing owner, not the generic any-class message.
+                IosV2Log.branchOnce(
+                    "ios.route",
+                    "v2 missing battery owner=${batteryOwnerName(rom.id)} - stock bar kept"
+                )
             else ->
                 IosV2Log.branchOnce(
                     "ios.route",
                     "v2 activation refused - stock bar kept (see engine failure lines)"
                 )
         }
+    }
+
+    /** R4: "oplus"/"aosp" for the family's battery owner (the word the route line must name). */
+    private fun batteryOwnerName(familyId: String): String =
+        IosV2Profile.batteryOwner(familyId)?.name?.lowercase() ?: "none"
+
+    /**
+     * R4: one `unsupported` line per skipped owner piece, once per process. Never on OxygenOS: every
+     * gate is true there and its log is frozen, so a skip must not add a line.
+     */
+    private fun logIosPieceUnsupported(piece: String) {
+        if (rom.id == "oxygenos") return
+        IosV2Log.branchOnce(
+            "gate.$piece",
+            "unsupported family=${rom.id} - $piece kept stock"
+        )
     }
 
     /** Repaints the live iOS battery owner; v2 has no host and the resource map is already published. */
@@ -692,6 +793,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun iosTeardown(next: FeatureSet = features) {
         deactivateIosV2(releaseOrder = true)
         if (!keepShadeLayoutListener(next)) detachShadeLayoutListener()
+        // R6/D13/D14: the app must see the route go back to none and the failure flag cleared. Report
+        // the destination owner so the write matches the state the apply is moving to (the commit that
+        // follows is then a no-op for the de-dupe).
+        app?.let { reportIosCapability(it, featureSet = next) }
     }
 
     /** Installs the boot hook set once per process. Shared by the Duo and iOS enable paths. */
@@ -837,7 +942,14 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             Build.VERSION.SDK_INT,
             RomMarkerSource.read(ctx)
         )
+        // R6/D13/D14: the family is known now, so the iOS owner decision can stop trusting a saved ON.
+        // A new process has not attempted a route yet, so it starts from "not failed".
+        IosAvailability.routeFailed = false
+        IosAvailability.supported = iosDeliverable()
         L.guard("DuoHook start") {
+            // Report even when the module is gated off: the app must still learn the family and the
+            // support verdict, otherwise an iOS request on an unsupported UI looks like DISABLED.
+            reportIosCapability(ctx)
             // The settings/restart receiver goes in *before* the gate. It is the app's only way to reach a
             // module that read itself as "off": "Restart System UI" and a live enable both arrive here.
             // Registering it after the gate (as before) left the button dead on every ROM where the stage
@@ -908,17 +1020,28 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // R7 P4: the native route is activated synchronously on the boot path so the very
                 // first inflation already sees our map; it installs no host or attach timer.
                 iosRoute = resolveIosRoute(features)
+                reportIosCapability(ctx, settings.revision)
                 if (iosRoute == IosRoute.V2 && activateIosV2(ctx, settings, synchronous = true)) {
                     applyDuoRegistrations()
+                    reportIosCapability(ctx, settings.revision)
                     return@guard
                 }
-                // iOS on but v2 cannot take the bar: keep the stock bar and name the missing piece
-                // once. No host is created and nothing is scheduled to attach.
+                // iOS on but v2 cannot take the bar. Name the missing piece once, record the
+                // failure, then fall through to the Duo path with a recomputed feature set so the
+                // bar keeps an owner instead of staying stock with nothing drawn (D13/D14).
                 logIosV2Unavailable(features)
+                stopIosV2Owners()
                 iosRoute = IosRoute.NONE
+                IosAvailability.routeFailed = true
                 IosRouteDiagnostics.update(iosRoute, rom.id)
+                commitFeatures(
+                    stage,
+                    settings,
+                    override,
+                    featureSetFor(settings, override, false, otherOrientationEnabled = false)
+                )
                 applyDuoRegistrations()
-                return@guard
+                reportIosCapability(ctx, settings.revision)
             }
             // A: the Duo host is created only when Duo owns the bar. An off orientation keeps no host:
             // the next enable for the on orientation attaches it, so a vendor shade callback can never

@@ -52,6 +52,46 @@ internal data class ResolvedEntry(
  */
 internal fun hiddenCanRestore(stockState: Drawable.ConstantState?): Boolean = stockState != null
 
+/** R4: why one resource spec was dropped from the map, exactly as it appears in the log line. */
+internal object IosMapDropReason {
+    const val NO_ID = "no_id"
+    const val DUPLICATE = "duplicate"
+    const val UNSUPPORTED_SLOT = "unsupported_slot"
+    const val NO_DRAWABLE = "no_drawable"
+    const val NO_INTRINSIC = "no_intrinsic"
+    const val NO_STOCK_STATE = "no_stock_state"
+}
+
+/** R4: one dropped spec; [name] is the spec name or `0x<hex>` for a raw-id spec. */
+internal data class IosMapDrop(val family: String, val name: String, val reason: String)
+
+/** R4: the name a drop line uses; raw-id specs have a blank name, so their hex id is shown. */
+internal fun iosMapDropName(spec: IosResourceSpec): String =
+    spec.name.ifBlank { "0x" + Integer.toHexString(spec.rawId) }
+
+/** R4: the exact per-drop log line (one per dropped spec, non-OxygenOS only). */
+internal fun formatIosMapDrop(drop: IosMapDrop): String =
+    "ios v2 map drop family=${drop.family} name=${drop.name} reason=${drop.reason}"
+
+/**
+ * R4: collects every dropped resource spec during one map build. Pure (no Android calls) so the
+ * name/reason/format rule is unit-tested without a device resource table.
+ */
+internal class IosMapDrops(private val family: String) {
+
+    private val dropped = ArrayList<IosMapDrop>()
+
+    fun add(spec: IosResourceSpec, reason: String) {
+        dropped.add(IosMapDrop(family, iosMapDropName(spec), reason))
+    }
+
+    /** Each collected drop exactly once, in spec order. */
+    fun entries(): List<IosMapDrop> = dropped.toList()
+
+    /** The formatted log lines for [entries], in spec order. */
+    fun lines(): List<String> = dropped.map(::formatIosMapDrop)
+}
+
 /**
  * R7 P1: replaces a small, measured set of status-bar drawables at load time by hooking
  * `android.content.res.ResourcesImpl.loadDrawable(Resources, TypedValue, int, int, Theme)`.
@@ -377,6 +417,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
             val specs = IosResourceNames.specs(rom.id)
             val seen = HashSet<Int>(specs.size * 2)
             val resolved = ArrayList<ResolvedEntry>(specs.size)
+            val drops = IosMapDrops(rom.id)
             var duplicates = 0
             var noIntrinsic = 0
             var hiddenNoIntrinsic = 0
@@ -393,25 +434,38 @@ internal object IosResourceEngine : IosDiagnosticSource {
                         0
                     }
                 }
-                if (id == 0) continue
-                if (!seen.add(id)) {
-                    duplicates++
+                if (id == 0) {
+                    drops.add(spec, IosMapDropReason.NO_ID)
                     continue
                 }
-                val slot = slotOf(spec) ?: continue
+                if (!seen.add(id)) {
+                    duplicates++
+                    drops.add(spec, IosMapDropReason.DUPLICATE)
+                    continue
+                }
+                val slot = slotOf(spec)
+                if (slot == null) {
+                    drops.add(spec, IosMapDropReason.UNSUPPORTED_SLOT)
+                    continue
+                }
                 val isHidden = slot is IosResourceSlot.Hidden
                 val stock = try {
                     resources.getDrawable(id, null)
                 } catch (t: Throwable) {
                     IosV2Log.failureOnce("engine.getDrawable.${spec.name}", t)
                     null
-                } ?: continue
+                }
+                if (stock == null) {
+                    drops.add(spec, IosMapDropReason.NO_DRAWABLE)
+                    continue
+                }
                 val widthPx = stock.intrinsicWidth
                 val heightPx = stock.intrinsicHeight
                 if (widthPx <= 0 || heightPx <= 0) {
                     // Never guess a size: an id with no intrinsic would draw in the wrong box. The
                     // measured h/r passpoint badges are legitimately empty `<vector/>`s.
                     if (isHidden) hiddenNoIntrinsic++ else noIntrinsic++
+                    drops.add(spec, IosMapDropReason.NO_INTRINSIC)
                     IosV2Log.branchOnce(
                         "engine.noIntrinsic",
                         "id has no intrinsic size - entry skipped"
@@ -423,6 +477,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     // A gate needs the stock state to put the badge back when the toggle is off. With
                     // no state it would be 0x0 in BOTH states, so the default (off) would change.
                     hiddenNoRestorable++
+                    drops.add(spec, IosMapDropReason.NO_STOCK_STATE)
                     IosV2Log.branchOnce(
                         "engine.hiddenNoRestore",
                         "no stock state - hide-extras entry stays stock"
@@ -454,6 +509,16 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     "hiddenNoIntrinsic=$hiddenNoIntrinsic hiddenNoRestorable=$hiddenNoRestorable " +
                     "buildMs=$buildMs"
             )
+            // R4: name every dropped spec once per process, on the non-OxygenOS families only. The
+            // OxygenOS log is frozen (its two hiddenNoIntrinsic passpoint drops must not add lines);
+            // the summary line above stays byte-identical for every family.
+            if (rom.id != "oxygenos") {
+                for (drop in drops.entries()) {
+                    logOnce.once("ios-map-drop:${drop.family}:${drop.name}:${drop.reason}") {
+                        L.i(formatIosMapDrop(drop))
+                    }
+                }
+            }
             return built
         } catch (t: Throwable) {
             logOnce.once("ios-resource-build") {

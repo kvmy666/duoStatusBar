@@ -194,6 +194,60 @@ class IosResourceEngineTest {
     // ----------------------------------------------------------------------------- diagnostics
 
     @Test
+    fun `every dropped spec is collected with its name or hex id and reason`() {
+        val drops = IosMapDrops("samsung")
+        drops.add(
+            IosResourceSpec(name = "wifi_signal", kind = IosResourceKind.WIFI, value = 3),
+            IosMapDropReason.NO_ID
+        )
+        drops.add(
+            IosResourceSpec(name = "", kind = IosResourceKind.WIFI, value = 1, rawId = 0x01080965),
+            IosMapDropReason.NO_INTRINSIC
+        )
+
+        assertEquals(
+            listOf(
+                IosMapDrop("samsung", "wifi_signal", "no_id"),
+                IosMapDrop("samsung", "0x1080965", "no_intrinsic")
+            ),
+            drops.entries()
+        )
+        // The exact per-drop line, once per process on a non-OxygenOS family.
+        assertEquals(
+            listOf(
+                "ios v2 map drop family=samsung name=wifi_signal reason=no_id",
+                "ios v2 map drop family=samsung name=0x1080965 reason=no_intrinsic"
+            ),
+            drops.lines()
+        )
+    }
+
+    @Test
+    fun `a named spec keeps its name and a raw-id spec falls back to hex`() {
+        assertEquals(
+            "wifi_signal",
+            iosMapDropName(IosResourceSpec("wifi_signal", IosResourceKind.WIFI, 3))
+        )
+        assertEquals(
+            "0x1080965",
+            iosMapDropName(IosResourceSpec("", IosResourceKind.WIFI, 1, rawId = 0x01080965))
+        )
+    }
+
+    @Test
+    fun `all six drop reasons exist and are distinct`() {
+        val reasons = listOf(
+            IosMapDropReason.NO_ID,
+            IosMapDropReason.DUPLICATE,
+            IosMapDropReason.UNSUPPORTED_SLOT,
+            IosMapDropReason.NO_DRAWABLE,
+            IosMapDropReason.NO_INTRINSIC,
+            IosMapDropReason.NO_STOCK_STATE
+        )
+        assertEquals(6, reasons.toSet().size)
+    }
+
+    @Test
     fun `diagnostics are exactly one compact engine line`() {
         val lines = IosResourceEngine.diagnosticLines()
         assertEquals(1, lines.size)
