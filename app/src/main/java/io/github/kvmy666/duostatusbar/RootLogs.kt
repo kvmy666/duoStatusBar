@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar
 
 import android.content.Context
+import android.os.SystemClock
 import android.provider.Settings
 import io.github.kvmy666.duostatusbar.diagnostics.CaptureSection
 import io.github.kvmy666.duostatusbar.diagnostics.RootCapture
@@ -9,6 +10,11 @@ import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
 import io.github.kvmy666.duostatusbar.ui.RestartPolicy
 import java.io.File
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -223,10 +229,13 @@ internal object RootLogs {
         )
         val probe = RootProbe.classify(facts)
 
-        val safe = parseSafeMode(section(evidence, "safe mode"))
-        val crashRaw = listOf("crash records", "tombstones", "logcat crash buffer")
-            .joinToString("\n") { section(evidence, it) }
-        val crashFiltered = filterSystemUiCrashes(crashRaw)
+        // This boot, and this build, are the only things a crash count may speak for. Evidence from an
+        // earlier boot or an earlier install is history: it is reported, but it is not a current problem.
+        val bootEpoch = bootEpochMillis(System.currentTimeMillis(), SystemClock.elapsedRealtime())
+        val crashThreshold = crashThresholdMillis(bootEpoch, appUpdatedAt(context))
+        val safe = parseSafeMode(section(evidence, "safe mode"), bootEpoch)
+        val privileged = privilegedSections(evidence, skipReason, failureReason, bootEpoch)
+        val scoped = scopeCrashSections(privileged, crashThreshold)
 
         val sections = ArrayList<CaptureSection>()
         sections += CaptureSection(
@@ -235,25 +244,34 @@ internal object RootLogs {
             "",
             routeText(probe, rootOutput, shizukuOutput, skipReason, failureReason)
         )
-        sections += privilegedSections(evidence, skipReason, failureReason).map(::augmentSection)
-
-        val crashSection = sections.first { it.title == "crash records" }
-        val crashReadable = crashFiltered.isNotBlank() ||
-            sections.any {
-                it.title in CRASH_SECTION_TITLES &&
-                    (it.state == SectionState.PRESENT || it.state == SectionState.EMPTY)
+        var historyAdded = false
+        for (captured in scoped.sections) {
+            sections += captured
+            if (captured.title == "logcat crash buffer") {
+                sections += scoped.history
+                historyAdded = true
             }
-        val deathUnreadable = when {
-            crashFiltered.isNotBlank() -> null
-            failureReason != null && crashSection.state != SectionState.PRESENT -> failureReason
-            crashSection.state == SectionState.UNREADABLE && safe.counter == null -> crashSection.reason
-            else -> null
         }
+        if (!historyAdded) sections += scoped.history
+
+        val crashReadable = scoped.sections.any {
+            it.title in CRASH_SECTION_TITLES &&
+                (it.state == SectionState.PRESENT || it.state == SectionState.EMPTY)
+        }
+        // A skipped route is not a failed capture: there the count is unknown, not unreadable.
+        val deathUnreadable = if (failureReason != null && !safe.readable && !crashReadable) {
+            failureReason
+        } else {
+            null
+        }
+        val counter = if (safe.readable) safe.counter ?: 0 else null
+        val uptime = uptimeSeconds()
         val deaths = buildString {
-            appendLine(deathSummary(safe.counter, crashFiltered.isNotBlank(), deathUnreadable))
-            appendLine("safeMode=${if (safe.entered) "entered" else "no"}")
-            appendLine("safeModeCounter=${safe.counter ?: "not found"}")
-            appendLine("uptime=${uptimeSeconds()?.let { "${it}s" } ?: "unreadable"}")
+            appendLine(deathSummary(counter, deathUnreadable))
+            appendLine("safeMode=${safeModeLabel(safe)}")
+            appendLine("safeModeCounter=${counter?.toString() ?: "unknown"}")
+            appendLine("uptime=${uptime?.let { "${it}s" } ?: "unreadable"}")
+            appendLine("crashRecords=${scoped.currentCount}")
         }.trimEnd()
         sections += CaptureSection("systemui deaths", SectionState.PRESENT, "", deaths)
 
@@ -547,26 +565,35 @@ internal object RootLogs {
     /**
      * The root capture: one bounded merged script, so a single `su` prompt covers every section.
      *
-     * Framework log locations are discovered by listing `/data/adb` (lspd, vector, lspatch,
-     * zygisk_lsposed, apatch/ap) instead of assuming one fixed path. Each section is bounded with
-     * `head`/`tail`, so a noisy log cannot exceed the report budget. The existing commands are kept.
+     * Log sources are allow-listed to the known framework log directories ([FRAMEWORK_LOG_DIRS]);
+     * a generic per-package log sweep is deliberately absent, because it read KernelSU's own
+     * logcat/su logs and unrelated data into the report. Each section is bounded with `head`/`tail`,
+     * so a noisy log cannot exceed the report budget. The existing commands are kept.
      */
     internal fun rootScript(): String = """
         echo '=== logcat (DuoSB) ==='
         logcat -d -t 3000 -s DuoSB 2>&1 | tail -n 1000
         echo '=== LSPosed newest modules log ==='
-        LOG=${'$'}(ls -t /data/adb/lspd/log/modules_*.log 2>/dev/null | head -1)
-        echo "file=${'$'}LOG"
-        if [ -n "${'$'}LOG" ]; then
+        SCANNED=''
+        FOUND=''
+        for f in ${'$'}(ls -t ${frameworkLogGlob("modules_*.log")} 2>/dev/null | head -n 12); do
+          SCANNED="${'$'}SCANNED ${'$'}f"
+          if grep -a -i -q -E 'DuoSB|duostatusbar' "${'$'}f" 2>/dev/null; then
+            FOUND="${'$'}f"
+            break
+          fi
+        done
+        echo "file=${'$'}FOUND"
+        echo "scanned=${'$'}SCANNED"
+        if [ -n "${'$'}FOUND" ]; then
           echo '-- matching DuoSB --'
-          grep -a -i 'DuoSB\|duostatusbar' "${'$'}LOG" | tail -n 400
+          grep -a -i -E 'DuoSB|duostatusbar' "${'$'}FOUND" | tail -n 400
+        else
+          echo 'matchingDuoSB=0'
         fi
         echo '=== LSPosed log files ==='
-        SEEN=''
-        for d in /data/adb/*/log /data/adb/*/*/log; do
+        for d in ${frameworkLogDirs()}; do
           [ -d "${'$'}d" ] || continue
-          case " ${'$'}SEEN " in *" ${'$'}d "*) continue ;; esac
-          SEEN="${'$'}SEEN ${'$'}d"
           echo "dir=${'$'}d"
           SEEN_FILES=''
           for f in ${'$'}(ls -t "${'$'}d"/modules_*.log "${'$'}d"/verbose_*.log "${'$'}d"/lspd.log 2>/dev/null | head -n 6); do
@@ -581,22 +608,43 @@ internal object RootLogs {
           done
         done
         echo '=== safe mode ==='
-        SAFE_FILES=${'$'}(ls -t /data/adb/*/log/modules_*.log /data/adb/*/log/verbose_*.log /data/adb/*/log/lspd.log /data/adb/*/log/*.log /data/adb/*/*/log/*.log 2>/dev/null | awk '!seen[${'$'}0]++' | head -n 12)
-        if [ -n "${'$'}SAFE_FILES" ]; then
-          grep -a -i -E 'System UI crashed [0-9]+ time|stop all modules|safe mode' ${'$'}SAFE_FILES 2>/dev/null | tail -n 60
-        fi
-        echo '=== LSPosed config (enabled / scope) ==='
-        for db in ${'$'}(ls /data/adb/*/config/modules_config.db 2>/dev/null | head -n 4); do
-          echo "db=${'$'}db"
-          tr -c '[:print:]' '\n' < "${'$'}db" 2>/dev/null | grep -a -i -B3 -A8 duostatusbar | head -n 120
+        SAFE_COUNT=0
+        for f in ${'$'}(ls -t ${frameworkLogGlob("verbose_*.log")} 2>/dev/null | head -n 8); do
+          SAFE_COUNT=${'$'}(( SAFE_COUNT + 1 ))
+          echo "file=${'$'}f"
+          grep -a 'LSPosedService-SafeMode' "${'$'}f" 2>/dev/null | tail -n 40
         done
+        echo "safeLogFiles=${'$'}SAFE_COUNT"
+        echo '=== LSPosed config (enabled / scope) ==='
+        SQLITE=${'$'}(command -v sqlite3 2>/dev/null)
+        if [ -z "${'$'}SQLITE" ]; then
+          for c in /data/adb/magisk/sqlite3 /data/adb/ksu/bin/sqlite3; do
+            if [ -x "${'$'}c" ]; then SQLITE="${'$'}c"; break; fi
+          done
+        fi
+        DB=''
+        for d in ${frameworkConfigDbs()}; do
+          if [ -f "${'$'}d" ]; then DB="${'$'}d"; break; fi
+        done
+        echo "db=${'$'}{DB:-unknown}"
+        if [ -n "${'$'}SQLITE" ] && [ -n "${'$'}DB" ]; then
+          echo "sqlite=${'$'}SQLITE"
+          "${'$'}SQLITE" -header -separator '|' "${'$'}DB" "SELECT * FROM modules WHERE module LIKE '%duostatusbar%';" 2>&1 | head -n 40
+        else
+          echo 'sqlite3=absent'
+        fi
         echo '=== framework manager ==='
         dumpsys package org.lsposed.manager 2>&1 | grep -a -E 'Package \[|versionName|versionCode|Unable to find|not found' | head -n 20
         echo '=== module.prop ==='
         for f in /data/adb/*/module.prop /data/adb/modules/*/module.prop; do
           [ -f "${'$'}f" ] || continue
+          ID=${'$'}(grep -a -m1 '^id=' "${'$'}f" 2>/dev/null | cut -d= -f2-)
+          case "${'$'}ID" in
+            *lsposed*|lspatch|zygisk_lspatch|vector|zygisksu|zygisk-next|rezygisk) ;;
+            *) continue ;;
+          esac
           echo "file=${'$'}f"
-          grep -a -E '^(id|name|version|versionCode)=' "${'$'}f" | head -n 8
+          grep -a -E '^(id|name|version|versionCode)=' "${'$'}f" | head -n 4
         done
         echo '=== /data/adb layout ==='
         ls -la /data/adb 2>&1 | head -n 80
@@ -682,6 +730,23 @@ internal object RootLogs {
 
     private val CRASH_SECTION_TITLES = setOf("crash records", "tombstones", "logcat crash buffer")
 
+    /**
+     * The only log directories a report may read. These are the frameworks' own logs (LSPosed,
+     * Vector, LSPatch). KernelSU's `/data/adb/ksu/log` is deliberately absent: it is the root
+     * manager's shell/logcat log, not framework evidence, and reading it leaked unrelated data.
+     */
+    internal val FRAMEWORK_LOG_DIRS: List<String> = listOf(
+        "/data/adb/lspd/log",
+        "/data/adb/vector/log",
+        "/data/adb/lspatch/log"
+    )
+
+    private val FRAMEWORK_CONFIG_DBS: List<String> = FRAMEWORK_LOG_DIRS.map {
+        it.removeSuffix("/log") + "/config/modules_config.db"
+    }
+
+    private const val CRASH_HISTORY_TITLE = "crash history (older boots)"
+
     /** Every privileged section the merged script emits. None of these may be dropped from a report. */
     private val PRIVILEGED_SECTIONS = listOf(
         "logcat (DuoSB)",
@@ -716,74 +781,142 @@ internal object RootLogs {
 
     private val SAFE_MODE_COUNTER = Regex("""(?i)System UI crashed\s+(\d+)\s+time""")
 
+    private val SAFE_MODE_TAG = "LSPosedService-SafeMode"
+
+    private val SAFE_LOG_FILES = Regex("""safeLogFiles=(\d+)""")
+
+    /** The `[ 2026-11-25T00:19:06.527 … ]` prefix LSPosed writes on every verbose line. */
+    private val LSPD_LINE_TIME =
+        Regex("""^\[\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)""")
+
     private val LOG_TIMESTAMP =
         Regex("""\d{4}[-_]\d{2}[-_]\d{2}[T _-]\d{2}[-_:.]\d{2}[-_:.]\d{2}""")
 
     private val FRAMEWORK_MANAGER_VERSION = Regex("""versionName=(\S+)""")
 
+    private val DROPBOX_ENTRY_TIME =
+        Regex("""^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})""")
+
+    private val TOMBSTONE_ENTRY = Regex("""^tombstone=\S+""")
+
+    private val TOMBSTONE_TIME = Regex(
+        """Timestamp:\s*(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?\s*([+-])(\d{2}):?(\d{2})"""
+    )
+
+    private val LOGCAT_ENTRY_TIME =
+        Regex("""^(\d{2})-(\d{2})\s+(\d{2}:\d{2}:\d{2}\.\d{3})""")
+
+    private val SQLITE_FAILURES = listOf(
+        "error:",
+        "unable to open",
+        "cannot open",
+        "no such table",
+        "permission denied",
+        "sqlite3=absent",
+        "not queried"
+    )
+
+    private val FRAMEWORK_MODULE_IDS = setOf(
+        "zygisk_lsposed",
+        "lsposed",
+        "vector",
+        "zygisksu",
+        "zygisk-next",
+        "rezygisk",
+        "lspatch",
+        "zygisk_lspatch"
+    )
+
     internal data class SafeModeReport(
         val counter: Int?,
         val entered: Boolean,
-        val lines: List<String>
-    )
+        val lines: List<String>,
+        val history: List<String> = emptyList(),
+        val logFiles: Int = 0
+    ) {
+        /** A count of zero is evidence only when a verbose log was actually read. */
+        val readable: Boolean
+            get() = logFiles > 0 || lines.isNotEmpty() || history.isNotEmpty()
+    }
 
     internal data class SectionVerdict(val state: SectionState, val reason: String = "")
 
-    /** The safe-mode counter (highest `System UI crashed N time(s)`), whether safe mode was entered, and
-     *  the actual matching lines, quoted so a report shows LSPosed's own wording. */
-    internal fun parseSafeMode(text: String): SafeModeReport {
-        val lines = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-        val matching = lines.filter { line ->
-            line.contains("system ui crashed", ignoreCase = true) ||
-                line.contains("stop all modules", ignoreCase = true) ||
-                line.contains("safe mode", ignoreCase = true)
+    /** `entered` / `no` only when LSPosed's own log was readable; otherwise unknown, never "not found". */
+    internal fun safeModeLabel(report: SafeModeReport): String = when {
+        !report.readable -> "unknown"
+        report.entered -> "entered"
+        else -> "no"
+    }
+
+    /**
+     * The safe-mode counter (highest current-boot `System UI crashed N time(s)`), whether safe mode was
+     * entered, and the actual matching lines, quoted so a report shows LSPosed's own wording.
+     *
+     * Only lines carrying [SAFE_MODE_TAG] are considered. When [bootEpochMillis] is supplied, a line
+     * whose leading LSPosed timestamp predates this boot is history, not this boot's counter: LSPosed
+     * keeps its verbose log across boots, so an old "crashed 3 time(s)" must not report today's bar.
+     */
+    internal fun parseSafeMode(
+        text: String,
+        bootEpochMillis: Long? = null,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): SafeModeReport {
+        val logFiles = SAFE_LOG_FILES.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val current = ArrayList<String>()
+        val history = ArrayList<String>()
+        for (raw in text.lineSequence()) {
+            val line = raw.trim()
+            if (line.isEmpty() || !line.contains(SAFE_MODE_TAG)) continue
+            val at = lspdLineEpoch(line, zone)
+            if (bootEpochMillis != null && at != null && at < bootEpochMillis) {
+                history += line
+            } else {
+                current += line
+            }
         }
-        val counter = SAFE_MODE_COUNTER.findAll(text)
+        val currentText = current.joinToString("\n")
+        val counter = SAFE_MODE_COUNTER.findAll(currentText)
             .mapNotNull { it.groupValues[1].toIntOrNull() }
             .maxOrNull()
-        val entered = lines.any {
+        val entered = current.any {
             it.contains("too many times", ignoreCase = true) ||
                 it.contains("stop all modules", ignoreCase = true) ||
                 it.contains("enter safe mode", ignoreCase = true)
         }
-        return SafeModeReport(counter, entered, matching)
+        return SafeModeReport(counter, entered, current, history, logFiles)
+    }
+
+    private fun lspdLineEpoch(line: String, zone: ZoneId): Long? {
+        val stamp = LSPD_LINE_TIME.find(line)?.groupValues?.get(1) ?: return null
+        return runCatching {
+            LocalDateTime.parse(stamp).atZone(zone).toInstant().toEpochMilli()
+        }.getOrNull()
     }
 
     /**
      * Framework log files from a `file=…` listing, newest first.
      *
-     * A `dir=…` line marks a discovered framework log directory: every `*.log` in it is kept (Vector,
-     * LSPatch and zygisk builds use their own names), while the LSPosed names are still recognised
-     * outside such a listing. The shell already lists with `ls -t`; timestamped names are ordered here
-     * as well, and the sort is stable so a mixed-directory listing cannot reorder equal keys.
+     * Only files inside [FRAMEWORK_LOG_DIRS] are kept; a `dir=…` line is informational. The shell
+     * already lists with `ls -t`; timestamped names are ordered here as well, and the sort is stable
+     * so a mixed-directory listing cannot reorder equal keys.
      */
     internal fun discoverLogFiles(listing: String): List<String> {
-        var frameworkDir = false
         val files = ArrayList<String>()
         for (raw in listing.lineSequence()) {
             val line = raw.trim()
-            if (line.isBlank()) continue
-            if (line.startsWith("dir=")) {
-                frameworkDir = isFrameworkLogDir(line.removePrefix("dir=").trim())
-                continue
-            }
+            if (line.isBlank() || line.startsWith("dir=")) continue
             val path = line.removePrefix("file=").trim()
             if (path.isBlank()) continue
-            if (isFrameworkLog(path, frameworkDir)) files += path
+            if (isFrameworkLog(path)) files += path
         }
         // Stable sort: equal keys keep the shell's own `ls -t` order.
         return files.distinct().sortedWith(compareByDescending { logSortKey(it) })
     }
 
-    /** A directory the root script lists under `/data/adb`: `<framework>/log` or `<group>/<framework>/log`. */
-    private fun isFrameworkLogDir(path: String): Boolean =
-        path.startsWith("/data/adb/") && path.trimEnd('/').endsWith("/log")
-
-    private fun isFrameworkLog(path: String, inFrameworkDir: Boolean = false): Boolean {
-        val name = path.substringAfterLast('/')
-        if (!name.endsWith(".log")) return false
-        if (inFrameworkDir) return true
-        return name.startsWith("modules_") || name.startsWith("verbose_") || name == "lspd.log"
+    private fun isFrameworkLog(path: String): Boolean {
+        val dir = path.substringBeforeLast('/', "")
+        if (dir.trimEnd('/') !in FRAMEWORK_LOG_DIRS) return false
+        return path.substringAfterLast('/').endsWith(".log")
     }
 
     private fun logSortKey(path: String): String =
@@ -792,6 +925,176 @@ internal object RootLogs {
     /** Crash records narrowed to this SystemUI; another package's death must not reach the report. */
     internal fun filterSystemUiCrashes(text: String, pkg: String = "com.android.systemui"): String =
         text.lineSequence().filter { it.contains(pkg, ignoreCase = true) }.joinToString("\n")
+
+    internal data class CrashScope(
+        val current: String,
+        val history: String,
+        val currentCount: Int,
+        val historyCount: Int
+    )
+
+    internal data class ScopedCrashes(
+        val sections: List<CaptureSection>,
+        val history: CaptureSection,
+        val currentCount: Int,
+        val historyCount: Int
+    )
+
+    /**
+     * Splits crash evidence into this boot/build and history.
+     *
+     * Dropbox entries start with `2026-11-24 16:50:39 system_app_crash …`, tombstones with
+     * `tombstone=…` (their date is the `Timestamp: …+0300` line), and logcat crash lines with
+     * `MM-dd HH:mm:ss.mmm`. An entry older than [thresholdMillis], or one whose date cannot be
+     * parsed, is history: it is still reported, but it cannot count as a current problem.
+     */
+    internal fun scopeCrashText(
+        text: String,
+        thresholdMillis: Long,
+        zone: ZoneId = ZoneId.systemDefault(),
+        nowMillis: Long = System.currentTimeMillis()
+    ): CrashScope {
+        if (text.isBlank()) return CrashScope("", "", 0, 0)
+        val lines = text.lines()
+        val starts = ArrayList<Pair<Int, Long?>>()
+        for ((index, line) in lines.withIndex()) {
+            val trimmed = line.trimEnd()
+            val dropbox = DROPBOX_ENTRY_TIME.find(trimmed)
+            val logcat = LOGCAT_ENTRY_TIME.find(trimmed)
+            when {
+                dropbox != null -> starts += index to localEpoch(
+                    dropbox.groupValues[1], dropbox.groupValues[2], zone
+                )
+                TOMBSTONE_ENTRY.containsMatchIn(trimmed) -> starts += index to null
+                logcat != null -> starts += index to logcatEpoch(logcat, zone, nowMillis)
+            }
+        }
+        // Only a recognised record start is an entry; header lines alone are not a crash record.
+        if (starts.isEmpty()) return CrashScope("", "", 0, 0)
+        val preamble = if (starts.first().first > 0) {
+            lines.subList(0, starts.first().first)
+        } else {
+            emptyList()
+        }
+        val entries = ArrayList<Pair<Long?, String>>()
+        for ((position, start) in starts.withIndex()) {
+            val end = if (position + 1 < starts.size) starts[position + 1].first else lines.size
+            val body = lines.subList(start.first, end)
+            val entryLines = if (position == 0 && preamble.isNotEmpty()) preamble + body else body
+            val entryText = entryLines.joinToString("\n").trimEnd()
+            val isTombstone = body.firstOrNull()?.let(TOMBSTONE_ENTRY::containsMatchIn) == true
+            val timestamp = if (isTombstone) tombstoneEpoch(entryText) else start.second
+            entries += timestamp to entryText
+        }
+        val current = entries.filter { it.first != null && it.first!! >= thresholdMillis }
+        val history = entries.filter { it.first == null || it.first!! < thresholdMillis }
+        return CrashScope(
+            current = current.joinToString("\n\n") { it.second }.trim(),
+            history = history.joinToString("\n\n") { it.second }.trim(),
+            currentCount = current.size,
+            historyCount = history.size
+        )
+    }
+
+    /**
+     * Applies [scopeCrashText] to the three crash sections and builds the explicit history section.
+     * The history title is deliberately not in [CRASH_SECTION_TITLES], so `ProblemDetector` can never
+     * read an old crash as this boot's problem.
+     */
+    internal fun scopeCrashSections(
+        sections: List<CaptureSection>,
+        thresholdMillis: Long,
+        zone: ZoneId = ZoneId.systemDefault(),
+        nowMillis: Long = System.currentTimeMillis()
+    ): ScopedCrashes {
+        var historyText = ""
+        var historyCount = 0
+        var currentCount = 0
+        val out = sections.map { section ->
+            if (section.title !in CRASH_SECTION_TITLES || section.state != SectionState.PRESENT) {
+                return@map section
+            }
+            val scoped = scopeCrashText(section.text, thresholdMillis, zone, nowMillis)
+            currentCount += scoped.currentCount
+            if (scoped.history.isNotBlank()) {
+                historyText += (if (historyText.isEmpty()) "" else "\n\n") +
+                    "-- ${section.title} --\n${scoped.history}"
+                historyCount += scoped.historyCount
+            }
+            when {
+                scoped.current.isNotBlank() -> section.copy(text = bounded(scoped.current))
+                section.text.isBlank() -> section
+                else -> section.copy(
+                    state = SectionState.EMPTY,
+                    reason = "no entries since ${crashThresholdText(thresholdMillis, zone)}",
+                    text = ""
+                )
+            }
+        }
+        val crashSections = sections.filter { it.title in CRASH_SECTION_TITLES }
+        val routeFailure = crashSections.firstOrNull {
+            it.state == SectionState.SKIPPED || it.state == SectionState.UNREADABLE
+        }
+        val anyReadable = crashSections.any {
+            it.state == SectionState.PRESENT || it.state == SectionState.EMPTY
+        }
+        val history = when {
+            historyText.isNotBlank() -> CaptureSection(
+                CRASH_HISTORY_TITLE,
+                SectionState.PRESENT,
+                "",
+                bounded(historyText)
+            )
+            !anyReadable && routeFailure != null -> CaptureSection(
+                CRASH_HISTORY_TITLE,
+                routeFailure.state,
+                routeFailure.reason,
+                ""
+            )
+            else -> CaptureSection(
+                CRASH_HISTORY_TITLE,
+                SectionState.EMPTY,
+                "no crash entries older than the current boot/build",
+                ""
+            )
+        }
+        return ScopedCrashes(out, history, currentCount, historyCount)
+    }
+
+    private fun localEpoch(date: String, time: String, zone: ZoneId): Long? = runCatching {
+        LocalDateTime.parse("${date}T$time").atZone(zone).toInstant().toEpochMilli()
+    }.getOrNull()
+
+    private fun tombstoneEpoch(text: String): Long? {
+        val match = TOMBSTONE_TIME.find(text) ?: return null
+        val local = runCatching {
+            LocalDateTime.parse("${match.groupValues[1]}T${match.groupValues[2]}")
+        }.getOrNull() ?: return null
+        val sign = if (match.groupValues[3] == "-") -1 else 1
+        val offset = sign *
+            (match.groupValues[4].toInt() * 3600 + match.groupValues[5].toInt() * 60)
+        return runCatching {
+            local.toInstant(ZoneOffset.ofTotalSeconds(offset)).toEpochMilli()
+        }.getOrNull()
+    }
+
+    private fun logcatEpoch(match: MatchResult, zone: ZoneId, nowMillis: Long): Long? {
+        val year = Instant.ofEpochMilli(nowMillis).atZone(zone).year
+        val month = match.groupValues[1]
+        val day = match.groupValues[2]
+        val time = match.groupValues[3]
+        val guessed = localEpoch("$year-$month-$day", time, zone) ?: return null
+        // A December/January boundary: a future date belongs to last year's buffer.
+        return if (guessed > nowMillis + 86_400_000L) {
+            localEpoch("${year - 1}-$month-$day", time, zone)
+        } else {
+            guessed
+        }
+    }
+
+    private fun crashThresholdText(epochMillis: Long, zone: ZoneId): String =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            .format(Instant.ofEpochMilli(epochMillis).atZone(zone))
 
     internal fun rootUnavailableReason(allowed: Boolean, suAbsolute: Boolean): String = when {
         !allowed -> "no root: root access was not granted"
@@ -805,12 +1108,14 @@ internal object RootLogs {
         else -> "Shizuku capture skipped"
     }
 
-    /** `deaths=<counter|records|unreadable:reason>`; a refused capture must never read as zero deaths. */
-    internal fun deathSummary(counter: Int?, crashFound: Boolean, unreadable: String?): String = when {
+    /**
+     * `deaths=<counter|unknown|unreadable:reason>`; a refused capture must never read as zero deaths,
+     * and an unknown counter is never dressed up as `records`.
+     */
+    internal fun deathSummary(counter: Int?, unreadable: String?): String = when {
         !unreadable.isNullOrBlank() -> "deaths=unreadable:$unreadable"
         counter != null -> "deaths=$counter"
-        crashFound -> "deaths=records"
-        else -> "deaths=0"
+        else -> "deaths=unknown"
     }
 
     internal fun bounded(text: String, max: Int = MAX_SECTION_CHARS): String =
@@ -819,11 +1124,45 @@ internal object RootLogs {
     internal fun parseUptime(text: String): Long? =
         text.trim().substringBefore(' ').toDoubleOrNull()?.toLong()
 
-    private fun uptimeSeconds(): Long? = try {
-        parseUptime(File("/proc/uptime").readText())
+    /**
+     * Uptime from the bounded monotonic clock, not `/proc/uptime` (which needs a readable procfs and
+     * produced `uptime=unreadable` on the owner's device). The clock is injectable for the JVM test.
+     */
+    internal fun uptimeSeconds(clock: () -> Long = { SystemClock.elapsedRealtime() }): Long? = try {
+        val millis = clock()
+        if (millis < 0L) null else millis / 1000L
     } catch (_: Throwable) {
         null
     }
+
+    /** Epoch millis of the wall-clock instant the phone booted: now - time since boot. */
+    internal fun bootEpochMillis(nowMillis: Long, elapsedRealtimeMillis: Long): Long =
+        nowMillis - elapsedRealtimeMillis.coerceAtLeast(0L)
+
+    /** Crash evidence older than either this boot or this install is history, not a current problem. */
+    internal fun crashThresholdMillis(bootEpochMillis: Long, appUpdatedMillis: Long): Long =
+        maxOf(bootEpochMillis, appUpdatedMillis.coerceAtLeast(0L))
+
+    private fun appUpdatedAt(context: Context): Long = try {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+    } catch (_: Throwable) {
+        0L
+    }
+
+    /** The framework module ids whose `module.prop` is evidence; the user's other modules stay private. */
+    internal fun isFrameworkModuleId(id: String): Boolean {
+        val value = id.trim().lowercase()
+        if (value.isEmpty()) return false
+        return value in FRAMEWORK_MODULE_IDS || value.contains("lsposed")
+    }
+
+    private fun frameworkLogDirs(): String = FRAMEWORK_LOG_DIRS.joinToString(" ")
+
+    private fun frameworkLogGlob(name: String): String =
+        FRAMEWORK_LOG_DIRS.joinToString(" ") { "$it/$name" }
+
+    private fun frameworkConfigDbs(): String = FRAMEWORK_CONFIG_DBS.joinToString(" ")
 
     private fun isRootCaptureFailure(text: String): Boolean = text.startsWith(FAILURE_PREFIX)
 
@@ -856,7 +1195,8 @@ internal object RootLogs {
     internal fun privilegedSections(
         evidence: String,
         skipReason: String,
-        failureReason: String?
+        failureReason: String?,
+        bootEpochMillis: Long? = null
     ): List<CaptureSection> = PRIVILEGED_SECTIONS.map { title ->
         val raw = bounded(section(evidence, title))
         val verdict = when {
@@ -864,25 +1204,29 @@ internal object RootLogs {
             raw.isBlank() && skipReason.isNotBlank() -> SectionVerdict(SectionState.SKIPPED, skipReason)
             else -> verdictFor(raw)
         }
-        CaptureSection(title, verdict.state, verdict.reason, raw)
+        augmentSection(CaptureSection(title, verdict.state, verdict.reason, raw), bootEpochMillis)
     }
 
     /** Adds the parsed safe-mode/framework/module lines without inventing anything the capture lacked. */
-    private fun augmentSection(section: CaptureSection): CaptureSection = when (section.title) {
-        "safe mode" -> withSafeMode(section)
+    private fun augmentSection(
+        section: CaptureSection,
+        bootEpochMillis: Long?
+    ): CaptureSection = when (section.title) {
+        "safe mode" -> withSafeMode(section, bootEpochMillis)
         "framework manager" -> withFrameworkManager(section)
         "LSPosed config (enabled / scope)" -> withModuleScope(section)
         else -> section
     }
 
-    private fun withSafeMode(section: CaptureSection): CaptureSection {
+    private fun withSafeMode(section: CaptureSection, bootEpochMillis: Long?): CaptureSection {
         if (section.state != SectionState.PRESENT) return section
-        val report = parseSafeMode(section.text)
-        if (report.lines.isEmpty() && report.counter == null) return section
+        val report = parseSafeMode(section.text, bootEpochMillis)
         val body = buildString {
-            appendLine("counter=${report.counter ?: "not found"}")
-            appendLine("safeMode=${if (report.entered) "entered" else "no"}")
+            appendLine("safeLogFiles=${report.logFiles}")
+            appendLine("counter=${report.counter ?: if (report.readable) 0 else "unknown"}")
+            appendLine("safeMode=${safeModeLabel(report)}")
             report.lines.forEach { appendLine(it) }
+            if (report.history.isNotEmpty()) appendLine("historyLines=${report.history.size}")
         }
         return section.copy(text = bounded(body.trimEnd()))
     }
@@ -904,18 +1248,61 @@ internal object RootLogs {
         return section.copy(text = bounded(body))
     }
 
+    internal data class ModuleScope(
+        val queried: Boolean,
+        val enabled: Boolean?,
+        val scope: String?,
+        val row: String?
+    )
+
+    /**
+     * Reads the LSPosed config query result. `modules_config.db` is a real SQLite file, so the only
+     * trustworthy answer comes from an actual query (`-header -separator '|'`). Grepping the binary was
+     * what produced "not found" for installed modules; that wording is gone.
+     */
+    internal fun parseModuleScope(text: String): ModuleScope {
+        val lower = text.lowercase()
+        val queried = text.contains("sqlite=") && SQLITE_FAILURES.none { lower.contains(it) }
+        if (!queried) return ModuleScope(false, null, null, null)
+        val lines = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        val rowIndex = lines.indexOfFirst {
+            it.contains('|') && it.contains("duostatusbar", ignoreCase = true)
+        }
+        if (rowIndex < 0) return ModuleScope(true, null, null, null)
+        val row = lines[rowIndex]
+        val header = lines.subList(0, rowIndex).lastOrNull { it.contains('|') }
+            ?: return ModuleScope(true, null, null, row)
+        val columns = header.split('|').map { it.trim().lowercase() }
+        val values = row.split('|').map { it.trim() }
+        val enabled = columns.indexOf("enabled").takeIf { it >= 0 }
+            ?.let { values.getOrNull(it) }
+            ?.let {
+                when (it.lowercase()) {
+                    "1", "true", "yes" -> true
+                    "0", "false", "no" -> false
+                    else -> null
+                }
+            }
+        val scope = columns.indexOf("scope").takeIf { it >= 0 }
+            ?.let { values.getOrNull(it) }
+            ?.takeIf { it.isNotBlank() }
+        return ModuleScope(true, enabled, scope, row)
+    }
+
     internal fun withModuleScope(section: CaptureSection): CaptureSection {
-        if (section.state != SectionState.PRESENT) return section
-        val found = section.text.contains("duostatusbar", ignoreCase = true)
+        if (section.state != SectionState.PRESENT && section.state != SectionState.UNREADABLE) {
+            return section
+        }
+        val parsed = parseModuleScope(section.text)
         val body = buildString {
-            appendLine(
-                "module=io.github.kvmy666.duostatusbar " +
-                    "${if (found) "found" else "not found"} in modules_config.db"
-            )
-            // `modules_config.db` is a binary SQLite file and no schema was queried here, so the report
-            // must say that plainly instead of inventing an enabled/scope answer.
-            appendLine("enabled=not parsed (modules_config.db is binary; no schema queried)")
-            appendLine("scope=see db excerpt")
+            if (parsed.queried) {
+                appendLine("enabled=${parsed.enabled?.toString() ?: "unknown"}")
+                appendLine("scope=${parsed.scope ?: "unknown"}")
+                if (parsed.row != null) appendLine("moduleRow=${parsed.row}")
+                if (parsed.row == null) appendLine("query=no duostatusbar row returned")
+            } else {
+                appendLine("enabled=unknown scope=unknown (modules_config.db not queried)")
+            }
             append(section.text)
         }
         return section.copy(text = bounded(body))
