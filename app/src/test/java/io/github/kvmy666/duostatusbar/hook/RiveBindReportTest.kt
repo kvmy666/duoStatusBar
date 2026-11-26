@@ -54,6 +54,18 @@ class RiveBindReportTest {
     }
 
     @Test
+    fun `a successful bind clears an older failure`() {
+        RiveBindReport.record("poll", "no view model instance")
+        assertEquals("poll", RiveBindReport.reason())
+
+        RiveBindReport.clear()
+        assertNull(RiveBindReport.last())
+
+        RiveBindReport.record("render", "new failure")
+        assertEquals("render", RiveBindReport.reason())
+    }
+
+    @Test
     fun `the one-shot log line carries every measured fact`() {
         val line = riveFailureLogLine(
             RiveBindFailure("runtime", "RiveInit.ensure=false"),
@@ -62,13 +74,13 @@ class RiveBindReportTest {
             hardware = true,
             width = 49,
             height = 61,
-            renderer = "Canvas",
+            fallbackRenderer = "Canvas",
             selinux = "enforcing",
             stage = 2
         )
         assertEquals(
             "rive bind failed: reason=runtime detail=RiveInit.ensure=false polls=0 " +
-                "attached=true hardware=true size=49x61 renderer=Canvas " +
+                "attached=true hardware=true size=49x61 fallbackRenderer=Canvas " +
                 "selinux=enforcing stage=2",
             line
         )

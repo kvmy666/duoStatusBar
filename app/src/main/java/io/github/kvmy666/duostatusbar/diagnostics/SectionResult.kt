@@ -31,7 +31,7 @@ data class CaptureSection(
  */
 data class RootCapture(val route: String, val sections: List<CaptureSection>) {
     fun render(): String = buildString {
-        appendLine("=== capture route ===")
+        appendLine("=== capture summary ===")
         appendLine(route)
         sections.forEach {
             appendLine()

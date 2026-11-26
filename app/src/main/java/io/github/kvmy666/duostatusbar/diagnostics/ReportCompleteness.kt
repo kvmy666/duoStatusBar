@@ -56,6 +56,12 @@ internal object ReportCompleteness {
     private const val MODULE_LOG_MARKER =
         "=== module log (from the module, no root needed) ==="
 
+    /**
+     * The start of the module log section. The **last** marker wins, matching the app-side
+     * `moduleLogFromDump`: a dump can quote an older header before the real section.
+     */
+    internal fun moduleLogMarkerIndex(dump: String): Int = dump.lastIndexOf(MODULE_LOG_MARKER)
+
     fun build(
         status: String,
         history: List<String>,
@@ -221,7 +227,7 @@ internal object ReportCompleteness {
             ReportSection(
                 "diagnostic dump",
                 ReportSectionState.EMPTY,
-                "old build or provider unreachable"
+                "dump absent (module never reported or old build)"
             )
         } else {
             ReportSection(
@@ -230,7 +236,7 @@ internal object ReportCompleteness {
         }
 
         val moduleLogSection = run {
-            val index = dump.indexOf(MODULE_LOG_MARKER)
+            val index = moduleLogMarkerIndex(dump)
             when {
                 dump.isBlank() -> ReportSection(
                     "module log", ReportSectionState.MISSING,

@@ -1,5 +1,8 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -34,6 +37,37 @@ class DuoReportTest {
         logcat = "logcat-body",
         screenshotPng = screenshot
     )
+
+    @Test
+    fun `the full report puts the user message after the completeness header`() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val report = buildFullReport(
+            context = context,
+            problem = "the ring does not draw",
+            settings = DuoSettings(),
+            status = "",
+            history = emptyList(),
+            dump = "",
+            moduleLoadAt = 0L,
+            logs = "capture body"
+        )
+        val diagnostics = report.substringBefore("===== device capture =====")
+        val title = diagnostics.indexOf("Duo Status Bar diagnostics")
+        val completeness = diagnostics.indexOf("report completeness:")
+        val message = diagnostics.indexOf("user message:")
+        val settings = diagnostics.indexOf("settings:")
+        assertTrue("title missing: $diagnostics", title >= 0)
+        assertTrue(
+            "completeness must follow the title: $diagnostics",
+            completeness > title
+        )
+        assertTrue(
+            "user message must follow the completeness header: $diagnostics",
+            message > completeness
+        )
+        assertTrue("settings must follow the user message: $diagnostics", settings > message)
+        assertTrue("message body missing", diagnostics.contains("the ring does not draw"))
+    }
 
     @Test
     fun writesRequiredEntriesWithoutScreenshot() {

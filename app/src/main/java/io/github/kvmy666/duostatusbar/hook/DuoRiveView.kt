@@ -207,6 +207,9 @@ internal class DuoRiveView(
                     // the machine sat idle (`playingStateMachines=0`), so live changes were written but
                     // never drawn - the element only ever showed its bind-time frame. Start it explicitly.
                     rive?.play(STATE_MACHINE, Loop.LOOP, Direction.AUTO, true, true)
+                    // The bind and the state machine are live; any earlier failure belongs to a previous
+                    // attempt and must not be reported as the current Rive state.
+                    RiveBindReport.clear()
                     renderActive = true
                     scheduleIdleStop()
                     L.i("Duo view ready (machines=${rive?.stateMachines?.size}, " +
@@ -338,7 +341,7 @@ internal class DuoRiveView(
                     hardware = isHardwareAccelerated,
                     width = width,
                     height = height,
-                    renderer = "Canvas",
+                    fallbackRenderer = "Canvas",
                     selinux = DeviceFacts.selinux(),
                     stage = stage
                 )
@@ -539,10 +542,17 @@ internal object RiveBindReport {
 
     fun last(): RiveBindFailure? = failure
 
+    /** Drops an older failure once a later bind/state-machine start succeeded. */
+    fun clear() {
+        synchronized(lock) {
+            failure = null
+        }
+    }
+
     fun reason(): String? = failure?.reason
 
     internal fun resetForTest() {
-        synchronized(lock) { failure = null }
+        clear()
     }
 
     /** One line token: no newlines and a bounded length, so a report stays parseable. */
@@ -565,10 +575,10 @@ internal fun riveFailureLogLine(
     hardware: Boolean,
     width: Int,
     height: Int,
-    renderer: String,
+    fallbackRenderer: String,
     selinux: String,
     stage: Int
 ): String = "rive bind failed: reason=${RiveBindReport.token(failure.reason, 40)} " +
     "detail=${RiveBindReport.token(failure.detail, 120)} polls=$polls attached=$attached " +
-    "hardware=$hardware size=${width}x$height renderer=$renderer " +
+    "hardware=$hardware size=${width}x$height fallbackRenderer=$fallbackRenderer " +
     "selinux=$selinux stage=$stage"

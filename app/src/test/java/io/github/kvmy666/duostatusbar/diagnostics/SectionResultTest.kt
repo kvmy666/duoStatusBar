@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.diagnostics
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,6 +20,11 @@ class SectionResultTest {
             )
         )
         val text = capture.render()
+        assertTrue("the outer header must be the summary", text.startsWith("=== capture summary ==="))
+        assertFalse(
+            "the outer header must not duplicate the capture route section",
+            text.contains("=== capture route ===")
+        )
         assertTrue(text.contains("=== logcat ==="))
         assertTrue(text.contains("state=present reason=-"))
         assertTrue(text.contains("DuoSB | hi"))

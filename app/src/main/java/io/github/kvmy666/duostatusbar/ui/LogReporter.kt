@@ -178,7 +178,9 @@ internal fun buildDiagnostics(
     /** The rendered capture, for callers that only kept the text. */
     captureText: String = "",
     /** Set when the capture itself threw; every capture section then says so. */
-    captureFailure: String? = null
+    captureFailure: String? = null,
+    /** The user's own description; printed right after the completeness header. */
+    userMessage: String? = null
 ): String {
     val loadAt = DuoPrefs.moduleLoadTime(context)
     val heartbeatAt = DuoPrefs.heartbeat(context)
@@ -211,6 +213,13 @@ internal fun buildDiagnostics(
     val raw = buildString {
         appendLine("Duo Status Bar diagnostics")
         appendLine(ReportCompleteness.render(sections))
+        // The user's message follows the header immediately, so a reader sees the complaint before the
+        // settings; the completeness header stays the first block of the report.
+        val message = userMessage?.trim().orEmpty()
+        if (message.isNotEmpty()) {
+            appendLine("user message:")
+            appendLine(message)
+        }
         appendLine("settings: $settings")
         appendLine("module load: $loadLine")
         appendLine("module: ").append(status.ifEmpty { "no report yet" })
@@ -313,12 +322,6 @@ internal fun buildFullReport(
     captureFailure: String? = null
 ): String {
     val raw = buildString {
-        val message = problem.trim()
-        if (message.isNotEmpty()) {
-            appendLine("user message:")
-            appendLine(message)
-            appendLine()
-        }
         append(
             buildDiagnostics(
                 context,
@@ -329,7 +332,8 @@ internal fun buildFullReport(
                 moduleLoadAt,
                 capture = capture,
                 captureText = logs,
-                captureFailure = captureFailure
+                captureFailure = captureFailure,
+                userMessage = problem
             )
         )
         append("\n\n===== device capture =====\n")

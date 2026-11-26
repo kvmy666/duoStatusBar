@@ -108,7 +108,7 @@ class ReportCompletenessTest {
         assertEquals(ReportSectionState.MISSING, byName.getValue("module status").state)
         assertTrue(byName.getValue("module status").reason.contains("module never reported"))
         assertEquals(ReportSectionState.EMPTY, byName.getValue("diagnostic dump").state)
-        assertTrue(byName.getValue("diagnostic dump").reason.contains("old build or provider unreachable"))
+        assertTrue(byName.getValue("diagnostic dump").reason.contains("dump absent"))
         assertEquals(ReportSectionState.MISSING, byName.getValue("module log").state)
         assertEquals(ReportSectionState.EMPTY, byName.getValue("history").state)
         assertEquals(ReportSectionState.MISSING, byName.getValue("module load").state)
@@ -157,6 +157,25 @@ class ReportCompletenessTest {
         assertEquals(ReportCompleteness.REQUIRED.size, parsed.size)
         assertTrue(parsed.getValue("module status").startsWith("present reason="))
         assertTrue(parsed.getValue("diagnostic dump").contains("present"))
+    }
+
+    @Test
+    fun `the module log is taken from the last marker`() {
+        val marker = "=== module log (from the module, no root needed) ==="
+        val dump = "header\n$marker\nquoted old blank section\n$marker\nmodule line\n"
+        assertEquals(dump.lastIndexOf(marker), ReportCompleteness.moduleLogMarkerIndex(dump))
+
+        val byName = sections(dump = dump).associateBy { it.name }
+        assertEquals(ReportSectionState.PRESENT, byName.getValue("module log").state)
+        assertTrue(byName.getValue("module log").reason.contains("embedded"))
+    }
+
+    @Test
+    fun `a quoted old blank marker before a real one is not mistaken for an empty log`() {
+        val marker = "=== module log (from the module, no root needed) ==="
+        val dump = "header\n$marker\n   \nquoted banner\n$marker\nmodule line\n"
+        val byName = sections(dump = dump).associateBy { it.name }
+        assertEquals(ReportSectionState.PRESENT, byName.getValue("module log").state)
     }
 
     @Test
