@@ -699,7 +699,9 @@ object DuoPrefs {
         orientation: DuoOrientation = DuoOrientation.of(context)
     ): Long {
         val p = prefs(context)
-        val previous = read(context, orientation)
+        // A corrupt store must not make a save fail; an unreadable previous value only loses the
+        // changed-key detail, never the settings write itself.
+        val previous = runCatching { read(context, orientation) }.getOrDefault(DuoSettings())
         val next = revision(context) + 1
         val effectiveEngine = when {
             settings.engineMode == ENGINE_AUTO && !settings.useRive -> ENGINE_CANVAS

@@ -76,7 +76,7 @@ internal object ReportCompleteness {
             val info = infos[title] ?: fallbacks.firstNotNullOfOrNull { infos[it] }
             if (info == null) {
                 val why = if (capture == null && captureText.isBlank()) {
-                    "no capture was collected"
+                    "no capture supplied to the report builder"
                 } else {
                     "section '$title' absent from capture"
                 }
@@ -98,7 +98,7 @@ internal object ReportCompleteness {
                     "capture route",
                     ReportSectionState.MISSING,
                     if (capture == null && captureText.isBlank()) {
-                        "no capture was collected"
+                        "no capture supplied to the report builder"
                     } else {
                         "capture route absent from capture"
                     }
@@ -139,7 +139,7 @@ internal object ReportCompleteness {
                     "LSPosed/framework logs",
                     ReportSectionState.MISSING,
                     if (capture == null && captureText.isBlank()) {
-                        "no capture was collected"
+                        "no capture supplied to the report builder"
                     } else {
                         "no LSPosed framework section in the capture"
                     }
@@ -184,7 +184,7 @@ internal object ReportCompleteness {
                     "breadcrumb",
                     ReportSectionState.MISSING,
                     if (capture == null && captureText.isBlank()) {
-                        "no capture was collected"
+                        "no capture supplied to the report builder"
                     } else {
                         "breadcrumb section absent from capture"
                     }
