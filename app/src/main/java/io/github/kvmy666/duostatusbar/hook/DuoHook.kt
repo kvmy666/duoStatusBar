@@ -1617,7 +1617,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             "shadeProbe:attachExtraBars:window",
             "attachExtraBars window=${ShadeProbe.describe(shade)} attached=${shade.isAttachedToWindow}"
         )
-        host.attachExtra("keyguard bar", shade, "system_icons")
+        host.attachExtra("keyguard bar", shade, rom.keyguardContainerId)
         // The shade header is not in this window; it arrives through hookShadeHeader. It is built early,
         // often before the main bar has attached, so this is also where a failed attempt is retried.
         val header = shadeHeader

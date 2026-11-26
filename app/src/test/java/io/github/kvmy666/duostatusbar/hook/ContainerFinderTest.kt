@@ -77,6 +77,23 @@ class ContainerFinderTest {
     }
 
     @Test
+    fun `a custom battery container is not the element parent`() {
+        val root = FrameLayout(context)
+        val bar = FrameLayout(context)
+        val custom = MiuiStatusBatteryContainer(context)
+        bar.addView(custom)
+        root.addView(bar)
+
+        assertSame(bar, finder().chooseElementParent(custom, root))
+    }
+
+    @Test
+    fun `a standard strip is its own element parent`() {
+        val strip = LinearLayout(context)
+        assertSame(strip, finder().chooseElementParent(strip, FrameLayout(context)))
+    }
+
+    @Test
     fun `finds the strip as the common parent of the icons and the battery`() {
         val root = FrameLayout(context)
         val strip = LinearLayout(context)

@@ -94,7 +94,10 @@ internal object RomProfiles {
                         panelOwnerAvailable = o.optBoolean("panelOwnerAvailable", false),
                         aliases = o.optJSONArray("aliases").toStringList(),
                         hideContainerIds = o.optJSONArray("hideContainerIds").toStringList(),
-                        dualSimCompositeIds = o.optJSONArray("dualSimCompositeIds").toStringList()
+                        dualSimCompositeIds = o.optJSONArray("dualSimCompositeIds").toStringList(),
+                        keyguardContainerId = o.optString("keyguardContainerId", "system_icons").trim()
+                            .ifBlank { "system_icons" },
+                        shadeBatteryIds = o.optJSONArray("shadeBatteryIds").toStringList()
                     )
                 )
             }

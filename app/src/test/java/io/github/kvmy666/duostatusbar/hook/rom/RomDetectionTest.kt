@@ -82,6 +82,29 @@ class RomDetectionTest {
     }
 
     @Test
+    fun `hyperos keyguard uses the include override and the control center shade ids`() {
+        val rom = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, hyperOsMarkers
+        )
+        assertEquals("hyperos", rom.id)
+        assertEquals("system_icons_container", rom.keyguardContainerId)
+        assertTrue(rom.shadeContainerIds.contains("normal_control_center_status_bar"))
+        assertTrue(rom.shadeContainerIds.contains("system_icon_area"))
+        assertEquals("battery", rom.shadeBatteryId)
+    }
+
+    @Test
+    fun `other adapters keep the default keyguard container`() {
+        for (rom in listOf(
+            RomDetection.forThisRom("OnePlus", "OnePlus", "p", "d"),
+            RomDetection.forThisRom("samsung", "samsung", "p", "d"),
+            RomDetection.forThisRom("vivo", "vivo", "p", "d")
+        )) {
+            assertEquals("system_icons", rom.keyguardContainerId)
+        }
+    }
+
+    @Test
     fun `anything else falls back to the aosp baseline`() {
         val rom = RomDetection.forThisRom("Google", "google", "husky", "Google/husky:16")
         assertEquals("aosp", rom.id)
@@ -201,8 +224,18 @@ class RomDetectionTest {
             "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, hyperOsMarkers
         )
         assertEquals("hyperos", hyper.id)
-        assertEquals(listOf("shade_header_system_icons", "system_icons"), hyper.shadeContainerIds)
+        assertTrue(
+            "the HyperOS shade is the control-center strip",
+            hyper.shadeContainerIds.contains("normal_control_center_status_bar")
+        )
+        assertTrue(
+            "the wider QS header is a shade candidate",
+            hyper.shadeContainerIds.contains("system_icon_area")
+        )
         assertFalse("HyperOS shade has no device dump yet", hyper.shadeMeasured)
+
+        val oxygenKeyguard = RomDetection.forThisRom("OnePlus", "OnePlus", "p", "d")
+        assertEquals("system_icons", oxygenKeyguard.keyguardContainerId)
 
         val samsung = RomDetection.forThisRom("samsung", "samsung", "p", "d")
         assertEquals("samsung", samsung.id)

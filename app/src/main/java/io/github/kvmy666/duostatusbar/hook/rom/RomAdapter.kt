@@ -87,7 +87,17 @@ internal data class RomAdapter(
      * `mobile_group_slot2`; hiding it as "one SIM" would remove both rows. The keys are the stable
      * `id:<name>` form of [StockIconKey.baseKey], so the hider can keep the whole composite.
      */
-    val dualSimCompositeIds: List<String> = emptyList()
+    val dualSimCompositeIds: List<String> = emptyList(),
+    /**
+     * The id of the keyguard bar's icon strip. The AOSP `system_icons` is the default; HyperOS's
+     * keyguard layout include overrides it to `system_icons_container`.
+     */
+    val keyguardContainerId: String = "system_icons",
+    /**
+     * Ordered probes for the shade/QS battery view. Vendor rows such as vivo's QS status container use
+     * their own battery ids, tried before the generic [shadeBatteryId].
+     */
+    val shadeBatteryIds: List<String> = emptyList()
 )
 
 /**
@@ -336,12 +346,18 @@ internal object RomDetection {
             " but no MiuiSystemUI marker proved HyperOS",
         match = listOf("xiaomi", "redmi", "poco"),
         measured = measured,
-        shadeContainerIds = listOf("shade_header_system_icons", "system_icons"),
+        shadeContainerIds = listOf(
+            "normal_control_center_status_bar",
+            "system_icon_area",
+            "shade_header_system_icons",
+            "system_icons"
+        ),
         shadeBatteryId = "battery",
         shadeMeasured = false,
         coverHook = true,
         panelExpansionKind = "fzz_3arg",
-        panelHookMeasured = false
+        panelHookMeasured = false,
+        keyguardContainerId = "system_icons_container"
     )
     }
 

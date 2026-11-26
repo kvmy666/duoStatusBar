@@ -54,6 +54,15 @@
       "apiMin": 37,
       "apiMax": 37,
       "notes": "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent",
+      "keyguardContainerId": "system_icons_container",
+      "shadeContainerIds": [
+        "normal_control_center_status_bar",
+        "system_icon_area",
+        "shade_header_system_icons",
+        "system_icons"
+      ],
+      "shadeBatteryId": "battery",
+      "shadeMeasured": false,
       "coverHook": true,
       "panelExpansionKind": "fzz_3arg",
       "panelHookMeasured": false

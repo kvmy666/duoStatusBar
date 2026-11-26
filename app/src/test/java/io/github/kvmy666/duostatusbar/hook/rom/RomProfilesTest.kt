@@ -155,6 +155,28 @@ class RomProfilesTest {
     }
 
     @Test
+    fun `parses keyguard and shade battery id lists`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "hyperos",
+                  "containerIds": ["system_icons"],
+                  "keyguardContainerId": "system_icons_container",
+                  "shadeBatteryIds": ["vivo_qs_realbar_battery", "vivo_split_qs_realbar_battery"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertEquals("system_icons_container", p.keyguardContainerId)
+        assertEquals(
+            listOf("vivo_qs_realbar_battery", "vivo_split_qs_realbar_battery"),
+            p.shadeBatteryIds
+        )
+    }
+
+    @Test
     fun `parses hideContainerIds`() {
         val json = """
             {
@@ -228,6 +250,8 @@ class RomProfilesTest {
         assertEquals("", p.shadeBatteryId)
         assertEquals(emptyList<String>(), p.shadeStatusIconIds)
         assertFalse(p.shadeMeasured)
+        assertEquals("system_icons", p.keyguardContainerId)
+        assertEquals(emptyList<String>(), p.shadeBatteryIds)
     }
 
 
@@ -303,6 +327,18 @@ class RomProfilesTest {
         // The shipped oxygenos profile is measured in the asset, but no marker proves the family on
         // brand alone, so the selected adapter is the code fallback and is not measured (R18).
         assertFalse("brand/SDK cannot prove OxygenOS", rom.measured)
+    }
+
+    @Test
+    fun `shipped asset carries the hyperos keyguard and control center shade map`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profiles = RomProfiles.load(context)
+        val hyper = profiles.first { it.id == "hyperos" }
+        assertEquals("system_icons_container", hyper.keyguardContainerId)
+        assertTrue(hyper.shadeContainerIds.contains("normal_control_center_status_bar"))
+        assertTrue(hyper.shadeContainerIds.contains("system_icon_area"))
+        assertEquals("battery", hyper.shadeBatteryId)
+        assertFalse("the HyperOS shade is not device-measured", hyper.shadeMeasured)
     }
 
     @Test

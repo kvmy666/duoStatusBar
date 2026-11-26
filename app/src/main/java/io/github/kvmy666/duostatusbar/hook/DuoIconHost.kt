@@ -637,7 +637,22 @@ internal class DuoIconHost(private val context: Context) {
             // Centre on the *bar*, not the window it lives in: the shade window is the whole screen, so
             // centring on it put the element 1300 px down the lock screen (measured).
             val bar = finder.findBar(target) ?: target
-            attachInto(name, target, bar, center = true, elementRoot = root, stage = stage, logClass = bar.javaClass.simpleName)
+            // HyperOS's keyguard strip is a `MiuiStatusBatteryContainer`, which lays out only its own
+            // children (C7): draw in the nearest plain frame instead, while the stock strip is hidden.
+            val elementParent = finder.chooseElementParent(target, root)
+            if (elementParent === host) return true // same container as the main element
+            logOnce.once("layout:$name:${System.identityHashCode(elementParent)}") {
+                L.i(
+                    "$name layout: stock=${target.javaClass.simpleName}" +
+                        "[${target.width} x ${target.height}] " +
+                        "parent=${elementParent.javaClass.simpleName} " +
+                        "overlay=${elementParent !== target}"
+                )
+            }
+            attachInto(
+                name, elementParent, bar, center = true, elementRoot = root, stage = stage,
+                logClass = bar.javaClass.simpleName, stockTarget = target
+            )
         } catch (t: Throwable) {
             L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
             false
@@ -1809,31 +1824,39 @@ internal class DuoIconHost(private val context: Context) {
             val side = geometry.extraSidePx(target, capView, slot.basePx)
             candidate.ui.layoutParams = layoutParamsFor(target, side)
             ensureInjectedViewId(candidate.ui, target)
+            // R9: a re-inflated container can still hold Duo views orphaned by an earlier attach. Drop
+            // them (except the live elements we own) before adding this one, so they cannot pile up.
+            removeOrphanDuoViews(
+                target,
+                allElements().map { it.ui } + listOfNotNull(indicators?.ui)
+            )
             target.addView(candidate.ui)
             applyExtraLayout(slot)
             syncExtraIndicators(slot)
             candidate.onReady {
-                if (slot.element !== candidate) return@onReady
-                // Wait for a real measured box before hiding anything. A 0-width child in a custom
-                // header was the measured QS failure; leaving stock is safer than an empty slot.
                 candidate.ui.post {
-                    if (slot.element !== candidate || !candidate.ui.isAttachedToWindow) return@post
                     val width = candidate.ui.width
                     val height = candidate.ui.height
+                    // R9: a detached or 0x0 element must never stay in the tree. It blocks a later
+                    // attach and leaks a view, so remove it unconditionally; the stock icons are
+                    // restored only while this candidate still owns the slot.
+                    if (!candidate.ui.isAttachedToWindow || width <= 0 || height <= 0) {
+                        runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
+                        runCatching { candidate.teardown() }
+                        if (slot.element === candidate) {
+                            L.w("$name element measured 0x0 - removed; stock kept")
+                            slot.stock.restore()
+                            extras.remove(slot)
+                        }
+                        return@post
+                    }
+                    if (slot.element !== candidate) return@post
                     L.i(
                         "$name layout target=${target.javaClass.name}[${target.width}x${target.height}] " +
                             "stock=${stock.javaClass.simpleName}[${stock.width}x${stock.height}] " +
                             "view=${width}x$height side=$side parent=" +
                             "${candidate.ui.parent?.javaClass?.simpleName ?: "none"}"
                     )
-                    if (width <= 0 || height <= 0) {
-                        L.w("$name element measured ${width}x$height - leaving stock")
-                        runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
-                        runCatching { candidate.teardown() }
-                        slot.stock.restore()
-                        extras.remove(slot)
-                        return@post
-                    }
                     // The ready callback arrives from the Rive instance poll, i.e. outside attachExtraView's try.
                     // Guard it here so a hiding failure in an optional bar can never propagate into SystemUI.
                     try {
@@ -1867,14 +1890,33 @@ internal class DuoIconHost(private val context: Context) {
                 // Optional bar: drop the element and leave its stock icons alone.
                 try {
                     L.w("$name element did not bind - leaving its stock icons")
-                    runCatching { target.removeView(candidate.ui) }
+                    runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
                     runCatching { candidate.teardown() }
-                    slot.stock.restore()
-                    extras.remove(slot)
+                    if (slot.element === candidate) {
+                        slot.stock.restore()
+                        extras.remove(slot)
+                    }
                 } catch (t: Throwable) {
                     L.w("$name failed: ${t.javaClass.simpleName}: ${t.message}")
                 }
             }
+            // R9: bounded readiness guard. An element that never binds must not leak in the tree for the
+            // lifetime of the window; after one survival window it is removed and stock is restored.
+            candidate.ui.postDelayed({
+                try {
+                    if (slot.element === candidate && extras.contains(slot) &&
+                        (!candidate.isReady || !candidate.ui.isAttachedToWindow)
+                    ) {
+                        L.w("$name element never became ready in ${SURVIVAL_MS}ms - removed; stock kept")
+                        runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
+                        runCatching { candidate.teardown() }
+                        slot.stock.restore()
+                        extras.remove(slot)
+                    }
+                } catch (t: Throwable) {
+                    L.w("$name survival: ${t.javaClass.simpleName}: ${t.message}")
+                }
+            }, SURVIVAL_MS)
             return true
         } catch (t: Throwable) {
             // The slot must never outlive a failed injection: it would hide the stock icons with no Duo
@@ -4156,6 +4198,27 @@ internal class DuoIconHost(private val context: Context) {
     internal companion object {
         // box = structural validity (attached/shown/visible/laid out) - used for readiness/attach/fallback;
         // drawable = ink/alpha on top of box - used for handoff ordering only.
+        /**
+         * R9: removes Duo children of [container] that are not in [owned] (live elements/indicators),
+         * returning how many were removed. A re-inflated HyperOS strip used to accumulate 18 orphan
+         * 0x0 views; matching by class simple name keeps it independent of the injected resource id.
+         */
+        internal fun removeOrphanDuoViews(container: ViewGroup, owned: Collection<View>): Int {
+            var removed = 0
+            for (i in container.childCount - 1 downTo 0) {
+                val child = container.getChildAt(i) ?: continue
+                if (!child.javaClass.simpleName.startsWith("Duo", ignoreCase = true)) continue
+                if (owned.any { it === child }) continue
+                try {
+                    container.removeViewAt(i)
+                    removed++
+                } catch (_: Throwable) {
+                    // A layout callback must never throw into SystemUI; leave the child and move on.
+                }
+            }
+            return removed
+        }
+
         /** True only when the view is attached, shown, visible and laid out (structural validity, no alpha). */
         internal fun hasBox(view: View): Boolean = try {
             view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&

@@ -1,9 +1,13 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.app.Activity
+import android.content.Context
 import android.view.View
 import android.widget.FrameLayout
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,6 +39,28 @@ class DuoIconHostBoxTest {
             parent.addView(this)
             layout(0, 0, size, size)
         }
+
+    private class DuoOrphanView(context: Context) : View(context)
+
+    private class DuoOwnedView(context: Context) : View(context)
+
+    @Test
+    fun `removeOrphanDuoViews removes unowned Duo children only`() {
+        val parent = content()
+        val orphan = DuoOrphanView(activity)
+        val owned = DuoOwnedView(activity)
+        val normal = View(activity)
+        parent.addView(orphan)
+        parent.addView(owned)
+        parent.addView(normal)
+
+        val removed = DuoIconHost.removeOrphanDuoViews(parent, listOf(owned))
+
+        assertEquals(1, removed)
+        assertNull("the orphan Duo view is removed", orphan.parent)
+        assertSame("an owned Duo view is kept", parent, owned.parent)
+        assertSame("a normal child is kept", parent, normal.parent)
+    }
 
     @Test
     fun `a shown laid out child has a box`() {
