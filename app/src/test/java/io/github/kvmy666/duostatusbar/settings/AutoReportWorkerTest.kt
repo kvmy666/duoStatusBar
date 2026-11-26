@@ -62,4 +62,23 @@ class AutoReportWorkerTest {
             logs.any { it.contains("IllegalStateException") }
         )
     }
+
+    @Test
+    fun `only a returned FAILED pulse is retried`() {
+        val expected = mapOf(
+            PulseAction.FAILED to PulseAttempt.RETRY,
+            PulseAction.NOTHING to PulseAttempt.SUCCESS,
+            PulseAction.ZIP_SENT to PulseAttempt.SUCCESS,
+            PulseAction.SUMMARY_SENT to PulseAttempt.SUCCESS,
+            PulseAction.CAPPED to PulseAttempt.SUCCESS,
+            PulseAction.SKIPPED_CONSENT to PulseAttempt.SUCCESS
+        )
+        for ((action, attempt) in expected) {
+            assertEquals(
+                "action=$action must map to $attempt",
+                attempt,
+                pulseOutcome(PulseResult(action = action))
+            )
+        }
+    }
 }

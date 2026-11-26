@@ -17,9 +17,10 @@ internal enum class PulseAttempt { SUCCESS, RETRY }
 /**
  * The worker's result rule, kept pure so it is unit-tested without WorkManager.
  *
- * A failed pulse must be retried through backoff and must **not** mark the first pulse done: doing so
- * pushed the retry to the 24 h periodic run. Persistence is itself guarded; if it throws, the nested
- * failure is logged and the pulse still retries.
+ * A failed pulse — whether it throws or returns [PulseAction.FAILED] — must be retried through
+ * backoff and must **not** mark the first pulse done: doing so pushed the retry to the 24 h periodic
+ * run. Persistence is itself guarded; if it throws, the nested failure is logged and the pulse still
+ * retries.
  */
 internal fun finishPulse(
     failure: Throwable?,
@@ -43,6 +44,10 @@ internal fun finishPulse(
     return PulseAttempt.RETRY
 }
 
+/** A returned [PulseAction.FAILED] retries like a thrown failure; any other action succeeded. */
+internal fun pulseOutcome(result: PulseResult): PulseAttempt =
+    if (result.action == PulseAction.FAILED) PulseAttempt.RETRY else PulseAttempt.SUCCESS
+
 class AutoReportWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -51,6 +56,11 @@ class AutoReportWorker(context: Context, params: WorkerParameters) : CoroutineWo
         return try {
             val result = withContext(Dispatchers.IO) { AutoReportManager.runPulse(context) }
             L.i(result.logLine())
+            if (pulseOutcome(result) == PulseAttempt.RETRY) {
+                L.w("auto report pulse failed: ${result.detail}")
+                // The pulse already persisted its own collect/zip/upload failure.
+                return Result.retry()
+            }
             finishPulse(
                 failure = null,
                 markFirstPulseDone = { AutoReportStore.markFirstPulseDone(context) },
