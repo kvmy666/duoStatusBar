@@ -2100,6 +2100,9 @@ internal class DuoIconHost(private val context: Context) {
      * reaches it. [ExtraStockScope] filters out ids that do not resolve, containers already `GONE`, and
      * any target that is (or contains) the strip/element. Only the hider's visibility/`0x0` path is
      * used - these are shared parents, so no sizing or fitting may run on them.
+     *
+     * Runs on the status-bar window only: the shipped hideContainerIds are status-bar siblings, so
+     * shade/keyguard targets are not in this scope.
      */
     private fun hideExtraStockTargets() {
         val barRoot = root ?: return

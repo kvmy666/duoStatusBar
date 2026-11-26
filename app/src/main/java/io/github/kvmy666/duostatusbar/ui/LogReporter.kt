@@ -8,10 +8,10 @@ import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
-import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
+import io.github.kvmy666.duostatusbar.hook.rom.RomResolver
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
@@ -185,7 +185,8 @@ internal fun buildDiagnostics(
  * The ROM adapter for this device, with the SDK gate applied. Both the app environment and the report
  * ZIP go through here so they cannot disagree; omitting the SDK is what let a profile measured on one
  * Android version claim `measured=true` on another. [markers] is the SystemUI proof that keeps a
- * Xiaomi-brand custom ROM from being reported as HyperOS.
+ * Xiaomi-brand custom ROM from being reported as HyperOS. This goes through [RomResolver] so the report
+ * path and the hook cannot assemble the same inputs differently (R15).
  */
 internal fun reportRom(
     manufacturer: String,
@@ -196,7 +197,15 @@ internal fun reportRom(
     sdk: Int,
     markers: RomMarkers = RomMarkers.UNKNOWN
 ): RomAdapter =
-    RomDetection.forThisRom(manufacturer, brand, product, display, profiles, sdk, markers)
+    RomResolver.resolve(
+        manufacturer = manufacturer,
+        brand = brand,
+        product = product,
+        display = display,
+        api = sdk,
+        markers = markers,
+        profiles = profiles
+    )
 
 /**
  * Facts the app can always read, even when the module never loaded and there is no root. This is what

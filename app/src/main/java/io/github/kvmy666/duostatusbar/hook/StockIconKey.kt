@@ -152,9 +152,10 @@ internal object StockIconKey {
     fun kindOf(view: View): StockIconKind {
         if (isIgnored(view)) return StockIconKind.IGNORED
         // Android 17 AOSP draws the whole Wi-Fi/cellular/battery cluster with one Compose view. It is a
-        // single replaced unit, never a container to walk into. A generic `ComposeView` is not matched
-        // here: a centre clock may be Compose and must not be hidden as an icon cluster.
-        if (className(view).contains("composeiconview")) return StockIconKind.COMPOSE
+        // single replaced unit, never a container to walk into. Only the status-bar token is matched
+        // (SingleBindableStatusBarComposeIconView / StatusBarComposeIconView), so a hypothetical centre
+        // clock such as `…ComposeIconView` and a generic ComposeView are not hidden as an icon cluster.
+        if (className(view).contains("statusbarcomposeiconview")) return StockIconKind.COMPOSE
         val slot = slotOf(view)?.trim()?.lowercase()
         if (!slot.isNullOrEmpty()) return kindOfToken(slot)
         val id = idName(view)?.lowercase()
