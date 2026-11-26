@@ -35,11 +35,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * stock order is left untouched and the reason is logged once. Nothing here guesses a class or an id:
  * the names are the measured ones from the device's SystemUI.
  *
- * A container is seen by a constructor, the existing `addView` hook, or any `onLayout`. `onLayout`
- * only registers/adopts and posts at most one coalesced main-thread pass; a live child is never
- * removed or reparented from a layout callback (AGENTS-V2 3.3 #14). [activate], [onIconAdded] and
- * [restore] stay synchronous on the main thread: they move every container before they permute or
- * restore the slots, and never post a move. Only an off-main [activate]/[restore] is posted.
+ * A container is seen by a constructor, the existing `addView` hook, or any `onLayout`. Every ROM
+ * callback only registers/adopts and posts at most one coalesced main-thread pass; a live child is
+ * never removed or reparented from a layout, `addView` or `getViewIndex` callback (AGENTS-V2 3.3
+ * #14). R12 (2.1.0): capturing a late `StatusBarIconList` from the `getViewIndex` after-hook used to
+ * call [activate] inline, so the caller resumed with an index computed before the children and
+ * `mSlots` were permuted. Capture is now record-only; the swap runs later, atomically, in one posted
+ * pass. Direct [activate]/[restore]/[release] calls from DuoHook still run inline when already on the
+ * main thread, because they are outside the ROM's slot-list/IconManager calls.
  */
 internal object IosIconOrder {
 
@@ -77,6 +80,19 @@ internal object IosIconOrder {
     private val applying = AtomicBoolean(false)
 
     private val logOnce = LogOnce()
+
+    /**
+     * State epoch. Incremented by every main-thread state transition ([activateOnMain],
+     * [restoreOnMain], [releaseOnMain]) so a pass posted before a transition can detect that the
+     * world moved and become a no-op instead of resurrecting a stale order.
+     */
+    private val generation = AtomicInteger(0)
+
+    /** One coalesced activation pass, however many ROM callbacks ask for it (R12). */
+    private val activationPosted = AtomicBoolean(false)
+
+    /** One coalesced restore pass, however many IconManager guards ask for it (R12). */
+    private val restorePosted = AtomicBoolean(false)
 
     /** Every hook this session installed, so [release] can unhook all of them (C). */
     private val unhooks = ArrayList<XC_MethodHook.Unhook>()
@@ -250,13 +266,26 @@ internal object IosIconOrder {
      */
     fun activate() {
         if (!isMainThread()) {
-            postToMain { activateOnMain() }
+            scheduleDirectActivation()
             return
         }
         activateOnMain()
     }
 
+    /**
+     * Off-main [activate] from DuoHook. It is outside any ROM callback, so it may turn iOS on from
+     * inactive; it still re-checks the epoch so a release that happens first wins.
+     */
+    private fun scheduleDirectActivation() {
+        val epoch = generation.get()
+        postToMain {
+            if (!installed.get() || applying.get() || generation.get() != epoch) return@postToMain
+            activateOnMain()
+        }
+    }
+
     private fun activateOnMain() {
+        generation.incrementAndGet()
         val wasActive = active.getAndSet(true)
         if (!wasActive) {
             loggedActive = false
@@ -306,13 +335,14 @@ internal object IosIconOrder {
      */
     fun restore() {
         if (!isMainThread()) {
-            postToMain { restoreOnMain() }
+            scheduleRestore()
             return
         }
         restoreOnMain()
     }
 
     private fun restoreOnMain(): Boolean {
+        generation.incrementAndGet()
         if (!active.get()) return true
         // Move first, then restore the slots (the exact inverse of activateOnMain). A failed child
         // move must not be papered over: restoring the stock slot list over permuted children would
@@ -342,14 +372,24 @@ internal object IosIconOrder {
      */
     fun release() {
         if (!isMainThread()) {
-            postToMain { releaseOnMain() }
+            scheduleRelease()
             return
         }
         releaseOnMain()
     }
 
+    /** Off-main [release]: run once, unless a later transition already moved the epoch. */
+    private fun scheduleRelease() {
+        val epoch = generation.get()
+        postToMain {
+            if (!installed.get() || applying.get() || generation.get() != epoch) return@postToMain
+            releaseOnMain()
+        }
+    }
+
     @Synchronized
     private fun releaseOnMain() {
+        generation.incrementAndGet()
         // Stop new capture/registration before touching any state, then restore what this session
         // changed. A caller may release without a prior restore; never leave the stock order permuted.
         installed.set(false)
@@ -367,6 +407,8 @@ internal object IosIconOrder {
         applying.set(false)
         loggedActive = false
         syntheticSurfaceForTest = false
+        activationPosted.set(false)
+        restorePosted.set(false)
         synchronized(containers) { containers.clear() }
         synchronized(layoutAdopted) { layoutAdopted.clear() }
         synchronized(pending) { pending.clear() }
@@ -385,7 +427,11 @@ internal object IosIconOrder {
 
     /**
      * Called from the existing `StatusIconContainer.addView` hook for every child the ROM adds.
-     * Registers the container and, while iOS owns the bar, moves it synchronously in this callback.
+     * Registers the container and, while iOS owns the bar, posts one coalesced activation pass.
+     *
+     * R12: this used to move the child (or run a full activation) synchronously inside `addView`; a
+     * live child is never moved from a ROM callback. The posted pass re-checks the epoch and applies
+     * the move + slot permutation atomically.
      */
     fun onIconAdded(container: ViewGroup) {
         // A6: iOS code does nothing while iOS is off. The Duo-only process keeps this a single
@@ -395,14 +441,7 @@ internal object IosIconOrder {
         // Our own remove/add during a reorder must not queue another pass.
         if (applying.get()) return
         if (!active.get() || synchronized(slotLists) { slotLists.isEmpty() }) return
-        if (slotPermutationNeeded()) {
-            // The first activation was refused with no surface (or the ROM re-stocked the slots);
-            // this container is the movable surface that lets the whole swap run atomically.
-            activateOnMain()
-        } else {
-            movePass(container, afterMobile = true)
-            logActiveIfNeeded()
-        }
+        scheduleActivation()
     }
 
     /** Constructor path: remember the container for activate(); never moves. */
@@ -604,9 +643,43 @@ internal object IosIconOrder {
                 false
             }
         }
-        // A list captured after activation (late injection) must be moved and permuted in the same
-        // main-thread pass, exactly like the first activation.
-        if (added && active.get()) activate()
+        // R12: a list captured after activation (late injection) must be moved and permuted in one
+        // later main-thread pass. Capturing inside the getViewIndex after-hook must not permute the
+        // live list before the caller resumes with its pre-hook index.
+        if (added && active.get()) scheduleActivation()
+    }
+
+    /**
+     * Queues one coalesced activation. The queued pass re-checks installed/active/applying only:
+     * activation is idempotent for an already-active iOS, so it must not be cancelled by an epoch
+     * bump. That bump can happen when a direct [activate] runs inline between the post and the
+     * runnable, and a second slot list captured in that window would otherwise never be permuted.
+     * A release or restore is still covered because it clears `installed`/`active`, and every later
+     * capture joins this one pass because `activateOnMain` re-reads the live slot lists (R12).
+     */
+    private fun scheduleActivation() {
+        if (!activationPosted.compareAndSet(false, true)) return
+        postToMain {
+            activationPosted.set(false)
+            if (!installed.get() || !active.get() || applying.get()) return@postToMain
+            activateOnMain()
+        }
+    }
+
+    /**
+     * Queues one coalesced restore for the IconManager guard. Never runs inside `onSetIcon`; the
+     * queued pass re-checks installed/active/epoch/applying and is a no-op after release (R12).
+     */
+    private fun scheduleRestore() {
+        val epoch = generation.get()
+        if (!restorePosted.compareAndSet(false, true)) return
+        postToMain {
+            restorePosted.set(false)
+            if (!installed.get() || !active.get() || applying.get() || generation.get() != epoch) {
+                return@postToMain
+            }
+            restoreOnMain()
+        }
     }
 
     /**
@@ -850,29 +923,84 @@ internal object IosIconOrder {
     private class WifiTarget(val wifi: View, val index: Int)
 
     /**
-     * Last-resort guard for bug B: `IconManager.onSetIcon(index)` casts `getChildAt(index)` to
+     * Last-resort guard for bug B/R12: `IconManager.onSetIcon(index)` casts `getChildAt(index)` to
      * `StatusBarIconView`. If a stale/permuted index points at the OPLUS Wi-Fi composite (or any
-     * other non-icon child), restore the stock order and skip the cast instead of crashing SystemUI.
+     * other non-icon child), skip the cast, and post a restore instead of crashing SystemUI.
+     *
+     * The measured vendor class does not extend a ViewGroup: reverse/smali/oneplus/.../phone/ui/
+     * IconManager.smali:2 extends Object and holds `public final mGroup:Landroid/view/ViewGroup`
+     * (:24); its `onSetIcon` (:1353-1373) does `getChildAt(index)` + `check-cast StatusBarIconView`.
+     * Reading `thisObject as? ViewGroup` therefore never resolved the group.
      */
     private fun guardIconManagerCall(param: XC_MethodHook.MethodHookParam) {
         if (!active.get()) return
         val index = param.args.firstOrNull() as? Int ?: return
-        val group = param.thisObject as? ViewGroup ?: return
+        if (!shouldSkipIconManagerCall(param.thisObject, index)) return
+        param.result = null
+        scheduleRestore()
+    }
+
+    /**
+     * True when the original `onSetIcon` must be skipped: the resolved child is null (the ROM would
+     * NPE) or is not a `StatusBarIconView`/`StatIconView`. A group that cannot be read allows the
+     * call and is logged once, so an unknown ROM never loses the update.
+     */
+    private fun shouldSkipIconManagerCall(thisObject: Any?, index: Int): Boolean {
+        val group = iconManagerGroup(thisObject)
+        if (group == null) {
+            logOnce.once("ios-order-icon-guard-no-group") {
+                L.w("iOS order: IconManager group not readable - allowing the call")
+            }
+            return false
+        }
         val child = try {
             group.getChildAt(index)
         } catch (t: Throwable) {
             IosV2Log.failureOnce("order.iconGuard.child", t)
-            return
-        } ?: return
-        if (isIconManagerChildClass(child)) return
+            return true
+        }
+        if (child == null) {
+            logOnce.once("ios-order-icon-guard-null-child") {
+                L.w("iOS order: IconManager.onSetIcon index $index has no child - restoring stock order")
+            }
+            return true
+        }
+        if (isIconManagerChildClass(child)) return false
         logOnce.once("ios-order-icon-guard") {
             L.w(
                 "iOS order: IconManager.onSetIcon child ${child.javaClass.simpleName} at $index " +
                     "is not a StatusBarIconView - restoring stock order"
             )
         }
-        restore()
-        param.result = null
+        return true
+    }
+
+    /**
+     * The group `IconManager` indexes: the object itself when it is a container (legacy builds), the
+     * measured `mGroup` field (OxygenOS), or a `getViewGroup()`/`getGroup()` accessor. Null when the
+     * shape is unknown; the caller then allows the original call.
+     */
+    private fun iconManagerGroup(thisObject: Any?): ViewGroup? {
+        if (thisObject == null) return null
+        (thisObject as? ViewGroup)?.let { return it }
+        try {
+            (XposedHelpers.getObjectField(thisObject, "mGroup") as? ViewGroup)?.let { return it }
+        } catch (_: Throwable) {
+            // Absent on this ROM, or the JVM test build's stub; fall through to plain reflection on
+            // the same measured field.
+        }
+        (readField(thisObject, "mGroup") as? ViewGroup)?.let { return it }
+        for (name in arrayOf("getViewGroup", "getGroup")) {
+            try {
+                val method = thisObject.javaClass.getMethod(name)
+                if (method.parameterCount == 0) {
+                    (method.invoke(thisObject) as? ViewGroup)?.let { return it }
+                }
+            } catch (t: Throwable) {
+                IosV2Log.branchOnce("order.iconGuard.group.$name", "no $name()")
+            }
+        }
+        return null
     }
 
     /**
@@ -1052,7 +1180,18 @@ internal object IosIconOrder {
     /** Runs the production slot-list capture for a fake holder; no Android class required. */
     internal fun captureSlotListForTest(instance: Any?) = captureSlotList(instance)
 
-    /** Kept for older tests: every move pass is synchronous now, so there is nothing to flush. */
+    /**
+     * Runs the production IconManager decision for a fake manager; returns true when the original
+     * `onSetIcon` must be skipped. A skip also posts the same restore the hook schedules.
+     */
+    internal fun guardIconManagerCallForTest(thisObject: Any?, index: Int): Boolean {
+        if (!active.get()) return false
+        val skip = shouldSkipIconManagerCall(thisObject, index)
+        if (skip) scheduleRestore()
+        return skip
+    }
+
+    /** Kept for older tests: posted passes run on the main looper, so there is nothing to flush here. */
     internal fun flushForTest() = Unit
 
     /**
@@ -1088,6 +1227,9 @@ internal object IosIconOrder {
         installed.set(false)
         loggedActive = false
         syntheticSurfaceForTest = false
+        generation.set(0)
+        activationPosted.set(false)
+        restorePosted.set(false)
         synchronized(containers) { containers.clear() }
         synchronized(layoutAdopted) { layoutAdopted.clear() }
         synchronized(pending) { pending.clear() }
