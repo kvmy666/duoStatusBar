@@ -54,10 +54,52 @@ class IosSettingsUiTest {
     }
 
     @Test
-    fun `availability is exactly the drawing constant in this build`() {
+    fun `unknown availability preserves today's usable switch`() {
         assertTrue(iosModeAvailable())
+        assertTrue(iosModeAvailable(null))
         assertTrue(iosModeAvailable(true))
         assertFalse(iosModeAvailable(false))
+    }
+
+    @Test
+    fun `unsupported disables the switch unless the mode is already on`() {
+        assertFalse(
+            "an unsupported, off mode cannot be switched on",
+            iosCardEnabled(DuoSettings(iosMode = false), iosAvailable = false)
+        )
+        assertTrue(
+            "a stale on mode stays switchable so it can be turned off",
+            iosCardEnabled(DuoSettings(iosMode = true), iosAvailable = false)
+        )
+    }
+
+    @Test
+    fun `requested on while unsupported never turns Duo off`() {
+        val before = DuoSettings(enabled = true, iosMode = false)
+
+        val result = applyIosModeToggle(before, requested = true, available = false)
+
+        assertSame(before, result)
+        assertTrue("the unavailable route must leave Duo enabled", result.enabled)
+    }
+
+    @Test
+    fun `a stale unsupported ios mode can be turned off and hands the bar back`() {
+        val stale = DuoSettings(enabled = false, iosMode = true)
+
+        val result = applyIosModeToggle(stale, requested = false, available = false)
+
+        assertFalse(result.iosMode)
+        assertTrue(result.enabled)
+    }
+
+    @Test
+    fun `an unavailable ios mode owns nothing and enables nothing`() {
+        val stale = DuoSettings(enabled = true, iosMode = true)
+
+        assertFalse(iosOwnsBar(stale, iosAvailable = false))
+        assertTrue(duoControlsEnabled(stale, iosAvailable = false))
+        assertFalse(iosTuningEnabled(stale, available = false))
     }
 
     @Test

@@ -125,6 +125,68 @@ class DuoGuardTest {
         )
     }
 
+    /**
+     * D13/D14: an iOS request on a device where the route is unavailable must resolve to the Duo stage,
+     * not OFF. The unavailable flag lives in [IosAvailability]; it is reset in a finally so the seam
+     * cannot leak into another test.
+     */
+    @Test
+    fun `an unavailable iOS mode resolves to the Duo stage instead of off`() {
+        try {
+            IosAvailability.supported = false
+            IosAvailability.routeFailed = false
+            assertEquals(
+                DuoGuard.RIVE,
+                DuoGuard.stageFor(
+                    enabled = false,
+                    iosMode = true,
+                    engineMode = DuoPrefs.ENGINE_AUTO,
+                    useRive = true
+                )
+            )
+            assertEquals(
+                DuoGuard.ICONS_ONLY,
+                DuoGuard.stageFor(
+                    enabled = false,
+                    iosMode = true,
+                    engineMode = DuoPrefs.ENGINE_CANVAS,
+                    useRive = false
+                )
+            )
+            // An available iOS mode still resolves OFF (the Duo element is suppressed).
+            assertEquals(
+                DuoGuard.OFF,
+                DuoGuard.stageFor(
+                    enabled = false,
+                    iosMode = true,
+                    engineMode = DuoPrefs.ENGINE_AUTO,
+                    useRive = true,
+                    iosAvailable = true
+                )
+            )
+        } finally {
+            IosAvailability.resetForTest()
+        }
+    }
+
+    @Test
+    fun `a failed route falls back to the Duo stage`() {
+        try {
+            IosAvailability.routeFailed = true
+            assertEquals(
+                DuoGuard.RIVE,
+                DuoGuard.stageFor(
+                    enabled = false,
+                    iosMode = true,
+                    engineMode = DuoPrefs.ENGINE_AUTO,
+                    useRive = true
+                )
+            )
+        } finally {
+            IosAvailability.resetForTest()
+        }
+    }
+
     /** Requirement: the adb override maps through the same owner decision, even when the app is off. */
     @Test
     fun `an adb override resolves through featureSetFor even when the app is disabled`() {

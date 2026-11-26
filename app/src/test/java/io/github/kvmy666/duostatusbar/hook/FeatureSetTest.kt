@@ -224,6 +224,42 @@ class FeatureSetTest {
         assertEquals(DuoFeature.entries.toSet(), duo.duo)
     }
 
+    /**
+     * D13/D14 production shape: iOS is on in the settings while the Duo switch is off, and the route
+     * is not available on this family. The bar must belong to Duo, never to nobody.
+     */
+    @Test
+    fun `an unavailable iOS request keeps Duo owning the bar`() {
+        val production = defaults.copy(enabled = false, iosMode = true)
+        val fallback = set(production, iosReady = false)
+
+        assertEquals(BarOwner.DUO, fallback.owner)
+        assertTrue(fallback.duoRuntime)
+        assertFalse(fallback.iosRuntime)
+        assertTrue("Duo must draw its features, not an empty set", fallback.duo.isNotEmpty())
+        assertEquals(DuoRenderer.RIVE, fallback.renderer)
+    }
+
+    @Test
+    fun `an available iOS request owns the bar even with the Duo switch off`() {
+        val production = defaults.copy(enabled = false, iosMode = true)
+        val ios = set(production, iosReady = true)
+
+        assertEquals(BarOwner.IOS, ios.owner)
+        assertTrue(ios.iosRuntime)
+        assertTrue(ios.duo.isEmpty())
+    }
+
+    @Test
+    fun `iOS off with Duo off still resolves to none`() {
+        val off = set(defaults.copy(enabled = false, iosMode = false), iosReady = false)
+
+        assertEquals(BarOwner.NONE, off.owner)
+        assertFalse(off.duoRuntime)
+        assertFalse(off.iosRuntime)
+        assertTrue(off.duo.isEmpty())
+    }
+
     @Test
     fun `an adb override suppresses iOS and there is no iOS feature set`() {
         for (override in listOf(DuoGuard.ICONS_ONLY, DuoGuard.RIVE)) {

@@ -56,16 +56,16 @@ internal class DuoGuard(private val context: Context) {
      * The app cannot write global settings (no `WRITE_SECURE_SETTINGS` for a normal app), which is why the
      * user path arrives over the provider instead — see `settings/DuoPrefs.kt`.
      */
-    fun stage(): Int {
+    fun stage(iosAvailable: Boolean = IosAvailability.effective()): Int {
         val override = globalStage()
         if (override != null) {
             // One owner decision: the override is fed through featureSetFor, exactly like the runtime.
             L.i("stage $override (adb override)")
-            return stageOf(featureSetFor(null, override, true, false))
+            return stageOf(featureSetFor(null, override, iosAvailable, false))
         }
         val app = DuoSettingsClient.read(context)
-        val ios = effectiveIosMode(app.iosMode)
-        val resolved = stageOf(featureSetFor(app, null, true, false))
+        val ios = effectiveIosMode(app.iosMode, iosAvailable)
+        val resolved = stageOf(featureSetFor(app, null, iosAvailable, false))
         if (ios) {
             L.i("stage $resolved (iOS mode on - Duo element off)")
         } else {
@@ -249,19 +249,27 @@ internal class DuoGuard(private val context: Context) {
          * It is the same one owner decision as the runtime: [featureSetFor] resolves the owner and the
          * renderer, and [stageOf] maps that to the three adb stages. There is no second matrix here.
          *
+         * [iosAvailable] is the live [IosAvailability.effective] value; when it is false an iOS request
+         * resolves to the Duo stage instead of OFF, so the bar keeps an owner (D13/D14).
+         *
          * The adb override is resolved before this function is called, so an explicit
          * `duo_statusbar_stage` still wins (C10): override 2 with iOS mode on means Duo draws and iOS is
          * suppressed.
          */
-        internal fun stageFor(enabled: Boolean, iosMode: Boolean, engineMode: String, useRive: Boolean): Int =
-            stageForSettings(enabled, iosMode, engineMode, useRive, true)
+        internal fun stageFor(
+            enabled: Boolean,
+            iosMode: Boolean,
+            engineMode: String,
+            useRive: Boolean,
+            iosAvailable: Boolean = IosAvailability.effective()
+        ): Int = stageForSettings(enabled, iosMode, engineMode, useRive, iosAvailable)
 
         private fun stageForSettings(
             enabled: Boolean,
             iosMode: Boolean,
             engineMode: String,
             useRive: Boolean,
-            drawingReady: Boolean
+            iosAvailable: Boolean
         ): Int {
             val settings = ModuleSettings.DEFAULT.copy(
                 enabled = enabled,
@@ -273,7 +281,7 @@ internal class DuoGuard(private val context: Context) {
                 featureSetFor(
                     settings,
                     adbOverride = null,
-                    iosDrawingReady = drawingReady,
+                    iosDrawingReady = iosAvailable,
                     otherOrientationEnabled = false
                 )
             )

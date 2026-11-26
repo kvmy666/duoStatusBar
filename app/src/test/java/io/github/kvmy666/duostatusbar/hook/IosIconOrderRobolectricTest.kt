@@ -587,6 +587,30 @@ class IosIconOrderRobolectricTest {
         override fun toString(): String = "Slot($name)"
     }
 
+    /**
+     * The measured `StatusBarIconList` shape. [getViewIndexAfterHook] runs the production capture at
+     * the same point an `afterHookedMethod` on `getViewIndex` does: the method body has already looked
+     * the index up and is about to resume with it.
+     */
+    class FakeStatusBarIconList(names: List<String>) {
+        @JvmField
+        val mSlots: MutableList<Any> = names.map { NamedSlot(it) as Any }.toMutableList()
+
+        fun names(): List<String> = mSlots.map { (it as NamedSlot).getName() }
+
+        fun getViewIndexAfterHook(slot: String): Int {
+            val beforeHook = names().indexOf(slot)
+            IosIconOrder.captureSlotListForTest(this)
+            return beforeHook
+        }
+    }
+
+    /** The measured vendor `IconManager` shape: not a ViewGroup, it owns `mGroup`. */
+    class FakeIconManager(@JvmField val mGroup: ViewGroup)
+
+    /** OxygenOS's opaque status icon: the class-name cast target `IconManager` accepts. */
+    class StatIconView(context: Context) : View(context)
+
     /** The OPLUS Wi-Fi composite: a real child that is not a `StatusBarIconView`. */
     class WifiCompositeView(context: Context) : View(context) {
         fun getSlot(): String = "wifi"
@@ -620,6 +644,27 @@ class IosIconOrderRobolectricTest {
         val tags = childTags(container)
         val expected = slotNames(slots).filter { it in tags }
         assertEquals("child order must follow the slot list: $case", expected, tags)
+    }
+
+    /**
+     * The strict invariant `IconManager.onSetIcon(index)` relies on: `getChildAt(index)` must be the
+     * child that owns the slot at that index. A non-Wi-Fi slot index must never resolve to the OPLUS
+     * Wi-Fi composite (which would fail the `StatusBarIconView` cast).
+     */
+    private fun assertIconManagerMapping(container: ViewGroup, slots: List<Any>, case: String) {
+        val names = slotNames(slots)
+        assertEquals("child order must match the slot list: $case", names, childTags(container))
+        names.forEachIndexed { index, name ->
+            val child = container.getChildAt(index)
+            assertTrue("$case: no child at index $index", child != null)
+            assertEquals("$case: index $index must name $name", name, StockIconKey.slotTagOf(child))
+            if (name != "wifi") {
+                assertFalse(
+                    "$case: icon index $index ($name) points at the Wi-Fi composite",
+                    child is WifiCompositeView
+                )
+            }
+        }
     }
 
     /** Emulates `IconManager`: the slot name gives the index, the index gives the cast target. */
@@ -689,6 +734,231 @@ class IosIconOrderRobolectricTest {
         IosIconOrder.restore()
         assertEquals(listOf("battery", "wifi", "mobile"), slotNames(slots))
         assertEquals(listOf("battery", "wifi", "mobile"), childTags(container))
+    }
+
+    @Test
+    fun `a late slot-list capture is deferred out of the getViewIndex call`() {
+        // R12 (2.1.0 crash): captureSlotList ran from the getViewIndex after-hook and called
+        // activate() inline, moving every child and permuting the live mSlots list before the
+        // getViewIndex caller resumed with its pre-hook index.
+        val container = stockContainer()
+        val stock = order(container)
+        IosIconOrder.onIconAdded(container)
+        // Live iOS with no captured list yet is the measured late-injection shape.
+        IosIconOrder.activate()
+
+        val holder = FakeStatusBarIconList(
+            listOf("wifi", "mobile", "mobile", "battery", "dynamic_info")
+        )
+        val index = holder.getViewIndexAfterHook("wifi")
+
+        // Before any looper idle the capture must have changed nothing.
+        assertEquals(
+            "the live slot list must not be permuted inside getViewIndex",
+            listOf("wifi", "mobile", "mobile", "battery", "dynamic_info"),
+            holder.names()
+        )
+        assertOrder(stock, order(container))
+        assertEquals(
+            "the pre-hook index must still name the same child",
+            "wifi",
+            StockIconKey.slotTagOf(container.getChildAt(index))
+        )
+
+        // After the posted pass the swap is applied atomically to both owners.
+        flushMainThread()
+
+        assertEquals(
+            listOf("mobile", "mobile", "wifi", "battery", "dynamic_info"),
+            holder.names()
+        )
+        assertOrder(listOf(stock[1], stock[2], stock[0], stock[3], stock[4]), order(container))
+    }
+
+    @Test
+    fun `a capture in the window between a posted activation and an inline activate is not lost`() {
+        // Sequence: capture A posts a pass; a direct activate() then runs inline and bumps the
+        // epoch; capture B arrives before the posted pass with activationPosted still true. The
+        // pending pass must still cover B, or B stays stock while the children are iOS-ordered.
+        val container = namedContainer(listOf("wifi", "mobile", "mobile", "battery"))
+        IosIconOrder.onIconAdded(container)
+        // iOS is already live with no captured list yet.
+        IosIconOrder.activate()
+
+        val first = FakeStatusBarIconList(listOf("wifi", "mobile", "mobile", "battery"))
+        IosIconOrder.captureSlotListForTest(first)
+        // Runs inline on the main thread and permutes the first list before the posted pass.
+        IosIconOrder.activate()
+        val second = FakeStatusBarIconList(listOf("wifi", "mobile", "mobile", "battery"))
+        IosIconOrder.captureSlotListForTest(second)
+
+        val ordered = listOf("mobile", "mobile", "wifi", "battery")
+        assertEquals("the inline activate must permute the first list", ordered, first.names())
+        assertEquals(
+            "the second capture is still stock before the posted pass",
+            listOf("wifi", "mobile", "mobile", "battery"),
+            second.names()
+        )
+
+        flushMainThread()
+
+        assertEquals(ordered, first.names())
+        assertEquals("the pending pass must cover the second capture", ordered, second.names())
+        assertIconManagerMapping(container, second.mSlots, "after the pending pass")
+    }
+
+    @Test
+    fun `vpn volume and hotspot around wifi keep the IconManager index mapping`() {
+        val slots = namedSlots("wifi", "mobile", "mobile", "battery")
+        val container = namedContainer(slotNames(slots))
+        IosIconOrder.onIconAdded(container)
+        IosIconOrder.activate()
+        assertIconManagerMapping(container, slots, "after enable")
+
+        // A hotspot slot arrives before Wi-Fi while iOS is live. The addView callback must not move
+        // a live child inline; the posted pass applies the swap.
+        slots.add(2, NamedSlot("hotspot"))
+        container.addView(PlainIconView(context, "hotspot"), 2)
+        val beforeAdd = childTags(container)
+        IosIconOrder.onIconAdded(container)
+        assertEquals(
+            "onIconAdded must not move a live child inline",
+            beforeAdd,
+            childTags(container)
+        )
+        flushMainThread()
+        assertIconManagerMapping(container, slots, "hotspot before wifi")
+
+        // A VPN slot arrives before the first mobile.
+        slots.add(0, NamedSlot("vpn"))
+        container.addView(PlainIconView(context, "vpn"), 0)
+        IosIconOrder.onIconAdded(container)
+        flushMainThread()
+        assertIconManagerMapping(container, slots, "vpn before mobile")
+
+        // A volume slot arrives after Wi-Fi.
+        slots.add(NamedSlot("volume"))
+        container.addView(PlainIconView(context, "volume"))
+        IosIconOrder.onIconAdded(container)
+        flushMainThread()
+        assertIconManagerMapping(container, slots, "volume after wifi")
+
+        // Remove the VPN slot before Wi-Fi.
+        val vpnIndex = slotNames(slots).indexOf("vpn")
+        slots.removeAt(vpnIndex)
+        container.removeViewAt(vpnIndex)
+        IosIconOrder.onIconAdded(container)
+        flushMainThread()
+        assertIconManagerMapping(container, slots, "vpn removed")
+
+        // Remove the volume slot after Wi-Fi.
+        val volumeIndex = slotNames(slots).indexOf("volume")
+        slots.removeAt(volumeIndex)
+        container.removeViewAt(volumeIndex)
+        IosIconOrder.onIconAdded(container)
+        flushMainThread()
+        assertIconManagerMapping(container, slots, "volume removed")
+
+        // Remove the hotspot slot before Wi-Fi, so the next enable starts from a clean stock list.
+        val hotspotIndex = slotNames(slots).indexOf("hotspot")
+        slots.removeAt(hotspotIndex)
+        container.removeViewAt(hotspotIndex)
+        IosIconOrder.onIconAdded(container)
+        flushMainThread()
+        assertIconManagerMapping(container, slots, "hotspot removed")
+
+        // A live iOS enable while a hotspot slot arrives: restore first, add the slot, then enable.
+        IosIconOrder.restore()
+        flushMainThread()
+        slots.add(1, NamedSlot("hotspot"))
+        container.addView(PlainIconView(context, "hotspot"), 1)
+        IosIconOrder.onIconAdded(container)
+        IosIconOrder.activate()
+        flushMainThread()
+        assertIconManagerMapping(container, slots, "enable while hotspot arrives")
+    }
+
+    @Test
+    fun `the IconManager guard reads the vendor mGroup and defers the restore`() {
+        val group = FakeContainer(context)
+        group.addView(WifiCompositeView(context))
+        val manager = FakeIconManager(group)
+        IosIconOrder.markInstalledForTest()
+        IosIconOrder.activate()
+        assertTrue(IosIconOrder.isActive)
+
+        val skipped = IosIconOrder.guardIconManagerCallForTest(manager, 0)
+
+        assertTrue("a non-icon child must skip the original onSetIcon", skipped)
+        assertTrue(
+            "the restore must be posted, never run inside onSetIcon",
+            IosIconOrder.isActive
+        )
+        flushMainThread()
+        assertFalse("the posted restore must run after the callback", IosIconOrder.isActive)
+    }
+
+    @Test
+    fun `the IconManager guard allows StatusBarIconView and StatIconView children`() {
+        val group = FakeContainer(context)
+        group.addView(FakeStatusBarIconSubclass(context))
+        group.addView(StatIconView(context))
+        val manager = FakeIconManager(group)
+        IosIconOrder.markInstalledForTest()
+        IosIconOrder.activate()
+
+        assertFalse(IosIconOrder.guardIconManagerCallForTest(manager, 0))
+        assertFalse(IosIconOrder.guardIconManagerCallForTest(manager, 1))
+        flushMainThread()
+
+        assertTrue("a valid icon leaves the order active", IosIconOrder.isActive)
+    }
+
+    @Test
+    fun `the IconManager guard skips a null or out-of-range child without throwing`() {
+        val group = FakeContainer(context)
+        group.addView(FakeStatusBarIconSubclass(context))
+        val manager = FakeIconManager(group)
+        IosIconOrder.markInstalledForTest()
+        IosIconOrder.activate()
+
+        val skipped = IosIconOrder.guardIconManagerCallForTest(manager, 7)
+
+        assertTrue("an out-of-range child must skip instead of letting the ROM NPE", skipped)
+        assertTrue(IosIconOrder.isActive)
+        flushMainThread()
+        assertFalse(IosIconOrder.isActive)
+    }
+
+    @Test
+    fun `the IconManager guard also reads a legacy ViewGroup thisObject`() {
+        val group = FakeContainer(context)
+        group.addView(WifiCompositeView(context))
+        group.addView(FakeStatusBarIconSubclass(context))
+        IosIconOrder.markInstalledForTest()
+        IosIconOrder.activate()
+
+        assertTrue(IosIconOrder.guardIconManagerCallForTest(group, 0))
+        flushMainThread()
+        assertFalse(IosIconOrder.isActive)
+
+        // The restore already ran; a fresh activation must still allow a real icon.
+        IosIconOrder.activate()
+        assertFalse(IosIconOrder.guardIconManagerCallForTest(group, 1))
+        flushMainThread()
+        assertTrue(IosIconOrder.isActive)
+    }
+
+    @Test
+    fun `the IconManager guard allows the call when no group can be read`() {
+        IosIconOrder.markInstalledForTest()
+        IosIconOrder.activate()
+
+        val skipped = IosIconOrder.guardIconManagerCallForTest(Any(), 0)
+
+        assertFalse("an unknown group must not drop the icon update", skipped)
+        flushMainThread()
+        assertTrue(IosIconOrder.isActive)
     }
 
     @Test

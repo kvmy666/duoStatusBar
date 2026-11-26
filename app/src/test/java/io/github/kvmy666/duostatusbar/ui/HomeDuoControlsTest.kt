@@ -63,6 +63,39 @@ class HomeDuoControlsTest {
     }
 
     @Test
+    fun `an unsupported ios mode does not lock the duo home controls`() {
+        assertTrue(
+            "Duo owns the bar when the report says iOS cannot",
+            duoControlsEnabled(DuoSettings(enabled = true, iosMode = true), iosAvailable = false)
+        )
+        assertFalse(
+            "the Duo master switch still controls the Home cards",
+            duoControlsEnabled(DuoSettings(enabled = false, iosMode = true), iosAvailable = false)
+        )
+    }
+
+    @Test
+    fun `a write is allowed when the ios mode cannot own the bar`() {
+        val seeded = seed(DuoSettings(enabled = true, iosMode = true, lockRing = false))
+
+        val camera = writeCameraMode(context, seeded, true, iosAvailable = false)
+        val invert = writeInvertCenter(
+            context,
+            camera,
+            on = true,
+            iosAvailable = false
+        )
+
+        assertTrue(camera.lockRing)
+        assertEquals(DuoPrefs.MIDDLE_SLOT_PERCENT, invert.middleSlot)
+        assertTrue(DuoPrefs.read(context, DuoOrientation.PORTRAIT).lockRing)
+        assertEquals(
+            DuoPrefs.MIDDLE_SLOT_PERCENT,
+            DuoPrefs.read(context, DuoOrientation.PORTRAIT).middleSlot
+        )
+    }
+
+    @Test
     fun `ring design write is refused while iOS mode is on`() {
         val seeded = seed(
             DuoSettings(enabled = true, iosMode = true, designStyle = DuoPrefs.DESIGN_OLD)

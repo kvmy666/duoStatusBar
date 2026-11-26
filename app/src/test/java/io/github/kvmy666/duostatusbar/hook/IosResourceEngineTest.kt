@@ -194,6 +194,100 @@ class IosResourceEngineTest {
     // ----------------------------------------------------------------------------- diagnostics
 
     @Test
+    fun `every dropped spec is collected with its name or hex id and reason`() {
+        val drops = IosMapDrops("samsung")
+        drops.add(
+            IosResourceSpec(name = "wifi_signal", kind = IosResourceKind.WIFI, value = 3),
+            IosMapDropReason.NO_ID
+        )
+        drops.add(
+            IosResourceSpec(name = "", kind = IosResourceKind.WIFI, value = 1, rawId = 0x01080965),
+            IosMapDropReason.NO_INTRINSIC
+        )
+
+        assertEquals(
+            listOf(
+                IosMapDrop("samsung", "wifi_signal", "no_id"),
+                IosMapDrop("samsung", "0x1080965", "no_intrinsic")
+            ),
+            drops.entries()
+        )
+        // The exact per-drop line, once per process on a non-OxygenOS family.
+        assertEquals(
+            listOf(
+                "ios v2 map drop family=samsung name=wifi_signal reason=no_id",
+                "ios v2 map drop family=samsung name=0x1080965 reason=no_intrinsic"
+            ),
+            drops.lines()
+        )
+    }
+
+    @Test
+    fun `a named spec keeps its name and a raw-id spec falls back to hex`() {
+        assertEquals(
+            "wifi_signal",
+            iosMapDropName(IosResourceSpec("wifi_signal", IosResourceKind.WIFI, 3))
+        )
+        assertEquals(
+            "0x1080965",
+            iosMapDropName(IosResourceSpec("", IosResourceKind.WIFI, 1, rawId = 0x01080965))
+        )
+    }
+
+    @Test
+    fun `map drop lines are suppressed only for OxygenOS`() {
+        // The review FAIL: the OxygenOS log is frozen, so the new per-spec lines must never be emitted
+        // there. This fails if the buildMap gate (iosMapDropsEnabled) is deleted or inverted.
+        assertFalse(iosMapDropsEnabled("oxygenos"))
+        for (id in listOf("samsung", "hyperos", "aosp", "nothing", "motorola", "vivo", "coloros", "honor")) {
+            assertTrue(id, iosMapDropsEnabled(id))
+        }
+    }
+
+    @Test
+    fun `the collector suppresses OxygenOS log entries but still collects the drops`() {
+        val spec = IosResourceSpec(name = "wifi_signal", kind = IosResourceKind.WIFI, value = 3)
+
+        val oxygenos = IosMapDrops("oxygenos")
+        oxygenos.add(spec, IosMapDropReason.NO_ID)
+        // Collected for diagnostics, but the frozen OxygenOS log must never receive a per-drop line.
+        assertEquals(1, oxygenos.entries().size)
+        assertTrue(oxygenos.logEntries().isEmpty())
+        assertTrue(oxygenos.lines().isEmpty())
+
+        val samsung = IosMapDrops("samsung")
+        samsung.add(spec, IosMapDropReason.NO_ID)
+        assertEquals(1, samsung.entries().size)
+        assertEquals(1, samsung.logEntries().size)
+        assertEquals(
+            listOf("ios v2 map drop family=samsung name=wifi_signal reason=no_id"),
+            samsung.lines()
+        )
+    }
+
+    @Test
+    fun `all six drop reasons exist and are distinct with their exact wire tokens`() {
+        assertEquals(
+            listOf(
+                "no_id",
+                "duplicate",
+                "unsupported_slot",
+                "no_drawable",
+                "no_intrinsic",
+                "no_stock_state"
+            ),
+            listOf(
+                IosMapDropReason.NO_ID,
+                IosMapDropReason.DUPLICATE,
+                IosMapDropReason.UNSUPPORTED_SLOT,
+                IosMapDropReason.NO_DRAWABLE,
+                IosMapDropReason.NO_INTRINSIC,
+                IosMapDropReason.NO_STOCK_STATE
+            )
+        )
+    }
+
+    @Test
     fun `diagnostics are exactly one compact engine line`() {
         val lines = IosResourceEngine.diagnosticLines()
         assertEquals(1, lines.size)

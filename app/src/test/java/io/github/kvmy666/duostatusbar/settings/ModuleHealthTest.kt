@@ -78,4 +78,182 @@ class ModuleHealthTest {
     fun `switched on with a blank status is not reporting`() {
         assertEquals(ModuleState.NOT_REPORTING, ModuleHealthCheck.decide(200L, 100L, true, fresh, now, true))
     }
+
+    // ---------------------------------------------------------------- iOS owner report
+
+    private fun capability(
+        owner: String,
+        supported: Boolean,
+        route: String = if (owner == IosCapability.OWNER_IOS) {
+            IosCapability.ROUTE_V2
+        } else {
+            IosCapability.ROUTE_NONE
+        },
+        at: Long = 200L
+    ) = IosCapability(
+        owner = owner,
+        family = "oxygenos",
+        supported = supported,
+        route = route,
+        revision = 1L,
+        pid = 7,
+        at = at
+    )
+
+    @Test
+    fun `a valid report whose real owner is ios is ios active`() {
+        // Duo's own switch is off and no status arrives: the owner is iOS with the live v2 route.
+        assertEquals(
+            ModuleState.IOS_ACTIVE,
+            ModuleHealthCheck.decide(
+                200L, 100L, true, fresh, now,
+                settingsEnabled = false,
+                iosMode = true,
+                capability = capability(IosCapability.OWNER_IOS, supported = true)
+            )
+        )
+    }
+
+    @Test
+    fun `ios active requires the live v2 route, not just the owner tag`() {
+        // The activation-refusal/fallback window can carry owner=ios with route=none. That is not iOS
+        // drawing, so the state falls through to Duo's own reporting state.
+        assertEquals(
+            ModuleState.OK,
+            ModuleHealthCheck.decide(
+                200L, 100L, false, fresh, now,
+                settingsEnabled = false,
+                iosMode = true,
+                capability = capability(
+                    IosCapability.OWNER_IOS,
+                    supported = true,
+                    route = IosCapability.ROUTE_NONE
+                )
+            )
+        )
+        assertEquals(
+            ModuleState.NOT_REPORTING,
+            ModuleHealthCheck.decide(
+                200L, 100L, true, fresh, now,
+                settingsEnabled = false,
+                iosMode = true,
+                capability = capability(
+                    IosCapability.OWNER_IOS,
+                    supported = true,
+                    route = IosCapability.ROUTE_NONE
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `an ios owner without the live route still falls through to disabled when switched off`() {
+        assertEquals(
+            ModuleState.DISABLED,
+            ModuleHealthCheck.decide(
+                200L, 100L, false, fresh, now,
+                settingsEnabled = false,
+                iosMode = false,
+                capability = capability(
+                    IosCapability.OWNER_IOS,
+                    supported = true,
+                    route = IosCapability.ROUTE_NONE
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `a refusal outranks the ios owner tag`() {
+        // The module's fallback report: owner=ios, route=none, supported=false while the user asked for
+        // iOS. This must be IOS_UNSUPPORTED, never IOS_ACTIVE (even though no status has arrived).
+        assertEquals(
+            ModuleState.IOS_UNSUPPORTED,
+            ModuleHealthCheck.decide(
+                200L, 100L, true, fresh, now,
+                settingsEnabled = false,
+                iosMode = true,
+                capability = capability(
+                    IosCapability.OWNER_IOS,
+                    supported = false,
+                    route = IosCapability.ROUTE_NONE
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `ios owner is reported even before a status arrives`() {
+        assertEquals(
+            ModuleState.IOS_ACTIVE,
+            ModuleHealthCheck.decide(
+                200L, 100L, false, fresh, now,
+                settingsEnabled = false,
+                iosMode = true,
+                capability = capability(IosCapability.OWNER_IOS, supported = true)
+            )
+        )
+    }
+
+    @Test
+    fun `asked for ios on a ui the report says is unsupported is ios unsupported`() {
+        assertEquals(
+            ModuleState.IOS_UNSUPPORTED,
+            ModuleHealthCheck.decide(
+                200L, 100L, false, fresh, now,
+                settingsEnabled = false,
+                iosMode = true,
+                capability = capability(IosCapability.OWNER_DUO, supported = false)
+            )
+        )
+    }
+
+    @Test
+    fun `ios mode with a missing report is not disabled`() {
+        // UNKNOWN must preserve today's behaviour: Duo is not claimed off and no owner is claimed.
+        assertEquals(
+            ModuleState.OK,
+            ModuleHealthCheck.decide(
+                200L, 100L, false, fresh, now,
+                settingsEnabled = false,
+                iosMode = true,
+                capability = null
+            )
+        )
+        assertEquals(
+            ModuleState.NOT_REPORTING,
+            ModuleHealthCheck.decide(
+                200L, 100L, true, fresh, now,
+                settingsEnabled = false,
+                iosMode = true,
+                capability = null
+            )
+        )
+    }
+
+    @Test
+    fun `duo reporting a supported device is ok`() {
+        assertEquals(
+            ModuleState.OK,
+            ModuleHealthCheck.decide(
+                200L, 100L, false, fresh, now,
+                settingsEnabled = true,
+                iosMode = false,
+                capability = capability(IosCapability.OWNER_DUO, supported = true)
+            )
+        )
+    }
+
+    @Test
+    fun `a valid duo report does not hide a switched off module`() {
+        assertEquals(
+            ModuleState.DISABLED,
+            ModuleHealthCheck.decide(
+                200L, 100L, false, fresh, now,
+                settingsEnabled = false,
+                iosMode = false,
+                capability = capability(IosCapability.OWNER_DUO, supported = true)
+            )
+        )
+    }
 }

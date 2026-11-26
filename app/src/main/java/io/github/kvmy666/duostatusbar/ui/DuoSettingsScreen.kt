@@ -59,6 +59,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.BackupCodec
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import io.github.kvmy666.duostatusbar.settings.IosCapability
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 import io.github.kvmy666.duostatusbar.settings.ModuleState
@@ -121,6 +122,10 @@ fun DuoSettingsScreen(
     var overrideFailed by remember { mutableStateOf(false) }
     // Whether the module is working, running old code, or unable to report (see ModuleHealthCheck).
     var moduleHealth by remember { mutableStateOf(ModuleHealthCheck.of(context)) }
+    // The module's iOS capability report for the current session; UNKNOWN (null) keeps iOS usable.
+    var iosCapability by remember {
+        mutableStateOf(IosCapability.read(context, DuoPrefs.moduleLoadTime(context)))
+    }
     // Whether a report has an evidence source: root granted, or Shizuku granted. The module's own log
     // (moduleLoadAt > 0) is the third source and needs no privilege. Re-read on the poll below so the
     // Send button enables right after the user grants access.
@@ -232,6 +237,7 @@ fun DuoSettingsScreen(
             fallback = DuoPrefs.fallback(context)
             stageOverride = StageOverride.read(context)
             moduleHealth = ModuleHealthCheck.of(context)
+            iosCapability = IosCapability.read(context, DuoPrefs.moduleLoadTime(context))
             accessGranted = DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted()
             autoReport = ConsentGate.enabled(AutoReportStore.consent(context))
         }
@@ -262,6 +268,8 @@ fun DuoSettingsScreen(
     }
 
     val onUpdate: (DuoSettings) -> Unit = { update(it) }
+    // Passed to every section so a stale iOS mode on an unsupported UI never greys Duo's own rows.
+    val iosAvailable = iosCapability?.supported ?: true
 
     /**
      * Asks the module for a fresh diagnostic dump and returns it, so a report captures the bar as it is
@@ -560,40 +568,46 @@ fun DuoSettingsScreen(
             CustomizeSection(
                 settings = settings,
                 onUpdate = onUpdate,
-                matches = search
+                matches = search,
+                iosAvailable = iosAvailable,
+                enabled = duoControlsEnabled(settings, iosAvailable)
             )
 
             AnimationsSection(
                 settings = settings,
                 onUpdate = onUpdate,
-                matches = search
+                matches = search,
+                enabled = duoControlsEnabled(settings, iosAvailable)
             )
 
             AppearanceSection(
                 settings = settings,
                 onUpdate = onUpdate,
-                matches = search
+                matches = search,
+                enabled = duoControlsEnabled(settings, iosAvailable)
             )
 
             SimSection(
                 settings = settings,
                 onUpdate = onUpdate,
                 matches = search,
-                enabled = customCardEnabled(CustomCard.SIM, settings)
+                iosAvailable = iosAvailable,
+                enabled = customCardEnabled(CustomCard.SIM, settings, iosAvailable)
             )
 
             SurfacesSection(
                 settings = settings,
                 onUpdate = onUpdate,
                 matches = search,
-                enabled = customCardEnabled(CustomCard.SURFACES, settings)
+                enabled = customCardEnabled(CustomCard.SURFACES, settings, iosAvailable)
             )
 
             IconsSection(
                 settings = settings,
                 onUpdate = onUpdate,
                 matches = search,
-                enabled = customCardEnabled(CustomCard.ICONS, settings)
+                iosAvailable = iosAvailable,
+                enabled = customCardEnabled(CustomCard.ICONS, settings, iosAvailable)
             )
 
             val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
@@ -601,13 +615,15 @@ fun DuoSettingsScreen(
                 settings = settings,
                 onUpdate = onUpdate,
                 matches = search,
-                autoExpand = autoExpand
+                autoExpand = autoExpand,
+                enabled = duoControlsEnabled(settings, iosAvailable)
             )
 
             LiveEventsSection(
                 matches = search,
                 settings = settings,
-                onUpdate = onUpdate
+                onUpdate = onUpdate,
+                enabled = duoControlsEnabled(settings, iosAvailable)
             )
         }
 

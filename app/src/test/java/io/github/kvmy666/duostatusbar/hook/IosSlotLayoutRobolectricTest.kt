@@ -221,9 +221,13 @@ class IosSlotLayoutRobolectricTest {
     }
 
     private fun layout(root: View) {
+        layoutAt(root, 2000, 300)
+    }
+
+    private fun layoutAt(root: View, width: Int, height: Int) {
         root.measure(
-            View.MeasureSpec.makeMeasureSpec(2000, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
         )
         root.layout(0, 0, root.measuredWidth, root.measuredHeight)
     }
@@ -311,6 +315,185 @@ class IosSlotLayoutRobolectricTest {
         IosSlotLayout.reapply(ModuleSettings.DEFAULT)
         assertEquals("third apply grew the container", expected, lp(tree.container).width)
         assertNotNull(IosSlotLayout.targetForTest(tree.container))
+    }
+
+    /**
+     * The Samsung shape (`reverse/decoded/samsung/res/layout/system_icons.xml`): `system_icons` is
+     * `wrap_content` and its `StatusIconContainer` is `0dp + weight 1`, so the row's width is shared
+     * with that weighted child. Registering only the battery must not pin `system_icons` to the
+     * battery-only width and collapse the weighted icon share.
+     */
+    @Test
+    fun `samsung weighted row is not rewritten to the battery-only width`() {
+        IosSlotLayout.hostInkOverrideForTest = 33.48f
+
+        val root = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val systemIcons = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val statusIconContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val wifiChild = ImageView(context)
+        val battery = FrameLayout(context)
+        val batteryLeaf = ImageView(context)
+
+        root.addView(systemIcons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 63))
+        systemIcons.addView(statusIconContainer, LinearLayout.LayoutParams(0, 63, 1f))
+        statusIconContainer.addView(wifiChild, LinearLayout.LayoutParams(70, 51))
+        systemIcons.addView(battery, LinearLayout.LayoutParams(86, 63))
+        battery.addView(batteryLeaf, FrameLayout.LayoutParams(82, 51))
+        batteryLeaf.setImageDrawable(
+            IosDrawables.create(
+                IosIconKind.BATTERY,
+                IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                82, 51, relativeSize = false, captureColorFilter = true
+            )
+        )
+
+        layoutAt(root, 400, 63)
+        val weightedShare = statusIconContainer.measuredWidth
+        assertTrue("the weighted row already has a share before the bind", weightedShare > 0)
+
+        assertTrue(IosSlotLayout.registerBattery(battery, batteryLeaf))
+
+        val batteryWidth = IosSlotLayout.targetForTest(battery)!![0]
+        assertEquals(86, batteryWidth)
+        // (a) `system_icons` stays wrap_content: it is never pinned to the battery-only width.
+        assertEquals(
+            "system_icons must not be rewritten to the battery-only width",
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            lp(systemIcons).width
+        )
+
+        // (b) re-measuring keeps the weighted child's share; the row does not collapse.
+        layoutAt(root, 400, 63)
+        assertEquals("the weighted child keeps its share", weightedShare, statusIconContainer.measuredWidth)
+        assertEquals(
+            "the row still holds the weighted share plus the battery",
+            weightedShare + batteryWidth,
+            systemIcons.measuredWidth
+        )
+        assertTrue(systemIcons.measuredWidth > batteryWidth)
+    }
+
+    /**
+     * The OxygenOS shape after Wi-Fi/cell registration: the weighted `StatusIconContainer` has a
+     * recorded target, so it is target-owned. The shared row must still take the managed width
+     * (Wi-Fi + cell + battery), the same pixel path the current code produces.
+     */
+    @Test
+    fun `target-owned weighted row still reaches the managed width`() {
+        IosSlotLayout.hostInkOverrideForTest = 33.48f
+
+        val root = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val systemIcons = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val statusIconContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val wifiOuter = FrameLayout(context)
+        val wifiGroup = LinearLayout(context)
+        val wifiCombo = FrameLayout(context)
+        val wifiSignal = ImageView(context)
+        val cellOuter = FrameLayout(context)
+        val cellGroup = LinearLayout(context)
+        val cellCombo = FrameLayout(context)
+        val cellSignal = ImageView(context)
+        val battery = FrameLayout(context)
+        val batteryLeaf = ImageView(context)
+
+        root.addView(systemIcons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 63))
+        systemIcons.addView(statusIconContainer, LinearLayout.LayoutParams(0, 63, 1f))
+        systemIcons.addView(battery, LinearLayout.LayoutParams(86, 63))
+
+        cellOuter.clipChildren = true
+        cellGroup.clipChildren = true
+        cellCombo.clipChildren = true
+        statusIconContainer.addView(cellOuter, LinearLayout.LayoutParams(63, 63))
+        cellOuter.addView(cellGroup, FrameLayout.LayoutParams(60, 63))
+        cellGroup.addView(cellCombo, LinearLayout.LayoutParams(60, 63))
+        cellCombo.addView(cellSignal, FrameLayout.LayoutParams(60, 51))
+
+        wifiOuter.clipChildren = true
+        wifiGroup.clipChildren = true
+        wifiCombo.clipChildren = true
+        statusIconContainer.addView(wifiOuter, LinearLayout.LayoutParams(70, 63))
+        wifiOuter.addView(wifiGroup, FrameLayout.LayoutParams(70, 63))
+        wifiGroup.addView(wifiCombo, LinearLayout.LayoutParams(70, 51))
+        wifiCombo.addView(wifiSignal, FrameLayout.LayoutParams(70, 51))
+
+        battery.addView(batteryLeaf, FrameLayout.LayoutParams(82, 51))
+        cellSignal.setImageDrawable(
+            IosDrawables.create(
+                IosIconKind.CELL,
+                IosVisual(part = IosPart.CELL, cellBars = 4f),
+                60, 51, relativeSize = false, captureColorFilter = true
+            )
+        )
+        wifiSignal.setImageDrawable(
+            IosDrawables.create(
+                IosIconKind.WIFI,
+                IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+                70, 51, relativeSize = false, captureColorFilter = true
+            )
+        )
+        batteryLeaf.setImageDrawable(
+            IosDrawables.create(
+                IosIconKind.BATTERY,
+                IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                82, 51, relativeSize = false, captureColorFilter = true
+            )
+        )
+
+        // Wi-Fi first, then cell: the second pass grows the container to cell + Wi-Fi (the first
+        // pass includes the not-yet-registered cell fixed width).
+        assertTrue(IosSlotLayout.registerWifi(wifiSignal))
+        assertTrue(IosSlotLayout.registerMobile(cellSignal, null))
+
+        val wifiWidth = IosSlotLayout.targetForTest(wifiOuter)!![0]
+        val cellWidth = IosSlotLayout.targetForTest(cellOuter)!![0]
+        val statusWidth = IosSlotLayout.targetForTest(statusIconContainer)!![0]
+        assertEquals("the weighted container is target-owned by its slots", cellWidth + wifiWidth, statusWidth)
+
+        assertTrue(IosSlotLayout.registerBattery(battery, batteryLeaf))
+        val batteryWidth = IosSlotLayout.targetForTest(battery)!![0]
+
+        assertEquals(statusWidth + batteryWidth, lp(systemIcons).width)
+        assertTrue("the shared row still takes the managed width", lp(systemIcons).width > batteryWidth)
+    }
+
+    /** A dedicated parent with no weighted share is still grown to the managed slot width. */
+    @Test
+    fun `a dedicated unweighted parent is still resized`() {
+        IosSlotLayout.hostInkOverrideForTest = 33.48f
+
+        val root = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val battery = FrameLayout(context)
+        val batteryLeaf = ImageView(context)
+
+        root.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 63))
+        row.addView(battery, LinearLayout.LayoutParams(86, 63))
+        battery.addView(batteryLeaf, FrameLayout.LayoutParams(82, 51))
+        batteryLeaf.setImageDrawable(
+            IosDrawables.create(
+                IosIconKind.BATTERY,
+                IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                82, 51, relativeSize = false, captureColorFilter = true
+            )
+        )
+
+        assertTrue(IosSlotLayout.registerBattery(battery, batteryLeaf))
+
+        assertEquals(86, IosSlotLayout.targetForTest(battery)!![0])
+        assertEquals(86, lp(row).width)
+        assertEquals(86, IosSlotLayout.targetForTest(row)!![0])
     }
 
     @Test

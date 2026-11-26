@@ -20,7 +20,16 @@ internal enum class ModuleState {
     DISABLED,
 
     /** The module loaded but never reported: the settings channel is broken (the One UI 8 case). */
-    NOT_REPORTING
+    NOT_REPORTING,
+
+    /** A fresh capability report says the real owner is iOS: Duo is off while the iOS bar draws. */
+    IOS_ACTIVE,
+
+    /**
+     * The user asked for iOS, the module is loaded, and its fresh report says iOS is not deliverable
+     * on this UI. Duo keeps the bar; this is a limitation, not a broken module.
+     */
+    IOS_UNSUPPORTED
 }
 
 internal data class ModuleHealth(
@@ -58,13 +67,15 @@ internal object ModuleHealthCheck {
         val statusBlank = DuoPrefs.status(context).isBlank()
         val updatedAt = appUpdatedAt(context)
         val heartbeat = DuoPrefs.heartbeat(context)
-        // The module is effectively on when either orientation is on: an unsaved landscape copy reads
-        // the portrait one, so reading both never reports "off" while the bar is drawing.
         val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
         val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
+        // The module is effectively on when either orientation is on: an unsaved landscape copy reads
+        // the portrait one, so reading both never reports "off" while the bar is drawing.
         val duoEnabled = portrait.enabled || landscape.enabled
         // iOS owns the bar when its switch is on, even if the Duo switch is off (the field reports).
         val iosEnabled = portrait.iosMode || landscape.iosMode
+        // Only a report from the current module session is trusted; a missing/stale one is UNKNOWN.
+        val capability = IosCapability.read(context, loadedAt)
         return ModuleHealth(
             decide(
                 loadedAt,
@@ -73,7 +84,8 @@ internal object ModuleHealthCheck {
                 heartbeat,
                 System.currentTimeMillis(),
                 settingsEnabled = duoEnabled,
-                iosEnabled = iosEnabled
+                iosMode = iosEnabled,
+                capability = capability
             ),
             loadedAt,
             updatedAt,
@@ -90,13 +102,22 @@ internal object ModuleHealthCheck {
      * it. Both are [ModuleState.NEVER_LOADED], so a report taken then cannot ship the previous run's
      * dump/status as if the module were healthy (measured: unscope, restart, send -> full but stale).
      *
-     * [settingsEnabled] is the legacy name for the Duo switch ([duoEnabled]); [iosEnabled] is the iOS
+     * [settingsEnabled] is the legacy name for the Duo switch ([duoEnabled]); [iosMode] is the iOS
      * switch. The switches are checked *after* the load/heartbeat conditions because a module that never
      * loaded is a setup problem, not a turned-off one: telling that user to "turn it on" would skip the
      * LSPosed steps they actually need. They are also checked after [ModuleState.NEEDS_RESTART] because
      * an APK update still needs the restart regardless of a switch — the running code is the old build
      * either way. iOS owning the bar is healthy even when the Duo switch is off; [ModuleState.DISABLED]
      * means neither mode is on.
+     *
+     * [iosMode] and [capability] come from the same session as [loadedAt]. A valid report whose owner is
+     * iOS **and whose live route is [IosCapability.ROUTE_V2]** means iOS is actually drawing, so the
+     * state is [ModuleState.IOS_ACTIVE] even though `enabled` is false. An owner tag alone is not enough:
+     * the module can briefly report `owner=ios` with `route=none` while refusing an activation and
+     * falling back to Duo, and a transient report must not claim iOS is active. A valid report that says
+     * iOS is not supported while the user asked for it is [ModuleState.IOS_UNSUPPORTED] and outranks the
+     * owner tag; Duo still owns the bar, so it is never [ModuleState.DISABLED]. An UNKNOWN report (null)
+     * changes nothing: iOS mode is not turned into "off" and no owner is claimed.
      */
     fun decide(
         loadedAt: Long,
@@ -105,19 +126,30 @@ internal object ModuleHealthCheck {
         heartbeatAt: Long = 0L,
         nowMs: Long = 0L,
         settingsEnabled: Boolean = true,
-        iosEnabled: Boolean = false,
-        duoEnabled: Boolean = settingsEnabled
-    ): ModuleState = when {
-        loadedAt <= 0L -> ModuleState.NEVER_LOADED
-        heartbeatAt <= 0L -> ModuleState.NEVER_LOADED
-        nowMs > 0L && nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS -> ModuleState.NEVER_LOADED
-        // The APK changed after the module last loaded, so System UI is running the previous build.
-        appUpdatedAt > loadedAt -> ModuleState.NEEDS_RESTART
-        !duoEnabled && !iosEnabled -> ModuleState.DISABLED
-        // iOS owns the bar: healthy even when the Duo switch is off (the old DISABLED field report).
-        iosEnabled -> ModuleState.OK
-        statusBlank -> ModuleState.NOT_REPORTING
-        else -> ModuleState.OK
+        iosMode: Boolean = false,
+        capability: IosCapability? = null,
+        /** R15's name for [iosMode]; either switch on means iOS was requested. */
+        iosEnabled: Boolean = false
+    ): ModuleState {
+        // The two names are the same switch; accept either so the R15 mode tests and the capability
+        // tests exercise one rule.
+        val iosRequested = iosMode || iosEnabled
+        return when {
+            loadedAt <= 0L -> ModuleState.NEVER_LOADED
+            heartbeatAt <= 0L -> ModuleState.NEVER_LOADED
+            nowMs > 0L && nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS -> ModuleState.NEVER_LOADED
+            // The APK changed after the module last loaded, so System UI is running the previous build.
+            appUpdatedAt > loadedAt -> ModuleState.NEEDS_RESTART
+            // A refusal outranks the owner tag: the fallback report can still carry owner=ios.
+            iosRequested && capability != null && !capability.supported -> ModuleState.IOS_UNSUPPORTED
+            // Active means the live route, not just the owner tag (route=none is a transient/fallback).
+            capability != null &&
+                capability.owner == IosCapability.OWNER_IOS &&
+                capability.route == IosCapability.ROUTE_V2 -> ModuleState.IOS_ACTIVE
+            !settingsEnabled && !iosRequested -> ModuleState.DISABLED
+            statusBlank -> ModuleState.NOT_REPORTING
+            else -> ModuleState.OK
+        }
     }
 
     /** The configured owner: iOS takes precedence over Duo, matching the runtime feature gate. */

@@ -174,6 +174,10 @@
     <string name="module_health_never_text">Enable Duo in LSPosed and restart.</string>
     <string name="module_health_disabled_title">Duo is switched off</string>
     <string name="module_health_disabled_text">Turn on Duo to show the ring.</string>
+    <string name="module_health_ios_title">iOS mode is active</string>
+    <string name="module_health_ios_text">Duo is off while the iOS status bar is drawn.</string>
+    <string name="module_health_ios_unsupported_title">iOS mode is not available</string>
+    <string name="module_health_ios_unsupported_text">Duo stays on because iOS mode is not supported on this UI yet.</string>
     <string name="module_health_open_lsposed">Open LSPosed</string>
     <string name="module_health_scope_hint">Turn on Duo and choose the status bar.</string>
     <string name="module_health_contact">Contact on Telegram</string>
@@ -251,6 +255,8 @@
     <string name="home_status_restart">Restart needed</string>
     <string name="home_status_off">Switched off</string>
     <string name="home_status_no_report">No response</string>
+    <string name="home_status_ios">iOS active</string>
+    <string name="home_status_ios_unsupported">iOS unsupported</string>
     <string name="home_camera">Camera</string>
     <string name="home_camera_detail">The ring wraps the front camera.</string>
     <string name="home_ring_design">Ring design</string>
@@ -311,6 +317,8 @@
     <string name="section_ios">iOS 27 status bar</string>
     <string name="settings_ios_mode">iOS 27 status bar</string>
     <string name="settings_ios_mode_detail">Uses iOS icons instead of the ring.</string>
+    <string name="settings_ios_unsupported">Not available on this UI</string>
+    <string name="settings_ios_unsupported_detail">iOS mode is not supported on %1$s yet.</string>
     <string name="settings_ios_icons">Icon tuning</string>
     <string name="settings_ios_icons_detail">Move or resize each icon.</string>
     <string name="settings_ios_offset">Horizontal offset</string>
