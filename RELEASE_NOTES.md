@@ -6,7 +6,7 @@ Version 2.1.2 (112) improves how the module attaches to System UI, makes diagnos
 
 - The module now installs only into the real System UI process, so full diagnostic reports are no longer overwritten by helper processes; this fixes the "module not running" and missing-report confusion.
 - Every report section now states present, empty, unreadable or skipped with a reason, and reports include a persisted breadcrumb plus crash and framework logs.
-- Opt-in automatic problem reports are off by default: a 5-second consent choice after launch or update, at most 3 sends a day, sent only when a problem is detected and network and battery conditions allow, through the relay with no bot token in the app; a 24-hour work pulse runs only while a problem exists, without continuous polling.
+- Opt-in automatic problem reports are off by default: a 5-second consent choice after launch or update, at most 3 sends a day, sent only when a problem is detected and network and battery conditions allow, through the relay with no bot token in the app; a 24-hour work pulse only checks for problems when network and battery conditions allow, and sends only when one is detected, without continuous polling.
 - Re-ordering iOS icons no longer changes the live icon list inside the vendor call, fixing the System UI crash loop when iOS mode is enabled while System UI runs.
 - The iOS mode switch is unavailable with a clear explanation on interfaces that cannot draw it; a saved iOS-on falls back to Duo instead of showing nothing, and the health screen reports "iOS active" instead of "disabled".
 - Pixel and AOSP devices hide the Compose icon cluster correctly, and the module attaches when the stock icon strip is an empty stub.

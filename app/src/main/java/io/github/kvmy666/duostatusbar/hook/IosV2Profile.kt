@@ -23,8 +23,9 @@ internal enum class IosBatteryOwner { OPLUS, AOSP }
  * The families the R7 v2 engine covers.
  *
  * Family ids are exactly the ones [io.github.kvmy666.duostatusbar.hook.rom.RomAdapter] uses.
- * OxygenOS and Samsung are fully covered (resource map + battery); every other family keeps the
- * stock bar because iOS mode is not delivered there.
+ * OxygenOS is the measured reference (resource map + Oplus battery owner). Samsung has the
+ * resource map and the AOSP battery owner, but its runtime is unverified. Every other family keeps
+ * the stock bar, and its resource table is dormant (R13).
  */
 internal object IosV2Profile {
 
