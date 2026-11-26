@@ -40,6 +40,7 @@ import io.github.kvmy666.duostatusbar.DuoPreview
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import io.github.kvmy666.duostatusbar.settings.IosCapability
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
@@ -55,19 +56,23 @@ fun DuoHomeScreen() {
     val context = LocalContext.current
     val health = remember { ModuleHealthCheck.of(context).state }
     var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
-    val iosEffective = settings.iosMode && iosModeAvailable()
-    val duoEnabled = duoControlsEnabled(settings)
+    // The module tells the app whether iOS can own the bar here; UNKNOWN (null) keeps today's behaviour.
+    val iosAvailable = remember {
+        IosCapability.read(context, DuoPrefs.moduleLoadTime(context))?.supported ?: true
+    }
+    val iosEffective = iosOwnsBar(settings, iosAvailable)
+    val duoEnabled = duoControlsEnabled(settings, iosAvailable)
 
     LaunchedEffect(Unit) {
         settings = DuoPrefs.read(context)
     }
 
     fun persistCamera(on: Boolean) {
-        settings = writeCameraMode(context, settings, on)
+        settings = writeCameraMode(context, settings, on, iosAvailable)
     }
 
     fun persistInvert(on: Boolean) {
-        settings = writeInvertCenter(context, settings, on)
+        settings = writeInvertCenter(context, settings, on, iosAvailable)
     }
 
     Column(
@@ -141,8 +146,13 @@ fun DuoHomeScreen() {
  * Camera mode is independent of the ring design: it only writes [DuoSettings.lockRing] and leaves
  * [DuoSettings.designStyle] untouched.
  */
-internal fun writeCameraMode(context: Context, settings: DuoSettings, on: Boolean): DuoSettings {
-    if (settings.iosMode) return settings
+internal fun writeCameraMode(
+    context: Context,
+    settings: DuoSettings,
+    on: Boolean,
+    iosAvailable: Boolean = iosModeAvailable()
+): DuoSettings {
+    if (iosOwnsBar(settings, iosAvailable)) return settings
     val updated = settings.copy(lockRing = on)
     DuoPrefs.write(context, updated)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
@@ -158,8 +168,13 @@ internal fun writeCameraMode(context: Context, settings: DuoSettings, on: Boolea
  * policy/legacy helper (it is referenced only from tests), not the production write path.
  */
 @Suppress("unused")
-internal fun writeRingDesign(context: Context, settings: DuoSettings, style: String): DuoSettings {
-    if (settings.iosMode) return settings
+internal fun writeRingDesign(
+    context: Context,
+    settings: DuoSettings,
+    style: String,
+    iosAvailable: Boolean = iosModeAvailable()
+): DuoSettings {
+    if (iosOwnsBar(settings, iosAvailable)) return settings
     val updated = settings.copy(designStyle = DuoPrefs.normalizeDesignStyle(style))
     DuoPrefs.write(context, updated)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
@@ -172,8 +187,13 @@ internal fun writeRingDesign(context: Context, settings: DuoSettings, style: Str
  * On enable it writes `percent`; on disable it restores `auto` unless the slot already held a
  * non-percent value, which is preserved instead.
  */
-internal fun writeInvertCenter(context: Context, settings: DuoSettings, on: Boolean): DuoSettings {
-    if (settings.iosMode) return settings
+internal fun writeInvertCenter(
+    context: Context,
+    settings: DuoSettings,
+    on: Boolean,
+    iosAvailable: Boolean = iosModeAvailable()
+): DuoSettings {
+    if (iosOwnsBar(settings, iosAvailable)) return settings
     val updated = settings.copy(middleSlot = invertCenterToMiddleSlot(on, settings.middleSlot))
     DuoPrefs.write(context, updated)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
@@ -322,6 +342,8 @@ private fun StatusPill(state: ModuleState) {
         ModuleState.NEEDS_RESTART -> R.string.home_status_restart to DuoColors.WineMist
         ModuleState.DISABLED -> R.string.home_status_off to DuoColors.TextTertiary
         ModuleState.NOT_REPORTING -> R.string.home_status_no_report to DuoColors.Danger
+        ModuleState.IOS_ACTIVE -> R.string.home_status_ios to DuoColors.Success
+        ModuleState.IOS_UNSUPPORTED -> R.string.home_status_ios_unsupported to DuoColors.WineMist
     }
     val shape = RoundedCornerShape(DuoRadius.pill)
     Row(

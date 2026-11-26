@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- iOS 27 status bar capability -->
+    <string name="settings_ios_unsupported">غير متاح على هذه الواجهة</string>
+    <string name="settings_ios_unsupported_detail">وضع iOS غير مدعوم على %1$s بعد.</string>
+
+    <!-- Module health -->
+    <string name="module_health_ios_title">وضع iOS مفعّل</string>
+    <string name="module_health_ios_text">Duo متوقف بينما يُرسم شريط iOS.</string>
+    <string name="module_health_ios_unsupported_title">وضع iOS غير متاح</string>
+    <string name="module_health_ios_unsupported_text">يبقى Duo مفعّلًا لأن وضع iOS غير مدعوم على هذه الواجهة بعد.</string>
+
+    <!-- Home status -->
+    <string name="home_status_ios">iOS مفعّل</string>
+    <string name="home_status_ios_unsupported">iOS غير مدعوم</string>
+</resources>

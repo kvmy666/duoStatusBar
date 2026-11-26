@@ -169,8 +169,9 @@ internal fun StageOverrideAlert(
  * loaded but cannot report — those are red, and offer the two ways to recover plus a one-tap report,
  * which is what a "no report in the log" report needs to become actionable.
  *
- * [ModuleState.DISABLED] is not a failure: the module is loaded and the user chose to switch it off,
- * so the card is neutral, explains the switch, and offers only the contact route.
+ * [ModuleState.DISABLED], [ModuleState.IOS_ACTIVE] and [ModuleState.IOS_UNSUPPORTED] are not failures:
+ * the module is loaded and the user's mode choice explains the bar, so the card is neutral and offers
+ * only the contact route.
  */
 @Composable
 internal fun ModuleHealthCard(
@@ -187,20 +188,27 @@ internal fun ModuleHealthCard(
         ModuleState.NEEDS_RESTART -> R.string.module_health_restart_title
         ModuleState.DISABLED -> R.string.module_health_disabled_title
         ModuleState.NOT_REPORTING -> R.string.module_health_noreport_title
+        ModuleState.IOS_ACTIVE -> R.string.module_health_ios_title
+        ModuleState.IOS_UNSUPPORTED -> R.string.module_health_ios_unsupported_title
         else -> R.string.module_health_never_title
     }
     val text = when (state) {
         ModuleState.NEEDS_RESTART -> R.string.module_health_restart_text
         ModuleState.DISABLED -> R.string.module_health_disabled_text
         ModuleState.NOT_REPORTING -> R.string.module_health_noreport_text
+        ModuleState.IOS_ACTIVE -> R.string.module_health_ios_text
+        ModuleState.IOS_UNSUPPORTED -> R.string.module_health_ios_unsupported_text
         else -> R.string.module_health_never_text
     }
-    val disabled = state == ModuleState.DISABLED
+    // These states are chosen, not broken: there is no restart, reboot or report that would change them.
+    val neutral = state == ModuleState.DISABLED ||
+        state == ModuleState.IOS_ACTIVE ||
+        state == ModuleState.IOS_UNSUPPORTED
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (disabled) MaterialTheme.colorScheme.secondaryContainer
+            containerColor = if (neutral) MaterialTheme.colorScheme.secondaryContainer
             else MaterialTheme.colorScheme.errorContainer,
-            contentColor = if (disabled) MaterialTheme.colorScheme.onSecondaryContainer
+            contentColor = if (neutral) MaterialTheme.colorScheme.onSecondaryContainer
             else MaterialTheme.colorScheme.onErrorContainer
         )
     ) {
@@ -208,8 +216,8 @@ internal fun ModuleHealthCard(
             Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(text), style = MaterialTheme.typography.bodyMedium)
             when {
-                // Switched off by the user: there is nothing to restart, reboot or report.
-                disabled -> Unit
+                // Switched off by the user, or a healthy iOS owner: nothing to restart, reboot or report.
+                neutral -> Unit
                 // Not injected: the fix is in LSPosed (enable + System UI scope) and a restart, not a report -
                 // the module has produced nothing to report. A user in this state can never send a useful dump,
                 // so the report button is replaced by the two recovery steps and a way to reach support.

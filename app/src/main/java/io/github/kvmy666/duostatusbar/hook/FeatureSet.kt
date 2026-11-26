@@ -126,10 +126,14 @@ private val ALL_SHARED: Set<SharedHook> = SharedHook.entries.toSet()
  * Precedence matches the runtime gates:
  *  1. the adb override `0` kills both hosts (shared registrations only);
  *  2. an adb override `1`/`2` forces Duo and suppresses iOS, with the renderer taken from the stage;
- *  3. the iOS master switch, when the drawing is actually available, makes iOS own the bar and turns
- *     every Duo feature off;
- *  4. the Duo master switch enables Duo with the engine-derived renderer;
- *  5. otherwise nothing owns the bar.
+ *  3. iOS mode when the drawing is actually available now makes iOS own the bar and turns every Duo
+ *     feature off;
+ *  4. an explicit off (neither switch on) leaves nothing owning the bar;
+ *  5. otherwise Duo owns it with the engine-derived renderer. That includes `iosMode` asked for on a
+ *     device where iOS cannot run: Duo must keep the bar, never nothing (D13/D14).
+ *
+ * [iosDrawingReady] is the "iOS is available now" argument: the family/engine/battery seam plus any
+ * recorded route failure ([IosAvailability.effective]).
  *
  * [otherOrientationEnabled] is accepted so the caller can keep the shared registrations (and the boot
  * line) stable when the other orientation has Duo on. It never changes the owner: the current settings
@@ -159,7 +163,9 @@ internal fun featureSetFor(
         return FeatureSet(BarOwner.IOS, DuoRenderer.NONE, emptySet(), ALL_SHARED)
     }
 
-    if (!resolved.enabled) {
+    if (!resolved.enabled && !resolved.iosMode) {
+        // Both switches are off: nothing owns the bar. `iosMode` alone is deliberately not "off": an
+        // unavailable iOS mode must fall through to Duo instead of leaving the bar ownerless.
         return FeatureSet(BarOwner.NONE, DuoRenderer.NONE, emptySet(), ALL_SHARED)
     }
 

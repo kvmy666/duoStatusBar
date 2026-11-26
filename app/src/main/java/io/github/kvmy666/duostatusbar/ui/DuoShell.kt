@@ -89,6 +89,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import io.github.kvmy666.duostatusbar.settings.IosCapability
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
 import kotlinx.coroutines.launch
@@ -541,6 +542,11 @@ fun CustomizationPage() {
     var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
     var fallback by remember { mutableStateOf(DuoPrefs.fallback(context)) }
     val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
+    // The module's capability report is module state, not a setting: read it once for this page.
+    // A missing/stale report stays UNKNOWN and keeps the iOS switch usable.
+    val capability = remember { IosCapability.read(context, DuoPrefs.moduleLoadTime(context)) }
+    val iosAvailable = capability?.supported ?: true
+    val iosFamily = capability?.family.orEmpty()
     val scroll = rememberScrollState()
     LaunchedEffect(Unit) {
         settings = DuoPrefs.read(context)
@@ -586,14 +592,16 @@ fun CustomizationPage() {
                 CustomCard.IOS_MODE -> IosModeSection(
                     settings = settings,
                     onUpdate = { persist(it) },
-                    matches = search
+                    matches = search,
+                    iosAvailable = iosAvailable,
+                    iosFamily = iosFamily
                 )
 
                 // Engine selector card.
                 CustomCard.ENGINE -> Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .alpha(if (customCardEnabled(CustomCard.ENGINE, settings)) 1f else 0.45f),
+                        .alpha(if (customCardEnabled(CustomCard.ENGINE, settings, iosAvailable)) 1f else 0.45f),
                     shape = RoundedCornerShape(DuoRadius.surface),
                     colors = CardDefaults.cardColors(containerColor = DuoColors.Surface.copy(alpha = 0.94f))
                 ) {
@@ -618,7 +626,7 @@ fun CustomizationPage() {
                                 DuoPrefs.ENGINE_CANVAS to stringResource(R.string.engine_canvas)
                             ),
                             selectedKey = settings.engineMode,
-                            enabled = customCardEnabled(CustomCard.ENGINE, settings)
+                            enabled = customCardEnabled(CustomCard.ENGINE, settings, iosAvailable)
                         ) { key ->
                             persist(settings.copy(engineMode = key, useRive = key != DuoPrefs.ENGINE_CANVAS))
                         }
@@ -629,85 +637,89 @@ fun CustomizationPage() {
                     }
                 }
 
-                CustomCard.CUSTOMIZE -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.CUSTOMIZE -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     CustomizeSection(
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
-                        enabled = customCardEnabled(card, settings)
+                        iosAvailable = iosAvailable,
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
 
-                CustomCard.ANIMATIONS -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.ANIMATIONS -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     AnimationsSection(
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
-                        enabled = customCardEnabled(card, settings)
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
 
-                CustomCard.APPEARANCE -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.APPEARANCE -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     AppearanceSection(
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
-                        enabled = customCardEnabled(card, settings)
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
 
-                CustomCard.SIM -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.SIM -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     SimSection(
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
-                        enabled = customCardEnabled(card, settings)
+                        iosAvailable = iosAvailable,
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
 
-                CustomCard.SURFACES -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.SURFACES -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     SurfacesSection(
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
-                        enabled = customCardEnabled(card, settings)
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
 
-                CustomCard.ICONS -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.ICONS -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     IconsSection(
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
-                        enabled = customCardEnabled(card, settings)
+                        iosAvailable = iosAvailable,
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
 
-                CustomCard.ACTIONS -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.ACTIONS -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     ActionsSection(
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
                         autoExpand = autoExpand,
-                        enabled = customCardEnabled(card, settings)
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
 
-                CustomCard.LIVE_EVENTS -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.LIVE_EVENTS -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     LiveEventsSection(
                         matches = search,
                         settings = settings,
                         onUpdate = { persist(it) },
-                        enabled = customCardEnabled(card, settings)
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
 
-                CustomCard.DOWNLOAD -> DuoCard(greyed = !customCardEnabled(card, settings)) {
+                CustomCard.DOWNLOAD -> DuoCard(greyed = !customCardEnabled(card, settings, iosAvailable)) {
                     DownloadSection(
                         settings = settings,
                         onUpdate = { persist(it) },
                         matches = search,
-                        enabled = customCardEnabled(card, settings)
+                        iosAvailable = iosAvailable,
+                        enabled = customCardEnabled(card, settings, iosAvailable)
                     )
                 }
             }

@@ -60,6 +60,7 @@ import io.github.kvmy666.duostatusbar.hook.rawResourceFor
 import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import io.github.kvmy666.duostatusbar.settings.IosCapability
 import io.github.kvmy666.duostatusbar.settings.StockIconInventory
 import io.github.kvmy666.duostatusbar.settings.StockIconSelection
 import io.github.kvmy666.duostatusbar.settings.UpdateInfo
@@ -102,10 +103,13 @@ internal fun duoSimRowsEnabled(
 ): Boolean = duoControlsEnabled(settings, iosAvailable)
 
 /**
- * The one constant that makes iOS mode reachable: while the drawing is not ready the switch is shown
- * disabled. The hook side gates the mode on the same flag separately.
+ * Whether the iOS drawing can own the bar on this device.
+ *
+ * `null` is the UNKNOWN case: no fresh capability report has arrived, which must preserve today's
+ * behaviour (the switch is usable, nothing is claimed as unsupported). Production callers pass the
+ * module's reported `supported` flag; the default keeps existing callers and tests compiling.
  */
-internal fun iosModeAvailable(drawingReady: Boolean = true): Boolean = drawingReady
+internal fun iosModeAvailable(supported: Boolean? = null): Boolean = supported ?: true
 
 /**
  * One mode owns the bar: OFF (both switches off), DUO (master on) or IOS (iOS on, Duo off).
@@ -146,9 +150,11 @@ internal fun iosTuningEnabled(
 internal fun IosModeSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
-    matches: SearchGate
+    matches: SearchGate,
+    iosAvailable: Boolean = true,
+    iosFamily: String = ""
 ) {
-    val available = iosModeAvailable()
+    val available = iosAvailable
     if (matches(
             stringResource(R.string.section_ios),
             stringResource(R.string.settings_ios_mode),
@@ -176,10 +182,23 @@ internal fun IosModeSection(
             SectionTitle(stringResource(R.string.section_ios))
             SettingSwitch(
                 label = stringResource(R.string.settings_ios_mode),
-                detail = stringResource(R.string.settings_ios_mode_detail),
+                detail = stringResource(
+                    if (available) R.string.settings_ios_mode_detail
+                    else R.string.settings_ios_unsupported
+                ),
                 checked = settings.iosMode,
                 enabled = iosCardEnabled(settings, available)
             ) { onUpdate(applyIosModeToggle(settings, it, available)) }
+            if (!available) {
+                // The module is loaded and told us iOS cannot draw here; keep Duo and say why.
+                Text(
+                    text = stringResource(
+                        R.string.settings_ios_unsupported_detail,
+                        IosCapability.availableHint(iosFamily)
+                    ),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             IosPreviewPane(settings)
             SettingSwitch(
                 label = stringResource(R.string.settings_ios_percent_inside),
@@ -272,7 +291,8 @@ internal fun CustomizeSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
     matches: SearchGate,
-    enabled: Boolean = duoControlsEnabled(settings)
+    iosAvailable: Boolean = iosModeAvailable(),
+    enabled: Boolean = duoControlsEnabled(settings, iosAvailable)
 ) {
     val previewRaw = rawResourceFor(settings.designStyle)
     if (matches(
@@ -317,7 +337,7 @@ internal fun CustomizeSection(
                 label = stringResource(R.string.settings_master),
                 detail = stringResource(R.string.settings_master_detail),
                 checked = settings.enabled,
-                enabled = duoOwnsBar(settings),
+                enabled = duoOwnsBar(settings, iosAvailable),
                 preview = {
                     // Off is the element *absent*: an empty chip, not a ring reading "0".
                     DuoSettingPreview(
@@ -796,7 +816,8 @@ internal fun SimSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
     matches: SearchGate,
-    enabled: Boolean = customCardEnabled(CustomCard.SIM, settings)
+    iosAvailable: Boolean = iosModeAvailable(),
+    enabled: Boolean = customCardEnabled(CustomCard.SIM, settings, iosAvailable)
 ) {
     val previewRaw = rawResourceFor(settings.designStyle)
     if (matches(
@@ -828,7 +849,7 @@ internal fun SimSection(
                     DuoPrefs.SIM_DISPLAY_DUAL to stringResource(R.string.settings_sim_display_dual)
                 ),
                 selectedKey = settings.simDisplay,
-                enabled = enabled && iosSimDisplayEnabled(settings)
+                enabled = enabled && iosSimDisplayEnabled(settings, iosAvailable)
             ) { onUpdate(settings.copy(simDisplay = it)) }
             Text(
                 text = stringResource(R.string.settings_sim_display_detail),
@@ -842,7 +863,7 @@ internal fun SimSection(
                     "sim2" to stringResource(R.string.settings_sim_2)
                 ),
                 selectedKey = settings.simChoice,
-                enabled = enabled && duoSimRowsEnabled(settings)
+                enabled = enabled && duoSimRowsEnabled(settings, iosAvailable)
             ) { onUpdate(settings.copy(simChoice = it)) }
             Text(
                 text = stringResource(R.string.settings_sim_detail),
@@ -852,7 +873,7 @@ internal fun SimSection(
                 label = stringResource(R.string.settings_wifi_dots),
                 detail = stringResource(R.string.settings_wifi_dots_detail),
                 checked = settings.wifiDots,
-                enabled = enabled && duoSimRowsEnabled(settings),
+                enabled = enabled && duoSimRowsEnabled(settings, iosAvailable),
                 preview = {
                     DuoSettingPreview(
                         off = demo(airplane = true, wifiLevel = 2, wifiOn = true),
@@ -912,7 +933,8 @@ internal fun IconsSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
     matches: SearchGate,
-    enabled: Boolean = duoControlsEnabled(settings)
+    iosAvailable: Boolean = iosModeAvailable(),
+    enabled: Boolean = duoControlsEnabled(settings, iosAvailable)
 ) {
     val context = LocalContext.current
     // The module owns the live view tree, so the list arrives as JSON on the settings channel. Reading
@@ -920,7 +942,7 @@ internal fun IconsSection(
     val inventory = StockIconInventory.decode(DuoPrefs.readStockIcons(context))
     // The hide list and the Shizuku path apply to both drawings, so they keep the shared `enabled`.
     // Only the three Duo-only rows stop while an available iOS mode owns the bar.
-    val iosOwns = iosOwnsBar(settings)
+    val iosOwns = iosOwnsBar(settings, iosAvailable)
     val duoRowsEnabled = enabled && !iosOwns
     if (matches(stringResource(R.string.section_icons), stringResource(R.string.settings_hide_icons),
             stringResource(R.string.settings_hide_icons_detail),
@@ -1300,10 +1322,11 @@ internal fun DownloadSection(
     settings: DuoSettings,
     onUpdate: (DuoSettings) -> Unit,
     matches: SearchGate,
-    enabled: Boolean = duoControlsEnabled(settings)
+    iosAvailable: Boolean = iosModeAvailable(),
+    enabled: Boolean = duoControlsEnabled(settings, iosAvailable)
 ) {
     // External actions are disabled only while an available iOS mode owns the bar; the Duo master switch never controlled them.
-    val externalEnabled = duoOwnsBar(settings)
+    val externalEnabled = duoOwnsBar(settings, iosAvailable)
     val context = LocalContext.current
     var phdpInstalled by remember { mutableStateOf(isPhdpInstalled(context)) }
     // The user may install PHDP from the release page and come back; re-check on return.
