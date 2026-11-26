@@ -1902,10 +1902,17 @@ internal class DuoIconHost(private val context: Context) {
             }
             // R9: bounded readiness guard. An element that never binds must not leak in the tree for the
             // lifetime of the window; after one survival window it is removed and stock is restored.
-            candidate.ui.postDelayed({
+            // The timer is scheduled on the attached parent, not the candidate, because a view that was
+            // never attached may never run its own callback.
+            target.postDelayed({
                 try {
                     if (slot.element === candidate && extras.contains(slot) &&
-                        (!candidate.isReady || !candidate.ui.isAttachedToWindow)
+                        shouldRemoveUnready(
+                            candidate.isReady,
+                            candidate.ui.isAttachedToWindow,
+                            candidate.ui.width,
+                            candidate.ui.height
+                        )
                     ) {
                         L.w("$name element never became ready in ${SURVIVAL_MS}ms - removed; stock kept")
                         runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
@@ -4218,6 +4225,18 @@ internal class DuoIconHost(private val context: Context) {
             }
             return removed
         }
+
+        /**
+         * R9: true only for an element that never bound and is detached or has no box. A boxed element
+         * is left to the existing bound/failed callbacks, so a slow-but-working bind is not removed and
+         * an attached 0x0 leak is still caught.
+         */
+        internal fun shouldRemoveUnready(
+            isReady: Boolean,
+            attached: Boolean,
+            width: Int,
+            height: Int
+        ): Boolean = !isReady && (!attached || (width <= 0 && height <= 0))
 
         /** True only when the view is attached, shown, visible and laid out (structural validity, no alpha). */
         internal fun hasBox(view: View): Boolean = try {

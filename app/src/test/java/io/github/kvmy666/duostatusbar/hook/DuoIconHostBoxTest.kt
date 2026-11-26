@@ -116,4 +116,32 @@ class DuoIconHostBoxTest {
         child.alpha = 1f
         assertTrue(DuoIconHost.hasDrawableBox(child))
     }
+
+    @Test
+    fun `the unready guard removes only a never-bound element with no box`() {
+        assertFalse(
+            "a ready element is never removed",
+            DuoIconHost.shouldRemoveUnready(isReady = true, attached = false, width = 0, height = 0)
+        )
+        assertTrue(
+            "never bound and detached",
+            DuoIconHost.shouldRemoveUnready(isReady = false, attached = false, width = 50, height = 50)
+        )
+        assertTrue(
+            "never bound and attached with no box",
+            DuoIconHost.shouldRemoveUnready(isReady = false, attached = true, width = 0, height = 0)
+        )
+        assertFalse(
+            "a boxed element is left to the bound callbacks",
+            DuoIconHost.shouldRemoveUnready(isReady = false, attached = true, width = 50, height = 50)
+        )
+        assertFalse(
+            "a ready element with no box is left alone",
+            DuoIconHost.shouldRemoveUnready(isReady = true, attached = true, width = 0, height = 0)
+        )
+        assertFalse(
+            "one positive dimension still counts as a box",
+            DuoIconHost.shouldRemoveUnready(isReady = false, attached = true, width = 50, height = 0)
+        )
+    }
 }
