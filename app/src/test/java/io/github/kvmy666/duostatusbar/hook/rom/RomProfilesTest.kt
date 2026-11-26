@@ -324,9 +324,40 @@ class RomProfilesTest {
         assertEquals("batteryRemainingIcon", rom.shadeBatteryId)
         assertTrue(rom.shadeMeasured)
         assertTrue(rom.panelOwnerAvailable)
-        // The shipped oxygenos profile is measured in the asset, but no marker proves the family on
-        // brand alone, so the selected adapter is the code fallback and is not measured (R18).
-        assertFalse("brand/SDK cannot prove OxygenOS", rom.measured)
+        // The shipped oxygenos profile is measured in the asset, but no marker proves the family, so
+        // the selected adapter is the code fallback. The code fallback is measured on the CPH2747
+        // identity (R18 correction); its flags are report/profile-selection metadata only.
+        assertTrue("the CPH2747 identity is measured", rom.measured)
+    }
+
+    @Test
+    fun `code-default oxygenos matches the shipped asset profile on behaviour-bearing fields`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val asset = RomProfiles.load(context).first { it.id == "oxygenos" }
+        val code = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16", 36
+        )
+
+        assertEquals("oxygenos", code.id)
+        // Behaviour-bearing fields only: notes/match/api ranges are source-only and intentionally not
+        // compared. A drift here means the asset and the code default would draw differently.
+        assertEquals(asset.systemUiPackage, code.systemUiPackage)
+        assertEquals(asset.containerIds, code.containerIds)
+        assertEquals(asset.batteryId, code.batteryId)
+        assertEquals(asset.clockId, code.clockId)
+        assertEquals(asset.shadeContainerIds, code.shadeContainerIds)
+        assertEquals(asset.shadeBatteryId, code.shadeBatteryId)
+        assertEquals(asset.keyguardContainerId, code.keyguardContainerId)
+        assertEquals(asset.coverHook, code.coverHook)
+        assertEquals(asset.panelExpansionKind, code.panelExpansionKind)
+        assertEquals(asset.panelHookMeasured, code.panelHookMeasured)
+        assertEquals(asset.panelOwnerAvailable, code.panelOwnerAvailable)
+
+        // The corrected truth: measured on the CPH2747 identity within the SDK 36 window.
+        assertTrue(code.measured)
+        assertTrue(code.shadeMeasured)
+        assertTrue(asset.measured)
+        assertTrue(asset.shadeMeasured)
     }
 
     @Test

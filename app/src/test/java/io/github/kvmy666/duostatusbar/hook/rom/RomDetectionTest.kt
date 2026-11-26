@@ -28,16 +28,24 @@ class RomDetectionTest {
     )
 
     @Test
-    fun `oneplus is recognised as oxygenos and keeps the measured ids unverified`() {
+    fun `oneplus cph2747 keeps the measured ids and is measured on that identity`() {
         // CPH2747's SystemUI is /system_ext/priv-app/SystemUI/SystemUI.apk with
-        // com.android.systemui.SystemUIApplication, identical to AOSP, so brand/SDK cannot prove
-        // OxygenOS: the ids stay, `measured` does not (R18).
-        val rom = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16")
+        // com.android.systemui.SystemUIApplication, identical to AOSP, so no marker proves OxygenOS.
+        // The code default is still measured on the measured CPH2747 identity within the SDK 36 window
+        // (R18 correction).
+        val rom = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16", 36
+        )
         assertEquals("oxygenos", rom.id)
         assertEquals("system_icons", rom.containerIds.first())
         assertEquals("battery", rom.batteryId)
-        assertFalse("brand/SDK cannot prove OxygenOS", rom.measured)
-        assertTrue(rom.notes.contains("brand-match (unverified)"))
+        assertTrue("the CPH2747 identity is the measured one", rom.measured)
+        assertTrue(rom.notes.contains("CPH2747"))
+        assertTrue("the note states the identity+SDK proof", rom.notes.contains("not a marker"))
+        assertFalse(
+            "a measured note is not a brand-match fallback",
+            rom.notes.contains("brand-match (unverified)")
+        )
     }
 
     @Test
@@ -303,22 +311,31 @@ class RomDetectionTest {
 
 
     @Test
-    fun `oneplus is never measured from sdk alone`() {
+    fun `oneplus is measured only on the cph2747 identity inside the sdk 36 window`() {
         val sdk33 = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 33)
-        assertFalse("SDK 33 is not proof of OxygenOS", sdk33.measured)
+        assertFalse("SDK 33 is outside the measured window", sdk33.measured)
+        assertFalse(sdk33.shadeMeasured)
         assertTrue(sdk33.notes.contains("brand-match (unverified)"))
 
-        // SDK 36 is CPH2747's build, but its SystemUI is the AOSP one (see RomMarkers.provesFamily),
-        // so the SDK cannot promote the brand match to measured (R18).
+        // The CPH2747 identity at SDK 36 is the measured build; the shade map was read there too.
         val sdk36 = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 36)
-        assertFalse("SDK 36 is not proof of OxygenOS", sdk36.measured)
-        assertTrue(sdk36.notes.contains("brand-match (unverified)"))
+        assertTrue("the CPH2747 identity within SDK 36 is the measured one", sdk36.measured)
+        assertTrue("the shade map was measured on CPH2747", sdk36.shadeMeasured)
+        assertFalse(
+            "the measured note is not a brand-match fallback",
+            sdk36.notes.contains("brand-match (unverified)")
+        )
+
+        val other = RomDetection.forThisRom("OnePlus", "OnePlus", "OP9999", "OnePlus/OP9999:16", 36)
+        assertFalse("brand/SDK alone cannot prove OxygenOS", other.measured)
+        assertFalse(other.shadeMeasured)
+        assertTrue(other.notes.contains("brand-match (unverified)"))
     }
 
     @Test
-    fun `oxygenos shade map is measured only on the CPH2747 identity`() {
-        // The shade ids were read on CPH2747 (evidence: diagnostics-dump MODEL/PRODUCT/DISPLAY), so the
-        // measured flag is keyed to that build, not to the SDK alone (R18).
+    fun `oxygenos measured flags are keyed to the CPH2747 identity`() {
+        // The family and shade ids were read on CPH2747 (evidence: diagnostics-dump MODEL/PRODUCT/
+        // DISPLAY), so both measured flags are keyed to that build plus the SDK window (R18).
         val cph2747 = RomDetection.forThisRom(
             "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16", 36
         )
@@ -328,16 +345,22 @@ class RomDetectionTest {
             cph2747.shadeContainerIds
         )
         assertEquals("batteryRemainingIcon", cph2747.shadeBatteryId)
+        assertTrue("the family is measured on CPH2747", cph2747.measured)
         assertTrue("the shade ids were measured on CPH2747", cph2747.shadeMeasured)
     }
 
     @Test
-    fun `a different oneplus identity with sdk 36 does not claim the measured shade map`() {
+    fun `a different oneplus identity with sdk 36 does not claim the measured flags`() {
         val other = RomDetection.forThisRom(
             "OnePlus", "OnePlus", "OP9999", "OnePlus/OP9999:16", 36
         )
         assertEquals("oxygenos", other.id)
+        assertFalse("the family is measured on CPH2747 only (R18)", other.measured)
         assertFalse("the shade map was read on CPH2747 only (R18)", other.shadeMeasured)
+        assertTrue(
+            "a brand match must admit it is unverified",
+            other.notes.contains("brand-match (unverified)")
+        )
         assertEquals(
             "the probe ids still describe OxygenOS",
             listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
@@ -557,13 +580,36 @@ class RomDetectionTest {
         assertEquals(without.id, withMarkers.id)
         assertEquals("oxygenos", withMarkers.id)
         assertEquals(without.measured, withMarkers.measured)
-        assertFalse("brand/SDK cannot prove OxygenOS (R18)", withMarkers.measured)
+        assertTrue("the CPH2747 identity is measured (R18)", withMarkers.measured)
         assertEquals(without.containerIds, withMarkers.containerIds)
         assertEquals(without.shadeContainerIds, withMarkers.shadeContainerIds)
         assertEquals(without.shadeBatteryId, withMarkers.shadeBatteryId)
         assertEquals(without.panelExpansionKind, withMarkers.panelExpansionKind)
         assertEquals(without.panelOwnerAvailable, withMarkers.panelOwnerAvailable)
         assertEquals("the marker must not leak into OxygenOS", without, withMarkers)
+    }
+
+    @Test
+    fun `oxygenos measured is keyed to the cph2747 identity and ignores markers`() {
+        val display = "OnePlus/CPH2747/OP611FL1:16"
+        val plain = RomMarkers.of(
+            systemUiSourceDir = "/system/priv-app/SystemUI/SystemUI.apk",
+            systemUiApplicationClass = "com.android.systemui.SystemUIApplication"
+        )
+        for (markers in listOf(RomMarkers.UNKNOWN, hyperOsMarkers, plain)) {
+            val cph = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", display, 36, markers)
+            assertEquals("oxygenos", cph.id)
+            assertTrue("CPH2747 identity is measured regardless of markers", cph.measured)
+            assertTrue(cph.shadeMeasured)
+
+            val other = RomDetection.forThisRom(
+                "OnePlus", "OnePlus", "OP9999", "OnePlus/OP9999:16", 36, markers
+            )
+            assertEquals("oxygenos", other.id)
+            assertFalse("a brand-only OnePlus is never measured", other.measured)
+            assertFalse(other.shadeMeasured)
+            assertTrue(other.notes.contains("brand-match (unverified)"))
+        }
     }
 
     @Test

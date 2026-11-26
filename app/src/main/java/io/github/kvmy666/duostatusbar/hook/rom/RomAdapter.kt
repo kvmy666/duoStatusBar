@@ -162,10 +162,12 @@ internal object RomDetection {
      * Kept as an overload so the pure four-argument function (and every test on it) is unchanged.
      *
      * R18: a measured profile is accepted only when a proven family marker exists
-     * ([RomMarkers.provesFamily]). The shipped measured OxygenOS profile is therefore **not** selected
-     * on brand alone — its SystemUI is the AOSP one — and the code OxygenOS adapter (same ids) is used
-     * with `measured=false`. That is intentional: behaviour is unchanged except the truthfulness of
-     * `measured`/source.
+     * ([RomMarkers.provesFamily]). The shipped measured OxygenOS profile is therefore **not** selected —
+     * OxygenOS has no proven marker (its SystemUI is the AOSP one) — and the code OxygenOS adapter (same
+     * ids) is used, so `source` stays `code-default`. The code adapter itself reports `measured=true`
+     * only on the measured CPH2747 identity within the SDK 36 window; the family proof there is the
+     * identity plus the SDK window, not a marker. [RomAdapter.measured], [RomAdapter.shadeMeasured] and
+     * the `panel*` flags are report/profile-selection metadata only; they do not change drawing.
      */
     fun forThisRom(
         manufacturer: String,
@@ -211,37 +213,43 @@ internal object RomDetection {
     fun apiInRange(min: Int, max: Int, api: Int): Boolean = api == 0 || (api in min..max)
 
     /**
-     * Recognised from the OnePlus/OxygenOS brand, but **never measured from brand/SDK alone** (R18).
+     * Recognised from the OnePlus/OxygenOS brand; measured **only on the measured CPH2747 identity
+     * inside the SDK 36 window** (R18 correction).
      *
      * CPH2747 has `sourceDir=/system_ext/priv-app/SystemUI/SystemUI.apk` and application class
      * `com.android.systemui.SystemUIApplication` (evidence:
      * `.pm/evidence/duo-report-20261119-200742/diagnostics.txt:56-57`, `diagnostics-dump.txt:2197`),
-     * which is identical to AOSP. There is no distinguishing Oplus marker today, so the brand match
-     * cannot become proof: the ids below are still the measured ones, the `measured` flag is not.
+     * which is identical to AOSP. There is no distinguishing Oplus marker today, so the family proof
+     * here is the identity (`MODEL`/`PRODUCT`/`DISPLAY` = `CPH2747`, evidence:
+     * `.pm/evidence/duo-report-20261119-200742/diagnostics-dump.txt:4-6`) plus the SDK 36 window — never
+     * the brand alone. The ids below are the measured ones, and [measured]/[shadeMeasured] are true only
+     * on that identity.
      *
-     * The shade ids were read on **CPH2747 only** (evidence:
-     * `.pm/evidence/duo-report-20261119-200742/diagnostics-dump.txt:4-6`: `MODEL=CPH2747`,
-     * `PRODUCT=CPH2747`, `DISPLAY=CPH2747_16.0.9.400(EX01)`), so [shadeMeasured] is keyed to that
-     * identity plus the SDK window — never to the SDK or the brand alone. The family [measured] flag
-     * still requires a proven marker ([RomMarkers.provesFamily]), which OxygenOS does not have.
+     * The shipped asset profile still requires a proven marker ([RomMarkers.provesFamily]); none exists
+     * for OxygenOS, so the runtime `source` remains `code-default`. [measured], [shadeMeasured],
+     * [panelHookMeasured] and [panelOwnerAvailable] are report/profile-selection metadata only and do
+     * not change drawing.
      */
     private fun oxygenOs(api: Int, identity: String): RomAdapter {
         val verified = api == 0 || api in 36..36
-        val shadeVerified = verified && identity.contains("cph2747")
+        val cph2747 = verified && identity.contains("cph2747")
         return RomAdapter(
         id = "oxygenos",
         label = "OxygenOS / OnePlus",
         systemUiPackage = AOSP,
         containerIds = listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
         batteryId = "battery",
-        notes = BRAND_MATCH_PREFIX + "CPH2747 SystemUI is " +
+        notes = if (cph2747) "measured on OxygenOS 16 (CPH2747, SDK 36 window): system_icons -> " +
+            "LinearLayout, battery 83x61 px; the family proof is the CPH2747 identity plus the SDK 36 " +
+            "window, not a marker" else
+            BRAND_MATCH_PREFIX + "CPH2747 SystemUI is " +
             "/system_ext/priv-app/SystemUI/SystemUI.apk with com.android.systemui.SystemUIApplication, " +
             "identical to AOSP; brand/SDK cannot prove OxygenOS and no distinguishing marker is known",
         match = listOf("oneplus", "oxygen"),
-        measured = false,
+        measured = cph2747,
         shadeContainerIds = listOf("quick_qs_status_icons", "shade_header_system_icons"),
         shadeBatteryId = "batteryRemainingIcon",
-        shadeMeasured = shadeVerified,
+        shadeMeasured = cph2747,
         coverHook = true,
         panelExpansionKind = "panel_type_5arg",
         panelHookMeasured = verified,
@@ -512,8 +520,14 @@ internal data class RomMarkers(
      * the APK path contains `MiuiSystemUI` (`.pm/evidence/duo-report-20261113-202904/diagnostics.txt:55`)
      * or the class is `MiuiSystemUIApplication` (`docs/rom-contract.md:24`).
      *
-     * A new measured family MUST add its proven marker here; without one it stays
-     * `brand-match (unverified)` and its measured asset profile is never selected.
+     * A new measured **asset** family MUST add its proven marker here; without one its measured asset
+     * profile is never selected and the code fallback stays `brand-match (unverified)`.
+     *
+     * R18 correction: the **code-default** OxygenOS adapter is measured only on the CPH2747 identity
+     * within the SDK 36 window (see `oxygenOs`), without going through this marker gate. Because this
+     * function still returns false for OxygenOS, the shipped measured OxygenOS asset profile is never
+     * selected and `source` stays `code-default`. [RomAdapter.measured], [RomAdapter.shadeMeasured] and
+     * the `panel*` flags are report/profile-selection metadata only.
      */
     fun provesFamily(family: String): Boolean = when (family) {
         "hyperos" -> hasHyperOsMarker
