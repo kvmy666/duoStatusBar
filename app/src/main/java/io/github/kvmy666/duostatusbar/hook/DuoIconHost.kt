@@ -3821,12 +3821,23 @@ internal class DuoIconHost(private val context: Context) {
         clearShadeRetry()
         cancelSurvivalTimer()
         cancelMainHandoff()
+        // Each step is guarded on its own: a failed drop or remove must never skip
+        // `element.teardown()`, which pauses the renderer (C8) and restores native state.
         try {
             drop(indicators, host)
             indicators = null
+        } catch (t: Throwable) {
+            L.w("teardown indicators: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        try {
             element?.let { host?.removeView(it.ui) }
+        } catch (t: Throwable) {
+            L.w("teardown remove: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        try {
             element?.teardown()
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            L.w("teardown element: ${t.javaClass.simpleName}: ${t.message}")
         }
         for (slot in extras) {
             // Each step is guarded on its own: a failed drop or remove must never skip the stock

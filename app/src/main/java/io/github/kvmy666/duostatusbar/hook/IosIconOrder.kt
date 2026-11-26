@@ -557,9 +557,9 @@ internal object IosIconOrder {
     /**
      * Resolves the slot name carried by one `StatusBarIconList.mSlots` entry.
      *
-     * Measured shape (OxygenOS `StatusBarIconList$Slot`): a `getName()` method and an `mName` field.
-     * The lookup order is String, public `getName()`, then a declared-or-inherited `name`/`mName`
-     * field. Null means the entry is not a slot we understand.
+     * Measured shape (OxygenOS `StatusBarIconList$Slot`): a public `getName()` method. The
+     * `mName`-only field shape belongs to HyperOS, whose order route is not installed; no
+     * fallback is attempted. Null means the entry is opaque and the list is left untouched.
      */
     private fun slotNameOf(entry: Any?): String? {
         if (entry == null) return null
@@ -576,11 +576,8 @@ internal object IosIconOrder {
                 (method.invoke(entry) as? String)?.let { return it }
             }
         } catch (t: Throwable) {
-            // No public getName(); fall through to the field.
-            IosV2Log.branchOnce("order.slotNameMethod", "no getName - field fallback")
-        }
-        for (fieldName in arrayOf("name", "mName")) {
-            (readField(entry, fieldName) as? String)?.let { return it }
+            // No public getName(); the slot stays opaque and the order is left untouched.
+            IosV2Log.branchOnce("order.slotNameMethod", "no public getName - opaque slot")
         }
         return null
     }
