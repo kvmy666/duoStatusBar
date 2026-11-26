@@ -122,6 +122,19 @@ internal object StockIconKey {
     }
 
     /**
+     * The `id:` key for [view], or null when the view has no readable resource id. R12: callers that
+     * must match a resource id even when the view also exposes a slot use this instead of [baseKey],
+     * which prefers `slot:` (a Motorola dual-SIM composite reports `slot:mobile` but must be matched
+     * as `id:mobile_combo_dual`). Guarded: an unreadable id yields null, never a throw.
+     */
+    fun idKey(view: View): String? = try {
+        val id = idName(view)
+        if (id != null) "id:${id.lowercase()}" else null
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
      * The stable key with a 1-based occurrence. The first occurrence keeps the plain base key; the
      * second becomes `#2`, and so on. Occurrence is assigned by [inventory]/the hiding walk, never
      * invented here, so the stored key means the same view in both places.

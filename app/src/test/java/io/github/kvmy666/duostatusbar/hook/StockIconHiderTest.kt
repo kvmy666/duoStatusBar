@@ -48,6 +48,15 @@ class StockIconHiderTest {
     /** Motorola's dual-SIM composite: one CELLULAR view whose id carries both SIM rows. */
     private class MobileSignalGroupView(context: Context) : View(context)
 
+    /**
+     * Motorola's real composite also exposes a slot tag, so its base key is `slot:mobile` even though
+     * the view carries the composite resource id (R12).
+     */
+    private class MotorolaDualSimView(context: Context) : View(context) {
+        @Suppress("unused")
+        fun getSlotTag(): String = "mobile"
+    }
+
     /** A view whose layout restore fails only after [explode] is armed (R17 independent restore). */
     private class ExplodingLayoutView(context: Context) : View(context) {
         var explode = false
@@ -369,6 +378,50 @@ class StockIconHiderTest {
     fun `a kept dual-SIM composite survives hide all`() {
         val strip = LinearLayout(context)
         val composite = dualComposite()
+        val alarm = FakeIcon(context, "alarm_clock")
+        strip.addView(composite)
+        strip.addView(alarm)
+
+        StockIconHider(setOf("id:text1")).hideAllExcept(strip, keep = null)
+
+        assertEquals("both SIM rows must stay live", View.VISIBLE, composite.visibility)
+        assertEquals(View.GONE, alarm.visibility)
+    }
+
+    private fun slotTaggedDualComposite() = MotorolaDualSimView(context).apply {
+        id = android.R.id.text1 // id key: id:text1; base key stays slot:mobile
+        layoutParams = LinearLayout.LayoutParams(80, 36)
+    }
+
+    @Test
+    fun `a dual-SIM composite that also exposes a slot is kept by its resource id`() {
+        val strip = LinearLayout(context)
+        val composite = slotTaggedDualComposite()
+        strip.addView(composite)
+
+        assertEquals("the view exposes a slot, so baseKey is not the id", "slot:mobile",
+            StockIconKey.baseKey(composite))
+        StockIconHider(setOf("id:text1")).hideReplaced(strip, keep = null)
+
+        assertEquals("the id key must match even when the view exposes a slot",
+            View.VISIBLE, composite.visibility)
+    }
+
+    @Test
+    fun `a slot-tagged dual-SIM composite is hidden by the default hider`() {
+        val strip = LinearLayout(context)
+        val composite = slotTaggedDualComposite()
+        strip.addView(composite)
+
+        StockIconHider().hideReplaced(strip, keep = null)
+
+        assertEquals("default behaviour must not change", View.GONE, composite.visibility)
+    }
+
+    @Test
+    fun `a slot-tagged dual-SIM composite survives hide all by its resource id`() {
+        val strip = LinearLayout(context)
+        val composite = slotTaggedDualComposite()
         val alarm = FakeIcon(context, "alarm_clock")
         strip.addView(composite)
         strip.addView(alarm)

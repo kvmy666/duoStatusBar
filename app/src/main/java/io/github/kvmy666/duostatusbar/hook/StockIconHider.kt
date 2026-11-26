@@ -331,12 +331,21 @@ internal class StockIconHider(private val keepKeys: Set<String> = emptySet()) {
         return isKeptDualSim(base, key, view)
     }
 
-    /** True when [base]/[key] names a kept dual-SIM composite; logs once per key, never per pass. */
+    /**
+     * True when the view names a kept dual-SIM composite; logs once per key, never per pass.
+     *
+     * R12: the composite is matched by its resource id as well as [base]/[key], because a Motorola
+     * `ModernStatusBarMobileView` exposes `getSlot()`/`getSlotTag()` and so has `slot:mobile` as its
+     * base key while the stored keep key is `id:mobile_combo_dual`.
+     */
     private fun isKeptDualSim(base: String, key: String, view: View): Boolean {
         if (keepKeys.isEmpty()) return false
-        if (base !in keepKeys && key !in keepKeys) return false
-        logOnce.once("dual-sim:$key") {
-            L.i("dual-SIM composite kept: ${view.javaClass.simpleName} $key (both SIM rows live)")
+        val idKey = StockIconKey.idKey(view)
+        val matchedById = idKey != null && idKey in keepKeys
+        if (!matchedById && base !in keepKeys && key !in keepKeys) return false
+        val logKey = if (matchedById) idKey!! else key
+        logOnce.once("dual-sim:$logKey") {
+            L.i("dual-SIM composite kept: ${view.javaClass.simpleName} $logKey (both SIM rows live)")
         }
         return true
     }
