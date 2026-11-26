@@ -1791,16 +1791,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     /**
-     * FR-03b: the pulled-down shade's header.
-     *
-     * Decompiled from the device's SystemUI rather than guessed:
-     * `com.android.systemui.qs.dagger.OplusQSModuleEx.providesShadeHeaderView` takes the shade window,
-     * finds the `qs_header_stub` ViewStub inside it, sets it to `R.layout.combined_qs_header` and
-     * inflates it - returning the header view. So the header *is* in the shade window's tree, but only
-     * after the stub inflates, which is why searching for it at boot found nothing. This takes the
-     * returned view, which is the only moment it is handed over directly.
-     */
-    /**
      * FR-03b: hides icon views as the ROM adds them.
      *
      * A hiding pass on a layout change is not enough on the shade header - the ROM repopulates its
@@ -2007,6 +1997,16 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
+    /**
+     * FR-03b: the pulled-down shade's header.
+     *
+     * Decompiled from the device's SystemUI rather than guessed:
+     * `com.android.systemui.qs.dagger.OplusQSModuleEx.providesShadeHeaderView` takes the shade window,
+     * finds the `qs_header_stub` ViewStub inside it, sets it to `R.layout.combined_qs_header` and
+     * inflates it - returning the header view. So the header *is* in the shade window's tree, but only
+     * after the stub inflates, which is why searching for it at boot found nothing. This takes the
+     * returned view, which is the only moment it is handed over directly.
+     */
     private fun hookShadeHeader() {
         // The controller that owns the header is the reliable hand-over: it is handed the header view
         // directly, whatever inflated it.
