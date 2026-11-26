@@ -3825,9 +3825,10 @@ internal class DuoIconHost(private val context: Context) {
         // `element.teardown()`, which pauses the renderer (C8) and restores native state.
         try {
             drop(indicators, host)
-            indicators = null
         } catch (t: Throwable) {
             L.w("teardown indicators: ${t.javaClass.simpleName}: ${t.message}")
+        } finally {
+            indicators = null
         }
         try {
             element?.let { host?.removeView(it.ui) }
