@@ -4097,17 +4097,18 @@ internal class DuoIconHost(private val context: Context) {
         shadeRetrySeenAttached = false
     }
 
-    private companion object {
-        // box = structural validity (attached/visible/laid out) - used for readiness/attach/fallback;
+    internal companion object {
+        // box = structural validity (attached/shown/visible/laid out) - used for readiness/attach/fallback;
         // drawable = ink/alpha on top of box - used for handoff ordering only.
-        /** True only when the view is attached, visible and laid out (structural validity, no alpha). */
+        /** True only when the view is attached, shown, visible and laid out (structural validity, no alpha). */
         internal fun hasBox(view: View): Boolean = try {
-            view.isAttachedToWindow && view.visibility == View.VISIBLE && view.width > 0 && view.height > 0
+            view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&
+                view.width > 0 && view.height > 0
         } catch (_: Throwable) { false }
 
-        /** True only when the view is attached, visible, laid out and has ink to draw. */
+        /** True only when the view is attached, shown, visible, laid out and has ink to draw. */
         internal fun hasDrawableBox(view: View): Boolean = try {
-            view.isAttachedToWindow && view.visibility == View.VISIBLE &&
+            view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&
                 view.width > 0 && view.height > 0 && view.alpha > PanelHandoff.EPSILON
         } catch (_: Throwable) {
             false
