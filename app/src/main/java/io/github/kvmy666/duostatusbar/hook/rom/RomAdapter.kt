@@ -80,6 +80,9 @@ internal object RomDetection {
 
     internal const val AOSP = "com.android.systemui"
 
+    /** The exact phrase the runtime log and diagnostic dump carry for an unproven brand match (R18). */
+    private const val BRAND_MATCH_PREFIX = "brand-match (unverified): "
+
     /** The canonical family ids, exposed so tests can prove the shipped asset never drifts. */
     internal val FAMILY_IDS = RomFamilies.CANONICAL_IDS
 
@@ -92,9 +95,9 @@ internal object RomDetection {
         markers: RomMarkers = RomMarkers.UNKNOWN
     ): RomAdapter {
         val haystack = haystack(manufacturer, brand, product, display)
-        return when {
+        val selected = when {
             haystack.contains("samsung") -> samsung()
-            haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs(api)
+            haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs(api, markers)
             haystack.contains("oppo") || haystack.contains("oplus") || haystack.contains("coloros") ->
                 colorOs()
             haystack.contains("xiaomi") || haystack.contains("redmi") || haystack.contains("poco") ->
@@ -103,7 +106,7 @@ internal object RomDetection {
                 // .pm/evidence/duo-report-20261110-201707/diagnostics.txt:11-14 and
                 // duo-log-20261115-214854.txt:22-25). Only a *successful* SystemUI inspection that finds
                 // no MIUI marker proves non-MIUI; an unreadable inspection keeps the old brand rule.
-                if (markers.provesNonMiui) aosp() else hyperOs(api)
+                if (markers.provesNonMiui) aosp() else hyperOs(api, markers)
             haystack.contains("vivo") || haystack.contains("iqoo") || haystack.contains("origin") ||
                 haystack.contains("funtouch") -> vivo()
             haystack.contains("honor") || haystack.contains("magic") -> honor()
@@ -112,6 +115,16 @@ internal object RomDetection {
             haystack.contains("nothing") -> nothing()
             else -> aosp()
         }
+        // A brand-selected vendor adapter that no marker proved must say so, once, in the notes that
+        // reach the runtime log and the diagnostic dump. The AOSP default is not a brand match, and an
+        // adapter that already carries the prefix (OxygenOS/HyperOS) is not prefixed twice.
+        return if (selected.id != "aosp" && !selected.measured &&
+            !selected.notes.startsWith(BRAND_MATCH_PREFIX)
+        ) {
+            selected.copy(notes = BRAND_MATCH_PREFIX + selected.notes)
+        } else {
+            selected
+        }
     }
 
     /**
@@ -119,6 +132,12 @@ internal object RomDetection {
      * first. Only `measured` profiles may override, so a data edit can add a device we have read but
      * can never silently replace an unverified guess — the code stays the source of truth otherwise.
      * Kept as an overload so the pure four-argument function (and every test on it) is unchanged.
+     *
+     * R18: a measured profile is accepted only when a proven family marker exists
+     * ([RomMarkers.provesFamily]). The shipped measured OxygenOS profile is therefore **not** selected
+     * on brand alone — its SystemUI is the AOSP one — and the code OxygenOS adapter (same ids) is used
+     * with `measured=false`. That is intentional: behaviour is unchanged except the truthfulness of
+     * `measured`/source.
      */
     fun forThisRom(
         manufacturer: String,
@@ -131,7 +150,8 @@ internal object RomDetection {
     ): RomAdapter {
         val haystack = haystack(manufacturer, brand, product, display)
         profiles.firstOrNull { profile ->
-            profile.measured && apiInRange(profile.apiMin, profile.apiMax, api) &&
+            profile.measured && markers.provesFamily(profile.id) &&
+                apiInRange(profile.apiMin, profile.apiMax, api) &&
                 // Custom AOSPA/Lineage/Infinity builds keep the Xiaomi brand and would otherwise take
                 // the measured HyperOS asset profile (evidence: .pm/evidence/duo-log-20261115-214854.txt:22-25).
                 // Gate the measured HyperOS profile on the same proof as the code branch above: skip it
@@ -163,12 +183,18 @@ internal object RomDetection {
     fun apiInRange(min: Int, max: Int, api: Int): Boolean = api == 0 || (api in min..max)
 
     /**
-     * Measured on the OnePlus 15 (CPH2747), Android 16 / OxygenOS 16.0.9.400: the strip is a `LinearLayout`
-     * with the AOSP id `system_icons`, holding `statusIcons` (the stock icons) and `battery` (83 × 61 px).
+     * Recognised from the OnePlus/OxygenOS brand, but **never measured from brand/SDK alone** (R18).
      *
-     * The later spellings are only fallbacks for a build that renamed the strip; the measured one is first.
+     * CPH2747 has `sourceDir=/system_ext/priv-app/SystemUI/SystemUI.apk` and application class
+     * `com.android.systemui.SystemUIApplication` (evidence:
+     * `.pm/evidence/duo-report-20261119-200742/diagnostics.txt:56-57`, `diagnostics-dump.txt:2197`),
+     * which is identical to AOSP. There is no distinguishing Oplus marker today, so the brand match
+     * cannot become proof: the ids below are still the measured ones, the `measured` flag is not.
+     * [markers] is accepted to keep the call shape uniform; no marker can prove OxygenOS yet
+     * ([RomMarkers.provesFamily]).
      */
-    private fun oxygenOs(api: Int): RomAdapter {
+    @Suppress("UNUSED_PARAMETER")
+    private fun oxygenOs(api: Int, markers: RomMarkers): RomAdapter {
         val verified = api == 0 || api in 36..36
         return RomAdapter(
         id = "oxygenos",
@@ -176,9 +202,11 @@ internal object RomDetection {
         systemUiPackage = AOSP,
         containerIds = listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
         batteryId = "battery",
-        notes = if (verified) "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px" else "unverified: OnePlus SDK $api; measured only on OxygenOS 16 (CPH2747, SDK 36)",
+        notes = BRAND_MATCH_PREFIX + "CPH2747 SystemUI is " +
+            "/system_ext/priv-app/SystemUI/SystemUI.apk with com.android.systemui.SystemUIApplication, " +
+            "identical to AOSP; brand/SDK cannot prove OxygenOS and no distinguishing marker is known",
         match = listOf("oneplus", "oxygen"),
-        measured = verified,
+        measured = false,
         shadeContainerIds = listOf("quick_qs_status_icons", "shade_header_system_icons"),
         shadeBatteryId = "batteryRemainingIcon",
         shadeMeasured = verified,
@@ -263,8 +291,11 @@ internal object RomDetection {
      * build that renames `system_icons` still attaches beside the icons. `status_bar_icons` is the
      * `FrameLayout` above both. The AOSP name stays first so a stock-AOSP Xiaomi needs no special case.
      */
-    private fun hyperOs(api: Int): RomAdapter {
+    private fun hyperOs(api: Int, markers: RomMarkers): RomAdapter {
         val verified = api == 0 || api in 37..37
+        // R18: the SDK range alone is not proof. Measured only when a MIUI marker also proves the
+        // family (sourceDir with MiuiSystemUI, or the MiuiSystemUIApplication class).
+        val measured = verified && markers.provesFamily("hyperos")
         return RomAdapter(
         id = "hyperos",
         label = "HyperOS / MIUI",
@@ -277,10 +308,13 @@ internal object RomDetection {
             "system_icons_container"
         ),
         batteryId = "battery",
-        notes = if (verified) "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> " +
-            "MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent" else "unverified: Xiaomi SDK $api; measured only on HyperOS 3 (24129PN74G, SDK 37)",
+        notes = if (measured) "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> " +
+            "MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent" else
+            BRAND_MATCH_PREFIX + "Xiaomi/Redmi/POCO brand matched" +
+            (if (!verified) " on SDK $api, outside the measured 37 gate" else "") +
+            " but no MiuiSystemUI marker proved HyperOS",
         match = listOf("xiaomi", "redmi", "poco"),
-        measured = verified,
+        measured = measured,
         shadeContainerIds = listOf("shade_header_system_icons", "system_icons"),
         shadeBatteryId = "battery",
         shadeMeasured = false,
@@ -412,6 +446,25 @@ internal data class RomMarkers(
     val hasHyperOsMarker: Boolean
         get() = systemUiSourceDir.contains("MiuiSystemUI", ignoreCase = true) ||
             systemUiApplicationClass.substringAfterLast('.') == "MiuiSystemUIApplication"
+
+    /**
+     * True only when a marker actually proves [family] on this UI (R18).
+     *
+     * OxygenOS evidence (why the brand cannot prove it): CPH2747 has
+     * `sourceDir=/system_ext/priv-app/SystemUI/SystemUI.apk` and application class
+     * `com.android.systemui.SystemUIApplication` (`.pm/evidence/duo-report-20261119-200742/
+     * diagnostics.txt:56-57`, `diagnostics-dump.txt:2197`) — identical to AOSP, so brand/SDK cannot
+     * prove OxygenOS and no distinguishing Oplus marker is known today. HyperOS has a positive marker:
+     * the APK path contains `MiuiSystemUI` (`.pm/evidence/duo-report-20261113-202904/diagnostics.txt:55`)
+     * or the class is `MiuiSystemUIApplication` (`docs/rom-contract.md:24`).
+     *
+     * A new measured family MUST add its proven marker here; without one it stays
+     * `brand-match (unverified)` and its measured asset profile is never selected.
+     */
+    fun provesFamily(family: String): Boolean = when (family) {
+        "hyperos" -> hasHyperOsMarker
+        else -> false
+    }
 
     /**
      * True only when a read found positive evidence of a *different* SystemUI: a usable field was read

@@ -45,16 +45,23 @@ class RomProfilesTest {
         }
     """.trimIndent()
 
-    private fun measuredSamsung() = RomAdapter(
-        id = "samsung",
-        label = "Samsung One UI (measured)",
+    /** The measured HyperOS 3 APK path, so the asset profile can prove its family (R18). */
+    private val hyperOsMarkers = RomMarkers.of(
+        systemUiSourceDir = "/system_ext/priv-app/MiuiSystemUI/MiuiSystemUI.apk"
+    )
+
+    private fun measuredHyperOs() = RomAdapter(
+        id = "hyperos",
+        label = "HyperOS / MIUI (measured)",
         systemUiPackage = "com.android.systemui",
-        containerIds = listOf("samsung_status_icons"),
+        containerIds = listOf("hyperos_status_icons"),
         batteryId = "battery",
         clockId = "clock",
-        notes = "measured on SM-S938B",
-        match = listOf("samsung"),
-        measured = true
+        notes = "measured on 24129PN74G",
+        match = listOf("xiaomi", "redmi", "poco"),
+        measured = true,
+        apiMin = 37,
+        apiMax = 37
     )
 
     @Test
@@ -94,27 +101,29 @@ class RomProfilesTest {
 
     @Test
     fun `a measured profile overrides the unverified built-in for its match`() {
-        val samsung = RomDetection.forThisRom(
-            "samsung", "samsung", "dm1q", "samsung/dm1q:14", listOf(measuredSamsung())
+        val hyper = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016",
+            listOf(measuredHyperOs()), 37, hyperOsMarkers
         )
-        assertEquals("samsung_status_icons", samsung.containerIds.first())
-        assertTrue(samsung.measured)
+        assertEquals("hyperos_status_icons", hyper.containerIds.first())
+        assertTrue(hyper.measured)
     }
 
     @Test
     fun `an unmeasured profile never overrides the built-in`() {
-        val samsung = RomDetection.forThisRom(
-            "samsung", "samsung", "dm1q", "samsung/dm1q:14",
-            listOf(measuredSamsung().copy(measured = false))
+        val hyper = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016",
+            listOf(measuredHyperOs().copy(measured = false)), 37, hyperOsMarkers
         )
-        assertEquals("system_icons", samsung.containerIds.first())
-        assertFalse(samsung.measured)
+        assertEquals("system_icons", hyper.containerIds.first())
+        assertFalse("the unmeasured profile's ids are not used", hyper.containerIds.contains("hyperos_status_icons"))
     }
 
     @Test
     fun `a profile that does not match leaves the built-in choice alone`() {
         val google = RomDetection.forThisRom(
-            "Google", "google", "husky", "Google/husky:16", listOf(measuredSamsung())
+            "Google", "google", "husky", "Google/husky:16",
+            listOf(measuredHyperOs()), 37, hyperOsMarkers
         )
         assertEquals("aosp", google.id)
     }
@@ -236,10 +245,13 @@ class RomProfilesTest {
         assertEquals("batteryRemainingIcon", rom.shadeBatteryId)
         assertTrue(rom.shadeMeasured)
         assertTrue(rom.panelOwnerAvailable)
+        // The shipped oxygenos profile is measured in the asset, but no marker proves the family on
+        // brand alone, so the selected adapter is the code fallback and is not measured (R18).
+        assertFalse("brand/SDK cannot prove OxygenOS", rom.measured)
     }
 
     @Test
-    fun `shipped asset keeps the six unmeasured maps out of runtime selection`() {
+    fun `shipped asset keeps the seven unmeasured maps out of runtime selection`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val profiles = RomProfiles.load(context)
         assertEquals(9, profiles.size)

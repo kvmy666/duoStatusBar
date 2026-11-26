@@ -28,12 +28,16 @@ class RomDetectionTest {
     )
 
     @Test
-    fun `oneplus is recognised as oxygenos and keeps the measured ids`() {
+    fun `oneplus is recognised as oxygenos and keeps the measured ids unverified`() {
+        // CPH2747's SystemUI is /system_ext/priv-app/SystemUI/SystemUI.apk with
+        // com.android.systemui.SystemUIApplication, identical to AOSP, so brand/SDK cannot prove
+        // OxygenOS: the ids stay, `measured` does not (R18).
         val rom = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16")
         assertEquals("oxygenos", rom.id)
         assertEquals("system_icons", rom.containerIds.first())
         assertEquals("battery", rom.batteryId)
-        assertTrue("measured, not guessed", rom.notes.contains("measured"))
+        assertFalse("brand/SDK cannot prove OxygenOS", rom.measured)
+        assertTrue(rom.notes.contains("brand-match (unverified)"))
     }
 
     @Test
@@ -118,7 +122,7 @@ class RomDetectionTest {
         assertEquals(listOf("system_icons", "system_icon_area", "statusIcons"), rom.containerIds)
         assertEquals(listOf("shade_header_system_icons", "system_icons"), rom.shadeContainerIds)
         assertEquals("batteryRemainingIcon", rom.shadeBatteryId)
-        assertEquals("static APK OriginOS 6; runtime unverified", rom.notes)
+        assertEquals("brand-match (unverified): static APK OriginOS 6; runtime unverified", rom.notes)
         assertFalse("status and shade were not read off a device", rom.shadeMeasured)
         assertEquals("vivo", RomDetection.forThisRom("iQOO", "iQOO", "p", "d").id)
     }
@@ -133,7 +137,7 @@ class RomDetectionTest {
             rom.shadeContainerIds
         )
         assertEquals("battery", rom.shadeBatteryId)
-        assertEquals("static APK MagicOS 11 old; runtime unverified", rom.notes)
+        assertEquals("brand-match (unverified): static APK MagicOS 11 old; runtime unverified", rom.notes)
         assertFalse(rom.shadeMeasured)
     }
 
@@ -210,8 +214,8 @@ class RomDetectionTest {
         // map each to expected id
         val expectedIds = listOf("oxygenos","hyperos","samsung","vivo","motorola","nothing","coloros","honor","aosp")
         for ((i, input) in inputs.withIndex()) {
-            // HyperOS now needs a proven SystemUI marker; the other brands ignore it. SDK 36 keeps
-            // OxygenOS's measured result intact (its own gating test pins that separately).
+            // HyperOS now needs a proven SystemUI marker; the other brands ignore it. OxygenOS is
+            // never measured from brand/SDK, so no SDK value can claim it (R18).
             val markers = if (expectedIds[i] == "hyperos") hyperOsMarkers else RomMarkers.UNKNOWN
             val rom = RomDetection.forThisRom(input.first, input.second, "p", "d", 36, markers)
             assertEquals(expectedIds[i], rom.id)
@@ -225,14 +229,32 @@ class RomDetectionTest {
 
 
     @Test
-    fun `oneplus sdk gating marks measured only on sdk 36`() {
+    fun `oneplus is never measured from sdk alone`() {
         val sdk33 = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 33)
-        assertFalse("SDK 33 is not the measured build", sdk33.measured)
-        assertTrue(sdk33.notes.contains("unverified"))
+        assertFalse("SDK 33 is not proof of OxygenOS", sdk33.measured)
+        assertTrue(sdk33.notes.contains("brand-match (unverified)"))
 
+        // SDK 36 is CPH2747's build, but its SystemUI is the AOSP one (see RomMarkers.provesFamily),
+        // so the SDK cannot promote the brand match to measured (R18).
         val sdk36 = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 36)
-        assertTrue("SDK 36 is the measured build", sdk36.measured)
-        assertTrue(sdk36.notes.contains("measured"))
+        assertFalse("SDK 36 is not proof of OxygenOS", sdk36.measured)
+        assertTrue(sdk36.notes.contains("brand-match (unverified)"))
+    }
+
+    @Test
+    fun `hyperos is measured only with a proven marker`() {
+        val proven = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, hyperOsMarkers
+        )
+        assertEquals("hyperos", proven.id)
+        assertTrue("the Miui marker proves the family", proven.measured)
+
+        val unknown = RomDetection.forThisRom(
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, RomMarkers.UNKNOWN
+        )
+        assertEquals("hyperos", unknown.id)
+        assertFalse("UNKNOWN is not a proven marker", unknown.measured)
+        assertTrue(unknown.notes.contains("brand-match (unverified)"))
     }
 
     @Test
@@ -251,26 +273,31 @@ class RomDetectionTest {
     @Test
     fun `a data profile whose api range excludes the sdk is rejected`() {
         val profile = RomAdapter(
-            id = "oxygenos",
-            label = "OxygenOS / OnePlus (measured)",
+            id = "hyperos",
+            label = "HyperOS / MIUI (measured)",
             systemUiPackage = "com.android.systemui",
-            containerIds = listOf("system_icons"),
+            containerIds = listOf("asset_only_container"),
             batteryId = "battery",
             notes = "measured",
-            match = listOf("oneplus"),
+            match = listOf("xiaomi"),
             measured = true,
             apiMin = 36,
             apiMax = 36
         )
         val rom = RomDetection.forThisRom(
-            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", listOf(profile), 33
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016",
+            listOf(profile), 33, hyperOsMarkers
         )
         assertFalse("profile out of range must not override", rom.measured)
+        assertEquals("hyperos", rom.id)
+        assertFalse("the out-of-range asset profile is not used", rom.containerIds.contains("asset_only_container"))
         // convenience overload, SDK first
         val rom2 = RomDetection.forThisRom(
-            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 33, listOf(profile)
+            "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 33, listOf(profile), hyperOsMarkers
         )
         assertFalse("profile out of range must not override", rom2.measured)
+        assertEquals("hyperos", rom2.id)
+        assertFalse("the out-of-range asset profile is not used", rom2.containerIds.contains("asset_only_container"))
     }
 
     @Test
@@ -369,12 +396,12 @@ class RomDetectionTest {
     }
 
     @Test
-    fun `the measured hyperos asset profile follows the tri-state marker`() {
+    fun `a measured asset profile needs a proven family marker`() {
         val assetHyper = RomAdapter(
             id = "hyperos",
             label = "HyperOS / MIUI",
             systemUiPackage = "com.android.systemui",
-            containerIds = listOf("system_icons", "system_icon_area"),
+            containerIds = listOf("asset_only_container"),
             batteryId = "battery",
             notes = "measured",
             match = listOf("xiaomi", "redmi", "poco"),
@@ -385,26 +412,30 @@ class RomDetectionTest {
         val profiles = listOf(assetHyper)
         val display = "sweet_global-user 13 TKQ1.221013.002 V14.0.9.0.TKFMIXM release-keys"
 
-        // UNKNOWN is the old behaviour: the measured HyperOS profile is still accepted.
+        // UNKNOWN is not proof: the measured profile is rejected and the code hyperos adapter is used.
         val unknown = RomDetection.forThisRom(
             "Xiaomi", "Xiaomi", "aospa_sweet", display, profiles, 37, RomMarkers.UNKNOWN
         )
         assertEquals("hyperos", unknown.id)
-        assertTrue("UNKNOWN accepts the measured asset profile", unknown.measured)
+        assertFalse("UNKNOWN cannot select a measured asset profile", unknown.measured)
+        assertFalse("the unproven asset profile is not used", unknown.containerIds.contains("asset_only_container"))
 
-        // Only a successful read that proves non-MIUI skips the measured HyperOS profile, so a custom
-        // AOSPA/Lineage build does not take the measured HyperOS asset map.
+        // A successful read of a plain SystemUI proves non-MIUI, so the profile is rejected and the
+        // code path still switches the Xiaomi brand to AOSP (see RomMarkers.provesNonMiui).
         val provenNonMiui = RomDetection.forThisRom(
             "Xiaomi", "Xiaomi", "aospa_sweet", display, profiles, 37, plainSystemUiMarkers
         )
         assertEquals("aosp", provenNonMiui.id)
         assertFalse(provenNonMiui.measured)
+        assertFalse("the unproven asset profile is not used", provenNonMiui.containerIds.contains("asset_only_container"))
 
+        // The Miui marker proves the family, so the measured profile is accepted.
         val provenMiui = RomDetection.forThisRom(
             "Xiaomi", "Xiaomi", "aospa_sweet", display, profiles, 37, hyperOsMarkers
         )
         assertEquals("hyperos", provenMiui.id)
         assertTrue("the measured asset profile is accepted with the MIUI marker", provenMiui.measured)
+        assertEquals("asset_only_container", provenMiui.containerIds.first())
     }
 
     @Test
@@ -418,7 +449,7 @@ class RomDetectionTest {
         assertEquals(without.id, withMarkers.id)
         assertEquals("oxygenos", withMarkers.id)
         assertEquals(without.measured, withMarkers.measured)
-        assertTrue("CPH2747 on SDK 36 is the measured build", withMarkers.measured)
+        assertFalse("brand/SDK cannot prove OxygenOS (R18)", withMarkers.measured)
         assertEquals(without.containerIds, withMarkers.containerIds)
         assertEquals(without.shadeContainerIds, withMarkers.shadeContainerIds)
         assertEquals(without.shadeBatteryId, withMarkers.shadeBatteryId)
