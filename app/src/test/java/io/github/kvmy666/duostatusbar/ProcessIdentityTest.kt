@@ -53,6 +53,40 @@ class ProcessIdentityTest {
     }
 
     @Test
+    fun `marking the installing process makes a null or unknown name the main process`() {
+        ProcessIdentity.forceForTest(null, 4321)
+        assertFalse(ProcessIdentity.isMainSystemUi())
+        ProcessIdentity.markMainProcess()
+        assertTrue(ProcessIdentity.isMainSystemUi())
+
+        ProcessIdentity.resetForTest()
+        ProcessIdentity.forceForTest("unknown", 4321)
+        assertFalse(ProcessIdentity.isMainSystemUi())
+        ProcessIdentity.markMainProcess()
+        assertTrue(ProcessIdentity.isMainSystemUi())
+    }
+
+    @Test
+    fun `an unmarked side process is never the main process`() {
+        ProcessIdentity.forceForTest("com.android.systemui:edgelighting", 99)
+        assertFalse(ProcessIdentity.isMainSystemUi())
+
+        ProcessIdentity.forceForTest("com.oplus.aiunit:worker43", 100)
+        assertFalse(ProcessIdentity.isMainSystemUi())
+    }
+
+    @Test
+    fun `reset clears the main process mark`() {
+        ProcessIdentity.forceForTest(null, 1)
+        ProcessIdentity.markMainProcess()
+        assertTrue(ProcessIdentity.isMainSystemUi())
+
+        ProcessIdentity.resetForTest()
+        ProcessIdentity.forceForTest(null, 1)
+        assertFalse(ProcessIdentity.isMainSystemUi())
+    }
+
+    @Test
     fun `every level carries the process and pid prefix in the recent ring`() {
         ProcessIdentity.forceForTest("com.android.systemui", 777)
         L.i("info-line")

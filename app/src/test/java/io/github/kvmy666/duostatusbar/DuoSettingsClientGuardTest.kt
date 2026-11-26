@@ -17,6 +17,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -110,6 +111,21 @@ class DuoSettingsClientGuardTest {
             "refusal log missing: $log",
             log.contains("status write refused: side process=com.android.systemui:edgelighting pid=4242")
         )
+    }
+
+    @Test
+    fun `a null-name main process writes after markMainProcess`() {
+        ProcessIdentity.forceForTest(null, 4242)
+        assertFalse(ProcessIdentity.isMainSystemUi())
+
+        // MainHook installs on the package fallback even when the runtime cannot name the process,
+        // so the writer gate must accept the same load once it has been marked.
+        ProcessIdentity.markMainProcess()
+
+        DuoSettingsClient.report(context, "status-value")
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("a marked main process must attempt the write", 1, providerCalls.get())
     }
 
     @Test

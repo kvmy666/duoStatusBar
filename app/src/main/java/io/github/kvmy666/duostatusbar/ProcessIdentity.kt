@@ -32,6 +32,14 @@ internal object ProcessIdentity {
     @Volatile
     private var forcedPid: Int? = null
 
+    /**
+     * Set by [MainHook] on the class-loader load that actually installs. `MainHook` may have admitted
+     * that load through the package fallback while the runtime cannot name the process, so the writer
+     * gate must accept the same process instead of refusing every status/dump write.
+     */
+    @Volatile
+    private var mainProcess = false
+
     /** The process name, or `unknown` when the runtime cannot answer. Never throws, never logs. */
     fun processName(): String {
         if (forced) return forcedName ?: "unknown"
@@ -69,7 +77,12 @@ internal object ProcessIdentity {
      * HyperOS `packageName = system` report and the owner's `com.oplus.keyguard.*` class-loaders;
      * any `com.android.systemui:<suffix>` is a side process and is false.
      */
-    fun isMainSystemUi(): Boolean = processName() == SystemUiProcess.PACKAGE
+    fun isMainSystemUi(): Boolean = mainProcess || processName() == SystemUiProcess.PACKAGE
+
+    /** Marks the process MainHook actually installed in as the main SystemUI process. */
+    fun markMainProcess() {
+        mainProcess = true
+    }
 
     /** The prefix every module log line starts with. */
     fun prefix(): String = "process=${processName()} pid=${pid()} "
@@ -84,6 +97,7 @@ internal object ProcessIdentity {
         forced = false
         forcedName = null
         forcedPid = null
+        mainProcess = false
         synchronized(lock) {
             nameResolved = false
             name = null

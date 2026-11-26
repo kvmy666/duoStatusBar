@@ -39,6 +39,10 @@ class MainHook : IXposedHookLoadPackage {
                 return
             }
 
+            // The package fallback above can admit a load whose process name is null/blank. Mark the
+            // winner here, so the writer gate accepts the same process instead of refusing its writes.
+            ProcessIdentity.markMainProcess()
+
             try {
                 // Once per SystemUI load: the two facts that decide whether native Rive can load at all.
                 // A report without them cannot tell "Rive is denied by SELinux" from "Rive crashed".
