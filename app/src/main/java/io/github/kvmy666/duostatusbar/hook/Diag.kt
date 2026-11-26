@@ -6,6 +6,7 @@ import android.os.Process
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.ImageView
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.DeviceFacts
 import io.github.kvmy666.duostatusbar.L
@@ -99,6 +100,7 @@ internal object Diag {
     )
 
     private const val MAX_TREE_DEPTH = 14
+    private const val MAX_ICON_INVENTORY = 24
     private const val FLAG_HARDWARE_ACCELERATED = 0x01000000
 
     /**
@@ -253,6 +255,8 @@ internal object Diag {
             )
             appendLine("  provider=${if (DuoSettingsClient.providerUnreachable) "unreachable" else "ok"}")
             appendLine("  renderer=${element?.rendererName ?: "none"} ready=${element?.isReady ?: false}")
+            // B3: one line, absent while Rive bound. The reason code names the failed stage.
+            RiveBindReport.last()?.let { appendLine("  " + riveBindDiagLine(it)) }
             // Additive: the iOS skin has its own breaker and its own percentage source. Read from the
             // dump's settings when present, otherwise the last cached read; never an extra provider read.
             val iosSettings = settings ?: DuoSettingsClient.lastRead()
@@ -417,6 +421,43 @@ internal object Diag {
             view.resources.getResourceEntryName(view.id)
         } catch (_: Throwable) {
             "0x${view.id.toString(16)}"
+        }
+    }
+
+    /** B2: the bounded, text-free inventory of the bar's icon views and their drawable classes. */
+    internal fun iconInventory(root: View?): String {
+        if (root == null) return "none"
+        val out = ArrayList<String>(8)
+        try {
+            collectIcons(root, out, 0)
+        } catch (_: Throwable) {
+        }
+        return out.joinToString(",").ifBlank { "none" }
+    }
+
+    /**
+     * Reads only view/drawable class names, never text: the delivery evidence must not carry a
+     * notification's contents into a report. Bounded by count and depth so a deep bar cannot stall
+     * the dump; an unreadable class is named as such instead of being guessed.
+     */
+    private fun collectIcons(view: View, out: MutableList<String>, depth: Int) {
+        if (out.size >= MAX_ICON_INVENTORY || depth > MAX_TREE_DEPTH) return
+        val className = try {
+            view.javaClass.simpleName.ifBlank { "unreadable" }
+        } catch (_: Throwable) {
+            "unreadable"
+        }
+        if (className.contains("StatusBarIconView") || view is ImageView) {
+            val drawable = try {
+                (view as? ImageView)?.drawable?.javaClass?.simpleName?.ifBlank { "unreadable" }
+                    ?: "none"
+            } catch (_: Throwable) {
+                "unreadable"
+            }
+            out.add("$className:$drawable")
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) collectIcons(view.getChildAt(i), out, depth + 1)
         }
     }
 }

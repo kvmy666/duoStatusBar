@@ -235,6 +235,13 @@ internal object IosStackedSim {
     internal val hookClassesForDiagnostics: String
         get() = synchronized(classFacts) { classFacts.joinToString(",") }.ifBlank { "none" }
 
+    // B2 miss-line evidence: measured binder classes whose hook is absent (empty when resolved).
+    internal val missingBindersForDiagnostics: String
+        get() = synchronized(classFacts) {
+            classFacts.filter { it.startsWith("missing:") }
+                .joinToString(",") { it.removePrefix("missing:") }
+        }
+
     private fun noteClass(name: String, resolved: Boolean) {
         classFacts.add((if (resolved) "ok:" else "missing:") + name)
     }

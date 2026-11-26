@@ -3278,9 +3278,13 @@ internal class DuoIconHost(private val context: Context) {
      */
     private fun onElementFailed(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
-        L.w("Rive element did not bind - falling back to Canvas")
+        // B3: name the stage. The view recorded the first real reason; a box/host failure that did not
+        // come through DuoRiveView still gets a stable code instead of an empty parenthesis.
+        RiveBindReport.recordIfAbsent("bind", "element not bound")
+        val reason = RiveBindReport.reason() ?: "bind"
+        L.w("Rive element did not bind - falling back to Canvas (reason=$reason)")
         // Tell the app so it can ask the user to send the log; this is the failure we most need evidence for.
-        DuoSettingsClient.reportFallback(context, "Rive did not bind on ${android.os.Build.MODEL}; using the simple drawing")
+        DuoSettingsClient.reportFallback(context, "Rive did not bind on ${android.os.Build.MODEL} (reason=$reason); using the simple drawing")
         val canvas = try {
             DuoCanvasView(context, ringPart(), appliedDesignStyle).also { it.start() }
         } catch (t: Throwable) {

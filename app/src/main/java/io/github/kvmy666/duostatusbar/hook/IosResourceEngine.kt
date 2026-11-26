@@ -10,6 +10,8 @@ import de.robv.android.xposed.XposedHelpers
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import java.util.Arrays
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicLongArray
 import kotlin.math.roundToInt
 
 /** Which iOS glyph a mapped stock resource becomes. */
@@ -108,6 +110,27 @@ internal object IosResourceEngine : IosDiagnosticSource {
     private var failures: Int = 0
     private var maxMissNanos: Long = 0L
 
+    // B2 evidence: calls that arrived before the map was published were previously invisible (the
+    // null-snapshot path returned first). The atomic increment allocates nothing in the hot path.
+    private val callsBeforeMap = AtomicLong(0L)
+
+    @Volatile
+    private var activatedAtMs: Long = 0L
+
+    @Volatile
+    private var mapReadyAtMs: Long = 0L
+
+    @Volatile
+    private var lastBuildMs: Long = 0L
+
+    @Volatile
+    private var lastCoverage: List<IosPieceCoverage> = emptyList()
+
+    // Runtime misses per piece, in [IOS_PIECES] order (wifi, cell, label, hidden). Incremented only
+    // when the id is in the map: a package rejection or a replacement failure. Unknown ids cannot be
+    // attributed to a piece, so they stay in the global `misses` counter only.
+    private val pieceMisses = AtomicLongArray(4)
+
     val isActive: Boolean get() = installedFlag && snapshot != null
 
     /** Entries in the live map (0 while inactive, building or after an empty build). */
@@ -125,6 +148,26 @@ internal object IosResourceEngine : IosDiagnosticSource {
     /** REL210: the hooked class, or its absence, for the additive diag block. */
     internal val hookClassesForDiagnostics: String
         get() = if (installedFlag) "ok:ResourcesImpl" else "missing:ResourcesImpl"
+
+    // B2 evidence getters (report-time only; the hot path increments the primitive counters above).
+    internal val callsBeforeMapForDiagnostics: Long get() = callsBeforeMap.get()
+    internal val activeFamilyForDiagnostics: String get() = activeFamily
+    internal val coverageForDiagnostics: List<IosPieceCoverage> get() = lastCoverage
+    internal val timingForDiagnostics: String
+        get() = "activatedAt=$activatedAtMs mapReadyAt=$mapReadyAtMs buildMs=$lastBuildMs " +
+            "callsBeforeMap=${callsBeforeMap.get()} calls=$calls hits=$hits misses=$misses"
+    internal fun runtimeMissesForDiagnostics(): LongArray =
+        LongArray(4) { pieceMisses.get(it) }
+
+    /** Test seam: clear only the B2 evidence, leaving the install/gating state intact. */
+    internal fun resetEvidenceForTest() {
+        callsBeforeMap.set(0L)
+        activatedAtMs = 0L
+        mapReadyAtMs = 0L
+        lastBuildMs = 0L
+        lastCoverage = emptyList()
+        for (i in 0 until 4) pieceMisses.set(i, 0L)
+    }
 
     // ---------------------------------------------------------------------------------- install
 
@@ -194,20 +237,36 @@ internal object IosResourceEngine : IosDiagnosticSource {
             gen = ++generation
             activeFamily = rom.id
             resetCountersLocked()
+            activatedAtMs = System.currentTimeMillis()
+            mapReadyAtMs = 0L
+            lastBuildMs = 0L
             previousLive = (snapshot?.size ?: 0) > 0
         }
         val work = {
-            val built = buildMap(context, rom, settings)
+            val result = buildMap(context, rom, settings)
+            var published = false
             synchronized(stateLock) {
                 // Never publish an empty/failed build over a live map: V2->V2 keeps drawing the old
                 // snapshot until a successful rebuild replaces it.
-                if (gen == generation && built != null && built.size > 0) {
-                    snapshot = built
+                if (gen == generation && result != null && result.snapshot.size > 0) {
+                    snapshot = result.snapshot
+                    mapReadyAtMs = System.currentTimeMillis()
+                    lastBuildMs = result.buildMs
+                    lastCoverage = result.coverage
+                    published = true
                 } else {
                     IosV2Log.branchOnce(
                         "engine.publish",
                         "stale or empty build - previous map kept"
                     )
+                }
+            }
+            if (published && result != null) {
+                // One-shot evidence, once per published map: timing vs mapping and the per-piece
+                // coverage that decides whether the ROM's stock names were actually resolved.
+                L.i("ios v2 timing: ${timingForDiagnostics}")
+                for (line in coverageReport(result.coverage, rom.id, LongArray(4))) {
+                    L.i(line)
                 }
             }
         }
@@ -234,6 +293,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
             generation++
             snapshot = null
             activeFamily = ""
+            mapReadyAtMs = 0L
+            lastCoverage = emptyList()
         }
     }
 
@@ -244,13 +305,21 @@ internal object IosResourceEngine : IosDiagnosticSource {
         badPackage = 0
         failures = 0
         maxMissNanos = 0L
+        callsBeforeMap.set(0L)
+        for (i in 0 until 4) pieceMisses.set(i, 0L)
     }
 
     // ------------------------------------------------------------------------------------ hook
 
     private fun onLoadDrawable(param: XC_MethodHook.MethodHookParam) {
         try {
-            val snap = snapshot ?: return
+            val snap = snapshot
+            if (snap == null) {
+                // Before the map is published the hook still sees the bar's loads; counting them here
+                // is what tells a Samsung report whether V2 arrived too late for the first inflation.
+                callsBeforeMap.incrementAndGet()
+                return
+            }
             val args = param.args
             if (args.size < 4) return
             val id = args[2] as? Int ?: return
@@ -270,11 +339,13 @@ internal object IosResourceEngine : IosDiagnosticSource {
                 wrapper.getResourcePackageName(id)
             } catch (t: Throwable) {
                 badPackage += 1
+                pieceMisses.incrementAndGet(pieceIndexOf(snap.slotAt(index)))
                 IosV2Log.failureOnce("engine.packageName", t)
                 return
             }
             if (!snap.accepts(index, pkg)) {
                 badPackage += 1
+                pieceMisses.incrementAndGet(pieceIndexOf(snap.slotAt(index)))
                 return
             }
             val result = replace(snap, index, wrapper, args[3] as? Int ?: 0, nightOf(wrapper))
@@ -286,6 +357,14 @@ internal object IosResourceEngine : IosDiagnosticSource {
             // Whole body guarded: any unexpected failure leaves the stock load path untouched.
             IosV2Log.failureOnce("engine.loadDrawable", t)
         }
+    }
+
+    /** Piece index for the runtime miss counters, aligned with [IOS_PIECES] (allocation-free). */
+    private fun pieceIndexOf(slot: IosResourceSlot): Int = when (slot) {
+        is IosResourceSlot.Wifi -> 0
+        is IosResourceSlot.Cell -> 1
+        is IosResourceSlot.Label -> 2
+        is IosResourceSlot.Hidden -> 3
     }
 
     /**
@@ -331,6 +410,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
             snap.newDrawable(index, wrapper, density, night)
         } catch (t: Throwable) {
             failures += 1
+            pieceMisses.incrementAndGet(pieceIndexOf(snap.slotAt(index)))
             logOnce.once("ios-resource-replacement") {
                 L.w("$TAG replacement failed: ${t.javaClass.simpleName}")
             }
@@ -355,13 +435,20 @@ internal object IosResourceEngine : IosDiagnosticSource {
         context: android.content.Context,
         rom: RomAdapter,
         settings: ModuleSettings? = null
-    ): Snapshot? = buildMap(context, rom, settings)
+    ): Snapshot? = buildMap(context, rom, settings)?.snapshot
+
+    /** A built map plus the B2 evidence computed during the same pass (never re-resolved later). */
+    private class BuildResult(
+        val snapshot: Snapshot,
+        val coverage: List<IosPieceCoverage>,
+        val buildMs: Long
+    )
 
     private fun buildMap(
         context: android.content.Context,
         rom: RomAdapter,
         settings: ModuleSettings?
-    ): Snapshot? {
+    ): BuildResult? {
         // The stock-intrinsic probes load through the same hook; on the building thread the guard
         // makes those loads return the stock drawable (other threads keep the published map).
         val wasGuarded = guard.get() == true
@@ -377,6 +464,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
             val specs = IosResourceNames.specs(rom.id)
             val seen = HashSet<Int>(specs.size * 2)
             val resolved = ArrayList<ResolvedEntry>(specs.size)
+            // B2: which specs became entries, so per-piece coverage is exact and needs no second pass.
+            val resolvedSpecs = HashSet<IosResourceSpec>(specs.size)
             var duplicates = 0
             var noIntrinsic = 0
             var hiddenNoIntrinsic = 0
@@ -445,6 +534,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
                         stockHeightPx = if (isHidden) heightPx else 0
                     )
                 )
+                resolvedSpecs.add(spec)
             }
             val built = buildSnapshot(resolved, densityDpi, defaultTint)
             val buildMs = (System.nanoTime() - startedAt) / 1_000_000L
@@ -454,7 +544,7 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     "hiddenNoIntrinsic=$hiddenNoIntrinsic hiddenNoRestorable=$hiddenNoRestorable " +
                     "buildMs=$buildMs"
             )
-            return built
+            return BuildResult(built, computePieceCoverage(specs, resolvedSpecs), buildMs)
         } catch (t: Throwable) {
             logOnce.once("ios-resource-build") {
                 L.w("$TAG map build failed: ${t.javaClass.simpleName}")
@@ -488,6 +578,25 @@ internal object IosResourceEngine : IosDiagnosticSource {
                 "badPackage=$badPackage failures=$failures map=${snap?.size ?: 0} " +
                 "maxMissNs=$maxMissNanos"
         )
+    }
+
+    /** Coverage lines for a build/report; a piece with zero resolved (or a runtime miss) gets a miss line. */
+    internal fun coverageReport(
+        coverage: List<IosPieceCoverage>,
+        family: String,
+        misses: LongArray
+    ): List<String> {
+        if (coverage.isEmpty()) return emptyList()
+        val out = ArrayList<String>(coverage.size)
+        for (piece in coverage) {
+            out.add(coverageLine(family, piece))
+            val index = IOS_PIECES.indexOf(piece.piece)
+            val runtimeMiss = index >= 0 && index < misses.size && misses[index] > 0L
+            if (piece.resolved == 0 || runtimeMiss) {
+                out.add(missLine(family, piece.piece, piece.tried))
+            }
+        }
+        return out
     }
 
     // --------------------------------------------------------------------------------- snapshot

@@ -51,7 +51,8 @@ internal class HookReporter(
                 renderer = element?.rendererName ?: "none",
                 attached = element != null,
                 settings = settings,
-                riveAttempts = DuoGuard(ctx).attempts()
+                riveAttempts = DuoGuard(ctx).attempts(),
+                riveBind = RiveBindReport.reason()
             )
             L.i("status -> app: $status")
             DuoSettingsClient.report(ctx, status)
@@ -112,7 +113,9 @@ internal fun hookStatusText(
     renderer: String,
     attached: Boolean,
     settings: ModuleSettings?,
-    riveAttempts: Int
+    riveAttempts: Int,
+    /** B3: the Rive bind reason code; appended only when Rive failed. */
+    riveBind: String? = null
 ): String = buildString {
     append("process=").append(process)
     append(" pid=").append(pid)
@@ -131,4 +134,5 @@ internal fun hookStatusText(
         append(" · rev=").append(it.revision)
     }
     append(" · riveAttempts=").append(riveAttempts)
+    if (riveBind != null) append(" · riveBind=").append(riveBind)
 }

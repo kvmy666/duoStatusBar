@@ -63,6 +63,35 @@ class HookReporterStatusTest {
     }
 
     @Test
+    fun `a rive bind reason is appended only when Rive failed to bind`() {
+        val healthy = hookStatusText(
+            process = "com.android.systemui",
+            pid = 7,
+            owner = BarOwner.DUO.tag,
+            stage = 2,
+            renderer = "Rive",
+            attached = true,
+            settings = null,
+            riveAttempts = 0
+        )
+        assertTrue("healthy status must stay unchanged: $healthy", !healthy.contains("riveBind="))
+
+        val failed = hookStatusText(
+            process = "com.android.systemui",
+            pid = 7,
+            owner = BarOwner.DUO.tag,
+            stage = 2,
+            renderer = "Canvas",
+            attached = true,
+            settings = null,
+            riveAttempts = 1,
+            riveBind = "poll"
+        )
+        assertTrue("failed status: $failed", failed.startsWith("process=com.android.systemui pid=7 · owner=duo · "))
+        assertTrue("failed status: $failed", failed.endsWith(" · riveBind=poll"))
+    }
+
+    @Test
     fun `every owner tag is rendered`() {
         for (owner in BarOwner.entries) {
             val line = hookStatusText(

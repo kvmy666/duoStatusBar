@@ -1,7 +1,11 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
+import android.os.Build
 import android.view.View
+import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
+import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 
 /**
  * REL210: the one additive iOS diagnostic block.
@@ -51,6 +55,7 @@ internal object IosV2Report {
             "order=${IosIconOrder.hookClassesForDiagnostics}")
         out.add("  counters " + countersField(context))
         out.add("  settings " + settingsField(settings))
+        appendEvidence(out, context, home)
         out
     } catch (t: Throwable) {
         IosV2Log.failureOnce("report.block", t)
@@ -114,4 +119,162 @@ internal object IosV2Report {
             "hideExtras=${s.hideExtras} simDisplay=${s.simDisplay.replace(Regex("\\s+"), "_")} " +
             "stacked=${IosStackedSim.stackedActive} percentInside=${s.iosPercentInside}"
     }
+
+    /**
+     * B2: one evidence tail per dump. It answers "did V2 see the bar, which pieces resolved, and which
+     * loader path was used" without changing any drawing. Bounded: at most four coverage lines, the
+     * miss lines they imply, and one line each for battery/stacked/extras/delivery.
+     */
+    private fun appendEvidence(out: ArrayList<String>, context: Context?, home: View?) {
+        out.add("ios v2 timing: " + IosResourceEngine.timingForDiagnostics)
+
+        val family = familyId(context)
+        val coverage = IosResourceEngine.coverageForDiagnostics
+        val misses = IosResourceEngine.runtimeMissesForDiagnostics()
+        out.addAll(IosResourceEngine.coverageReport(coverage, family, misses))
+        if (coverage.isNotEmpty()) {
+            out.add(runtimeMissLine(family, misses))
+        }
+
+        if (family.isNotEmpty() && IosV2Profile.batteryFamily(family) &&
+            IosBatteryV2.firstFailureForDiagnostics != null
+        ) {
+            out.add(batteryMissLine(family))
+        }
+        if (family == "oxygenos") {
+            val stacked = IosStackedSim.missingBindersForDiagnostics
+            if (stacked.isNotEmpty()) out.add(stackedMissLine(family, stacked))
+            val extras = IosExtras.missingBindersForDiagnostics
+            if (extras.isNotEmpty()) out.add(extrasMissLine(family, extras))
+        }
+
+        // Total hook calls, including the ones that arrived before the map was published: those are
+        // still proof the bar used ResourcesImpl. A true zero states the path was never observed.
+        val hookCalls = try {
+            IosResourceEngine.callsForDiagnostics + IosResourceEngine.callsBeforeMapForDiagnostics
+        } catch (_: Throwable) {
+            0L
+        }
+        out.add(deliveryLine(hookCalls, Diag.iconInventory(home)))
+    }
+
+    /** The real family id: the activated engine's family, else the same detection the dump uses. */
+    private fun familyId(context: Context?): String {
+        val active = IosResourceEngine.activeFamilyForDiagnostics
+        if (active.isNotEmpty()) return active
+        if (context == null) return ""
+        return try {
+            RomDetection.forThisRom(
+                Build.MANUFACTURER.orEmpty(),
+                Build.BRAND.orEmpty(),
+                Build.PRODUCT.orEmpty(),
+                Build.DISPLAY.orEmpty(),
+                RomProfiles.load(context),
+                Build.VERSION.SDK_INT,
+                RomMarkerSource.read(context)
+            ).id
+        } catch (_: Throwable) {
+            ""
+        }
+    }
 }
+
+// ----------------------------------------------------------------------- B2 evidence (pure)
+// These helpers carry no Android state: the engine calls them at map build (coverage lines) and this
+// report calls them per dump (miss/delivery lines), so the exact text is unit-tested without a device.
+
+/** One engine piece's build-time coverage: how many specs resolved and the first unresolved names. */
+internal data class IosPieceCoverage(
+    val piece: String,
+    val resolved: Int,
+    val total: Int,
+    val tried: List<String>
+)
+
+/** Piece ids in the same order as [computePieceCoverage]; runtime counters use this order. */
+internal val IOS_PIECES: List<String> = listOf("wifi", "cell", "label", "hidden")
+
+/** The measured battery hook targets, tried verbatim (OxygenOS view/binder + AOSP view). */
+internal const val BATTERY_TRIED = "StatBatteryMeterView,BatteryViewBinder,BatteryMeterView"
+
+private fun pieceOf(kind: IosResourceKind): String = when (kind) {
+    IosResourceKind.WIFI -> "wifi"
+    IosResourceKind.CELL -> "cell"
+    IosResourceKind.LABEL -> "label"
+    IosResourceKind.HIDDEN -> "hidden"
+}
+
+private fun specName(spec: IosResourceSpec): String = when {
+    spec.name.isNotBlank() -> spec.name
+    spec.rawId != 0 -> "raw_0x" + spec.rawId.toString(16).padStart(8, '0')
+    else -> "raw"
+}
+
+private fun triedText(names: List<String>): String =
+    names.take(8).joinToString(",").ifBlank { "none" }
+
+/**
+ * Per-piece coverage for [specs]: every spec counts in its piece's total, [resolvedSpecs] counts as
+ * resolved, and the first eight unresolved names are kept in spec order. A piece with no specs is
+ * omitted (a family without hide-extras must not look like a hidden-piece miss).
+ */
+internal fun computePieceCoverage(
+    specs: List<IosResourceSpec>,
+    resolvedSpecs: Set<IosResourceSpec>
+): List<IosPieceCoverage> {
+    val out = ArrayList<IosPieceCoverage>(4)
+    for (kind in IosResourceKind.entries) {
+        val ofKind = specs.filter { it.kind == kind }
+        if (ofKind.isEmpty()) continue
+        val unresolved = ofKind.filter { it !in resolvedSpecs }
+        out.add(
+            IosPieceCoverage(
+                piece = pieceOf(kind),
+                resolved = ofKind.size - unresolved.size,
+                total = ofKind.size,
+                tried = unresolved.map(::specName).take(8)
+            )
+        )
+    }
+    return out
+}
+
+internal fun coverageLine(family: String, coverage: IosPieceCoverage): String =
+    "ios v2 coverage family=$family piece=${coverage.piece} " +
+        "resolved=${coverage.resolved}/${coverage.total} tried=${triedText(coverage.tried)}"
+
+internal fun missLine(family: String, piece: String, tried: List<String>): String =
+    "ios v2 miss family=$family piece=$piece tried=${triedText(tried)}"
+
+internal fun runtimeMissLine(family: String, misses: LongArray): String = buildString {
+    append("ios v2 runtimeMisses: family=").append(family.ifBlank { "none" })
+    for (i in IOS_PIECES.indices) {
+        append(' ').append(IOS_PIECES[i]).append('=')
+        append(if (i < misses.size) misses[i] else 0L)
+    }
+}
+
+/**
+ * The loader-path evidence. `ResourcesImpl.loadDrawable` is the only path this engine observes; a
+ * zero call count states that the bar's icons never came through it, without guessing whether the ROM
+ * used `setImageResource`, `getShadowDrawable`, an `IconViewBinder` or Compose.
+ */
+internal fun deliveryLine(calls: Long, viewIcons: String): String {
+    val inventory = viewIcons.ifBlank { "none" }
+    val base = "ios v2 delivery: resourcesImpl calls=$calls; viewIcons=$inventory"
+    return if (calls == 0L) {
+        "$base (bar not observed through ResourcesImpl.loadDrawable; " +
+            "setImageResource/shadow/Compose path is not observed)"
+    } else {
+        base
+    }
+}
+
+internal fun batteryMissLine(family: String): String =
+    missLine(family, "battery", BATTERY_TRIED.split(','))
+
+internal fun stackedMissLine(family: String, tried: String): String =
+    missLine(family, "stacked", tried.split(',').map { it.trim() }.filter { it.isNotEmpty() })
+
+internal fun extrasMissLine(family: String, tried: String): String =
+    missLine(family, "extras", tried.split(',').map { it.trim() }.filter { it.isNotEmpty() })

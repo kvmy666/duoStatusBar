@@ -1529,7 +1529,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     detail = "${t.javaClass.simpleName}: ${t.message}"
                 )
                 L.w("shade panel expansion hook unavailable: ${t.javaClass.simpleName}: ${t.message}")
-                L.w("shade panel expansion lookup failed at phase=$phase - panel owner falls back to attach order: ${t.javaClass.simpleName}: ${t.message}")
+                L.w("shade panel expansion lookup failed at phase=$phase sdk=${Build.VERSION.SDK_INT} panelFallback=attach-order - panel owner falls back to attach order: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
         if (handles.isEmpty()) return null

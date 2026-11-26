@@ -163,6 +163,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     internal val hookClassesForDiagnostics: String
         get() = synchronized(classFacts) { classFacts.joinToString(",") }.ifBlank { "none" }
 
+    /** B2: the first refusal/exception token, or null when healthy; used by the battery miss line. */
+    internal val firstFailureForDiagnostics: String? get() = firstFailure
+
     private fun noteClass(simpleName: String, resolved: Boolean) {
         classFacts.add((if (resolved) "ok:" else "missing:") + simpleName)
     }

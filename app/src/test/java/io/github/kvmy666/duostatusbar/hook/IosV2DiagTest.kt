@@ -34,6 +34,8 @@ class IosV2DiagTest {
         IosV2Log.resetForTest()
         IosSlotLayout.resetForTest()
         IosExtras.resetForTest()
+        IosResourceEngine.resetEvidenceForTest()
+        RiveBindReport.resetForTest()
         L.clearRecentForTest()
     }
 
@@ -43,6 +45,8 @@ class IosV2DiagTest {
         IosSlotLayout.resetForTest()
         IosExtras.resetForTest()
         IosV2Log.resetForTest()
+        IosResourceEngine.resetEvidenceForTest()
+        RiveBindReport.resetForTest()
         L.clearRecentForTest()
     }
 
@@ -244,6 +248,41 @@ class IosV2DiagTest {
         assertTrue("settings: $settings", settings.contains("hideExtras=false"))
         assertTrue("settings: $settings", settings.contains("simDisplay=dual"))
         assertTrue("settings: $settings", settings.contains("percentInside=true"))
+    }
+
+    @Test
+    fun `timing delivery inventory and a structured rive bind line are reported`() {
+        val tree = Tree(context)
+        registerAll(tree)
+        RiveBindReport.record("poll", "no view model instance after 25 polls")
+
+        val lines = blockLines(tree, iosSettings())
+
+        val timing = lineAfter(lines, "ios v2 timing:")
+        assertTrue("timing: $timing", timing.contains("activatedAt="))
+        assertTrue("timing: $timing", timing.contains("mapReadyAt="))
+        assertTrue("timing: $timing", timing.contains("buildMs="))
+        assertTrue("timing: $timing", timing.contains("callsBeforeMap="))
+        assertTrue("timing: $timing", timing.contains("calls="))
+
+        val delivery = lineAfter(lines, "ios v2 delivery:")
+        assertTrue("delivery: $delivery", delivery.contains("resourcesImpl calls="))
+        assertTrue("delivery: $delivery", delivery.contains("viewIcons="))
+        assertTrue(
+            "delivery must inventory the bar's icon ImageViews: $delivery",
+            delivery.contains("ImageView:IosWifiDrawable")
+        )
+        if (delivery.contains("calls=0")) {
+            assertTrue(
+                "a zero-call delivery line must say the bar was not observed: $delivery",
+                delivery.contains("not observed")
+            )
+        }
+
+        assertEquals(
+            "rive bind: reason=poll detail=no_view_model_instance_after_25_polls",
+            lineAfter(lines, "rive bind:").trim()
+        )
     }
 
     @Test

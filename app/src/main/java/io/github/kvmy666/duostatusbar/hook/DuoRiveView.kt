@@ -18,7 +18,9 @@ import app.rive.runtime.kotlin.renderers.Renderer
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RiveInit
+import io.github.kvmy666.duostatusbar.DeviceFacts
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** The raw drawing for [designStyle]; an unknown value keeps the classic drawing. Pure and testable. */
 internal fun rawResourceFor(designStyle: String?): Int =
@@ -59,6 +61,9 @@ internal class DuoRiveView(
     private var polls = 0
     private var pendingVisual: DuoVisual? = null
     private var assetLogged = false
+
+    /** One-shot: only the first structured failure writes the full device/surface log line. */
+    private val failureLogged = AtomicBoolean(false)
 
     /** The newest snapshot. The fill animation draws intermediates of this, not a second source. */
     private var targetVisual: DuoVisual? = null
@@ -141,6 +146,7 @@ internal class DuoRiveView(
             // False means the runtime is not usable here; the host falls back to the no-native view.
             if (!RiveInit.ensure(context)) {
                 L.e("Rive runtime unavailable - not creating a Rive view")
+                noteFailure("runtime", "RiveInit.ensure=false")
                 return false
             }
             val bytes = loadRiveBytes() ?: return false
@@ -167,6 +173,7 @@ internal class DuoRiveView(
             true
         } catch (t: Throwable) {
             L.e("start failed: ${t.javaClass.simpleName}: ${t.message}")
+            noteFailure("start", "${t.javaClass.simpleName}: ${t.message.orEmpty()}")
             false
         }
     }
@@ -213,13 +220,19 @@ internal class DuoRiveView(
                     pollForInstance()
                 } else {
                     L.w("no view model instance after $MAX_POLLS polls - Rive element did not bind")
+                    noteFailure("poll", "no view model instance after $MAX_POLLS polls")
                     failedActions.toList().forEach { it() }
                     readyActions.clear()
                     failedActions.clear()
                 }
             } catch (t: Throwable) {
                 L.w("instance poll: ${t.javaClass.simpleName}: ${t.message}")
-                if (++polls < MAX_POLLS) pollForInstance() else failedActions.toList().forEach { it() }
+                if (++polls < MAX_POLLS) {
+                    pollForInstance()
+                } else {
+                    noteFailure("poll", "instance poll: ${t.javaClass.simpleName}: ${t.message.orEmpty()}")
+                    failedActions.toList().forEach { it() }
+                }
             }
         }, POLL_MS)
     }
@@ -252,10 +265,12 @@ internal class DuoRiveView(
             target.apply(shown)
         } catch (t: Throwable) {
             L.e("render failed: ${t.javaClass.simpleName}: ${t.message}")
+            noteFailure("render", "${t.javaClass.simpleName}: ${t.message.orEmpty()}")
             return
         }
         if (failures > 0) {
             L.w("$failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
+            noteFailure("bind", "$failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
         }
         // The writes land in the view model, but the drawing only follows if the renderer is running -
         // and the renderer's loop stops once the state machine settles into a hold state (measured:
@@ -297,6 +312,39 @@ internal class DuoRiveView(
             rive?.artboardRenderer?.start()
         } catch (t: Throwable) {
             L.w("renderer start: ${t.javaClass.simpleName}: ${t.message}")
+            noteFailure("renderer", "start: ${t.javaClass.simpleName}: ${t.message.orEmpty()}")
+        }
+    }
+
+    /**
+     * B3: remembers the newest failure and writes one structured line the first time, carrying the
+     * facts a HyperOS/Vector report needs. Never throws; the Canvas fallback is unchanged.
+     */
+    private fun noteFailure(reason: String, detail: String) {
+        try {
+            RiveBindReport.record(reason, detail)
+            if (!failureLogged.compareAndSet(false, true)) return
+            val failure = RiveBindReport.last() ?: return
+            val stage = try {
+                DuoGuard(context).stage()
+            } catch (_: Throwable) {
+                -1
+            }
+            L.w(
+                riveFailureLogLine(
+                    failure,
+                    polls = polls,
+                    attached = isAttachedToWindow,
+                    hardware = isHardwareAccelerated,
+                    width = width,
+                    height = height,
+                    renderer = "Canvas",
+                    selinux = DeviceFacts.selinux(),
+                    stage = stage
+                )
+            )
+        } catch (_: Throwable) {
+            // A diagnostic must never be the reason the bar dies.
         }
     }
 
@@ -375,6 +423,7 @@ internal class DuoRiveView(
             moduleContext.resources.openRawResource(resource).use { it.readBytes() }
         } catch (t: Throwable) {
             L.e("Rive asset $designStyle unreadable: ${t.javaClass.simpleName}: ${t.message}")
+            noteFailure("asset", "$designStyle: ${t.javaClass.simpleName}: ${t.message.orEmpty()}")
             null
         }
     }
@@ -460,3 +509,66 @@ private class CanvasWorkerGate : Renderer(RendererType.Canvas, false) {
     override fun advance(elapsed: Float) {}
 }
 
+
+// ------------------------------------------------------------------------------------ B3 evidence
+// The last structured bind failure. It is process-wide so the Diag dump and the app status can name
+// the reason after the Rive view has been torn down and replaced by the Canvas fallback.
+
+internal data class RiveBindFailure(val reason: String, val detail: String)
+
+internal object RiveBindReport {
+
+    private val lock = Any()
+
+    @Volatile
+    private var failure: RiveBindFailure? = null
+
+    /** Records the newest failure; the one-shot log is emitted by the view, not here. */
+    fun record(reason: String, detail: String) {
+        synchronized(lock) {
+            failure = RiveBindFailure(token(reason, 40), detail)
+        }
+    }
+
+    /** Records only when nothing failed yet (the host's generic fallback must not mask a real reason). */
+    fun recordIfAbsent(reason: String, detail: String) {
+        synchronized(lock) {
+            if (failure == null) failure = RiveBindFailure(token(reason, 40), detail)
+        }
+    }
+
+    fun last(): RiveBindFailure? = failure
+
+    fun reason(): String? = failure?.reason
+
+    internal fun resetForTest() {
+        synchronized(lock) { failure = null }
+    }
+
+    /** One line token: no newlines and a bounded length, so a report stays parseable. */
+    internal fun token(text: String, max: Int): String {
+        val flat = text.replace(Regex("\\s+"), "_").trim('_')
+        return if (flat.isEmpty()) "none" else flat.take(max)
+    }
+}
+
+/** The dump line: one line, absent when Rive is healthy. */
+internal fun riveBindDiagLine(failure: RiveBindFailure): String =
+    "rive bind: reason=${RiveBindReport.token(failure.reason, 40)} " +
+        "detail=${RiveBindReport.token(failure.detail, 120)}"
+
+/** The one-shot log line: reason, poll progress, surface and device state, SELinux stage. */
+internal fun riveFailureLogLine(
+    failure: RiveBindFailure,
+    polls: Int,
+    attached: Boolean,
+    hardware: Boolean,
+    width: Int,
+    height: Int,
+    renderer: String,
+    selinux: String,
+    stage: Int
+): String = "rive bind failed: reason=${RiveBindReport.token(failure.reason, 40)} " +
+    "detail=${RiveBindReport.token(failure.detail, 120)} polls=$polls attached=$attached " +
+    "hardware=$hardware size=${width}x$height renderer=$renderer " +
+    "selinux=$selinux stage=$stage"
