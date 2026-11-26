@@ -99,3 +99,20 @@ internal class HookReporter(
         }
     }
 }
+
+/**
+ * The app-visible status line: process identity first, then the owner and the facts the diagnostics
+ * screen already showed. Pure so the exact shape is pinned without a Context.
+ *
+ * RED STUB: returns an empty line so the status-identity test fails before the fix.
+ */
+internal fun hookStatusText(
+    process: String,
+    pid: Int,
+    owner: String,
+    stage: Int,
+    renderer: String,
+    attached: Boolean,
+    settings: ModuleSettings?,
+    riveAttempts: Int
+): String = ""
