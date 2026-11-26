@@ -3514,7 +3514,8 @@ internal class DuoIconHost(private val context: Context) {
         extras.forEach {
             try {
                 it.stock.restore()
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                L.w("extra ${it.name} restore: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
@@ -3765,13 +3766,28 @@ internal class DuoIconHost(private val context: Context) {
         } catch (_: Throwable) {
         }
         for (slot in extras) {
+            // Each step is guarded on its own: a failed drop or remove must never skip the stock
+            // restore, or the stock icons stay hidden after the element is gone (R17).
             try {
                 drop(slot.indicators, slot.container)
                 slot.indicators = null
+            } catch (t: Throwable) {
+                L.w("extra ${slot.name} teardown indicators: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            try {
                 slot.element?.let { slot.container?.removeView(it.ui) }
+            } catch (t: Throwable) {
+                L.w("extra ${slot.name} teardown remove: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            try {
                 slot.element?.teardown()
+            } catch (t: Throwable) {
+                L.w("extra ${slot.name} teardown view: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            try {
                 slot.stock.restore()
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                L.w("extra ${slot.name} teardown restore: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
         extras.clear()
@@ -4121,7 +4137,8 @@ internal class DuoIconHost(private val context: Context) {
         if (view != null && retry != null) {
             try {
                 view.removeCallbacks(retry)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                L.w("shade retry cancel: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
         shadeRetryView = null

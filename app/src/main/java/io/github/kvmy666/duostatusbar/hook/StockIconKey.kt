@@ -2,6 +2,7 @@ package io.github.kvmy666.duostatusbar.hook
 
 import android.view.View
 import android.view.ViewGroup
+import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.settings.StockIconInventory
 import io.github.kvmy666.duostatusbar.settings.StockIconInventoryItem
 
@@ -51,6 +52,8 @@ internal data class StockIcon(
  * or an unexpected class still yields a usable key/label instead of throwing inside System UI.
  */
 internal object StockIconKey {
+
+    private val logOnce = LogOnce()
 
     /** Children of the OOS composites: part of the icon, never separate entries. */
     private val INNER_IDS = setOf(
@@ -152,7 +155,11 @@ internal object StockIconKey {
     /** True when this view must never appear in the list or be hidden as an icon. */
     fun isIgnored(view: View): Boolean = try {
         isDuoOwned(view) || isStatusDot(view) || isInnerSignal(view)
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        logOnce.once(view.javaClass.simpleName) {
+            L.w("StockIconKey.isIgnored(${view.javaClass.simpleName}) failed: " +
+                "${t.javaClass.simpleName}: ${t.message}")
+        }
         true
     }
 

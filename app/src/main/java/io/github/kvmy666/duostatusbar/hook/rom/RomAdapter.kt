@@ -1,6 +1,8 @@
 package io.github.kvmy666.duostatusbar.hook.rom
 
 import android.content.Context
+import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.hook.LogOnce
 
 /**
  * What a ROM is called and where its status-bar icon strip lives (FR-01/02).
@@ -524,13 +526,18 @@ internal data class RomMarkers(
  */
 internal object RomMarkerSource {
 
+    private val logOnce = LogOnce()
+
     fun read(context: Context): RomMarkers = try {
         val info = context.packageManager.getApplicationInfo(RomDetection.AOSP, 0)
         RomMarkers.of(
             systemUiApplicationClass = info.className.orEmpty(),
             systemUiSourceDir = info.sourceDir.orEmpty()
         )
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        logOnce.once("marker-read") {
+            L.w("RomMarkerSource.read failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
         RomMarkers.UNKNOWN
     }
 }

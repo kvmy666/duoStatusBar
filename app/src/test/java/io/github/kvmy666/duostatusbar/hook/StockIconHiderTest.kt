@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.hook
 import android.app.Activity
 import android.content.Context
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.test.core.app.ApplicationProvider
@@ -46,6 +47,16 @@ class StockIconHiderTest {
 
     /** Motorola's dual-SIM composite: one CELLULAR view whose id carries both SIM rows. */
     private class MobileSignalGroupView(context: Context) : View(context)
+
+    /** A view whose layout restore fails only after [explode] is armed (R17 independent restore). */
+    private class ExplodingLayoutView(context: Context) : View(context) {
+        var explode = false
+
+        override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
+            if (explode) throw IllegalStateException("layout restore failed")
+            super.setLayoutParams(params)
+        }
+    }
 
     @Test
     fun `wifi, mobile and battery slots are the ones Duo replaces`() {
@@ -366,6 +377,35 @@ class StockIconHiderTest {
 
         assertEquals("both SIM rows must stay live", View.VISIBLE, composite.visibility)
         assertEquals(View.GONE, alarm.visibility)
+    }
+
+    // ------------------------------------------------------------------ R17 independent restore
+
+    @Test
+    fun `restore continues after one view throws`() {
+        val strip = LinearLayout(context)
+        val first = ExplodingLayoutView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(40, 30)
+        }
+        val second = ExplodingLayoutView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(20, 18)
+        }
+        strip.addView(first)
+        strip.addView(second)
+
+        val hider = StockIconHider()
+        hider.hideKeepLayout(first)
+        hider.hideKeepLayout(second)
+        assertEquals(View.INVISIBLE, first.visibility)
+        assertEquals(View.INVISIBLE, second.visibility)
+
+        first.explode = true
+        hider.restore()
+
+        assertEquals("the failing view's visibility is still restored", View.VISIBLE, first.visibility)
+        assertEquals("the next view must be restored independently", View.VISIBLE, second.visibility)
+        assertEquals(20, second.layoutParams.width)
+        assertEquals(18, second.layoutParams.height)
     }
 
     // ------------------------------------------------------------------ R3 A6 re-show predicate

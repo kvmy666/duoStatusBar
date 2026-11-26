@@ -224,7 +224,8 @@ internal class StockIconHider(private val keepKeys: Set<String> = emptySet()) {
                     state.view.layoutParams = lp
                 }
             } catch (t: Throwable) {
-                L.w("restore: ${t.message}")
+                L.w("restore ${state.view.javaClass.simpleName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}")
             }
         }
         hiddenOriginals.clear()
