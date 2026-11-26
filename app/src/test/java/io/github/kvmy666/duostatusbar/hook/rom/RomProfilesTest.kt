@@ -342,6 +342,29 @@ class RomProfilesTest {
     }
 
     @Test
+    fun `shipped asset carries the vivo live QS row and battery ids`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profiles = RomProfiles.load(context)
+        val vivo = profiles.first { it.id == "vivo" }
+        assertEquals(
+            listOf(
+                "vivo_qs_status_icons",
+                "vivo_qs_status_icons_right",
+                "vivo_split_qs_status_icons_right",
+                "shade_header_system_icons",
+                "system_icons"
+            ),
+            vivo.shadeContainerIds
+        )
+        assertEquals(
+            listOf("vivo_qs_realbar_battery", "vivo_split_qs_realbar_battery"),
+            vivo.shadeBatteryIds
+        )
+        assertEquals("batteryRemainingIcon", vivo.shadeBatteryId)
+        assertFalse("the vivo map is still unverified", vivo.measured)
+    }
+
+    @Test
     fun `shipped asset keeps the seven unmeasured maps out of runtime selection`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val profiles = RomProfiles.load(context)

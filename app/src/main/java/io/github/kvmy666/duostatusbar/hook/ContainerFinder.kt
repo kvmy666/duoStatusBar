@@ -630,6 +630,8 @@ internal class ContainerFinder(
 
     internal fun findShadeBattery(area: ViewGroup, id: (String) -> Int): View? {
         val names = LinkedHashSet<String>()
+        // Vendor rows (vivo's live QS status container) name their own battery; probe them first.
+        names.addAll(rom.shadeBatteryIds)
         if (rom.shadeBatteryId.isNotBlank()) names.add(rom.shadeBatteryId)
         names.addAll(listOf("batteryRemainingIcon", "battery_icon_view", rom.batteryId, "battery"))
         for (name in names) {

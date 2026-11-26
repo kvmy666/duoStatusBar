@@ -385,6 +385,34 @@ class ContainerFinderTest {
     }
 
     @Test
+    fun `findVisibleShadeArea resolves the vivo QS status container`() {
+        val ids = FakeIds()
+        val profile = rom.copy(shadeContainerIds = listOf("vivo_qs_status_icons"))
+        val window = attachedRoot()
+        val row = LinearLayout(context).apply { id = ids.id("vivo_qs_status_icons") }
+        row.layout(0, 0, 386, 64)
+        window.addView(row)
+
+        assertSame(row, finder(profile).findVisibleShadeArea(window, ids::resolve))
+    }
+
+    @Test
+    fun `findShadeBattery prefers the vivo QS battery over batteryRemainingIcon`() {
+        val ids = FakeIds()
+        val profile = rom.copy(
+            shadeBatteryId = "batteryRemainingIcon",
+            shadeBatteryIds = listOf("vivo_qs_realbar_battery")
+        )
+        val area = attachedRoot()
+        val generic = FakeBatteryMeterView(context).apply { id = ids.id("batteryRemainingIcon") }
+        val vivo = FakeBatteryRemainingIcon(context).apply { id = ids.id("vivo_qs_realbar_battery") }
+        area.addView(generic)
+        area.addView(vivo)
+
+        assertSame(vivo, finder(profile).findShadeBattery(area, ids::resolve))
+    }
+
+    @Test
     fun `findShadeBattery prefers the profile shade battery id`() {
         val ids = FakeIds()
         val profile = rom.copy(shadeBatteryId = "profile_battery")

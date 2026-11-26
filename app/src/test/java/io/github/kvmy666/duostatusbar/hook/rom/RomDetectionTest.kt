@@ -153,8 +153,21 @@ class RomDetectionTest {
         val rom = RomDetection.forThisRom("vivo", "vivo", "V2309A", "OriginOS 6")
         assertEquals("vivo", rom.id)
         assertEquals(listOf("system_icons", "system_icon_area", "statusIcons"), rom.containerIds)
-        assertEquals(listOf("shade_header_system_icons", "system_icons"), rom.shadeContainerIds)
+        assertEquals(
+            listOf(
+                "vivo_qs_status_icons",
+                "vivo_qs_status_icons_right",
+                "vivo_split_qs_status_icons_right",
+                "shade_header_system_icons",
+                "system_icons"
+            ),
+            rom.shadeContainerIds
+        )
         assertEquals("batteryRemainingIcon", rom.shadeBatteryId)
+        assertEquals(
+            listOf("vivo_qs_realbar_battery", "vivo_split_qs_realbar_battery"),
+            rom.shadeBatteryIds
+        )
         assertEquals("brand-match (unverified): static APK OriginOS 6; runtime unverified", rom.notes)
         assertFalse("status and shade were not read off a device", rom.shadeMeasured)
         assertEquals("vivo", RomDetection.forThisRom("iQOO", "iQOO", "p", "d").id)

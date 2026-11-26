@@ -93,7 +93,18 @@ internal object Diag {
         "clock_for_fake",
         "shade_header_system_icons",
         "notificationIcons",
-        "notification_icon_area"
+        "notification_icon_area",
+        // HyperOS control-center strip (R9).
+        "normal_control_center_status_bar",
+        "control_center_status_bar",
+        "status_bar_area",
+        // vivo's live QS row and split variant (R10); vivo_split_status_container is a layout-name probe.
+        "vivo_qs_status_icons",
+        "vivo_qs_realbar_battery",
+        "vivo_qs_status_icons_right",
+        "vivo_split_qs_realbar_battery",
+        "vivo_split_qs_status_icons_right",
+        "vivo_split_status_container"
     )
 
     private const val MAX_TREE_DEPTH = 14

@@ -1634,6 +1634,20 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
         val result = host.attachShadeHeader(header, shade)
         ShadeProbe.logOnce("shadeProbe:attachShadeHeader:$result", "attachShadeHeader result=$result")
+        // R10: vivo keeps a GONE/INVISIBLE `combined_qs_header` in the tree, so a present header is not
+        // proof of a usable one. Only a dead header falls back to the window; a usable header that is
+        // simply not laid out yet keeps the existing bounded retry (no second attach path).
+        if (!result &&
+            ShadeRoute.shouldTryWindow(
+                header.isAttachedToWindow, header.visibility, header.isShown
+            )
+        ) {
+            val windowResult = host.attachShadeWindow(shade)
+            ShadeProbe.logOnce(
+                "shadeProbe:attachShadeWindow:fallback:$windowResult",
+                "attachShadeWindow fallback (dead header) result=$windowResult"
+            )
+        }
     }
 
     /**

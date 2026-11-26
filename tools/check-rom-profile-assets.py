@@ -29,7 +29,7 @@ DECODED = {
     "aosp": "",
 }
 FIELDS = ("containerIds", "batteryId", "clockId", "shadeContainerIds", "shadeBatteryId",
-          "hideContainerIds", "dualSimCompositeIds")
+          "shadeBatteryIds", "hideContainerIds", "dualSimCompositeIds", "keyguardContainerId")
 
 
 def names_in_tree(root: Path, wanted: set[str]) -> set[str]:

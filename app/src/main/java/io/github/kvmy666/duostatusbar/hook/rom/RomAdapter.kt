@@ -373,8 +373,15 @@ internal object RomDetection {
         batteryId = "battery",
         notes = "static APK OriginOS 6; runtime unverified",
         match = listOf("vivo", "iqoo", "origin", "funtouch"),
-        shadeContainerIds = listOf("shade_header_system_icons", "system_icons"),
+        shadeContainerIds = listOf(
+            "vivo_qs_status_icons",
+            "vivo_qs_status_icons_right",
+            "vivo_split_qs_status_icons_right",
+            "shade_header_system_icons",
+            "system_icons"
+        ),
         shadeBatteryId = "batteryRemainingIcon",
+        shadeBatteryIds = listOf("vivo_qs_realbar_battery", "vivo_split_qs_realbar_battery"),
         coverHook = true,
         panelExpansionKind = "zfz_3arg",
         panelHookMeasured = false
