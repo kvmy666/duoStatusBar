@@ -99,6 +99,16 @@ internal object AutoReportCaption {
 }
 
 /**
+ * The block appended to a ZIP report body naming the pending fingerprints that caused this send.
+ * Only new/unsent entries are listed: an already-sent count is not a trigger for this report.
+ */
+internal fun whySentSection(pending: List<PendingProblem>): String = buildString {
+    appendLine("=== why sent ===")
+    appendLine("fingerprints that triggered this report:")
+    pending.forEach { appendLine("- ${it.fingerprint} (count=${it.count})") }
+}.trimEnd()
+
+/**
  * One automatic-report pulse: consent gate, detection ledger, one ZIP for new problems, one compact
  * summary for counter-only pulses, the daily cap and reporter-failure retry.
  *
@@ -153,7 +163,11 @@ internal class AutoReportPulse(
             } else {
                 var zipError: String? = null
                 val artifact = try {
-                    zipper(collected)
+                    val enriched = collected.copy(
+                        report = collected.report.trimEnd() + "\n\n" +
+                            whySentSection(state.pending)
+                    )
+                    zipper(enriched)
                 } catch (t: Throwable) {
                     zipError = t.javaClass.simpleName
                     null

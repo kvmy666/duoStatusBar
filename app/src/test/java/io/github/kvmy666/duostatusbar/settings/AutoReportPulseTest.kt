@@ -61,8 +61,10 @@ class AutoReportPulseTest {
 
     private class FakeZipper(var bytes: Long = 512, var failure: Throwable? = null) {
         var calls = 0
-        fun zip(): ZipArtifact {
+        val collected = mutableListOf<AutoReportCollected>()
+        fun zip(input: AutoReportCollected): ZipArtifact {
             calls++
+            collected += input
             failure?.let { throw it }
             return ZipArtifact(null, bytes)
         }
@@ -102,7 +104,7 @@ class AutoReportPulseTest {
         elapsedClock = { 0L },
         identity = identity,
         collector = collector::collect,
-        zipper = { zipper.zip() },
+        zipper = { zipper.zip(it) },
         sender = sender,
         maxPerDay = maxPerDay
     )
@@ -143,6 +145,107 @@ class AutoReportPulseTest {
         assertTrue(store.state.sent.any { it.startsWith("attach|attach|") })
         assertTrue(store.state.pending.isEmpty())
         assertTrue(sender.zipCaptions.first().contains("attach|attach"))
+    }
+
+    @Test
+    fun `a zip report explains why it was sent`() {
+        val store = FakeStore()
+        val zipper = FakeZipper()
+        val sender = FakeSender()
+        val result = pulse(store, FakeCollector(problems = listOf(attach)), zipper, sender).run()
+        assertEquals(PulseAction.ZIP_SENT, result.action)
+        assertEquals(1, zipper.calls)
+        val report = zipper.collected.single().report
+        assertTrue(report.contains("=== why sent ==="))
+        assertTrue(report.contains("fingerprints that triggered this report:"))
+        assertTrue(report.contains("- attach|attach|2.1.2|CPH2747 (count=1)"))
+        assertTrue("the collected body is kept", report.startsWith("diagnostics body"))
+    }
+
+    @Test
+    fun `a repeat summary carries no why-sent trigger`() {
+        val store = FakeStore()
+        val zipper = FakeZipper()
+        val sender = FakeSender()
+        pulse(store, FakeCollector(problems = listOf(attach)), zipper, sender).run()
+        val repeat = pulse(store, FakeCollector(problems = listOf(attach)), zipper, sender).run()
+        assertEquals(PulseAction.SUMMARY_SENT, repeat.action)
+        assertEquals(1, zipper.calls)
+        assertEquals("no second zip", 1, sender.zipCalls)
+        assertEquals(1, sender.summaryCalls)
+        val summary = sender.summaries.single()
+        assertFalse(summary.contains("=== why sent ==="))
+        assertFalse(summary.contains("fingerprints that triggered"))
+    }
+
+    @Test
+    fun `a pulse with no problems stays silent twice`() {
+        // Simulates detection yielding nothing (e.g. update-pending no longer a problem).
+        val store = FakeStore()
+        val zipper = FakeZipper()
+        val sender = FakeSender()
+        repeat(2) {
+            val result = pulse(store, FakeCollector(problems = emptyList()), zipper, sender).run()
+            assertEquals(PulseAction.NOTHING, result.action)
+        }
+        assertEquals(0, zipper.calls)
+        assertEquals(0, sender.zipCalls)
+        assertEquals(0, sender.summaryCalls)
+        assertTrue(store.state.pending.isEmpty())
+        assertTrue(store.state.sent.isEmpty())
+    }
+
+    @Test
+    fun `why sent lists only the new pending fingerprint`() {
+        val store = FakeStore()
+        val zipper = FakeZipper()
+        val sender = FakeSender()
+        pulse(store, FakeCollector(problems = listOf(attach)), zipper, sender).run()
+        val second = pulse(
+            store,
+            FakeCollector(problems = listOf(attach, DetectedProblem("fallback", "rive"))),
+            zipper,
+            sender
+        ).run()
+        assertEquals(PulseAction.ZIP_SENT, second.action)
+        assertEquals(2, zipper.calls)
+        val report = zipper.collected.last().report
+        assertTrue(report.contains("=== why sent ==="))
+        assertTrue(report.contains("- fallback|rive|2.1.2|CPH2747 (count=1)"))
+        assertFalse(
+            "an already-sent fingerprint is not a new trigger again",
+            report.contains("attach|attach|2.1.2|CPH2747")
+        )
+    }
+
+    @Test
+    fun `why sent reports the coalesced count`() {
+        val store = FakeStore()
+        val zipper = FakeZipper()
+        val sender = FakeSender()
+        pulse(store, FakeCollector(problems = listOf(attach, attach)), zipper, sender).run()
+        assertEquals(1, zipper.calls)
+        assertTrue(
+            zipper.collected.single().report
+                .contains("- attach|attach|2.1.2|CPH2747 (count=2)")
+        )
+    }
+
+    @Test
+    fun `whySentSection renders the exact block for pending entries only`() {
+        val section = whySentSection(
+            listOf(
+                PendingProblem("attach|attach|2.1.2|CPH2747"),
+                PendingProblem("fallback|rive|2.1.2|CPH2747", 3)
+            )
+        )
+        assertEquals(
+            "=== why sent ===\n" +
+                "fingerprints that triggered this report:\n" +
+                "- attach|attach|2.1.2|CPH2747 (count=1)\n" +
+                "- fallback|rive|2.1.2|CPH2747 (count=3)",
+            section
+        )
     }
 
     @Test
