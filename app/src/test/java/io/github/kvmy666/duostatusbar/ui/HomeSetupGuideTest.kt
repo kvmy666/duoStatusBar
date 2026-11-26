@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.ui
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.settings.ModuleHealth
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -85,5 +86,41 @@ class HomeSetupGuideTest {
         ids.forEach { id ->
             assertTrue("string resource $id is blank", context.getString(id).isNotBlank())
         }
+    }
+
+    // R16-D: an installed update is its own Home hint, not the setup guide or the switched-off line.
+    @Test
+    fun `update hint is shown only while an update is pending`() {
+        assertTrue(showUpdateHint(ModuleHealth(ModuleState.NEEDS_RESTART, 1L, 2L)))
+        listOf(
+            ModuleState.OK,
+            ModuleState.NEVER_LOADED,
+            ModuleState.DISABLED,
+            ModuleState.NOT_REPORTING,
+            ModuleState.IOS_ACTIVE,
+            ModuleState.IOS_UNSUPPORTED
+        ).forEach { state ->
+            assertFalse("$state must not show the update hint", showUpdateHint(ModuleHealth(state, 1L, 2L)))
+        }
+    }
+
+    @Test
+    fun `the update hint strings name both builds`() {
+        val home = context.getString(R.string.home_update_hint, "2.1.2")
+        assertTrue(home.isNotBlank())
+        assertTrue("home hint does not name the new build: $home", home.contains("2.1.2"))
+        assertEquals("Update installed", context.getString(R.string.module_health_restart_title))
+        val card = context.getString(R.string.module_health_restart_text, "2.1.1", "2.1.2")
+        assertTrue("card text does not name the old build: $card", card.contains("2.1.1"))
+        assertTrue("card text does not name the new build: $card", card.contains("2.1.2"))
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "ar")
+    fun `the update hint has an arabic translation`() {
+        val text = context.getString(R.string.home_update_hint, "2.1.2")
+        assertTrue(text.isNotBlank())
+        assertTrue("arabic hint does not name the new build: $text", text.contains("2.1.2"))
+        assertFalse("arabic hint still reads as English", text.startsWith("Update installed"))
     }
 }

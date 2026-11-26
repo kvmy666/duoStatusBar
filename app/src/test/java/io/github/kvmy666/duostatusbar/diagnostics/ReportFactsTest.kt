@@ -5,6 +5,8 @@ import io.github.kvmy666.duostatusbar.settings.ModuleHealth
 import io.github.kvmy666.duostatusbar.settings.ModuleMode
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.SettingsHistory
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -61,7 +63,8 @@ class ReportFactsTest {
         lastChange: SettingsHistory.Record? = SettingsHistory.Record(1234L, listOf("ios_mode")),
         revision: Long = 7L,
         captureText: String = this.captureText,
-        captureFailure: String? = null
+        captureFailure: String? = null,
+        appVersion: String = "2.1.2"
     ) = ReportFacts.perPieceStatus(
         status = status,
         dump = dump,
@@ -71,8 +74,47 @@ class ReportFactsTest {
         revision = revision,
         captureText = captureText,
         captureFailure = captureFailure,
-        formatTimestamp = { "2026-01-01 00:00:00" }
+        formatTimestamp = { "2026-01-01 00:00:00" },
+        appVersion = appVersion
     )
+
+    // R16-B: with an update pending the report prints one clear state and no per-piece "missing:".
+    // The dump is the real 2.1.1 header from the field report.
+    @Test
+    fun `needs restart prints one update pending line and no missing pieces`() {
+        val staleDump = """
+            Duo Status Bar diagnostic dump
+            version: 2.1.1 (code 111, debug=false)
+            build:
+              MANUFACTURER=OnePlus BRAND=OnePlus MODEL=CPH2747
+            module:
+              stage=0 renderer=none attached=false
+        """.trimIndent()
+        val out = facts(
+            status = "attached=false stage=0 renderer=none",
+            dump = staleDump,
+            health = ModuleHealth(
+                ModuleState.NEEDS_RESTART,
+                100L,
+                200L,
+                ModuleMode.IOS,
+                runningVersion = "2.1.1"
+            ),
+            appVersion = "2.1.2"
+        )
+
+        val lines = out.trim().lines()
+        assertEquals(3, lines.size)
+        assertEquals("=== per-piece status ===", lines[0])
+        assertEquals(
+            "update pending: System UI still runs 2.1.1; app is 2.1.2; " +
+                "restart System UI or reboot to load 2.1.2",
+            lines[1]
+        )
+        assertEquals("mode: NEEDS_RESTART (iOS active)", lines[2])
+        assertFalse(out.contains("missing:"))
+        assertFalse(out.contains("attached="))
+    }
 
     @Test
     fun `mode design last change process uptime and deaths are stated`() {

@@ -228,4 +228,28 @@ class ModuleHealthOfTest {
 
         assertNotEquals(ModuleState.DISABLED, ModuleHealthCheck.of(context).state)
     }
+
+    // R16-A: the running build is read from the stored dump so a pending update can name the old build.
+    @Test
+    fun `of reports the dump build as the running version`() {
+        val now = System.currentTimeMillis()
+        stampFresh(now)
+        DuoPrefs.writeDump(
+            context,
+            "Duo Status Bar diagnostic dump\n" +
+                "version: 2.1.1 (code 111, debug=false)\n" +
+                "build:\n"
+        )
+
+        assertEquals("2.1.1", ModuleHealthCheck.of(context).runningVersion)
+    }
+
+    @Test
+    fun `of reports no running version when the dump has none`() {
+        val now = System.currentTimeMillis()
+        stampFresh(now)
+        DuoPrefs.writeDump(context, "Duo Status Bar diagnostic dump\nbuild:\n")
+
+        assertEquals(null, ModuleHealthCheck.of(context).runningVersion)
+    }
 }

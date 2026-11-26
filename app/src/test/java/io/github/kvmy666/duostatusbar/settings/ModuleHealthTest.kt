@@ -49,6 +49,25 @@ class ModuleHealthTest {
         assertEquals(ModuleState.NEVER_LOADED, ModuleHealthCheck.decide(200L, 100L, false, stale, now))
     }
 
+    // R16-A: an installed update outranks the stale heartbeat. The previous build cannot heartbeat the
+    // new code, so its silence is not "never loaded" — it is "restart to load the new build".
+    @Test
+    fun `an update pending with a stale heartbeat still needs a restart`() {
+        val stale = now - DuoPrefs.HEARTBEAT_STALE_MS - 1
+        assertEquals(ModuleState.NEEDS_RESTART, ModuleHealthCheck.decide(200L, 300L, false, stale, now))
+        assertEquals(ModuleState.NEEDS_RESTART, ModuleHealthCheck.decide(200L, 300L, false, 0L, now))
+        assertEquals(ModuleState.NEEDS_RESTART, ModuleHealthCheck.decide(200L, 300L, false, 0L, 0L))
+    }
+
+    // R16-A: without an update, a stale heartbeat stays what it always was; the reorder must not turn
+    // every expired module into a restart.
+    @Test
+    fun `an older module with a stale heartbeat is still never loaded`() {
+        val stale = now - DuoPrefs.HEARTBEAT_STALE_MS - 1
+        assertEquals(ModuleState.NEVER_LOADED, ModuleHealthCheck.decide(200L, 100L, false, stale, now))
+        assertEquals(ModuleState.NEVER_LOADED, ModuleHealthCheck.decide(200L, 200L, false, stale, now))
+    }
+
     // The Infinix case: the module loaded (fresh heartbeat) but the user's own switch is off. That is a
     // choice, not a failure, so the app must not show "not running" or recovery advice.
     @Test

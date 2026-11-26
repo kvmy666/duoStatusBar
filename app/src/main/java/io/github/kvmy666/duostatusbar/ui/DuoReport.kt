@@ -37,13 +37,18 @@ internal data class DuoReportInputs(
  */
 internal fun labelStaleDump(dump: String, appVersion: String): String {
     if (dump.isBlank()) return dump
-    val version = dump.lineSequence()
-        .mapNotNull { VERSION_LINE.find(it)?.groupValues?.get(1) }
-        .firstOrNull()
-        ?: return dump
+    val version = dumpVersion(dump) ?: return dump
     if (version == appVersion) return dump
     return "[stale diagnostic dump from $version; app is $appVersion; do not read it as this run]\n$dump"
 }
+
+/**
+ * The first token after a leading `version:` line of a diagnostic dump, or null when it has none.
+ * This is the build the *running* module wrote, which is what a pending update names as the old build.
+ */
+internal fun dumpVersion(dump: String): String? = dump.lineSequence()
+    .mapNotNull { VERSION_LINE.find(it)?.groupValues?.get(1) }
+    .firstOrNull()
 
 /** The first token after a leading `version:` line of a diagnostic dump. */
 private val VERSION_LINE = Regex("""^\s*version:\s*(\S+)""")

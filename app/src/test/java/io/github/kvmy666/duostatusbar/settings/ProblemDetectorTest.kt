@@ -118,6 +118,53 @@ class ProblemDetectorTest {
         assertTrue(problems.any { it.type == "attach" && it.location == "attach" })
     }
 
+    // R16-C: an update pending is one state, not a load failure; the old build's evidence is stale.
+    @Test
+    fun `needs restart is not a module load problem`() {
+        val problems = ProblemDetector.detect(
+            ProblemInputs(
+                moduleState = ModuleState.NEEDS_RESTART,
+                moduleEnabled = true,
+                updatePending = true,
+                capture = capture(facts())
+            )
+        )
+        assertTrue(problems.isEmpty())
+    }
+
+    @Test
+    fun `a stale dump does not trigger attach while an update is pending`() {
+        val staleDump = "Duo Status Bar diagnostic dump\n" +
+            "version: 2.1.1 (code 111, debug=false)\n" +
+            "status bar window: attached=false\n" +
+            "module: attached=false stage=0\n"
+        val problems = ProblemDetector.detect(
+            ProblemInputs(
+                dump = staleDump,
+                moduleState = ModuleState.NEEDS_RESTART,
+                moduleEnabled = true,
+                updatePending = true,
+                capture = capture(facts())
+            )
+        )
+        assertTrue(problems.none { it.type == "attach" })
+        assertTrue(problems.isEmpty())
+    }
+
+    @Test
+    fun `the same stale dump without updatePending still detects attach`() {
+        val problems = ProblemDetector.detect(
+            ProblemInputs(
+                dump = "module: attached=false stage=0",
+                moduleEnabled = true,
+                moduleState = ModuleState.OK,
+                updatePending = false,
+                capture = capture(facts())
+            )
+        )
+        assertTrue(problems.any { it.type == "attach" && it.location == "attach" })
+    }
+
     @Test
     fun `safe mode this boot is a crash problem`() {
         val problems = ProblemDetector.detect(

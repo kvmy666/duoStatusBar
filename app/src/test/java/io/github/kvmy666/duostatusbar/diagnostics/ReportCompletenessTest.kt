@@ -116,6 +116,21 @@ class ReportCompletenessTest {
         assertTrue(byName.getValue("capture route").reason.contains("no capture"))
     }
 
+    // R16-B: the report has one clear state for a pending update, not "module never loaded".
+    @Test
+    fun `an update pending load line is present with the restart reason`() {
+        val byName = sections(
+            moduleLoad = "update installed; System UI still runs 2.1.1; " +
+                "restart System UI or reboot to load 2.1.2"
+        ).associateBy { it.name }
+
+        assertEquals(ReportSectionState.PRESENT, byName.getValue("module load").state)
+        assertEquals(
+            "update pending; restart System UI to load this build",
+            byName.getValue("module load").reason
+        )
+    }
+
     @Test
     fun `a failed capture is unreadable everywhere with the exception`() {
         val byName = sections(

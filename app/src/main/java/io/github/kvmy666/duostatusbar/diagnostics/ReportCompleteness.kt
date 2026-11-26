@@ -2,7 +2,9 @@ package io.github.kvmy666.duostatusbar.diagnostics
 
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealth
+import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.SettingsHistory
+import io.github.kvmy666.duostatusbar.ui.dumpVersion
 
 /** How one report section ended. [MISSING] is for app-side inputs the report could not find. */
 internal enum class ReportSectionState { PRESENT, EMPTY, UNREADABLE, SKIPPED, MISSING }
@@ -200,6 +202,12 @@ internal object ReportCompleteness {
 
         val load = moduleLoad.trim()
         val loadSection = when {
+            // A pending update is a readable load: the old build is running, the new one is installed.
+            load.startsWith("update installed") -> ReportSection(
+                "module load",
+                ReportSectionState.PRESENT,
+                "update pending; restart System UI to load this build"
+            )
             load.startsWith("never") -> ReportSection(
                 "module load",
                 ReportSectionState.MISSING,
@@ -426,9 +434,26 @@ internal object ReportFacts {
         capture: RootCapture? = null,
         captureText: String = "",
         captureFailure: String? = null,
-        formatTimestamp: (Long) -> String = { it.toString() }
+        formatTimestamp: (Long) -> String = { it.toString() },
+        appVersion: String = ""
     ): String = buildString {
         appendLine("=== per-piece status ===")
+
+        // A pending update makes every stored status/dump line evidence from the previous build. The
+        // report states the one true fact and does not print per-piece `missing:` for code that has
+        // not loaded yet (2.1.2 app, 2.1.1 module in the field report).
+        if (health?.state == ModuleState.NEEDS_RESTART) {
+            val old = health.runningVersion?.trim()?.takeIf { it.isNotEmpty() }
+                ?: dumpVersion(dump)
+                ?: "the previous build"
+            val new = appVersion.ifBlank { "this build" }
+            appendLine(
+                "update pending: System UI still runs $old; app is $new; " +
+                    "restart System UI or reboot to load $new"
+            )
+            appendLine("mode: ${health.state} (${health.mode.label})")
+            return@buildString
+        }
 
         val process = field(status, "process") ?: dumpField(dump, "process")
         val pid = field(status, "pid") ?: dumpField(dump, "pid")

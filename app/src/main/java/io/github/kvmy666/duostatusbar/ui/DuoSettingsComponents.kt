@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.ImageView
+import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.DuoRiveStill
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RootLogs
@@ -61,6 +62,7 @@ import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+import io.github.kvmy666.duostatusbar.settings.ModuleHealth
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
 import kotlinx.coroutines.Dispatchers
@@ -175,7 +177,7 @@ internal fun StageOverrideAlert(
  */
 @Composable
 internal fun ModuleHealthCard(
-    state: ModuleState,
+    health: ModuleHealth,
     busy: Boolean,
     onOpenLsposed: () -> Unit,
     onRestart: () -> Unit,
@@ -184,6 +186,7 @@ internal fun ModuleHealthCard(
     onExport: () -> Unit,
     onReport: () -> Unit
 ) {
+    val state = health.state
     val title = when (state) {
         ModuleState.NEEDS_RESTART -> R.string.module_health_restart_title
         ModuleState.DISABLED -> R.string.module_health_disabled_title
@@ -193,12 +196,16 @@ internal fun ModuleHealthCard(
         else -> R.string.module_health_never_title
     }
     val text = when (state) {
-        ModuleState.NEEDS_RESTART -> R.string.module_health_restart_text
-        ModuleState.DISABLED -> R.string.module_health_disabled_text
-        ModuleState.NOT_REPORTING -> R.string.module_health_noreport_text
-        ModuleState.IOS_ACTIVE -> R.string.module_health_ios_text
-        ModuleState.IOS_UNSUPPORTED -> R.string.module_health_ios_unsupported_text
-        else -> R.string.module_health_never_text
+        ModuleState.NEEDS_RESTART -> stringResource(
+            R.string.module_health_restart_text,
+            health.runningVersion?.trim()?.takeIf { it.isNotEmpty() } ?: "the previous build",
+            BuildConfig.VERSION_NAME
+        )
+        ModuleState.DISABLED -> stringResource(R.string.module_health_disabled_text)
+        ModuleState.NOT_REPORTING -> stringResource(R.string.module_health_noreport_text)
+        ModuleState.IOS_ACTIVE -> stringResource(R.string.module_health_ios_text)
+        ModuleState.IOS_UNSUPPORTED -> stringResource(R.string.module_health_ios_unsupported_text)
+        else -> stringResource(R.string.module_health_never_text)
     }
     // These states are chosen, not broken: there is no restart, reboot or report that would change them.
     val neutral = state == ModuleState.DISABLED ||
@@ -214,7 +221,7 @@ internal fun ModuleHealthCard(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(text), style = MaterialTheme.typography.bodyMedium)
+            Text(text, style = MaterialTheme.typography.bodyMedium)
             when {
                 // Switched off by the user, or a healthy iOS owner: nothing to restart, reboot or report.
                 neutral -> Unit

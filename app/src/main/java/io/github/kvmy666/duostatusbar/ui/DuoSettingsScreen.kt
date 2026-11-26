@@ -455,7 +455,7 @@ fun DuoSettingsScreen(
         // (the One UI 8 "Unknown authority" case). Recovery buttons plus a one-tap report.
         if (moduleHealth.state != ModuleState.OK && query.isBlank()) {
             ModuleHealthCard(
-                state = moduleHealth.state,
+                health = moduleHealth,
                 busy = collecting,
                 onOpenLsposed = { openLsposed(context) },
                 onRestart = { restartSystemUi(context, "module-health") },

@@ -23,6 +23,11 @@ internal data class ProblemInputs(
     val moduleState: ModuleState? = null,
     val moduleEnabled: Boolean = false,
     val iosActive: Boolean = false,
+    /**
+     * True when the installed APK is newer than the module System UI runs. The stored status/dump/log
+     * then describe the previous build and must not be read as this run's attach/hook/iOS evidence.
+     */
+    val updatePending: Boolean = false,
     val capture: RootCapture? = null,
     val captureFailure: String? = null
 )
@@ -58,24 +63,33 @@ internal object ProblemDetector {
 
     fun detect(inputs: ProblemInputs): List<DetectedProblem> {
         val found = ArrayList<DetectedProblem>()
-        val records = buildString {
-            appendLine(inputs.status)
-            appendLine(inputs.dump)
-            append(inputs.moduleLog)
+        // While an update is pending, the stored status/dump/log are the previous build's evidence.
+        // Reading them would report the old build's attach/hook/iOS failures as this run's problems.
+        val records = if (inputs.updatePending) {
+            ""
+        } else {
+            buildString {
+                appendLine(inputs.status)
+                appendLine(inputs.dump)
+                append(inputs.moduleLog)
+            }
         }
 
         moduleProblems(inputs)?.let(found::add)
         crashProblems(inputs)?.let(found::add)
-        if (containsAny(records, "attached=false", "not attached", "step=attach:failed")) {
+        if (!inputs.updatePending &&
+            containsAny(records, "attached=false", "not attached", "step=attach:failed")
+        ) {
             found += DetectedProblem("attach", LOCATION_ATTACH)
         }
-        if (inputs.fallback.isNotBlank() ||
-            containsAny(records, "rive bind failed", "rive bind: reason=", "rivebind=")
+        if (!inputs.updatePending &&
+            (inputs.fallback.isNotBlank() ||
+                containsAny(records, "rive bind failed", "rive bind: reason=", "rivebind="))
         ) {
             found += DetectedProblem("fallback", LOCATION_RIVE)
         }
-        if (inputs.iosActive) found += iosMisses(records)
-        found += hookProblems(records)
+        if (!inputs.updatePending && inputs.iosActive) found += iosMisses(records)
+        if (!inputs.updatePending) found += hookProblems(records)
         collectorProblem(inputs)?.let(found::add)
 
         // One problem per stable type|location; the first detail is kept.
@@ -100,6 +114,8 @@ internal object ProblemDetector {
             return DetectedProblem("module", LOCATION_REPORT, "state unreadable")
         }
         return when (inputs.moduleState) {
+            // A pending update is a normal, loaded module: the app is just newer than System UI.
+            ModuleState.NEEDS_RESTART -> null
             ModuleState.NEVER_LOADED -> DetectedProblem(
                 "module",
                 LOCATION_MODULE_LOAD,
@@ -185,7 +201,10 @@ internal object ProblemDetector {
         if (route?.state == SectionState.UNREADABLE) {
             return DetectedProblem("collector", LOCATION_CAPTURE, route.reason)
         }
-        val readAnything = inputs.status.isNotBlank() ||
+        // A pending update is itself readable evidence (the health state), so the empty status/dump
+        // that the collector intentionally passes is not a collector failure.
+        val readAnything = inputs.updatePending ||
+            inputs.status.isNotBlank() ||
             inputs.dump.isNotBlank() ||
             sections.any { it.state == SectionState.PRESENT && it.text.isNotBlank() }
         if (!readAnything) {

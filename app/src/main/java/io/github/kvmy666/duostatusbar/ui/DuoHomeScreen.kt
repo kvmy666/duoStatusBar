@@ -36,11 +36,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.DuoPreview
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.IosCapability
+import io.github.kvmy666.duostatusbar.settings.ModuleHealth
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
@@ -54,7 +56,7 @@ import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 @Composable
 fun DuoHomeScreen() {
     val context = LocalContext.current
-    val health = remember { ModuleHealthCheck.of(context).state }
+    val health = remember { ModuleHealthCheck.of(context) }
     var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
     // The module tells the app whether iOS can own the bar here; UNKNOWN (null) keeps today's behaviour.
     val iosAvailable = remember {
@@ -95,7 +97,7 @@ fun DuoHomeScreen() {
                 color = DuoColors.TextPrimary,
                 modifier = Modifier.weight(1f)
             )
-            StatusPill(health)
+            StatusPill(health.state)
         }
 
         Spacer(Modifier.height(DuoSpace.sm))
@@ -107,7 +109,7 @@ fun DuoHomeScreen() {
 
         // Switched off is a choice, not a fault: one line points at Settings, and no setup steps are
         // shown because LSPosed already injected the module.
-        if (showDisabledHint(health)) {
+        if (showDisabledHint(health.state)) {
             Spacer(Modifier.height(DuoSpace.sm))
             Text(
                 text = stringResource(R.string.home_disabled_hint),
@@ -117,9 +119,20 @@ fun DuoHomeScreen() {
             Spacer(Modifier.height(DuoSpace.sm))
         }
 
+        // An installed update leaves System UI on the previous build until it restarts. That is not a
+        // setup problem, so it gets its own line instead of the LSPosed steps.
+        if (showUpdateHint(health)) {
+            Spacer(Modifier.height(DuoSpace.sm))
+            Text(
+                text = stringResource(R.string.home_update_hint, BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.bodySmall,
+                color = DuoColors.TextSecondary
+            )
+        }
+
         // Never loaded is the only state the user can fix on their own: explain the setup here, while
         // the pill above still reports the state. A loaded module must not get install advice.
-        if (showSetupGuide(health)) {
+        if (showSetupGuide(health.state)) {
             Spacer(Modifier.height(DuoSpace.md))
             SetupStepsCard()
         }
@@ -219,6 +232,14 @@ internal fun showSetupGuide(state: ModuleState): Boolean = state == ModuleState.
  * next step is the user's own switch in Settings, not a reinstall or a restart.
  */
 internal fun showDisabledHint(state: ModuleState): Boolean = state == ModuleState.DISABLED
+
+/**
+ * The update hint belongs to [ModuleState.NEEDS_RESTART] only: the APK is installed but System UI still
+ * runs the previous build. It takes the full [ModuleHealth] so the wording can keep the running version
+ * if a later screen wants it; the decision is still the state alone.
+ */
+internal fun showUpdateHint(health: ModuleHealth): Boolean =
+    health.state == ModuleState.NEEDS_RESTART
 
 /** The steps in the order they are shown; a test pins the order and the resource wiring. */
 internal val HOME_SETUP_STEP_STRINGS = listOf(

@@ -84,6 +84,38 @@ class DiagnosticsTruthTest {
         )
     }
 
+    // R16-B: an installed update is one clear state. It must name both builds and never reuse the
+    // "never loaded" or "module not running now" wording from the stale-heartbeat path.
+    @Test
+    fun `update pending names the running and installed builds`() {
+        assertEquals(
+            "update installed; System UI still runs 2.1.1; " +
+                "restart System UI or reboot to load 2.1.2",
+            updatePendingLine("2.1.1", "2.1.2")
+        )
+        assertEquals(
+            "update installed; System UI still runs the previous build; " +
+                "restart System UI or reboot to load 2.1.2",
+            updatePendingLine(null, "2.1.2")
+        )
+    }
+
+    @Test
+    fun `update pending never claims the module was not loaded`() {
+        val line = updatePendingLine("2.1.1", "2.1.2")
+        assertFalse(line.contains("never", ignoreCase = true))
+        assertFalse(line.contains("module not running now", ignoreCase = true))
+    }
+
+    @Test
+    fun `the dump version is the first version line`() {
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: 2.1.1 (code 111, debug=false)\n" +
+            "module log quoting version: 1.0.0\n"
+        assertEquals("2.1.1", dumpVersion(dump))
+        assertEquals(null, dumpVersion("no version here"))
+    }
+
     @Test
     fun `reportRom selects an sdk-gated measured profile only inside its range`() {
         val marker = RomMarkers.of(

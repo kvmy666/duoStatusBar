@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.settings
 
 import android.content.Context
+import io.github.kvmy666.duostatusbar.ui.dumpVersion
 
 /** How the module is doing, as the app can tell from stores it can read without root. */
 internal enum class ModuleState {
@@ -36,7 +37,12 @@ internal data class ModuleHealth(
     val state: ModuleState,
     val loadedAt: Long,
     val appUpdatedAt: Long,
-    val mode: ModuleMode = ModuleMode.OFF
+    val mode: ModuleMode = ModuleMode.OFF,
+    /**
+     * The build the running module last wrote in its diagnostic dump. Wording only: the load/update
+     * timestamps decide [ModuleState.NEEDS_RESTART], so a missing dump cannot hide the restart.
+     */
+    val runningVersion: String? = null
 )
 
 /** Which host owns the bar, as the report labels it. */
@@ -76,6 +82,8 @@ internal object ModuleHealthCheck {
         val iosEnabled = portrait.iosMode || landscape.iosMode
         // Only a report from the current module session is trusted; a missing/stale one is UNKNOWN.
         val capability = IosCapability.read(context, loadedAt)
+        // Evidence for the wording of a pending update ("System UI still runs 2.1.1"). Never the rule.
+        val runningVersion = dumpVersion(DuoPrefs.dump(context))
         return ModuleHealth(
             decide(
                 loadedAt,
@@ -89,7 +97,8 @@ internal object ModuleHealthCheck {
             ),
             loadedAt,
             updatedAt,
-            modeFor(duoEnabled, iosEnabled)
+            modeFor(duoEnabled, iosEnabled),
+            runningVersion
         )
     }
 
@@ -101,6 +110,11 @@ internal object ModuleHealthCheck {
      * build predates the heartbeat), and an old one means it was unscoped and System UI restarted without
      * it. Both are [ModuleState.NEVER_LOADED], so a report taken then cannot ship the previous run's
      * dump/status as if the module were healthy (measured: unscope, restart, send -> full but stale).
+     *
+     * An installed APK newer than [loadedAt] is checked **before** the heartbeat: the running process
+     * still executes the previous build, which cannot heartbeat the new code, so its silent heartbeat
+     * is not a load failure. The only correct advice there is [ModuleState.NEEDS_RESTART]; calling it
+     * NEVER_LOADED sent a 2.1.2 app report claiming the 2.1.1 module was never injected.
      *
      * [settingsEnabled] is the legacy name for the Duo switch ([duoEnabled]); [iosMode] is the iOS
      * switch. The switches are checked *after* the load/heartbeat conditions because a module that never
@@ -136,10 +150,11 @@ internal object ModuleHealthCheck {
         val iosRequested = iosMode || iosEnabled
         return when {
             loadedAt <= 0L -> ModuleState.NEVER_LOADED
+            // The APK changed after the module last loaded, so System UI is running the previous build.
+            // This outranks the heartbeat checks: the old build cannot write the new heartbeat.
+            appUpdatedAt > loadedAt -> ModuleState.NEEDS_RESTART
             heartbeatAt <= 0L -> ModuleState.NEVER_LOADED
             nowMs > 0L && nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS -> ModuleState.NEVER_LOADED
-            // The APK changed after the module last loaded, so System UI is running the previous build.
-            appUpdatedAt > loadedAt -> ModuleState.NEEDS_RESTART
             // A refusal outranks the owner tag: the fallback report can still carry owner=ios.
             iosRequested && capability != null && !capability.supported -> ModuleState.IOS_UNSUPPORTED
             // Active means the live route, not just the owner tag (route=none is a transient/fallback).

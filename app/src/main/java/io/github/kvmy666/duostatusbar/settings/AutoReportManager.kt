@@ -218,20 +218,26 @@ internal object AutoReportManager {
         val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
         val moduleEnabled = portrait.enabled || landscape.enabled ||
             portrait.iosMode || landscape.iosMode
-        val iosActive = portrait.iosMode || landscape.iosMode
+        val updatePending = health?.state == ModuleState.NEEDS_RESTART
+        // While an update is pending the stored dump/status belong to the previous build; iOS cannot be
+        // judged from them either, so no ios_miss report is raised from stale evidence.
+        val iosActive = (portrait.iosMode || landscape.iosMode) && !updatePending
         val moduleLog = collectorRead("module-log", failures) {
             detectorModuleLog(dump, L.recentText())
         } ?: ""
         val captureFailure = failures.joinToString("; ").ifBlank { null }
+        // The report keeps the stale evidence (buildDiagnostics labels the dump), but the detector must
+        // not treat the previous build's attach/hook/iOS lines as this run's problems.
         val problems = ProblemDetector.detect(
             ProblemInputs(
-                status = status,
-                dump = dump,
-                fallback = fallback,
-                moduleLog = moduleLog,
+                status = if (updatePending) "" else status,
+                dump = if (updatePending) "" else dump,
+                fallback = if (updatePending) "" else fallback,
+                moduleLog = if (updatePending) "" else moduleLog,
                 moduleState = health?.state,
                 moduleEnabled = moduleEnabled,
                 iosActive = iosActive,
+                updatePending = updatePending,
                 capture = capture,
                 captureFailure = captureFailure
             )

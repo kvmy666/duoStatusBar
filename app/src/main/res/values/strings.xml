@@ -166,8 +166,8 @@
     <string name="settings_module_loaded">Duo is running since %1$s.</string>
     <string name="settings_reboot">Reboot</string>
     <string name="settings_report_bug">Send a bug report</string>
-    <string name="module_health_restart_title">Restart needed</string>
-    <string name="module_health_restart_text">Restart your phone to finish.</string>
+    <string name="module_health_restart_title">Update installed</string>
+    <string name="module_health_restart_text">System UI still runs %1$s; restart System UI or reboot to load %2$s.</string>
     <string name="module_health_noreport_title">Duo is not responding</string>
     <string name="module_health_noreport_text">Restart your phone to fix it.</string>
     <string name="module_health_never_title">Duo is not running</string>
@@ -246,6 +246,7 @@
     <string name="home_setup_step_2">2. Select System UI for Duo.</string>
     <string name="home_setup_step_3">3. Reboot the phone.</string>
     <string name="home_disabled_hint">Turn Duo on in Settings.</string>
+    <string name="home_update_hint">Update installed. Restart System UI or reboot to load %1$s.</string>
     <string name="home_live_preview">Live preview controls</string>
     <string name="home_live_preview_detail">Try battery, signal and mode changes.</string>
     <string name="home_live_preview_note">Simulations never change your settings.</string>

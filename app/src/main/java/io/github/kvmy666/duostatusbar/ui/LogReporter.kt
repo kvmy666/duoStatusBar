@@ -19,6 +19,7 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomResolver
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
+import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.SettingsHistory
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import java.io.File
@@ -165,6 +166,19 @@ internal fun moduleLoadLine(
     else -> "never (LSPosed has not injected the module into System UI)"
 }
 
+/**
+ * The `module load:` value when the installed APK is newer than the module that System UI runs.
+ *
+ * A pending update is one fact, not a load failure: the previous build is loaded and drawing, it just
+ * cannot be the new build until System UI restarts. Naming both builds makes the next step obvious
+ * without ever printing "never" or "module not running now".
+ */
+internal fun updatePendingLine(runningVersion: String?, appVersion: String): String {
+    val old = runningVersion?.trim()?.takeIf { it.isNotEmpty() } ?: "the previous build"
+    return "update installed; System UI still runs $old; " +
+        "restart System UI or reboot to load $appVersion"
+}
+
 /** The report the About buttons send — one text, shared or written to a file. */
 internal fun buildDiagnostics(
     context: Context,
@@ -185,7 +199,14 @@ internal fun buildDiagnostics(
     val loadAt = DuoPrefs.moduleLoadTime(context)
     val heartbeatAt = DuoPrefs.heartbeat(context)
     val now = System.currentTimeMillis()
-    val loadLine = moduleLoadLine(moduleLoadAt, status, history, loadAt, heartbeatAt, now)
+    val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
+    // An installed update is the one clear state: the old build is loaded, and only a restart loads
+    // this one. The moduleLoadLine stale-heartbeat wording would wrongly say it is not running.
+    val loadLine = if (health?.state == ModuleState.NEEDS_RESTART) {
+        updatePendingLine(health.runningVersion, BuildConfig.VERSION_NAME)
+    } else {
+        moduleLoadLine(moduleLoadAt, status, history, loadAt, heartbeatAt, now)
+    }
     val sections = ReportCompleteness.build(
         status = status,
         history = history,
@@ -195,7 +216,6 @@ internal fun buildDiagnostics(
         captureText = captureText,
         captureFailure = captureFailure
     )
-    val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
     val lastChange = runCatching { SettingsHistory.read(context) }.getOrNull()
     val revision = runCatching { DuoPrefs.revision(context) }.getOrDefault(0L)
     val perPiece = ReportFacts.perPieceStatus(
@@ -208,7 +228,8 @@ internal fun buildDiagnostics(
         capture = capture,
         captureText = captureText,
         captureFailure = captureFailure,
-        formatTimestamp = ::formatTimestamp
+        formatTimestamp = ::formatTimestamp,
+        appVersion = BuildConfig.VERSION_NAME
     )
     val raw = buildString {
         appendLine("Duo Status Bar diagnostics")
