@@ -66,6 +66,7 @@ internal object AutoReportManager {
             )
         } catch (t: Throwable) {
             L.w("auto report schedule: ${t.javaClass.simpleName}: ${t.message}")
+            recordScheduleFailure(app, t)
         }
     }
 
@@ -78,6 +79,7 @@ internal object AutoReportManager {
                 cancel(WorkManager.getInstance(app))
             } catch (t: Throwable) {
                 L.w("auto report cancel: ${t.javaClass.simpleName}: ${t.message}")
+                recordScheduleFailure(app, t)
             }
             return
         }
@@ -93,6 +95,7 @@ internal object AutoReportManager {
             )
         } catch (t: Throwable) {
             L.w("auto report first pulse: ${t.javaClass.simpleName}: ${t.message}")
+            recordScheduleFailure(app, t)
         }
         apply(app)
     }
@@ -110,6 +113,32 @@ internal object AutoReportManager {
             zipper = { zip(app, it) },
             sender = RelaySender(app)
         ).run()
+    }
+
+    /**
+     * One guarded collector read: a thrown read is recorded as `label:<class>` so it can reach the
+     * detector/build as a `collector|capture` problem instead of becoming a silent null.
+     */
+    internal fun <T> collectorRead(
+        label: String,
+        failures: MutableList<String>,
+        read: () -> T
+    ): T? = try {
+        read()
+    } catch (t: Throwable) {
+        failures += "$label:${t.javaClass.simpleName}"
+        null
+    }
+
+    /**
+     * A failed schedule is not silent: it is queued like any other reporter failure, so the next pulse
+     * retries it. Recording is itself guarded — reporting must never be the reason a schedule dies.
+     */
+    internal fun recordScheduleFailure(context: Context, error: Throwable) {
+        runCatching { recordReporterFailure(context, "schedule", error) }
+            .onFailure {
+                L.w("auto report schedule failure not recorded: ${it.javaClass.simpleName}: ${it.message}")
+            }
     }
 
     /** Persists a failure of the reporter itself so the next pulse retries it. */
@@ -171,21 +200,29 @@ internal object AutoReportManager {
      * builder. The automatic path adds no module work and no continuous collection.
      */
     private fun collect(context: Context): AutoReportCollected {
+        // Every read that can fail is recorded here. A health/log read failure becomes
+        // `health:<class>` / `module-log:<class>` and reaches both the detector and the report builder as
+        // a `collector|capture` problem, instead of a silent null/"" that reads as "no problems".
+        val failures = ArrayList<String>()
         val captureAttempt = runCatching { RootLogs.collectSections(context) }
         val capture = captureAttempt.getOrNull()
-        val captureFailure = captureAttempt.exceptionOrNull()
-            ?.let { "${it.javaClass.simpleName}: ${it.message}" }
+        captureAttempt.exceptionOrNull()?.let {
+            failures += "${it.javaClass.simpleName}: ${it.message}"
+        }
         val status = DuoPrefs.status(context)
         val dump = DuoPrefs.dump(context)
         val fallback = DuoPrefs.fallback(context)
-        val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
+        val health = collectorRead("health", failures) { ModuleHealthCheck.of(context) }
         val current = DuoPrefs.read(context)
         val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
         val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
         val moduleEnabled = portrait.enabled || landscape.enabled ||
             portrait.iosMode || landscape.iosMode
         val iosActive = portrait.iosMode || landscape.iosMode
-        val moduleLog = runCatching { detectorModuleLog(dump, L.recentText()) }.getOrDefault("")
+        val moduleLog = collectorRead("module-log", failures) {
+            detectorModuleLog(dump, L.recentText())
+        } ?: ""
+        val captureFailure = failures.joinToString("; ").ifBlank { null }
         val problems = ProblemDetector.detect(
             ProblemInputs(
                 status = status,

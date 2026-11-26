@@ -95,6 +95,10 @@ internal object ProblemDetector {
 
     private fun moduleProblems(inputs: ProblemInputs): DetectedProblem? {
         if (!inputs.moduleEnabled) return null
+        // An enabled module whose state the app could not read is a reporting failure, not "healthy".
+        if (inputs.moduleState == null) {
+            return DetectedProblem("module", LOCATION_REPORT, "state unreadable")
+        }
         return when (inputs.moduleState) {
             ModuleState.NEVER_LOADED -> DetectedProblem(
                 "module",

@@ -12,6 +12,37 @@ import kotlinx.coroutines.withContext
  * One automatic-report pulse. It reads only what the module/app already wrote, sends nothing without
  * consent, and treats a reporter failure as a problem to retry on the next pulse rather than losing it.
  */
+internal enum class PulseAttempt { SUCCESS, RETRY }
+
+/**
+ * The worker's result rule, kept pure so it is unit-tested without WorkManager.
+ *
+ * A failed pulse must be retried through backoff and must **not** mark the first pulse done: doing so
+ * pushed the retry to the 24 h periodic run. Persistence is itself guarded; if it throws, the nested
+ * failure is logged and the pulse still retries.
+ */
+internal fun finishPulse(
+    failure: Throwable?,
+    markFirstPulseDone: () -> Unit,
+    persistFailure: (Throwable) -> Unit,
+    log: (String) -> Unit
+): PulseAttempt {
+    if (failure == null) {
+        markFirstPulseDone()
+        return PulseAttempt.SUCCESS
+    }
+    log("auto report pulse failed: ${failure.javaClass.simpleName}: ${failure.message}")
+    try {
+        persistFailure(failure)
+    } catch (nested: Throwable) {
+        log(
+            "auto report pulse failure not persisted: " +
+                "${nested.javaClass.simpleName}: ${nested.message}"
+        )
+    }
+    return PulseAttempt.RETRY
+}
+
 class AutoReportWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -20,17 +51,25 @@ class AutoReportWorker(context: Context, params: WorkerParameters) : CoroutineWo
         return try {
             val result = withContext(Dispatchers.IO) { AutoReportManager.runPulse(context) }
             L.i(result.logLine())
-            AutoReportStore.markFirstPulseDone(context)
+            finishPulse(
+                failure = null,
+                markFirstPulseDone = { AutoReportStore.markFirstPulseDone(context) },
+                persistFailure = { AutoReportManager.recordReporterFailure(context, "pulse", it) },
+                log = { L.w(it) }
+            )
             Result.success()
         } catch (t: CancellationException) {
             // The OS stopped us; the unique work stays scheduled and the next pulse runs normally.
             throw t
         } catch (t: Throwable) {
-            // A failed pulse is not "no problems": persist the reporter failure so the next pulse retries.
-            runCatching { AutoReportManager.recordReporterFailure(context, "pulse", t) }
-            L.w("auto report pulse failed: ${t.javaClass.simpleName}: ${t.message}")
-            AutoReportStore.markFirstPulseDone(context)
-            Result.success()
+            finishPulse(
+                failure = t,
+                markFirstPulseDone = { AutoReportStore.markFirstPulseDone(context) },
+                persistFailure = { AutoReportManager.recordReporterFailure(context, "pulse", it) },
+                log = { L.w(it) }
+            )
+            // Backoff retries the pulse; the first-pulse stamp stays pending, so it is not the 24 h run.
+            Result.retry()
         }
     }
 }

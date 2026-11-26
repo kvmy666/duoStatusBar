@@ -47,6 +47,19 @@ class ProblemDetectorTest {
     }
 
     @Test
+    fun `an enabled module whose state is unreadable is a report problem`() {
+        val problems = ProblemDetector.detect(
+            ProblemInputs(
+                status = "process=com.android.systemui pid=1 · owner=duo",
+                moduleState = null,
+                moduleEnabled = true,
+                capture = capture(facts())
+            )
+        )
+        assertEquals(listOf("module|report"), problems.map { "${it.type}|${it.location}" })
+    }
+
+    @Test
     fun `a rive fallback is a problem`() {
         val problems = ProblemDetector.detect(
             ProblemInputs(

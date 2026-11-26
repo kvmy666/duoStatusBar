@@ -160,6 +160,16 @@ class AutoReportStoreTest {
     }
 
     @Test
+    fun `a schedule failure is persisted as a retryable reporter problem`() {
+        AutoReportManager.recordScheduleFailure(context, IllegalStateException("no work manager"))
+        val state = AutoReportStore.open(context).load()
+        assertTrue(
+            "schedule failure not queued: ${state.pending}",
+            state.pending.any { it.fingerprint.startsWith("reporter|schedule:IllegalStateException|") }
+        )
+    }
+
+    @Test
     fun `a reporter failure becomes a queued problem with the stage and class`() {
         val state = AutoReportLedger.queueReporterFailure(
             AutoReportState(),
