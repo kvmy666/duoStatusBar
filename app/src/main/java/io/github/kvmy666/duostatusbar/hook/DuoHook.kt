@@ -23,7 +23,6 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.Breadcrumb
-import io.github.kvmy666.duostatusbar.ProcessIdentity
 import io.github.kvmy666.duostatusbar.hook.events.flashlightStateFromDispatch
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
@@ -895,12 +894,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     guard.noteLoaded()
                     // E: the app-visible line carries the same owner/renderer/stage/override/rev/
                     // active/shared fields as the L boot line, not a reduced fragment.
-                    DuoSettingsClient.report(
-                        ctx,
-                        "process=${ProcessIdentity.processName()} pid=${ProcessIdentity.pid()}" +
-                            " · owner=${features.owner.tag} · loaded · " +
-                            featureStatus(features, stage, settings.revision, override)
-                    )
+                    DuoSettingsClient.report(ctx, hookStatusPrefix(features.owner.tag) +
+                        "loaded · " +
+                        featureStatus(features, stage, settings.revision, override))
                     DuoSettingsClient.reportFallback(ctx, "")
                 }
             }
@@ -1184,7 +1180,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val ctx = app ?: statusBarRoot?.context
             if (ctx != null) {
                 L.guard("DuoHook attach failed report") {
-                    DuoSettingsClient.report(ctx, "attach failed after $MAX_ATTEMPTS attempts - see the diagnostic dump")
+                    DuoSettingsClient.report(ctx, hookStatusPrefix(features.owner.tag) +
+                        "attach failed after $MAX_ATTEMPTS attempts - see the diagnostic dump")
                     reporter.reportDiagnostics(ctx, DuoGuard(ctx).stage(), null, host?.duo)
                 }
             }

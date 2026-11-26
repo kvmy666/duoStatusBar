@@ -1,17 +1,28 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import io.github.kvmy666.duostatusbar.ProcessIdentity
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 /** Every status the app stores must identify the process, its pid and the owning mode. */
 class HookReporterStatusTest {
 
+    @Before
+    fun pinIdentity() {
+        ProcessIdentity.forceForTest("com.android.systemui", 4321)
+    }
+
+    @After
+    fun releaseIdentity() {
+        ProcessIdentity.resetForTest()
+    }
+
     @Test
     fun `the status line starts with process pid and owner`() {
         val line = hookStatusText(
-            process = "com.android.systemui",
-            pid = 4321,
             owner = BarOwner.IOS.tag,
             stage = 0,
             renderer = "none",
@@ -42,8 +53,6 @@ class HookReporterStatusTest {
             revision = 12L
         )
         val line = hookStatusText(
-            process = "com.android.systemui",
-            pid = 5,
             owner = BarOwner.DUO.tag,
             stage = 2,
             renderer = "Rive",
@@ -51,7 +60,7 @@ class HookReporterStatusTest {
             settings = settings,
             riveAttempts = 1
         )
-        assertTrue(line.startsWith("process=com.android.systemui pid=5 · owner=duo · "))
+        assertTrue(line.startsWith("process=com.android.systemui pid=4321 · owner=duo · "))
         assertTrue(line.contains("size=90%"))
         assertTrue(line.contains("offset=3dp"))
         assertTrue(line.contains("split=true"))
@@ -65,8 +74,6 @@ class HookReporterStatusTest {
     @Test
     fun `a rive bind reason is appended only when Rive failed to bind`() {
         val healthy = hookStatusText(
-            process = "com.android.systemui",
-            pid = 7,
             owner = BarOwner.DUO.tag,
             stage = 2,
             renderer = "Rive",
@@ -77,8 +84,6 @@ class HookReporterStatusTest {
         assertTrue("healthy status must stay unchanged: $healthy", !healthy.contains("riveBind="))
 
         val failed = hookStatusText(
-            process = "com.android.systemui",
-            pid = 7,
             owner = BarOwner.DUO.tag,
             stage = 2,
             renderer = "Canvas",
@@ -87,7 +92,7 @@ class HookReporterStatusTest {
             riveAttempts = 1,
             riveBind = "poll"
         )
-        assertTrue("failed status: $failed", failed.startsWith("process=com.android.systemui pid=7 · owner=duo · "))
+        assertTrue("failed status: $failed", failed.startsWith("process=com.android.systemui pid=4321 · owner=duo · "))
         assertTrue("failed status: $failed", failed.endsWith(" · riveBind=poll"))
     }
 
@@ -95,8 +100,6 @@ class HookReporterStatusTest {
     fun `every owner tag is rendered`() {
         for (owner in BarOwner.entries) {
             val line = hookStatusText(
-                process = "p",
-                pid = 1,
                 owner = owner.tag,
                 stage = 0,
                 renderer = "none",
@@ -107,5 +110,24 @@ class HookReporterStatusTest {
             assertTrue("owner ${owner.tag} missing: $line", line.contains("owner=${owner.tag}"))
         }
         assertEquals(3, BarOwner.entries.size)
+    }
+
+    @Test
+    fun `the shared prefix is exactly what the status starts with`() {
+        val prefix = hookStatusPrefix(BarOwner.DUO.tag)
+        assertEquals("process=com.android.systemui pid=4321 · owner=duo · ", prefix)
+        val line = hookStatusText(
+            owner = BarOwner.DUO.tag,
+            stage = 2,
+            renderer = "Rive",
+            attached = true,
+            settings = null,
+            riveAttempts = 0
+        )
+        // The log line drops exactly this prefix; L adds the identity itself, so the log keeps one copy.
+        assertEquals(
+            "stage=2 · renderer=Rive · attached=true · riveAttempts=0",
+            line.removePrefix(prefix)
+        )
     }
 }

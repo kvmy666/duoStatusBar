@@ -44,8 +44,6 @@ internal class HookReporter(
         L.guard("DuoHook status report") {
             val element = duo()
             val status = hookStatusText(
-                process = ProcessIdentity.processName(),
-                pid = ProcessIdentity.pid(),
                 owner = owner.tag,
                 stage = stage,
                 renderer = element?.rendererName ?: "none",
@@ -54,7 +52,9 @@ internal class HookReporter(
                 riveAttempts = DuoGuard(ctx).attempts(),
                 riveBind = RiveBindReport.reason()
             )
-            L.i("status -> app: $status")
+            // L already prefixes process/pid; drop the status's own copy so the log line has one
+            // identity while the app-facing status keeps it.
+            L.i("status -> app: " + status.removePrefix(hookStatusPrefix(owner.tag)))
             DuoSettingsClient.report(ctx, status)
             reportDiagnostics(ctx, stage, settings, element)
         }
@@ -102,12 +102,19 @@ internal class HookReporter(
 }
 
 /**
+ * The identity every app-facing status starts with. One shape for the status text and for the other
+ * status writes (load heartbeat, attach failure), so no report can claim a state without saying which
+ * process and owner produced it.
+ */
+internal fun hookStatusPrefix(owner: String): String =
+    "process=${ProcessIdentity.processName()} pid=${ProcessIdentity.pid()} · owner=$owner · "
+
+/**
  * The app-visible status line: process identity first, then the owner and the facts the diagnostics
- * screen already showed. Pure so the exact shape is pinned without a Context.
+ * screen already showed. Deterministic once the process identity is pinned, so the exact shape is
+ * tested without a Context.
  */
 internal fun hookStatusText(
-    process: String,
-    pid: Int,
     owner: String,
     stage: Int,
     renderer: String,
@@ -117,10 +124,8 @@ internal fun hookStatusText(
     /** B3: the Rive bind reason code; appended only when Rive failed. */
     riveBind: String? = null
 ): String = buildString {
-    append("process=").append(process)
-    append(" pid=").append(pid)
-    append(" · owner=").append(owner)
-    append(" · stage=").append(stage)
+    append(hookStatusPrefix(owner))
+    append("stage=").append(stage)
     append(" · renderer=").append(renderer)
     append(" · attached=").append(attached)
     settings?.let {
