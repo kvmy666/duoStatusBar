@@ -232,6 +232,9 @@
       ],
       "measured": false,
       "notes": "static aapt2 map only; MyOS runtime dump missing",
+      "dualSimCompositeIds": [
+        "mobile_combo_dual"
+      ],
       "shadeContainerIds": [
         "shade_header_system_icons",
         "system_icons"

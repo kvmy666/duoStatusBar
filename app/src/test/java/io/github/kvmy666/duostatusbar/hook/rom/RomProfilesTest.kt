@@ -184,6 +184,32 @@ class RomProfilesTest {
     }
 
     @Test
+    fun `parses dualSimCompositeIds`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "motorola",
+                  "containerIds": ["system_icons"],
+                  "dualSimCompositeIds": ["mobile_combo_dual"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertEquals(listOf("mobile_combo_dual"), p.dualSimCompositeIds)
+    }
+
+    @Test
+    fun `shipped asset keeps the motorola dual-SIM composite`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profiles = RomProfiles.load(context)
+        val motorola = profiles.first { it.id == "motorola" }
+        assertEquals(listOf("mobile_combo_dual"), motorola.dualSimCompositeIds)
+        assertFalse("the motorola map is still unverified", motorola.measured)
+    }
+
+    @Test
     fun `missing or blank shade fields default to empty`() {
         val json = """
             {

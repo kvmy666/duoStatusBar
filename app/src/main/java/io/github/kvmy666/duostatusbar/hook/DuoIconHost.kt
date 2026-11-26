@@ -263,7 +263,7 @@ internal class DuoIconHost(private val context: Context) {
          * every bar — falling back to this bar's own measurement only when the main bar captured none.
          */
         var basePx = 0
-        val stock = StockIconHider()
+        val stock = StockIconHider(dualSimKeepKeys)
 
         /**
          * True when this slot is the QS cluster (`quick_qs_status_icons`). Its stock icons are two
@@ -430,6 +430,12 @@ internal class DuoIconHost(private val context: Context) {
     private val guard = DuoGuard(context)
     private val rom = RomResolver.resolve(context)
 
+    /**
+     * R12: the dual-SIM composite is one CELLULAR view holding both SIM rows, so hiding it as the
+     * replaced cellular icon would remove both rows. Its stable `id:` keys are kept on every hider.
+     */
+    private val dualSimKeepKeys = rom.dualSimCompositeIds.map { "id:${it.lowercase()}" }.toSet()
+
     /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
     private val finder = ContainerFinder(context, rom, logOnce)
     private var settings = ModuleSettings.DEFAULT
@@ -465,7 +471,7 @@ internal class DuoIconHost(private val context: Context) {
     private val geometry = SlotGeometry(context, rom)
 
     /** Hides and restores the stock views (FR-08/21); owns their remembered original state. */
-    private val hider = StockIconHider()
+    private val hider = StockIconHider(dualSimKeepKeys)
 
     /**
      * IOS-LAG: backoff for the proven Duo 0x0 suppress/restore loop. The owner's CPH2747 dump has 362

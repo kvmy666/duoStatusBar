@@ -170,6 +170,11 @@ class RomDetectionTest {
         assertEquals("batteryRemainingIcon", rom.shadeBatteryId)
         assertFalse(rom.shadeMeasured)
         assertFalse("must admit the runtime is unverified", rom.notes.contains("measured"))
+        assertEquals(
+            "the dual-SIM composite must be kept, not hidden as one SIM",
+            listOf("mobile_combo_dual"),
+            rom.dualSimCompositeIds
+        )
     }
 
     @Test

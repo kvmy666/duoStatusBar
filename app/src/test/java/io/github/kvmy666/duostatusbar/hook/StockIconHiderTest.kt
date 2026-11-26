@@ -44,6 +44,9 @@ class StockIconHiderTest {
     /** A generic Compose host the host resolved as the cluster; hidden explicitly by the anchor path. */
     private class ComposeView(context: Context) : View(context)
 
+    /** Motorola's dual-SIM composite: one CELLULAR view whose id carries both SIM rows. */
+    private class MobileSignalGroupView(context: Context) : View(context)
+
     @Test
     fun `wifi, mobile and battery slots are the ones Duo replaces`() {
         val hider = StockIconHider()
@@ -313,6 +316,56 @@ class StockIconHiderTest {
         assertEquals(View.VISIBLE, cluster.visibility)
         assertEquals(120, cluster.layoutParams.width)
         assertEquals(40, cluster.layoutParams.height)
+    }
+
+    // ------------------------------------------------------------------ R12 dual-SIM composite
+
+    private fun dualComposite() = MobileSignalGroupView(context).apply {
+        id = android.R.id.text1 // base key: id:text1
+        layoutParams = LinearLayout.LayoutParams(80, 36)
+    }
+
+    @Test
+    fun `a dual-SIM composite is hidden by the default hider`() {
+        val strip = LinearLayout(context)
+        val composite = dualComposite()
+        strip.addView(composite)
+
+        StockIconHider().hideReplaced(strip, keep = null)
+
+        assertEquals("the old behaviour is still the default", View.GONE, composite.visibility)
+    }
+
+    @Test
+    fun `a kept dual-SIM composite stays visible and the selected key still hides`() {
+        val strip = LinearLayout(context)
+        val composite = dualComposite()
+        val alarm = FakeIcon(context, "alarm_clock")
+        strip.addView(composite)
+        strip.addView(alarm)
+
+        val hider = StockIconHider(setOf("id:text1"))
+        hider.hideReplaced(strip, keep = null, selected = setOf("slot:alarm_clock"))
+
+        assertEquals("both SIM rows must stay live", View.VISIBLE, composite.visibility)
+        assertEquals(View.GONE, alarm.visibility)
+
+        hider.restore()
+        assertEquals("a kept view was never hidden, so restore leaves it alone", View.VISIBLE, composite.visibility)
+    }
+
+    @Test
+    fun `a kept dual-SIM composite survives hide all`() {
+        val strip = LinearLayout(context)
+        val composite = dualComposite()
+        val alarm = FakeIcon(context, "alarm_clock")
+        strip.addView(composite)
+        strip.addView(alarm)
+
+        StockIconHider(setOf("id:text1")).hideAllExcept(strip, keep = null)
+
+        assertEquals("both SIM rows must stay live", View.VISIBLE, composite.visibility)
+        assertEquals(View.GONE, alarm.visibility)
     }
 
     // ------------------------------------------------------------------ R3 A6 re-show predicate

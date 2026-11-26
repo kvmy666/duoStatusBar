@@ -77,7 +77,15 @@ internal data class RomAdapter(
      * ColorOS `notification_icon_area`), so the strip hide pass never reaches them. These are hidden
      * without sizing or fitting: the layouts are shared parents, so only visibility is changed.
      */
-    val hideContainerIds: List<String> = emptyList()
+    val hideContainerIds: List<String> = emptyList(),
+    /**
+     * Vendor ids of a dual-SIM composite that must stay visible.
+     *
+     * Motorola's `mobile_combo_dual` is one CELLULAR view holding `mobile_group_slot1` and
+     * `mobile_group_slot2`; hiding it as "one SIM" would remove both rows. The keys are the stable
+     * `id:<name>` form of [StockIconKey.baseKey], so the hider can keep the whole composite.
+     */
+    val dualSimCompositeIds: List<String> = emptyList()
 )
 
 /**
@@ -383,13 +391,16 @@ internal object RomDetection {
         systemUiPackage = AOSP,
         containerIds = listOf("system_icons", "statusIcons"),
         batteryId = "battery",
-        notes = "static APK MyOS 15; runtime unverified",
+        notes = "static APK MyOS 15; runtime unverified; vendor " +
+            "status_bar_mobile_signal_group_dual_new.xml has one ModernStatusBarMobileView " +
+            "mobile_combo_dual holding mobile_group_slot1 and mobile_group_slot2",
         match = listOf("motorola", "moto", "myos"),
         shadeContainerIds = listOf("shade_header_system_icons", "system_icons"),
         shadeBatteryId = "batteryRemainingIcon",
         coverHook = true,
         panelExpansionKind = "listener",
-        panelHookMeasured = false
+        panelHookMeasured = false,
+        dualSimCompositeIds = listOf("mobile_combo_dual")
     )
 
     /** Nothing OS. Static Nothing OS 15 resource map; no runtime dump yet. */

@@ -93,7 +93,8 @@ internal object RomProfiles {
                         panelHookMeasured = o.optBoolean("panelHookMeasured", false),
                         panelOwnerAvailable = o.optBoolean("panelOwnerAvailable", false),
                         aliases = o.optJSONArray("aliases").toStringList(),
-                        hideContainerIds = o.optJSONArray("hideContainerIds").toStringList()
+                        hideContainerIds = o.optJSONArray("hideContainerIds").toStringList(),
+                        dualSimCompositeIds = o.optJSONArray("dualSimCompositeIds").toStringList()
                     )
                 )
             }
