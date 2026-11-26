@@ -67,7 +67,9 @@ internal data class RomAdapter(
      * measured OnePlus/OxygenOS; `false` for AOSP and every other UI. Non-owners may still
      * report cover/expansion via [panelExpansionKind], but never QS-vs-shade ownership.
      */
-    val panelOwnerAvailable: Boolean = false
+    val panelOwnerAvailable: Boolean = false,
+    /** Legacy ids that still name this family (asset migration); keep the canonical [id] everywhere. */
+    val aliases: List<String> = emptyList()
 )
 
 /**
@@ -77,6 +79,9 @@ internal data class RomAdapter(
 internal object RomDetection {
 
     internal const val AOSP = "com.android.systemui"
+
+    /** The canonical family ids, exposed so tests can prove the shipped asset never drifts. */
+    internal val FAMILY_IDS = RomFamilies.CANONICAL_IDS
 
     fun forThisRom(
         manufacturer: String,

@@ -19,10 +19,8 @@ import android.widget.LinearLayout
 import java.util.WeakHashMap
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
-import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
-import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
-import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
+import io.github.kvmy666.duostatusbar.hook.rom.RomResolver
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 
@@ -422,17 +420,7 @@ internal class DuoIconHost(private val context: Context) {
     private val drawOrder = PanelHandoff.OutgoingLatch()
 
     private val guard = DuoGuard(context)
-    private val rom = RomDetection.forThisRom(
-        Build.MANUFACTURER.orEmpty(),
-        Build.BRAND.orEmpty(),
-        Build.PRODUCT.orEmpty(),
-        Build.DISPLAY.orEmpty(),
-        // Measured profiles from assets may override; only `measured` ones are accepted.
-        RomProfiles.load(context),
-        Build.VERSION.SDK_INT,
-        // A Xiaomi brand alone is not HyperOS; this reads the SystemUI APK/class markers.
-        RomMarkerSource.read(context)
-    )
+    private val rom = RomResolver.resolve(context)
 
     /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
     private val finder = ContainerFinder(context, rom, logOnce)

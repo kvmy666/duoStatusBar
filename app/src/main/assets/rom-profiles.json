@@ -115,7 +115,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "oneui",
+      "id": "samsung",
+      "aliases": [
+        "oneui"
+      ],
       "label": "Samsung One UI (static only)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [
@@ -141,7 +144,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "originos",
+      "id": "vivo",
+      "aliases": [
+        "originos"
+      ],
       "label": "vivo OriginOS / Funtouch (static only)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [
@@ -170,7 +176,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "magicos",
+      "id": "honor",
+      "aliases": [
+        "magicos"
+      ],
       "label": "Honor MagicOS (static only, old APK)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [
@@ -197,7 +206,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "myos",
+      "id": "motorola",
+      "aliases": [
+        "myos"
+      ],
       "label": "Motorola MyOS / Hello UI (static only)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [
@@ -225,7 +237,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "nothingos",
+      "id": "nothing",
+      "aliases": [
+        "nothingos"
+      ],
       "label": "Nothing OS (static only)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [

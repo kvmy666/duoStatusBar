@@ -69,6 +69,24 @@ class RomProfilesTest {
     }
 
     @Test
+    fun `parses aliases and canonicalises a legacy id`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "oneui",
+                  "containerIds": ["system_icons"],
+                  "aliases": ["oneui-legacy"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertEquals("samsung", p.id)
+        assertEquals(listOf("oneui-legacy"), p.aliases)
+    }
+
+    @Test
     fun `a malformed body yields no profiles instead of throwing`() {
         assertEquals(emptyList<RomAdapter>(), RomProfiles.parse("{not json"))
         assertEquals(emptyList<RomAdapter>(), RomProfiles.parse(""))
@@ -227,12 +245,31 @@ class RomProfilesTest {
         assertEquals(9, profiles.size)
         assertEquals(setOf("oxygenos", "hyperos"), profiles.filter { it.measured }.map { it.id }.toSet())
         assertEquals(
-            setOf("aosp", "coloros", "oneui", "originos", "magicos", "myos", "nothingos"),
+            setOf("aosp", "coloros", "samsung", "vivo", "honor", "motorola", "nothing"),
             profiles.filter { !it.measured }.map { it.id }.toSet()
         )
         val samsung = RomDetection.forThisRom("samsung", "samsung", "SM-S928", "One UI 8", profiles)
         assertEquals("samsung", samsung.id)
         assertFalse(samsung.measured)
+    }
+
+    @Test
+    fun `shipped asset uses only canonical family ids with aliases`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profiles = RomProfiles.load(context)
+        val ids = profiles.map { it.id }.toSet()
+        assertEquals(
+            setOf("oxygenos", "hyperos", "aosp", "coloros", "samsung", "vivo", "honor", "motorola", "nothing"),
+            ids
+        )
+        assertTrue("every id is a known family", ids.all { it in RomDetection.FAMILY_IDS })
+        val aliasIds = setOf("oneui", "originos", "magicos", "myos", "nothingos")
+        assertTrue("no legacy alias id survives as a profile id", ids.none { it in aliasIds })
+        assertEquals(listOf("oneui"), profiles.first { it.id == "samsung" }.aliases)
+        assertEquals(listOf("originos"), profiles.first { it.id == "vivo" }.aliases)
+        assertEquals(listOf("magicos"), profiles.first { it.id == "honor" }.aliases)
+        assertEquals(listOf("myos"), profiles.first { it.id == "motorola" }.aliases)
+        assertEquals(listOf("nothingos"), profiles.first { it.id == "nothing" }.aliases)
     }
 
     @Test

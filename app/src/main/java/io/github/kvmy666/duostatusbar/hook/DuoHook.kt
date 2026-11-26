@@ -25,8 +25,8 @@ import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.hook.events.flashlightStateFromDispatch
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
-import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
+import io.github.kvmy666.duostatusbar.hook.rom.RomResolver
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
@@ -828,15 +828,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         app = ctx
         // Now that a context exists the SystemUI package can be inspected. Only a successful read that
         // proves a non-MIUI SystemUI may switch a Xiaomi-brand device to AOSP; an unreadable one keeps
-        // the old HyperOS/brand behaviour (see [RomMarkers]).
-        rom = RomDetection.forThisRom(
-            Build.MANUFACTURER.orEmpty(),
-            Build.BRAND.orEmpty(),
-            Build.PRODUCT.orEmpty(),
-            Build.DISPLAY.orEmpty(),
-            Build.VERSION.SDK_INT,
-            RomMarkerSource.read(ctx)
-        )
+        // the old HyperOS/brand behaviour (see [RomMarkers]). One resolver so this cannot drift from the
+        // icon host and the diagnostic dump (R15).
+        rom = RomResolver.resolve(ctx)
         L.guard("DuoHook start") {
             // The settings/restart receiver goes in *before* the gate. It is the app's only way to reach a
             // module that read itself as "off": "Restart System UI" and a live enable both arrive here.
