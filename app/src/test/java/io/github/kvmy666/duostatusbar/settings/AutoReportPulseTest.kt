@@ -266,9 +266,12 @@ class AutoReportPulseTest {
             sender = sender,
             maxPerDay = 2
         ).run()
-        assertEquals(PulseAction.SUMMARY_SENT, retried.action)
+        // The failed summary queued a reporter fingerprint, so the retry ships a ZIP, not a summary;
+        // the point is that the cap still allowed it.
+        assertEquals(PulseAction.ZIP_SENT, retried.action)
         assertEquals(1, retried.sends)
         assertEquals(2, store.state.sendsToday)
+        assertTrue(sender.zipCaptions.last().contains("reporter|upload:SocketTimeoutException"))
     }
 
     @Test

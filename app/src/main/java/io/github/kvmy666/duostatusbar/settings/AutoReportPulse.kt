@@ -170,9 +170,6 @@ internal class AutoReportPulse(
                         state.counts,
                         state.overflow
                     )
-                    state = AutoReportLedger.noteAttempt(state)
-                    sends = 1
-                    zipBytes = artifact.bytes
                     val outcome = try {
                         sender.sendZip(artifact, caption)
                     } catch (t: Throwable) {
@@ -182,7 +179,12 @@ internal class AutoReportPulse(
                     }
                     when (outcome) {
                         SendOutcome.Sent -> {
-                            state = AutoReportLedger.delivered(state, fingerprints)
+                            // Only a delivered upload uses the daily cap; a failed one can retry.
+                            state = AutoReportLedger.noteAttempt(
+                                AutoReportLedger.delivered(state, fingerprints)
+                            )
+                            sends = 1
+                            zipBytes = artifact.bytes
                             action = PulseAction.ZIP_SENT
                         }
                         is SendOutcome.Failed -> {
@@ -205,8 +207,6 @@ internal class AutoReportPulse(
                     state.overflow
                 )
                 val text = AutoReportCaption.summary(identity, state.counts, state.overflow)
-                state = AutoReportLedger.noteAttempt(state)
-                sends = 1
                 val outcome = try {
                     sender.sendSummary(text, caption)
                 } catch (t: Throwable) {
@@ -214,7 +214,11 @@ internal class AutoReportPulse(
                 }
                 when (outcome) {
                     SendOutcome.Sent -> {
-                        state = AutoReportLedger.summaryDelivered(state)
+                        // Only a delivered summary uses the daily cap; a failed one can retry.
+                        state = AutoReportLedger.noteAttempt(
+                            AutoReportLedger.summaryDelivered(state)
+                        )
+                        sends = 1
                         action = PulseAction.SUMMARY_SENT
                     }
                     is SendOutcome.Failed -> {
