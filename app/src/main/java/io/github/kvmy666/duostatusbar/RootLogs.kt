@@ -568,13 +568,20 @@ internal object RootLogs {
           case " ${'$'}SEEN " in *" ${'$'}d "*) continue ;; esac
           SEEN="${'$'}SEEN ${'$'}d"
           echo "dir=${'$'}d"
+          SEEN_FILES=''
           for f in ${'$'}(ls -t "${'$'}d"/modules_*.log "${'$'}d"/verbose_*.log "${'$'}d"/lspd.log 2>/dev/null | head -n 6); do
+            SEEN_FILES="${'$'}SEEN_FILES ${'$'}f"
+            echo "file=${'$'}f"
+            tail -n 100 "${'$'}f" 2>&1
+          done
+          for f in ${'$'}(ls -t "${'$'}d"/*.log 2>/dev/null | head -n 4); do
+            case " ${'$'}SEEN_FILES " in *" ${'$'}f "*) continue ;; esac
             echo "file=${'$'}f"
             tail -n 100 "${'$'}f" 2>&1
           done
         done
         echo '=== safe mode ==='
-        SAFE_FILES=${'$'}(ls -t /data/adb/*/log/modules_*.log /data/adb/*/log/verbose_*.log /data/adb/*/log/lspd.log 2>/dev/null | head -n 12)
+        SAFE_FILES=${'$'}(ls -t /data/adb/*/log/modules_*.log /data/adb/*/log/verbose_*.log /data/adb/*/log/lspd.log /data/adb/*/log/*.log /data/adb/*/*/log/*.log 2>/dev/null | awk '!seen[${'$'}0]++' | head -n 12)
         if [ -n "${'$'}SAFE_FILES" ]; then
           grep -a -i -E 'System UI crashed [0-9]+ time|stop all modules|safe mode' ${'$'}SAFE_FILES 2>/dev/null | tail -n 60
         fi
@@ -743,26 +750,40 @@ internal object RootLogs {
     }
 
     /**
-     * Framework log files from a `file=…` listing, newest first. Only LSPosed's three names are kept;
-     * the shell already lists with `ls -t`, and names that embed a timestamp are ordered here as well so
-     * a mixed-directory listing cannot put an older file first.
+     * Framework log files from a `file=…` listing, newest first.
+     *
+     * A `dir=…` line marks a discovered framework log directory: every `*.log` in it is kept (Vector,
+     * LSPatch and zygisk builds use their own names), while the LSPosed names are still recognised
+     * outside such a listing. The shell already lists with `ls -t`; timestamped names are ordered here
+     * as well, and the sort is stable so a mixed-directory listing cannot reorder equal keys.
      */
     internal fun discoverLogFiles(listing: String): List<String> {
-        val files = listing.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() && !it.startsWith("dir=") }
-            .map { it.removePrefix("file=").trim() }
-            .filter { isFrameworkLog(it) }
-            .distinct()
-            .toList()
+        var frameworkDir = false
+        val files = ArrayList<String>()
+        for (raw in listing.lineSequence()) {
+            val line = raw.trim()
+            if (line.isBlank()) continue
+            if (line.startsWith("dir=")) {
+                frameworkDir = isFrameworkLogDir(line.removePrefix("dir=").trim())
+                continue
+            }
+            val path = line.removePrefix("file=").trim()
+            if (path.isBlank()) continue
+            if (isFrameworkLog(path, frameworkDir)) files += path
+        }
         // Stable sort: equal keys keep the shell's own `ls -t` order.
-        return files.sortedWith(compareByDescending { logSortKey(it) })
+        return files.distinct().sortedWith(compareByDescending { logSortKey(it) })
     }
 
-    private fun isFrameworkLog(path: String): Boolean {
+    /** A directory the root script lists under `/data/adb`: `<framework>/log` or `<group>/<framework>/log`. */
+    private fun isFrameworkLogDir(path: String): Boolean =
+        path.startsWith("/data/adb/") && path.trimEnd('/').endsWith("/log")
+
+    private fun isFrameworkLog(path: String, inFrameworkDir: Boolean = false): Boolean {
         val name = path.substringAfterLast('/')
-        return (name.startsWith("modules_") || name.startsWith("verbose_")) && name.endsWith(".log") ||
-            name == "lspd.log"
+        if (!name.endsWith(".log")) return false
+        if (inFrameworkDir) return true
+        return name.startsWith("modules_") || name.startsWith("verbose_") || name == "lspd.log"
     }
 
     private fun logSortKey(path: String): String =
@@ -883,7 +904,7 @@ internal object RootLogs {
         return section.copy(text = bounded(body))
     }
 
-    private fun withModuleScope(section: CaptureSection): CaptureSection {
+    internal fun withModuleScope(section: CaptureSection): CaptureSection {
         if (section.state != SectionState.PRESENT) return section
         val found = section.text.contains("duostatusbar", ignoreCase = true)
         val body = buildString {
@@ -891,6 +912,10 @@ internal object RootLogs {
                 "module=io.github.kvmy666.duostatusbar " +
                     "${if (found) "found" else "not found"} in modules_config.db"
             )
+            // `modules_config.db` is a binary SQLite file and no schema was queried here, so the report
+            // must say that plainly instead of inventing an enabled/scope answer.
+            appendLine("enabled=not parsed (modules_config.db is binary; no schema queried)")
+            appendLine("scope=see db excerpt")
             append(section.text)
         }
         return section.copy(text = bounded(body))

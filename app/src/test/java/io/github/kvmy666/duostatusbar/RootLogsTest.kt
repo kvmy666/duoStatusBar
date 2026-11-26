@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar
 
+import io.github.kvmy666.duostatusbar.diagnostics.CaptureSection
 import io.github.kvmy666.duostatusbar.diagnostics.SectionState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -323,6 +324,57 @@ class RootLogsTest {
             RootLogs.deathSummary(null, false, "root shell timed out").startsWith("deaths=unreadable:")
         )
         assertEquals("deaths=0", RootLogs.deathSummary(null, false, null))
+    }
+
+    @Test
+    fun `any log in a discovered framework directory is kept newest first`() {
+        val listing = """
+            dir=/data/adb/vector/log
+            file=/data/adb/vector/log/events.log
+            file=/data/adb/vector/log/vector_2026-11-25_10-00-00.log
+            file=/data/adb/vector/log/notes.txt
+            dir=/data/adb/lspatch/log
+            file=/data/adb/lspatch/log/patch_2026-11-24_10-00-00.log
+        """.trimIndent()
+        val ordered = RootLogs.discoverLogFiles(listing)
+        assertEquals(3, ordered.size)
+        assertTrue("newest timestamped log first: $ordered", ordered.first().contains("2026-11-25"))
+        assertTrue("the second newest log next: $ordered", ordered[1].contains("2026-11-24"))
+        assertTrue("a log without a timestamp stays last: $ordered", ordered.last().endsWith("events.log"))
+        assertFalse("a non-log file is dropped", ordered.any { it.endsWith("notes.txt") })
+    }
+
+    @Test
+    fun `the framework log section tails discovered logs beyond the LSPosed names`() {
+        val script = RootLogs.rootScript()
+        assertTrue("per-directory .log glob missing", script.contains("/*.log"))
+        assertTrue(
+            "safe-mode list must include /data/adb/*/log/*.log",
+            script.contains("/data/adb/*/log/*.log")
+        )
+        assertTrue(
+            "safe-mode list must include /data/adb/*/*/log/*.log",
+            script.contains("/data/adb/*/*/log/*.log")
+        )
+        assertTrue("the safe-mode list is bounded", script.contains("head -n 12"))
+    }
+
+    @Test
+    fun `the module scope section states enabled and scope are not parsed`() {
+        val present = CaptureSection(
+            "LSPosed config (enabled / scope)",
+            SectionState.PRESENT,
+            "",
+            "junk duostatusbar record"
+        )
+        val text = RootLogs.withModuleScope(present).text
+        assertTrue(
+            "explicit enabled line missing: $text",
+            text.contains("enabled=not parsed (modules_config.db is binary; no schema queried)")
+        )
+        assertTrue("explicit scope line missing: $text", text.contains("scope=see db excerpt"))
+        assertFalse("no enabled=true may be invented", text.contains("enabled=true"))
+        assertTrue("the raw excerpt must stay", text.contains("junk duostatusbar record"))
     }
 
     @Test
