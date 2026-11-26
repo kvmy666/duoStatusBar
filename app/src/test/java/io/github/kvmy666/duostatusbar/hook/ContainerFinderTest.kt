@@ -55,6 +55,12 @@ class ContainerFinderTest {
     /** A battery *container* (HyperOS) whose name must not be mistaken for the battery view. */
     private class MiuiStatusBatteryContainer(context: Context) : LinearLayout(context)
 
+    /** A generic Compose host, as the end-side probe returns (simple name ends with `ComposeView`). */
+    private class ComposeView(context: Context) : View(context)
+
+    /** Android 17 AOSP's Compose icon cluster, matched by the targeted fallback even without ids. */
+    private class SingleBindableStatusBarComposeIconView(context: Context) : LinearLayout(context)
+
     /** The measured QS cluster's battery host: `batteryRemainingIcon` is a container, not a meter view. */
     private class FakeBatteryRemainingIcon(context: Context) : LinearLayout(context)
 
@@ -473,6 +479,72 @@ class ContainerFinderTest {
         cluster.layout(0, 0, 9, 63)
 
         assertSame(cluster, finder().findVisibleShadeArea(window, ids::resolve))
+    }
+
+    /**
+     * Android 17 AOSP leaves `system_icons` as a GONE stub and draws the cluster with Compose. When the
+     * stub is GONE and a Compose cluster exists, the host must not fall back to the stub's visible
+     * parent: the Compose path is the only one that draws and hides the real cluster.
+     */
+    @Test
+    fun `a gone strip stub with a Compose icon cluster takes the Compose path`() {
+        val ids = FakeIds()
+        val root = FrameLayout(context)
+        val parent = FrameLayout(context)
+        val stub = LinearLayout(context).apply {
+            id = ids.id("system_icons")
+            visibility = View.GONE
+        }
+        parent.addView(stub)
+        // The old fallbacks still see a real icon/battery pair under the visible parent.
+        parent.addView(FakeStatusIconContainer(context))
+        parent.addView(FakeBatteryMeterView(context))
+        val endSide = FrameLayout(context).apply { id = ids.id("status_bar_end_side_content") }
+        val compose = ComposeView(context)
+        endSide.addView(compose)
+        parent.addView(endSide)
+        root.addView(parent)
+
+        assertNull(finder().findStatusIconsHost(root, ids::resolve))
+        assertSame(compose, finder().findComposeIconView(root, ids::resolve))
+    }
+
+    /** Without a Compose cluster the GONE stub is skipped and the old role fallback still attaches. */
+    @Test
+    fun `a gone strip stub without a Compose cluster keeps the old fallback`() {
+        val ids = FakeIds()
+        val root = FrameLayout(context)
+        val parent = FrameLayout(context)
+        val stub = LinearLayout(context).apply {
+            id = ids.id("system_icons")
+            visibility = View.GONE
+        }
+        parent.addView(stub)
+        parent.addView(FakeStatusIconContainer(context))
+        parent.addView(FakeBatteryMeterView(context))
+        root.addView(parent)
+
+        assertSame(parent, finder().findStatusIconsHost(root, ids::resolve))
+    }
+
+    /**
+     * The `SingleBindableStatusBarComposeIconView` is the measured Android 17 cluster name. It is found
+     * even when the end-side ids do not resolve; a plain `ComposeView` is not, so a centre clock that is
+     * Compose is never mistaken for the cluster.
+     */
+    @Test
+    fun `a status bar compose icon view is found without end side ids`() {
+        val ids = FakeIds()
+        val root = FrameLayout(context)
+        val wrapper = FrameLayout(context)
+        val cluster = SingleBindableStatusBarComposeIconView(context)
+        wrapper.addView(cluster)
+        root.addView(wrapper)
+
+        assertSame(cluster, finder().findComposeIconView(root, ids::resolve))
+
+        val generic = FrameLayout(context).apply { addView(ComposeView(context)) }
+        assertNull(finder().findComposeIconView(generic, ids::resolve))
     }
 
     /** A vendor container that rejects foreign children; only the standard ancestor is usable. */

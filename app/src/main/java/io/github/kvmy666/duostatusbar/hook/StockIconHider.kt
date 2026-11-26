@@ -50,7 +50,13 @@ internal class StockIconHider {
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
             if (child === keep || alsoKeep.any { it === child }) continue
-            if (child === keepLayout) hideKeepLayout(child) else hide(child)
+            // The Compose icon cluster is a unit: keep its layout (INVISIBLE) instead of GONE, so it
+            // does not collapse the bar it shares. A generic container keeps the old hide path.
+            if (child === keepLayout || StockIconKey.kindOf(child) == StockIconKind.COMPOSE) {
+                hideKeepLayout(child)
+            } else {
+                hide(child)
+            }
         }
         noteApplied(container)
         logOnce.once("hide") {
@@ -76,9 +82,10 @@ internal class StockIconHider {
         keep: View?,
         keepLayout: View? = null,
         alsoKeep: Collection<View> = emptyList(),
-        selected: Set<String> = emptySet()
+        selected: Set<String> = emptySet(),
+        composeAnchor: View? = null
     ) {
-        walk(container, keep, keepLayout, alsoKeep, selected, HashMap())
+        walk(container, keep, keepLayout, alsoKeep, selected, composeAnchor, HashMap())
         noteApplied(container)
         logOnce.once("hide-replaced") {
             L.i("only the replaced battery/Wi-Fi/cellular and selected status views hidden; " +
@@ -233,17 +240,24 @@ internal class StockIconHider {
         keepLayout: View?,
         alsoKeep: Collection<View>,
         selected: Set<String>,
+        composeAnchor: View?,
         counts: MutableMap<String, Int>
     ) {
         if (parent !is ViewGroup) return
         for (i in 0 until parent.childCount) {
             val child = parent.getChildAt(i)
+            // The host resolved this generic Compose view as the icon cluster, so hide it whole even
+            // though its class is ignored by the token pass; it keeps its layout like the battery.
+            if (child === composeAnchor) {
+                hideKeepLayout(child)
+                continue
+            }
             if (child === keep || alsoKeep.any { it === child }) continue
             if (StockIconKey.isIgnored(child)) continue
             val kind = StockIconKey.kindOf(child)
             if (kind == StockIconKind.IGNORED) {
                 // A container (or an unreadable wrapper): walk into it, never hide it.
-                walk(child, keep, keepLayout, alsoKeep, selected, counts)
+                walk(child, keep, keepLayout, alsoKeep, selected, composeAnchor, counts)
                 continue
             }
             val base = StockIconKey.baseKey(child)
@@ -251,7 +265,7 @@ internal class StockIconHider {
             counts[base] = occurrence
             val key = StockIconKey.key(base, occurrence)
             if (!kind.replaced && key !in selected) continue
-            if (kind == StockIconKind.BATTERY || child === keepLayout) {
+            if (kind == StockIconKind.BATTERY || kind == StockIconKind.COMPOSE || child === keepLayout) {
                 hideKeepLayout(child)
             } else {
                 hide(child)
@@ -289,6 +303,9 @@ internal class StockIconHider {
             val hideNonReplaced = hideOthers && !kind.replaced
             if (!hideSelected && !hideNonReplaced) continue
             if (kind == StockIconKind.BATTERY && !hideSelected) {
+                hideKeepLayout(child)
+            } else if (kind == StockIconKind.COMPOSE) {
+                // The Compose cluster is a leaf for us: hide it INVISIBLE and never recurse into it.
                 hideKeepLayout(child)
             } else {
                 hide(child)

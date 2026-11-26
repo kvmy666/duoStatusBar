@@ -218,6 +218,14 @@ internal class DuoIconHost(private val context: Context) {
      */
     private var overlayOnCombined = false
 
+    /**
+     * Android 17 AOSP's Compose icon cluster (the outer `ComposeView` the host resolved). It is not a
+     * child of a View strip, so the per-icon pass cannot hide it by class; the host hides it directly
+     * with INVISIBLE so it keeps its layout. Null on a View strip. Re-resolved on re-attach because the
+     * bar is rebuilt (rotation), and restored by the hider on teardown.
+     */
+    private var composeStockAnchor: View? = null
+
     /** The anchor's visibility before the overlay hid it, so teardown can put the stock cluster back. */
     private var anchorOriginalVisibility: Int? = null
 
@@ -2011,12 +2019,22 @@ internal class DuoIconHost(private val context: Context) {
      * FR-08/08b: hides the stock views per the user's choice — everything, or only what Duo replaces.
      * One place so the main bar, the keyguard bar and the shade header can never disagree.
      */
-    private fun hideStock(container: ViewGroup, keep: View?, keepLayout: View? = null, owner: StockIconHider = hider) {
+    private fun hideStock(
+        container: ViewGroup,
+        keep: View?,
+        keepLayout: View? = null,
+        owner: StockIconHider = hider,
+        composeAnchor: View? = null
+    ) {
         val ours = ourViews()
         if (settings.hideOtherIcons) {
-            owner.hideAllExcept(container, keep, keepLayout, ours)
+            // The Compose anchor is never a View strip child; keep its layout so the bar it draws in
+            // does not collapse.
+            owner.hideAllExcept(container, keep, keepLayout ?: composeAnchor, ours)
         } else {
-            owner.hideReplaced(container, keep, keepLayout, ours, hiddenStockKeys)
+            owner.hideReplaced(container, keep, keepLayout, ours, hiddenStockKeys, composeAnchor)
+            // The pass ignores a generic ComposeView by class; hide the resolved anchor explicitly.
+            composeAnchor?.let { owner.hideKeepLayout(it) }
         }
     }
 
@@ -3042,6 +3060,7 @@ internal class DuoIconHost(private val context: Context) {
             }
             // A fresh attach is a real change: clear any previous suppress/restore backoff (IOS-LAG).
             resetThrash()
+            composeStockAnchor = null
             var target = finder.findStatusIconsHost(statusBarRoot)
             var composeAnchor: View? = null
             if (target == null) {
@@ -3054,6 +3073,7 @@ internal class DuoIconHost(private val context: Context) {
                     L.i("Compose status bar: no View strip; drawing in ${parent.javaClass.simpleName} " +
                             "and hiding ${compose.javaClass.simpleName}")
                     composeAnchor = compose
+                    composeStockAnchor = compose
                     target = parent
                 }
             }
@@ -3233,7 +3253,8 @@ internal class DuoIconHost(private val context: Context) {
             hideStock(
                 target,
                 if (candidate.ui.parent === target) candidate.ui else null,
-                if (overlay) anchorBattery else null
+                if (overlay) anchorBattery else null,
+                composeAnchor = composeStockAnchor
             )
             hideOverlayAnchor()
             // Hiding may have changed the strip's layout, so the overlay anchor is re-read after it.
@@ -3521,7 +3542,8 @@ internal class DuoIconHost(private val context: Context) {
             hideStock(
                 strip,
                 if (ring != null && ring.parent === strip) ring else null,
-                if (overlay) anchorBattery else null
+                if (overlay) anchorBattery else null,
+                composeAnchor = composeStockAnchor
             )
             hideOverlayAnchor()
             publishStockIcons()
@@ -3583,6 +3605,11 @@ internal class DuoIconHost(private val context: Context) {
             val barRoot = root
             val fresh = barRoot?.let { finder.findStatusIconsHost(it) } ?: hideStrip ?: target
             hideStrip = fresh
+            // A rebuilt A17 bar carries a fresh Compose cluster: re-hide the new one, and keep the old
+            // anchor when the bar cannot be resolved yet.
+            if (composeStockAnchor != null) {
+                composeStockAnchor = barRoot?.let { finder.findComposeIconView(it) } ?: composeStockAnchor
+            }
             val combined = if (overlayOnCombined && barRoot != null) {
                 finder.findCombinedStatusView(barRoot)
             } else {
@@ -3718,6 +3745,7 @@ internal class DuoIconHost(private val context: Context) {
         element = null
         if (restoreStock) {
             hider.restore()
+            composeStockAnchor = null
             // The One UI 8 anchor is hidden directly (it is not in the strip the hider restores), so its
             // own visibility is put back here or the stock cluster would be left invisible after teardown.
             restoreAnchorVisibility()

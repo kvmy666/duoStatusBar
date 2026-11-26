@@ -38,6 +38,12 @@ class StockIconHiderTest {
     /** A non-replaced icon view whose name must not match. */
     private class BluetoothHeadsetView(context: Context) : View(context)
 
+    /** Android 17 AOSP's Compose icon cluster: a unit hidden with its layout kept. */
+    private class SingleBindableStatusBarComposeIconView(context: Context) : View(context)
+
+    /** A generic Compose host the host resolved as the cluster; hidden explicitly by the anchor path. */
+    private class ComposeView(context: Context) : View(context)
+
     @Test
     fun `wifi, mobile and battery slots are the ones Duo replaces`() {
         val hider = StockIconHider()
@@ -237,6 +243,56 @@ class StockIconHiderTest {
         assertEquals(View.GONE, alarm.visibility)
         assertEquals(20, alarm.layoutParams.width)
         assertEquals(18, alarm.layoutParams.height)
+    }
+
+    @Test
+    fun `the Compose cluster is INVISIBLE and is restored`() {
+        val strip = LinearLayout(context)
+        val cluster = SingleBindableStatusBarComposeIconView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(85, 58)
+        }
+        strip.addView(cluster)
+
+        // Default per-icon mode: hideOnlyReplaced with hideOtherIcons off.
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+
+        assertEquals(View.INVISIBLE, cluster.visibility)
+        assertEquals(85, cluster.layoutParams.width)
+        assertEquals(58, cluster.layoutParams.height)
+
+        hider.restore()
+        assertEquals(View.VISIBLE, cluster.visibility)
+        assertEquals(85, cluster.layoutParams.width)
+        assertEquals(58, cluster.layoutParams.height)
+    }
+
+    @Test
+    fun `hide all keeps the Compose cluster laid out`() {
+        val strip = LinearLayout(context)
+        val cluster = SingleBindableStatusBarComposeIconView(context)
+        val alarm = FakeIcon(context, "alarm_clock")
+        strip.addView(cluster)
+        strip.addView(alarm)
+
+        StockIconHider().hideAllExcept(strip, keep = null)
+
+        assertEquals(View.INVISIBLE, cluster.visibility)
+    }
+
+    @Test
+    fun `a generic ComposeView passed as the Compose anchor is hidden and restored`() {
+        val strip = LinearLayout(context)
+        val anchor = ComposeView(context)
+        strip.addView(anchor)
+
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null, composeAnchor = anchor)
+
+        assertEquals(View.INVISIBLE, anchor.visibility)
+
+        hider.restore()
+        assertEquals(View.VISIBLE, anchor.visibility)
     }
 
     // ------------------------------------------------------------------ R3 A6 re-show predicate

@@ -18,12 +18,14 @@ internal enum class StockIconKind {
     WIFI,
     CELLULAR,
     COMBINED,
+    COMPOSE,
     OTHER,
     IGNORED;
 
     /** True for every kind Duo replaces; those are hidden even when the user selected nothing. */
     val replaced: Boolean
-        get() = this == BATTERY || this == WIFI || this == CELLULAR || this == COMBINED
+        get() = this == BATTERY || this == WIFI || this == CELLULAR || this == COMBINED ||
+            this == COMPOSE
 }
 
 /** One stock icon found in the live bar. [key] is what `hiddenStockIcons` stores. */
@@ -133,6 +135,10 @@ internal object StockIconKey {
      */
     fun kindOf(view: View): StockIconKind {
         if (isIgnored(view)) return StockIconKind.IGNORED
+        // Android 17 AOSP draws the whole Wi-Fi/cellular/battery cluster with one Compose view. It is a
+        // single replaced unit, never a container to walk into. A generic `ComposeView` is not matched
+        // here: a centre clock may be Compose and must not be hidden as an icon cluster.
+        if (className(view).contains("composeiconview")) return StockIconKind.COMPOSE
         val slot = slotOf(view)?.trim()?.lowercase()
         if (!slot.isNullOrEmpty()) return kindOfToken(slot)
         val id = idName(view)?.lowercase()
