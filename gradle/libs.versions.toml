@@ -27,6 +27,8 @@ compose-ui = { module = "androidx.compose.ui:ui" }
 backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycleRuntime" }
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
