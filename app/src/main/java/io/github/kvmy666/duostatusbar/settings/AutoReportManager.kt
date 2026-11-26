@@ -15,6 +15,7 @@ import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.ui.buildDiagnostics
+import io.github.kvmy666.duostatusbar.ui.moduleLogFromDump
 import io.github.kvmy666.duostatusbar.ui.reportRom
 import io.github.kvmy666.duostatusbar.ui.writeReportZip
 import java.io.File
@@ -158,6 +159,14 @@ internal object AutoReportManager {
     }
 
     /**
+     * The module log the detector should read: the section the module embedded in the stored dump,
+     * else [fallback] (the app's own ring). The app process cannot see the module's buffer, so reading
+     * only the ring made every automatic report's module log empty.
+     */
+    internal fun detectorModuleLog(dump: String, fallback: String = ""): String =
+        moduleLogFromDump(dump) ?: fallback
+
+    /**
      * The one collector for manual and automatic reports: the same shared capture, the same diagnostics
      * builder. The automatic path adds no module work and no continuous collection.
      */
@@ -176,7 +185,7 @@ internal object AutoReportManager {
         val moduleEnabled = portrait.enabled || landscape.enabled ||
             portrait.iosMode || landscape.iosMode
         val iosActive = portrait.iosMode || landscape.iosMode
-        val moduleLog = runCatching { L.recentText() }.getOrDefault("")
+        val moduleLog = runCatching { detectorModuleLog(dump, L.recentText()) }.getOrDefault("")
         val problems = ProblemDetector.detect(
             ProblemInputs(
                 status = status,

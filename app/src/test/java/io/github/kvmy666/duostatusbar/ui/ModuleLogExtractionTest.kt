@@ -3,8 +3,13 @@ package io.github.kvmy666.duostatusbar.ui
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.settings.AutoReportManager
+import io.github.kvmy666.duostatusbar.settings.ProblemDetector
+import io.github.kvmy666.duostatusbar.settings.ProblemInputs
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -72,5 +77,34 @@ class ModuleLogExtractionTest {
             text.startsWith("[app-process log; module log not present]")
         )
         assertTrue("fallback must still carry the app ring: $text", text.contains("app-ring-only-line"))
+    }
+
+    @Test
+    fun `the last module section wins and is trimmed`() {
+        val dump = "first\n$marker\nstale\nsecond\n$marker\nmodule-one\nmodule-two\n"
+        assertEquals("module-one\nmodule-two", moduleLogFromDump(dump))
+    }
+
+    @Test
+    fun `a dump without a module section yields null`() {
+        assertNull(moduleLogFromDump("header only"))
+        assertNull(moduleLogFromDump(""))
+    }
+
+    @Test
+    fun `a blank module section yields null`() {
+        assertNull(moduleLogFromDump("header\n$marker\n   \n"))
+    }
+
+    @Test
+    fun `the auto collector detector sees the module log from the dump`() {
+        val dump = "header\n$marker\nios v2 miss piece=wifi\n"
+        val log = AutoReportManager.detectorModuleLog(dump, "app-ring-only")
+        assertEquals("ios v2 miss piece=wifi", log)
+        val problems = ProblemDetector.detect(ProblemInputs(moduleLog = log, iosActive = true))
+        assertTrue(
+            "detector missed the module log from the dump: $problems",
+            problems.any { it.type == "ios_miss" && it.location == "wifi" }
+        )
     }
 }

@@ -32,6 +32,23 @@ internal const val DONATE_URL = "https://paypal.me/kroomfahd"
 /** Where a fallback report goes: the developer's Telegram, and the issue tracker. */
 internal const val TELEGRAM_CHAT_URL = "https://t.me/kvmy1"
 internal const val GITHUB_NEW_ISSUE = "https://github.com/kvmy666/duoStatusBar/issues/new"
+
+/**
+ * The header the module writes in front of its own log inside the diagnostic dump. The app process
+ * cannot read the module's ring buffer, so this section is the real module log an automatic report has.
+ */
+internal const val MODULE_LOG_MARKER = "=== module log (from the module, no root needed) ==="
+
+/**
+ * The module log embedded in a stored diagnostic [dump], or null when the dump has no such section.
+ * The last marker wins, because a dump can quote an older one; a blank section is "not present".
+ */
+internal fun moduleLogFromDump(dump: String): String? {
+    val at = dump.lastIndexOf(MODULE_LOG_MARKER)
+    if (at < 0) return null
+    return dump.substring(at + MODULE_LOG_MARKER.length).trim().ifBlank { null }
+}
+
 internal val TELEGRAM_PACKAGES = listOf(
     "org.telegram.messenger",
     "org.telegram.messenger.web",
@@ -416,7 +433,10 @@ internal fun writeReportZip(
         "panelOwnerAvailable" to (rom?.panelOwnerAvailable ?: false).toString()
     )
 
-    val moduleLog = runCatching { L.recentText() }.getOrElse { status }
+    // The module pushed its own log inside the dump; the app's ring here is only this process.
+    val moduleLog = moduleLogFromDump(dump)
+        ?: "[app-process log; module log not present]\n" +
+            runCatching { L.recentText() }.getOrElse { status }
 
     val inputs = DuoReportInputs(
         generatedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date()),
