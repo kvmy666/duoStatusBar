@@ -750,11 +750,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             !IosResourceEngine.installed ->
                 IosV2Log.branchOnce("ios.route", "v2 missing class=IosResourceEngine - stock bar kept")
             !IosBatteryV2.installedFor(rom.id) ->
-                // R4: name the family's own missing owner, not the generic any-class message.
-                IosV2Log.branchOnce(
-                    "ios.route",
-                    "v2 missing battery owner=${batteryOwnerName(rom.id)} - stock bar kept"
-                )
+                // R4: OxygenOS keeps the 2.1.1 string; another family names its own missing owner.
+                IosV2Log.branchOnce("ios.route", IosV2Profile.unavailableBatteryLine(rom.id))
             else ->
                 IosV2Log.branchOnce(
                     "ios.route",
@@ -762,10 +759,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 )
         }
     }
-
-    /** R4: "oplus"/"aosp" for the family's battery owner (the word the route line must name). */
-    private fun batteryOwnerName(familyId: String): String =
-        IosV2Profile.batteryOwner(familyId)?.name?.lowercase() ?: "none"
 
     /**
      * R4: one `unsupported` line per skipped owner piece, once per process. Never on OxygenOS: every
@@ -1034,12 +1027,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 iosRoute = IosRoute.NONE
                 IosAvailability.routeFailed = true
                 IosRouteDiagnostics.update(iosRoute, rom.id)
-                commitFeatures(
-                    stage,
-                    settings,
-                    override,
+                val fallback =
                     featureSetFor(settings, override, false, otherOrientationEnabled = false)
-                )
+                // Diagnostics-only: the `features:` line must name the Duo stage that is actually
+                // attached, not the stale iOS stage read before the failure. The attach decision
+                // below still uses `features` (unchanged).
+                commitFeatures(DuoGuard.stageOf(fallback), settings, override, fallback)
                 applyDuoRegistrations()
                 reportIosCapability(ctx, settings.revision)
             }

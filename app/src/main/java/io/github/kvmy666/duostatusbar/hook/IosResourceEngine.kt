@@ -74,6 +74,12 @@ internal fun formatIosMapDrop(drop: IosMapDrop): String =
     "ios v2 map drop family=${drop.family} name=${drop.name} reason=${drop.reason}"
 
 /**
+ * R4: the per-spec drop lines are emitted for every family except OxygenOS, whose log is frozen (its
+ * two `hiddenNoIntrinsic` passpoint drops must not add lines). Pure so the suppression is tested.
+ */
+internal fun iosMapDropsEnabled(family: String): Boolean = family != "oxygenos"
+
+/**
  * R4: collects every dropped resource spec during one map build. Pure (no Android calls) so the
  * name/reason/format rule is unit-tested without a device resource table.
  */
@@ -85,11 +91,15 @@ internal class IosMapDrops(private val family: String) {
         dropped.add(IosMapDrop(family, iosMapDropName(spec), reason))
     }
 
-    /** Each collected drop exactly once, in spec order. */
+    /** All collected drops, regardless of whether the family logs them (diagnostics/tests). */
     fun entries(): List<IosMapDrop> = dropped.toList()
 
-    /** The formatted log lines for [entries], in spec order. */
-    fun lines(): List<String> = dropped.map(::formatIosMapDrop)
+    /** The drops this family is allowed to log; OxygenOS gets none (its log is frozen). */
+    fun logEntries(): List<IosMapDrop> =
+        if (iosMapDropsEnabled(family)) dropped.toList() else emptyList()
+
+    /** The formatted log lines for [logEntries]. */
+    fun lines(): List<String> = logEntries().map(::formatIosMapDrop)
 }
 
 /**
@@ -510,13 +520,11 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     "buildMs=$buildMs"
             )
             // R4: name every dropped spec once per process, on the non-OxygenOS families only. The
-            // OxygenOS log is frozen (its two hiddenNoIntrinsic passpoint drops must not add lines);
-            // the summary line above stays byte-identical for every family.
-            if (rom.id != "oxygenos") {
-                for (drop in drops.entries()) {
-                    logOnce.once("ios-map-drop:${drop.family}:${drop.name}:${drop.reason}") {
-                        L.i(formatIosMapDrop(drop))
-                    }
+            // collector itself (`logEntries`) owns the gate, so this loop can never log an OxygenOS
+            // drop; the summary line above stays byte-identical for every family.
+            for (drop in drops.logEntries()) {
+                logOnce.once("ios-map-drop:${drop.family}:${drop.name}:${drop.reason}") {
+                    L.i(formatIosMapDrop(drop))
                 }
             }
             return built

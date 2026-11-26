@@ -77,6 +77,21 @@ internal object IosV2Profile {
     /** R4/R8: the hide-extras leaves are measured Oplus binders only. */
     fun extrasFamily(id: String): Boolean = id == "oxygenos"
 
+    /**
+     * R4: the route-unavailable battery line.
+     *
+     * OxygenOS keeps the 2.1.1 string byte-for-byte (`v2 missing class=IosBatteryV2 - stock bar
+     * kept`); every other family names its own missing owner so Samsung reports `aosp`, not the
+     * generic any-class wording.
+     */
+    fun unavailableBatteryLine(id: String): String =
+        if (id == "oxygenos") {
+            "v2 missing class=IosBatteryV2 - stock bar kept"
+        } else {
+            val owner = batteryOwner(id)?.name?.lowercase() ?: "none"
+            "v2 missing battery owner=$owner - stock bar kept"
+        }
+
     /** Data-type placement (OxygenOS `mobile_type` child) is measured only here. */
     fun typePlacementFamily(id: String): Boolean = id == "oxygenos"
 

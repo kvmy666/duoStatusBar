@@ -56,6 +56,20 @@ class IosV2ProfileTest {
     }
 
     @Test
+    fun `unavailable battery line keeps the frozen OxygenOS string and names the others`() {
+        // Byte-identical to the 2.1.1 line on OxygenOS.
+        assertEquals(
+            "v2 missing class=IosBatteryV2 - stock bar kept",
+            IosV2Profile.unavailableBatteryLine("oxygenos")
+        )
+        // Every other covered family names its own missing owner.
+        assertEquals(
+            "v2 missing battery owner=aosp - stock bar kept",
+            IosV2Profile.unavailableBatteryLine("samsung")
+        )
+    }
+
+    @Test
     fun `existing family booleans are unchanged`() {
         assertEquals(
             listOf("oxygenos", "samsung"),

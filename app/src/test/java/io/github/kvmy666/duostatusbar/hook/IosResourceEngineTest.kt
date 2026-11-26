@@ -235,16 +235,56 @@ class IosResourceEngineTest {
     }
 
     @Test
-    fun `all six drop reasons exist and are distinct`() {
-        val reasons = listOf(
-            IosMapDropReason.NO_ID,
-            IosMapDropReason.DUPLICATE,
-            IosMapDropReason.UNSUPPORTED_SLOT,
-            IosMapDropReason.NO_DRAWABLE,
-            IosMapDropReason.NO_INTRINSIC,
-            IosMapDropReason.NO_STOCK_STATE
+    fun `map drop lines are suppressed only for OxygenOS`() {
+        // The review FAIL: the OxygenOS log is frozen, so the new per-spec lines must never be emitted
+        // there. This fails if the buildMap gate (iosMapDropsEnabled) is deleted or inverted.
+        assertFalse(iosMapDropsEnabled("oxygenos"))
+        for (id in listOf("samsung", "hyperos", "aosp", "nothing", "motorola", "vivo", "coloros", "honor")) {
+            assertTrue(id, iosMapDropsEnabled(id))
+        }
+    }
+
+    @Test
+    fun `the collector suppresses OxygenOS log entries but still collects the drops`() {
+        val spec = IosResourceSpec(name = "wifi_signal", kind = IosResourceKind.WIFI, value = 3)
+
+        val oxygenos = IosMapDrops("oxygenos")
+        oxygenos.add(spec, IosMapDropReason.NO_ID)
+        // Collected for diagnostics, but the frozen OxygenOS log must never receive a per-drop line.
+        assertEquals(1, oxygenos.entries().size)
+        assertTrue(oxygenos.logEntries().isEmpty())
+        assertTrue(oxygenos.lines().isEmpty())
+
+        val samsung = IosMapDrops("samsung")
+        samsung.add(spec, IosMapDropReason.NO_ID)
+        assertEquals(1, samsung.entries().size)
+        assertEquals(1, samsung.logEntries().size)
+        assertEquals(
+            listOf("ios v2 map drop family=samsung name=wifi_signal reason=no_id"),
+            samsung.lines()
         )
-        assertEquals(6, reasons.toSet().size)
+    }
+
+    @Test
+    fun `all six drop reasons exist and are distinct with their exact wire tokens`() {
+        assertEquals(
+            listOf(
+                "no_id",
+                "duplicate",
+                "unsupported_slot",
+                "no_drawable",
+                "no_intrinsic",
+                "no_stock_state"
+            ),
+            listOf(
+                IosMapDropReason.NO_ID,
+                IosMapDropReason.DUPLICATE,
+                IosMapDropReason.UNSUPPORTED_SLOT,
+                IosMapDropReason.NO_DRAWABLE,
+                IosMapDropReason.NO_INTRINSIC,
+                IosMapDropReason.NO_STOCK_STATE
+            )
+        )
     }
 
     @Test
