@@ -868,26 +868,63 @@ internal object IosSlotLayout {
      * `MATCH_PARENT` (-1), weighted (`0` + weight), and not-yet-laid-out children contribute nothing:
      * reading a live `child.width` here made the container grow on every reassert once such a child
      * had been measured. With immutable inputs a second apply writes the same width/height.
+     *
+     * A container whose own width is not a positive fixed px (`wrap_content`, `MATCH_PARENT` or a
+     * weighted `0dp`) is a shared row. If it still has a visible weighted child that no slot has
+     * target-owned, that child's width is owned by the parent/weight, so resizing the row to the
+     * remaining slots would collapse it (the Samsung `system_icons` row). Leave it alone. A row that
+     * is itself weighted/shared never shrinks below the width it has already measured.
      */
     private fun fitContainer(container: ViewGroup) {
+        val stock = originals[container]
+        val params = container.layoutParams
+        val currentWidth = params?.width ?: 0
+        // A fixed px row is a dedicated parent; max(stock, width) keeps it and the existing path.
+        val fixedWidth = max(stock?.width?.takeIf { it > 0 } ?: 0, currentWidth.takeIf { it > 0 } ?: 0)
+        if (fixedWidth <= 0 && hasUnmanagedWeightedChild(container)) return
+
         var width = 0
         var height = 0
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i) ?: continue
             if (child.visibility == View.GONE) continue
             val target = targets[child]
-            val params = child.layoutParams
-            val w = target?.get(0) ?: params?.width?.takeIf { it > 0 } ?: 0
-            val h = target?.get(1) ?: params?.height?.takeIf { it > 0 } ?: 0
+            val childParams = child.layoutParams
+            val w = target?.get(0) ?: childParams?.width?.takeIf { it > 0 } ?: 0
+            val h = target?.get(1) ?: childParams?.height?.takeIf { it > 0 } ?: 0
             if (w > 0) width += w
             if (h > height) height = h
         }
         if (width <= 0 || height <= 0) return
-        val stock = originals[container]
-        val params = container.layoutParams
         val minWidth = stock?.width?.takeIf { it > 0 } ?: params?.width?.takeIf { it > 0 } ?: 0
         val minHeight = stock?.height?.takeIf { it > 0 } ?: params?.height?.takeIf { it > 0 } ?: 0
-        applyBox(container, max(minWidth, width), max(minHeight, height))
+        var targetWidth = max(minWidth, width)
+        // A weighted/shared row keeps the space it already occupies; our slot sum is only a minimum.
+        if (isWeightedOrShared(params) && container.measuredWidth > 0) {
+            targetWidth = max(targetWidth, container.measuredWidth)
+        }
+        applyBox(container, targetWidth, max(minHeight, height))
+    }
+
+    /** A visible child whose width is owned by its parent/weight and no slot has target-owned it. */
+    private fun hasUnmanagedWeightedChild(container: ViewGroup): Boolean {
+        for (i in 0 until container.childCount) {
+            val child = container.getChildAt(i) ?: continue
+            if (child.visibility == View.GONE) continue
+            val params = child.layoutParams as? LinearLayout.LayoutParams ?: continue
+            if (params.weight <= 0f) continue
+            if (params.width != 0 && params.width != ViewGroup.LayoutParams.MATCH_PARENT) continue
+            if (targets[child] == null) return true
+        }
+        return false
+    }
+
+    /** True when [params] makes this view a weighted/shared child (`0dp + weight` or MATCH_PARENT). */
+    private fun isWeightedOrShared(params: ViewGroup.LayoutParams?): Boolean {
+        val width = params?.width ?: return false
+        if (width == ViewGroup.LayoutParams.MATCH_PARENT) return true
+        val weight = (params as? LinearLayout.LayoutParams)?.weight ?: 0f
+        return width == 0 && weight > 0f
     }
 
     /** Sizes the row above a slot container (e.g. `system_icons`) to its visible children. */
