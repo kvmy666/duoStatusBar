@@ -2039,6 +2039,37 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /**
+     * Hides a ROM's stock signal cluster that lives outside the icon strip (R11/R14).
+     *
+     * Honor and ColorOS keep the Wi-Fi/cellular cluster in a sibling of the strip, so [hideStock] never
+     * reaches it. [ExtraStockScope] filters out ids that do not resolve, containers already `GONE`, and
+     * any target that is (or contains) the strip/element. Only the hider's visibility/`0x0` path is
+     * used - these are shared parents, so no sizing or fitting may run on them.
+     */
+    private fun hideExtraStockTargets() {
+        val barRoot = root ?: return
+        val exclude = hideStrip ?: host
+        val targets = ExtraStockScope.targets(
+            barRoot,
+            rom,
+            { name -> RomResources.id(context, rom, name) },
+            exclude
+        )
+        for (view in targets) {
+            try {
+                hider.hide(view)
+                logOnce.once("extra-stock:${view.id}:${view.javaClass.simpleName}") {
+                    L.i("hid stock signal cluster outside the strip: ${view.javaClass.simpleName} " +
+                        "id=0x${Integer.toHexString(view.id)}")
+                }
+            } catch (t: Throwable) {
+                L.w("extra stock hide ${view.javaClass.simpleName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /**
      * Hides the stock views of one extra bar.
      *
      * The QS cluster is not a strip whose every child Duo replaces: it holds the `statusIcons`
@@ -3256,6 +3287,7 @@ internal class DuoIconHost(private val context: Context) {
                 if (overlay) anchorBattery else null,
                 composeAnchor = composeStockAnchor
             )
+            hideExtraStockTargets()
             hideOverlayAnchor()
             // Hiding may have changed the strip's layout, so the overlay anchor is re-read after it.
             applyLayout()
@@ -3545,6 +3577,7 @@ internal class DuoIconHost(private val context: Context) {
                 if (overlay) anchorBattery else null,
                 composeAnchor = composeStockAnchor
             )
+            hideExtraStockTargets()
             hideOverlayAnchor()
             publishStockIcons()
         } catch (t: Throwable) {

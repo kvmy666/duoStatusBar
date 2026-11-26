@@ -155,6 +155,35 @@ class RomProfilesTest {
     }
 
     @Test
+    fun `parses hideContainerIds`() {
+        val json = """
+            {
+              "profiles": [
+                {
+                  "id": "honor",
+                  "containerIds": ["system_icon_area"],
+                  "hideContainerIds": ["signal_cluster_container"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val p = RomProfiles.parse(json).single()
+        assertEquals(listOf("signal_cluster_container"), p.hideContainerIds)
+    }
+
+    @Test
+    fun `shipped asset keeps the honor and coloros signal cluster ids`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profiles = RomProfiles.load(context)
+        val honor = profiles.first { it.id == "honor" }
+        val coloros = profiles.first { it.id == "coloros" }
+        assertEquals(listOf("signal_cluster_container"), honor.hideContainerIds)
+        assertEquals(listOf("signal_cluster"), coloros.hideContainerIds)
+        assertFalse("the honor map is still unverified", honor.measured)
+        assertFalse("the coloros map is still unverified", coloros.measured)
+    }
+
+    @Test
     fun `missing or blank shade fields default to empty`() {
         val json = """
             {

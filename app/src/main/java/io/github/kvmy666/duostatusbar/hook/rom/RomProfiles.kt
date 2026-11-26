@@ -92,7 +92,8 @@ internal object RomProfiles {
                         panelExpansionKind = parsePanelExpansionKind(o),
                         panelHookMeasured = o.optBoolean("panelHookMeasured", false),
                         panelOwnerAvailable = o.optBoolean("panelOwnerAvailable", false),
-                        aliases = o.optJSONArray("aliases").toStringList()
+                        aliases = o.optJSONArray("aliases").toStringList(),
+                        hideContainerIds = o.optJSONArray("hideContainerIds").toStringList()
                     )
                 )
             }

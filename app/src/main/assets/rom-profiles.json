@@ -104,6 +104,9 @@
       ],
       "measured": false,
       "notes": "static aapt2 map only; ColorOS 16 runtime dump missing; old 3.0.4 has quick_qs_status_icons. Removed quick_status_bar_header_system_icons and status_bar_end_side_content after they were absent from the decoded resource tree.",
+      "hideContainerIds": [
+        "signal_cluster"
+      ],
       "shadeContainerIds": [
         "quick_qs_status_icons",
         "system_icons"
@@ -195,6 +198,9 @@
       ],
       "measured": false,
       "notes": "static aapt2 map from MagicOS 11 old build; MagicOS 10 runtime dump missing; hw_system_icons was absent from the decoded tree",
+      "hideContainerIds": [
+        "signal_cluster_container"
+      ],
       "shadeContainerIds": [
         "system_icon_area",
         "statusIcons"

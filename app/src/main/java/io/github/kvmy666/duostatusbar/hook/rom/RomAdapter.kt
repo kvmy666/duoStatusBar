@@ -69,7 +69,15 @@ internal data class RomAdapter(
      */
     val panelOwnerAvailable: Boolean = false,
     /** Legacy ids that still name this family (asset migration); keep the canonical [id] everywhere. */
-    val aliases: List<String> = emptyList()
+    val aliases: List<String> = emptyList(),
+    /**
+     * Vendor signal-cluster containers that sit beside the icon strip and must be hidden directly.
+     *
+     * Some ROMs keep the Wi-Fi/cellular cluster outside `system_icons` (Honor `system_icon_area_fixed`,
+     * ColorOS `notification_icon_area`), so the strip hide pass never reaches them. These are hidden
+     * without sizing or fitting: the layouts are shared parents, so only visibility is changed.
+     */
+    val hideContainerIds: List<String> = emptyList()
 )
 
 /**
@@ -237,7 +245,9 @@ internal object RomDetection {
             "statusIcons"
         ),
         batteryId = "battery",
-        notes = "unverified: no ColorOS 14/16 device measured; AOSP ids first, then OPPO spellings",
+        notes = "unverified: no ColorOS 14/16 device measured; AOSP ids first, then OPPO spellings; " +
+            "vendor oppo_status_bar.xml includes SignalClusterView signal_cluster inside " +
+            "notification_icon_area, outside the system_icons include",
         match = listOf("oppo", "oplus", "coloros"),
         shadeContainerIds = listOf(
             "quick_qs_status_icons",
@@ -247,7 +257,8 @@ internal object RomDetection {
         shadeBatteryId = "battery",
         coverHook = false,
         panelExpansionKind = "none",
-        panelHookMeasured = false
+        panelHookMeasured = false,
+        hideContainerIds = listOf("signal_cluster")
     )
 
     /**
@@ -353,13 +364,16 @@ internal object RomDetection {
         systemUiPackage = AOSP,
         containerIds = listOf("system_icons", "hw_system_icons", "system_icon_area"),
         batteryId = "battery",
-        notes = "static APK MagicOS 11 old; runtime unverified",
+        notes = "static APK MagicOS 11 old; runtime unverified; vendor status_bar.xml puts " +
+            "FrameLayout signal_cluster_container under system_icon_area_fixed, a sibling of " +
+            "hw_system_icons, so the strip pass never hides it",
         match = listOf("honor", "magic"),
         shadeContainerIds = listOf("hw_system_icons", "system_icon_area", "statusIcons"),
         shadeBatteryId = "battery",
         coverHook = false,
         panelExpansionKind = "none",
-        panelHookMeasured = false
+        panelHookMeasured = false,
+        hideContainerIds = listOf("signal_cluster_container")
     )
 
     /** Motorola MyOS. Static MyOS 15 resource map; no runtime dump yet. */

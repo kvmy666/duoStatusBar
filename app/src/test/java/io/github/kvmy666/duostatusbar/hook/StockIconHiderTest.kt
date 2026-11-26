@@ -295,6 +295,26 @@ class StockIconHiderTest {
         assertEquals(View.VISIBLE, anchor.visibility)
     }
 
+    @Test
+    fun `hide makes a signal cluster GONE and zero and restore puts it back`() {
+        val cluster = FrameLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(120, 40)
+        }
+
+        val hider = StockIconHider()
+        hider.hide(cluster)
+
+        assertEquals(View.GONE, cluster.visibility)
+        assertEquals(0, cluster.layoutParams.width)
+        assertEquals(0, cluster.layoutParams.height)
+
+        hider.restore()
+
+        assertEquals(View.VISIBLE, cluster.visibility)
+        assertEquals(120, cluster.layoutParams.width)
+        assertEquals(40, cluster.layoutParams.height)
+    }
+
     // ------------------------------------------------------------------ R3 A6 re-show predicate
 
     @Test

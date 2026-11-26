@@ -28,7 +28,8 @@ DECODED = {
     # no decoded AOSP tree in the corpus yet
     "aosp": "",
 }
-FIELDS = ("containerIds", "batteryId", "clockId", "shadeContainerIds", "shadeBatteryId")
+FIELDS = ("containerIds", "batteryId", "clockId", "shadeContainerIds", "shadeBatteryId",
+          "hideContainerIds")
 
 
 def names_in_tree(root: Path, wanted: set[str]) -> set[str]:

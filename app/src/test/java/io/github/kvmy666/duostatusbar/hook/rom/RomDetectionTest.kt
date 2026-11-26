@@ -46,6 +46,16 @@ class RomDetectionTest {
         assertEquals("coloros", rom.id)
         assertTrue(rom.label.contains("ColorOS"))
         assertTrue("must admit it is unverified", rom.notes.contains("unverified"))
+        assertEquals(
+            "the vendor signal cluster is outside the system_icons include",
+            listOf("signal_cluster"),
+            rom.hideContainerIds
+        )
+        assertTrue(
+            "the notes must name the vendor layout evidence",
+            rom.notes.contains("oppo_status_bar.xml") && rom.notes.contains("notification_icon_area")
+        )
+        assertFalse("still not measured", rom.measured)
     }
 
     @Test
@@ -137,7 +147,17 @@ class RomDetectionTest {
             rom.shadeContainerIds
         )
         assertEquals("battery", rom.shadeBatteryId)
-        assertEquals("brand-match (unverified): static APK MagicOS 11 old; runtime unverified", rom.notes)
+        assertEquals(
+            "brand-match (unverified): static APK MagicOS 11 old; runtime unverified; vendor " +
+                "status_bar.xml puts FrameLayout signal_cluster_container under system_icon_area_fixed, " +
+                "a sibling of hw_system_icons, so the strip pass never hides it",
+            rom.notes
+        )
+        assertEquals(
+            "the vendor signal cluster is a sibling of the strip",
+            listOf("signal_cluster_container"),
+            rom.hideContainerIds
+        )
         assertFalse(rom.shadeMeasured)
     }
 
