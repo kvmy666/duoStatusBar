@@ -1,6 +1,10 @@
 package io.github.kvmy666.duostatusbar
 
 import android.content.Context
+import android.provider.Settings
+import io.github.kvmy666.duostatusbar.diagnostics.CaptureSection
+import io.github.kvmy666.duostatusbar.diagnostics.RootCapture
+import io.github.kvmy666.duostatusbar.diagnostics.SectionState
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
 import io.github.kvmy666.duostatusbar.ui.RestartPolicy
@@ -152,10 +156,20 @@ internal object RootLogs {
     private fun rootUsable(context: Context): Boolean = DuoPrefs.rootAllowed(context)
 
     /**
-     * Collects the whole capture as one text block. Every section is self-describing; a missing route
-     * says so and why, and [nonRootFacts] is always appended. Never throws.
+     * Collects the whole capture as one text block. Kept source-compatible for the settings/report
+     * screens: it is exactly [collectSections] rendered. Never throws.
      */
-    fun collect(context: Context): String {
+    fun collect(context: Context): String = collectSections(context).render()
+
+    /**
+     * The complete diagnostics capture, section by section. Every section carries a state and, when it
+     * has no text, the reason: no root, Shizuku not running/not granted, a timeout, a denial, or simply
+     * no output. No section is dropped, so a future report can always say what was and was not readable.
+     *
+     * One bounded merged shell script is used for the root route (single `su` prompt), the same script for
+     * Shizuku where the shell uid can run it, and the app-side facts always run with no privilege.
+     */
+    fun collectSections(context: Context): RootCapture {
         val su = findSuBinary()
         val suAbsolute = su != "su" && File(su).exists()
         val allowed = DuoPrefs.rootAllowed(context)
@@ -174,8 +188,26 @@ internal object RootLogs {
         val shizukuOutput =
             if (shizukuRunning && shizukuGranted) shizukuExec(context, shellScript()) else null
 
+        // Prefer a capture that actually produced evidence over a failure string.
+        val usableRoot = rootOutput?.takeUnless(::isRootCaptureFailure)
+        val usableShizuku = shizukuOutput?.takeUnless(::isShizukuCaptureFailure)
+        val evidence = usableRoot ?: usableShizuku ?: ""
+        val failureReason = when {
+            evidence.isNotBlank() -> null
+            rootOutput != null && usableRoot == null -> firstLine(rootOutput)
+            shizukuOutput != null && usableShizuku == null -> firstLine(shizukuOutput)
+            else -> null
+        }
+        val skipReason = if (evidence.isBlank() && failureReason == null) {
+            buildList {
+                if (rootOutput == null) add(rootUnavailableReason(allowed, suAbsolute))
+                if (shizukuOutput == null) add(shizukuUnavailableReason(shizukuRunning, shizukuGranted))
+            }.joinToString("; ")
+        } else {
+            ""
+        }
+
         // Markers/modules come from whichever elevated capture succeeded; empty otherwise.
-        val evidence = rootOutput ?: shizukuOutput ?: ""
         val facts = RootProbe.Facts(
             suCommand = su,
             suExistsAtAbsolutePath = suAbsolute,
@@ -191,51 +223,93 @@ internal object RootLogs {
         )
         val probe = RootProbe.classify(facts)
 
-        return buildString {
-            appendLine("=== capture route ===")
-            appendLine(probe.detail)
-            if (rootOutput == null) {
-                appendLine(
-                    when {
-                        !allowed -> "root capture skipped: tap \"Allow root access\" to include it."
-                        !suAbsolute -> "root capture skipped: no root shell at a known path."
-                        else -> "root capture skipped."
-                    }
-                )
+        val safe = parseSafeMode(section(evidence, "safe mode"))
+        val crashRaw = listOf("crash records", "tombstones", "logcat crash buffer")
+            .joinToString("\n") { section(evidence, it) }
+        val crashFiltered = filterSystemUiCrashes(crashRaw)
+
+        val sections = ArrayList<CaptureSection>()
+        sections += CaptureSection(
+            "capture route",
+            SectionState.PRESENT,
+            "",
+            routeText(probe, rootOutput, shizukuOutput, skipReason, failureReason)
+        )
+        sections += privilegedSections(evidence, skipReason, failureReason).map(::augmentSection)
+
+        val crashSection = sections.first { it.title == "crash records" }
+        val crashReadable = crashFiltered.isNotBlank() ||
+            sections.any {
+                it.title in CRASH_SECTION_TITLES &&
+                    (it.state == SectionState.PRESENT || it.state == SectionState.EMPTY)
             }
-            appendLine()
-            if (rootOutput != null) {
-                appendLine("=== root log capture ===")
-                appendLine(rootOutput)
-            }
-            appendLine()
-            when {
-                shizukuOutput != null -> {
-                    appendLine("=== shizuku log capture ===")
-                    appendLine(shizukuOutput)
-                }
-                !shizukuRunning -> appendLine("=== shizuku log capture (skipped) ===\nShizuku is not running.")
-                !shizukuGranted -> appendLine(
-                    "=== shizuku log capture (skipped) ===\nShizuku is running but access is not granted."
-                )
-                else -> appendLine("=== shizuku log capture (skipped) ===")
-            }
-            appendLine()
-            append(nonRootFacts())
+        val deathUnreadable = when {
+            crashFiltered.isNotBlank() -> null
+            failureReason != null && crashSection.state != SectionState.PRESENT -> failureReason
+            crashSection.state == SectionState.UNREADABLE && safe.counter == null -> crashSection.reason
+            else -> null
         }
+        val deaths = buildString {
+            appendLine(deathSummary(safe.counter, crashFiltered.isNotBlank(), deathUnreadable))
+            appendLine("safeMode=${if (safe.entered) "entered" else "no"}")
+            appendLine("safeModeCounter=${safe.counter ?: "not found"}")
+            appendLine("uptime=${uptimeSeconds()?.let { "${it}s" } ?: "unreadable"}")
+        }.trimEnd()
+        sections += CaptureSection("systemui deaths", SectionState.PRESENT, "", deaths)
+
+        sections += appBreadcrumbSection(context)
+        sections += CaptureSection(
+            "app-side facts (no privilege)",
+            SectionState.PRESENT,
+            "",
+            nonRootFacts()
+        )
+
+        return RootCapture(probe.detail, sections)
     }
+
+    /** The app-side breadcrumb: readable without root, so it is never part of a privileged section. */
+    private fun appBreadcrumbSection(context: Context): CaptureSection = try {
+        val value = Settings.Global.getString(context.contentResolver, Breadcrumb.KEY)
+        if (value.isNullOrBlank()) {
+            CaptureSection(BREADCRUMB_APP_TITLE, SectionState.EMPTY, "unset")
+        } else {
+            CaptureSection(BREADCRUMB_APP_TITLE, SectionState.PRESENT, "", value)
+        }
+    } catch (t: Throwable) {
+        CaptureSection(
+            BREADCRUMB_APP_TITLE,
+            SectionState.UNREADABLE,
+            "${t.javaClass.simpleName}: ${t.message}"
+        )
+    }
+
+    private fun routeText(
+        probe: RootProbe.Result,
+        rootOutput: String?,
+        shizukuOutput: String?,
+        skipReason: String,
+        failureReason: String?
+    ): String = buildString {
+        appendLine(probe.detail)
+        appendLine("rootAttempted=${rootOutput != null} shizukuAttempted=${shizukuOutput != null}")
+        when {
+            failureReason != null -> append("captureFailure=$failureReason")
+            skipReason.isNotBlank() -> append("captureSkipped=$skipReason")
+        }
+    }.trimEnd()
 
     /**
      * The evidence available with no privilege at all. Weaker than the elevated captures, but it records
      * the device/ROM and the installed module so a "nothing happens" report still identifies the target.
      */
     private fun nonRootFacts(): String = buildString {
-        appendLine("=== app-side facts (no privilege) ===")
         appendLine("MANUFACTURER=${android.os.Build.MANUFACTURER} BRAND=${android.os.Build.BRAND} MODEL=${android.os.Build.MODEL}")
         appendLine("DEVICE=${android.os.Build.DEVICE} PRODUCT=${android.os.Build.PRODUCT}")
         appendLine("SDK=${android.os.Build.VERSION.SDK_INT} RELEASE=${android.os.Build.VERSION.RELEASE} DISPLAY=${android.os.Build.DISPLAY}")
         appendLine("selinux=${DeviceFacts.selinux()} abi=${DeviceFacts.abi()}")
         appendLine("rootShell=${findSuBinary()}")
+        appendLine("uptime=${uptimeSeconds()?.let { "${it}s" } ?: "unreadable"}")
         append("note=if the report lacks a module log, grant root (Allow root access) or run Shizuku; the module log itself needs no root once the module has loaded.")
     }
 
@@ -470,10 +544,16 @@ internal object RootLogs {
         }
     }
 
-    /** The root capture: filtered logcat, LSPosed's own log, and the root-framework markers. */
+    /**
+     * The root capture: one bounded merged script, so a single `su` prompt covers every section.
+     *
+     * Framework log locations are discovered by listing `/data/adb` (lspd, vector, lspatch,
+     * zygisk_lsposed, apatch/ap) instead of assuming one fixed path. Each section is bounded with
+     * `head`/`tail`, so a noisy log cannot exceed the report budget. The existing commands are kept.
+     */
     internal fun rootScript(): String = """
         echo '=== logcat (DuoSB) ==='
-        logcat -d -t 3000 -s DuoSB 2>&1
+        logcat -d -t 3000 -s DuoSB 2>&1 | tail -n 1000
         echo '=== LSPosed newest modules log ==='
         LOG=${'$'}(ls -t /data/adb/lspd/log/modules_*.log 2>/dev/null | head -1)
         echo "file=${'$'}LOG"
@@ -481,8 +561,38 @@ internal object RootLogs {
           echo '-- matching DuoSB --'
           grep -a -i 'DuoSB\|duostatusbar' "${'$'}LOG" | tail -n 400
         fi
+        echo '=== LSPosed log files ==='
+        SEEN=''
+        for d in /data/adb/*/log /data/adb/*/*/log; do
+          [ -d "${'$'}d" ] || continue
+          case " ${'$'}SEEN " in *" ${'$'}d "*) continue ;; esac
+          SEEN="${'$'}SEEN ${'$'}d"
+          echo "dir=${'$'}d"
+          for f in ${'$'}(ls -t "${'$'}d"/modules_*.log "${'$'}d"/verbose_*.log "${'$'}d"/lspd.log 2>/dev/null | head -n 6); do
+            echo "file=${'$'}f"
+            tail -n 100 "${'$'}f" 2>&1
+          done
+        done
+        echo '=== safe mode ==='
+        SAFE_FILES=${'$'}(ls -t /data/adb/*/log/modules_*.log /data/adb/*/log/verbose_*.log /data/adb/*/log/lspd.log 2>/dev/null | head -n 12)
+        if [ -n "${'$'}SAFE_FILES" ]; then
+          grep -a -i -E 'System UI crashed [0-9]+ time|stop all modules|safe mode' ${'$'}SAFE_FILES 2>/dev/null | tail -n 60
+        fi
         echo '=== LSPosed config (enabled / scope) ==='
-        tr -c '[:print:]' '\n' < /data/adb/lspd/config/modules_config.db 2>/dev/null | grep -a -i -B3 -A8 duostatusbar
+        for db in ${'$'}(ls /data/adb/*/config/modules_config.db 2>/dev/null | head -n 4); do
+          echo "db=${'$'}db"
+          tr -c '[:print:]' '\n' < "${'$'}db" 2>/dev/null | grep -a -i -B3 -A8 duostatusbar | head -n 120
+        done
+        echo '=== framework manager ==='
+        dumpsys package org.lsposed.manager 2>&1 | grep -a -E 'Package \[|versionName|versionCode|Unable to find|not found' | head -n 20
+        echo '=== module.prop ==='
+        for f in /data/adb/*/module.prop /data/adb/modules/*/module.prop; do
+          [ -f "${'$'}f" ] || continue
+          echo "file=${'$'}f"
+          grep -a -E '^(id|name|version|versionCode)=' "${'$'}f" | head -n 8
+        done
+        echo '=== /data/adb layout ==='
+        ls -la /data/adb 2>&1 | head -n 80
         echo '=== root framework ==='
         ls /data/adb 2>/dev/null
         echo '=== kernel modules ==='
@@ -490,6 +600,28 @@ internal object RootLogs {
         echo '=== installed module package ==='
         pm path io.github.kvmy666.duostatusbar 2>&1
         dumpsys package io.github.kvmy666.duostatusbar 2>/dev/null | head -n 40
+        echo '=== crash records ==='
+        echo '-- dropbox system_app_crash --'
+        dumpsys dropbox --print system_app_crash 2>&1 | grep -a -i -B2 -A6 'com.android.systemui' | tail -n 100
+        echo '-- dropbox system_app_native_crash --'
+        dumpsys dropbox --print system_app_native_crash 2>&1 | grep -a -i -B2 -A6 'com.android.systemui' | tail -n 100
+        echo '-- dropbox SYSTEM_TOMBSTONE --'
+        dumpsys dropbox --print SYSTEM_TOMBSTONE 2>&1 | grep -a -i -B2 -A6 'com.android.systemui' | tail -n 100
+        echo '=== tombstones ==='
+        for t in ${'$'}(ls -t /data/tombstones/tombstone_* 2>/dev/null | head -n 6); do
+          if grep -a -q 'com.android.systemui' "${'$'}t" 2>/dev/null; then
+            echo "tombstone=${'$'}t"
+            grep -a -i -B2 -A6 'com.android.systemui' "${'$'}t" | head -n 120
+          fi
+        done
+        echo '=== logcat crash buffer ==='
+        logcat -d -b crash -t 500 2>&1 | grep -a -i -B2 -A4 'com.android.systemui' | tail -n 200
+        echo '=== breadcrumb ==='
+        settings get global duo_statusbar_breadcrumb 2>&1
+        for f in /data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt /data/data/com.android.systemui/files/duo-breadcrumb.txt; do
+          echo "file=${'$'}f"
+          cat "${'$'}f" 2>&1 | tail -n 12
+        done
         echo '=== build props ==='
         getprop ro.product.manufacturer
         getprop ro.product.brand
@@ -500,29 +632,11 @@ internal object RootLogs {
     """.trimIndent()
 
     /**
-     * The Shizuku capture: the same filtered evidence, limited to what shell (uid 2000) may read. The
-     * LSPosed log directory usually needs root — the "Permission denied" that comes back is itself the
-     * proof, and is what tells us a device has root but this route cannot read it.
+     * The Shizuku capture. It runs the same bounded script through the shell user service, so the
+     * section set is identical; what uid 2000 cannot read comes back as "Permission denied" and is
+     * reported as unreadable instead of pretending the data was empty.
      */
-    private fun shellScript(): String = """
-        echo '=== logcat (DuoSB) ==='
-        logcat -d -t 3000 -s DuoSB 2>&1
-        echo '=== root framework ==='
-        ls /data/adb 2>&1
-        echo '=== kernel modules ==='
-        grep -i -E 'kernelsu|ksu' /proc/modules 2>/dev/null
-        echo '=== LSPosed logs ==='
-        ls -t /data/adb/lspd/log/modules_*.log 2>&1 | head -1
-        echo '=== installed module package ==='
-        pm path io.github.kvmy666.duostatusbar 2>&1
-        echo '=== build props ==='
-        getprop ro.product.manufacturer
-        getprop ro.product.brand
-        getprop ro.product.model
-        getprop ro.build.version.sdk
-        getprop ro.build.version.release
-        getprop ro.build.display.id
-    """.trimIndent()
+    private fun shellScript(): String = rootScript()
 
     /**
      * The text of one `=== title ===` section, up to the next section header. Used to keep the markers
@@ -539,5 +653,246 @@ internal object RootLogs {
             out.add(lines[i])
         }
         return out.joinToString("\n").trim()
+    }
+
+    // --- Wave C1 stubs: the red tests pin the real rules first. ---
+
+    // --- R15 C1: section capture helpers (pure, so the rules are unit-tested on the JVM). ---
+
+    /** Per-section budget; anything longer is cut with a visible marker, never silently dropped. */
+    internal const val MAX_SECTION_CHARS = 12_000
+
+    /**
+     * Both places SystemUI may keep the breadcrumb file. `/data/user_de/0` is the normal (device-encrypted)
+     * location; `/data/data` is kept as the fallback for ROMs that do not use the user partition layout.
+     */
+    internal val BREADCRUMB_FILES: List<String> = listOf(
+        "/data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt",
+        "/data/data/com.android.systemui/files/duo-breadcrumb.txt"
+    )
+
+    private const val BREADCRUMB_APP_TITLE = "breadcrumb (app fallback)"
+
+    private val CRASH_SECTION_TITLES = setOf("crash records", "tombstones", "logcat crash buffer")
+
+    /** Every privileged section the merged script emits. None of these may be dropped from a report. */
+    private val PRIVILEGED_SECTIONS = listOf(
+        "logcat (DuoSB)",
+        "LSPosed log files",
+        "LSPosed newest modules log",
+        "safe mode",
+        "LSPosed config (enabled / scope)",
+        "framework manager",
+        "module.prop",
+        "/data/adb layout",
+        "root framework",
+        "kernel modules",
+        "installed module package",
+        "crash records",
+        "tombstones",
+        "logcat crash buffer",
+        "breadcrumb",
+        "build props"
+    )
+
+    private val UNREADABLE_MARKERS = listOf(
+        "permission denied",
+        "operation not permitted",
+        "no such file or directory",
+        "can't execute",
+        "command not found",
+        "timed out",
+        "root log collection failed",
+        "shizuku exec failed",
+        "inaccessible"
+    )
+
+    private val SAFE_MODE_COUNTER = Regex("""(?i)System UI crashed\s+(\d+)\s+time""")
+
+    private val LOG_TIMESTAMP =
+        Regex("""\d{4}[-_]\d{2}[-_]\d{2}[T _-]\d{2}[-_:.]\d{2}[-_:.]\d{2}""")
+
+    private val FRAMEWORK_MANAGER_VERSION = Regex("""versionName=(\S+)""")
+
+    internal data class SafeModeReport(
+        val counter: Int?,
+        val entered: Boolean,
+        val lines: List<String>
+    )
+
+    internal data class SectionVerdict(val state: SectionState, val reason: String = "")
+
+    /** The safe-mode counter (highest `System UI crashed N time(s)`), whether safe mode was entered, and
+     *  the actual matching lines, quoted so a report shows LSPosed's own wording. */
+    internal fun parseSafeMode(text: String): SafeModeReport {
+        val lines = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        val matching = lines.filter { line ->
+            line.contains("system ui crashed", ignoreCase = true) ||
+                line.contains("stop all modules", ignoreCase = true) ||
+                line.contains("safe mode", ignoreCase = true)
+        }
+        val counter = SAFE_MODE_COUNTER.findAll(text)
+            .mapNotNull { it.groupValues[1].toIntOrNull() }
+            .maxOrNull()
+        val entered = lines.any {
+            it.contains("too many times", ignoreCase = true) ||
+                it.contains("stop all modules", ignoreCase = true) ||
+                it.contains("enter safe mode", ignoreCase = true)
+        }
+        return SafeModeReport(counter, entered, matching)
+    }
+
+    /**
+     * Framework log files from a `file=…` listing, newest first. Only LSPosed's three names are kept;
+     * the shell already lists with `ls -t`, and names that embed a timestamp are ordered here as well so
+     * a mixed-directory listing cannot put an older file first.
+     */
+    internal fun discoverLogFiles(listing: String): List<String> {
+        val files = listing.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() && !it.startsWith("dir=") }
+            .map { it.removePrefix("file=").trim() }
+            .filter { isFrameworkLog(it) }
+            .distinct()
+            .toList()
+        // Stable sort: equal keys keep the shell's own `ls -t` order.
+        return files.sortedWith(compareByDescending { logSortKey(it) })
+    }
+
+    private fun isFrameworkLog(path: String): Boolean {
+        val name = path.substringAfterLast('/')
+        return (name.startsWith("modules_") || name.startsWith("verbose_")) && name.endsWith(".log") ||
+            name == "lspd.log"
+    }
+
+    private fun logSortKey(path: String): String =
+        LOG_TIMESTAMP.find(path.substringAfterLast('/'))?.value?.filter { it.isDigit() } ?: ""
+
+    /** Crash records narrowed to this SystemUI; another package's death must not reach the report. */
+    internal fun filterSystemUiCrashes(text: String, pkg: String = "com.android.systemui"): String =
+        text.lineSequence().filter { it.contains(pkg, ignoreCase = true) }.joinToString("\n")
+
+    internal fun rootUnavailableReason(allowed: Boolean, suAbsolute: Boolean): String = when {
+        !allowed -> "no root: root access was not granted"
+        !suAbsolute -> "no root: no root shell at a known path"
+        else -> "root capture skipped"
+    }
+
+    internal fun shizukuUnavailableReason(running: Boolean, granted: Boolean): String = when {
+        !running -> "Shizuku is not running"
+        !granted -> "Shizuku is running but access is not granted"
+        else -> "Shizuku capture skipped"
+    }
+
+    /** `deaths=<counter|records|unreadable:reason>`; a refused capture must never read as zero deaths. */
+    internal fun deathSummary(counter: Int?, crashFound: Boolean, unreadable: String?): String = when {
+        !unreadable.isNullOrBlank() -> "deaths=unreadable:$unreadable"
+        counter != null -> "deaths=$counter"
+        crashFound -> "deaths=records"
+        else -> "deaths=0"
+    }
+
+    internal fun bounded(text: String, max: Int = MAX_SECTION_CHARS): String =
+        if (text.length <= max) text else text.take(max) + "\n… [truncated ${text.length - max} chars]"
+
+    internal fun parseUptime(text: String): Long? =
+        text.trim().substringBefore(' ').toDoubleOrNull()?.toLong()
+
+    private fun uptimeSeconds(): Long? = try {
+        parseUptime(File("/proc/uptime").readText())
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun isRootCaptureFailure(text: String): Boolean = text.startsWith(FAILURE_PREFIX)
+
+    private fun isShizukuCaptureFailure(text: String): Boolean =
+        text.startsWith("(shizuku timed out") || text.startsWith("(shizuku exec failed")
+
+    private fun firstLine(text: String): String =
+        text.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }?.take(300) ?: "unreadable"
+
+    private fun verdictFor(text: String): SectionVerdict {
+        if (text.isBlank()) return SectionVerdict(SectionState.EMPTY, "no output")
+        if (text.contains("Unable to find package", ignoreCase = true)) {
+            return SectionVerdict(SectionState.EMPTY, "not installed")
+        }
+        val marker = UNREADABLE_MARKERS.firstOrNull { text.contains(it, ignoreCase = true) }
+            ?: return SectionVerdict(SectionState.PRESENT)
+        val line = text.lineSequence()
+            .firstOrNull { it.contains(marker, ignoreCase = true) }
+            ?.trim()
+            ?.take(300)
+            ?: marker
+        return SectionVerdict(SectionState.UNREADABLE, line)
+    }
+
+    /**
+     * Builds every privileged section from one capture. A missing route is [SectionState.SKIPPED] with
+     * the route reason; a failed capture is [SectionState.UNREADABLE] with the failure; otherwise the
+     * section's own text decides present/empty/unreadable. No title is ever dropped.
+     */
+    internal fun privilegedSections(
+        evidence: String,
+        skipReason: String,
+        failureReason: String?
+    ): List<CaptureSection> = PRIVILEGED_SECTIONS.map { title ->
+        val raw = bounded(section(evidence, title))
+        val verdict = when {
+            failureReason != null -> SectionVerdict(SectionState.UNREADABLE, failureReason)
+            raw.isBlank() && skipReason.isNotBlank() -> SectionVerdict(SectionState.SKIPPED, skipReason)
+            else -> verdictFor(raw)
+        }
+        CaptureSection(title, verdict.state, verdict.reason, raw)
+    }
+
+    /** Adds the parsed safe-mode/framework/module lines without inventing anything the capture lacked. */
+    private fun augmentSection(section: CaptureSection): CaptureSection = when (section.title) {
+        "safe mode" -> withSafeMode(section)
+        "framework manager" -> withFrameworkManager(section)
+        "LSPosed config (enabled / scope)" -> withModuleScope(section)
+        else -> section
+    }
+
+    private fun withSafeMode(section: CaptureSection): CaptureSection {
+        if (section.state != SectionState.PRESENT) return section
+        val report = parseSafeMode(section.text)
+        if (report.lines.isEmpty() && report.counter == null) return section
+        val body = buildString {
+            appendLine("counter=${report.counter ?: "not found"}")
+            appendLine("safeMode=${if (report.entered) "entered" else "no"}")
+            report.lines.forEach { appendLine(it) }
+        }
+        return section.copy(text = bounded(body.trimEnd()))
+    }
+
+    private fun withFrameworkManager(section: CaptureSection): CaptureSection {
+        if (section.state == SectionState.EMPTY) {
+            return section.copy(reason = "not installed")
+        }
+        if (section.state != SectionState.PRESENT) return section
+        val installed = section.text.contains("Package [")
+        val version = FRAMEWORK_MANAGER_VERSION.find(section.text)?.groupValues?.get(1)
+        val body = buildString {
+            appendLine(
+                "manager=org.lsposed.manager installed=$installed " +
+                    "version=${version ?: "not found"}"
+            )
+            append(section.text)
+        }
+        return section.copy(text = bounded(body))
+    }
+
+    private fun withModuleScope(section: CaptureSection): CaptureSection {
+        if (section.state != SectionState.PRESENT) return section
+        val found = section.text.contains("duostatusbar", ignoreCase = true)
+        val body = buildString {
+            appendLine(
+                "module=io.github.kvmy666.duostatusbar " +
+                    "${if (found) "found" else "not found"} in modules_config.db"
+            )
+            append(section.text)
+        }
+        return section.copy(text = bounded(body))
     }
 }

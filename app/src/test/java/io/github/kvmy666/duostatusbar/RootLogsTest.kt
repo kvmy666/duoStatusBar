@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar
 
+import io.github.kvmy666.duostatusbar.diagnostics.SectionState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -177,5 +178,182 @@ class RootLogsTest {
         assertFalse(RestartOutcome(true, "").blockedYoung)
         assertFalse(RestartOutcome(false, "su: denied").blockedYoung)
         assertTrue(RestartOutcome(false, "refused: systemui age 3s < 15s", blockedYoung = true).blockedYoung)
+    }
+
+    // --- R15 C1: root/Shizuku diagnostics and privacy capture. ---
+
+    @Test
+    fun `every privileged section is kept with an explicit skip reason when nothing elevated ran`() {
+        val sections = RootLogs.privilegedSections(
+            "",
+            "no root: root access was not granted; Shizuku is not running",
+            null
+        )
+        val titles = sections.map { it.title }
+        listOf(
+            "logcat (DuoSB)",
+            "LSPosed log files",
+            "safe mode",
+            "LSPosed config (enabled / scope)",
+            "framework manager",
+            "module.prop",
+            "/data/adb layout",
+            "root framework",
+            "kernel modules",
+            "installed module package",
+            "crash records",
+            "tombstones",
+            "logcat crash buffer",
+            "breadcrumb",
+            "build props"
+        ).forEach { assertTrue("missing section $it", it in titles) }
+        sections.forEach {
+            assertEquals("${it.title} must be skipped", SectionState.SKIPPED, it.state)
+            assertTrue("${it.title} needs a reason", it.reason.isNotBlank())
+            assertTrue(
+                "${it.title} reason must name the route: ${it.reason}",
+                it.reason.contains("no root") || it.reason.contains("Shizuku")
+            )
+        }
+    }
+
+    @Test
+    fun `a section with output is present and a denied command is unreadable`() {
+        val evidence = """
+            === logcat (DuoSB) ===
+            DuoSB | hello
+            === crash records ===
+            -- dropbox system_app_crash --
+            /system/bin/sh: dumpsys: Permission denied
+        """.trimIndent()
+        val sections = RootLogs.privilegedSections(evidence, "", null)
+        val logcat = sections.first { it.title == "logcat (DuoSB)" }
+        assertEquals(SectionState.PRESENT, logcat.state)
+        assertEquals("DuoSB | hello", logcat.text)
+        val crash = sections.first { it.title == "crash records" }
+        assertEquals(SectionState.UNREADABLE, crash.state)
+        assertTrue("reason must quote the denial: ${crash.reason}", crash.reason.contains("Permission denied"))
+        val tombstones = sections.first { it.title == "tombstones" }
+        assertEquals(SectionState.EMPTY, tombstones.state)
+        assertTrue(tombstones.reason.isNotBlank())
+    }
+
+    @Test
+    fun `a timed out root capture makes every privileged section unreadable`() {
+        val reason = "root log collection failed: root shell (/system/bin/su) timed out after 25s"
+        val sections = RootLogs.privilegedSections("", "", reason)
+        assertTrue(sections.isNotEmpty())
+        sections.forEach {
+            assertEquals("${it.title} must not pretend to be empty", SectionState.UNREADABLE, it.state)
+            assertTrue("${it.title} must quote the timeout", it.reason.contains("timed out"))
+        }
+    }
+
+    @Test
+    fun `log file discovery keeps known names newest first and drops unrelated files`() {
+        val listing = """
+            dir=/data/adb/lspd/log
+            file=/data/adb/lspd/log/modules_2026-11-24_10-00-00.log
+            file=/data/adb/lspd/log/modules_2026-11-25_10-00-00.log
+            file=/data/adb/lspd/log/verbose_2026-11-23_09-00-00.log
+            file=/data/adb/lspd/log/lspd.log
+            file=/data/adb/lspd/log/notes.txt
+        """.trimIndent()
+        val ordered = RootLogs.discoverLogFiles(listing)
+        assertEquals(4, ordered.size)
+        assertTrue("newest modules log must be first: $ordered", ordered.first().contains("2026-11-25"))
+        assertTrue("the plain lspd.log must sort last: $ordered", ordered.last().endsWith("/lspd.log"))
+        assertFalse("unrelated files must be dropped", ordered.any { it.endsWith("notes.txt") })
+    }
+
+    @Test
+    fun `safe mode counter and matching lines come from the real LSPosed wording`() {
+        val text = """
+            [ W/LSPosedService-SafeMode ] System UI crashed 1 time(s), still below the threshold
+            [ W/LSPosedService-SafeMode ] System UI crashed 2 time(s), still below the threshold
+            [ E/LSPosedService-SafeMode ] System UI crashed too many times, stop all modules and enter safe mode ...
+            unrelated line
+        """.trimIndent()
+        val report = RootLogs.parseSafeMode(text)
+        assertEquals(2, report.counter)
+        assertTrue(report.entered)
+        assertEquals(3, report.lines.size)
+        assertTrue(report.lines.last().contains("stop all modules"))
+        val none = RootLogs.parseSafeMode("nothing here")
+        assertEquals(null, none.counter)
+        assertFalse(none.entered)
+        assertTrue(none.lines.isEmpty())
+    }
+
+    @Test
+    fun `crash records keep only systemui lines`() {
+        val text = """
+            Process: com.android.systemui
+            Process: com.example.other
+            at com.android.systemui.statusbar.Foo(Unknown Source)
+        """.trimIndent()
+        val filtered = RootLogs.filterSystemUiCrashes(text)
+        assertTrue(filtered.contains("Process: com.android.systemui"))
+        assertTrue(filtered.contains("statusbar.Foo"))
+        assertFalse("another app's crash must be dropped", filtered.contains("com.example.other"))
+    }
+
+    @Test
+    fun `both SystemUI data-dir breadcrumb files are read`() {
+        assertTrue(
+            "user_de path missing",
+            RootLogs.BREADCRUMB_FILES.contains("/data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt")
+        )
+        assertTrue(
+            "data path missing",
+            RootLogs.BREADCRUMB_FILES.contains("/data/data/com.android.systemui/files/duo-breadcrumb.txt")
+        )
+    }
+
+    @Test
+    fun `missing routes say exactly why and an unreadable death count is not zero`() {
+        assertTrue(RootLogs.rootUnavailableReason(false, true).contains("no root"))
+        assertTrue(RootLogs.rootUnavailableReason(true, false).contains("no root shell"))
+        assertTrue(RootLogs.shizukuUnavailableReason(false, true).contains("not running"))
+        assertTrue(RootLogs.shizukuUnavailableReason(true, false).contains("not granted"))
+        assertEquals("deaths=3", RootLogs.deathSummary(3, false, null))
+        assertEquals("deaths=records", RootLogs.deathSummary(null, true, null))
+        assertTrue(
+            "an unreadable capture must not report zero deaths",
+            RootLogs.deathSummary(null, false, "root shell timed out").startsWith("deaths=unreadable:")
+        )
+        assertEquals("deaths=0", RootLogs.deathSummary(null, false, null))
+    }
+
+    @Test
+    fun `the expanded script discovers framework logs and crash records`() {
+        val script = RootLogs.rootScript()
+        assertTrue(script.contains("ls -la /data/adb"))
+        assertTrue(script.contains("dumpsys dropbox --print system_app_crash"))
+        assertTrue(script.contains("dumpsys dropbox --print system_app_native_crash"))
+        assertTrue(script.contains("dumpsys dropbox --print SYSTEM_TOMBSTONE"))
+        assertTrue(script.contains("/data/tombstones"))
+        assertTrue(script.contains("logcat -d -b crash -t 500"))
+        assertTrue(script.contains("modules_config.db"))
+        assertTrue(script.contains("org.lsposed.manager"))
+        assertTrue(script.contains("module.prop"))
+        assertTrue(script.contains("settings get global duo_statusbar_breadcrumb"))
+        assertTrue(script.contains("/data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt"))
+    }
+
+    @Test
+    fun `section bounding keeps the budget and marks the cut`() {
+        val long = "x".repeat(20)
+        val out = RootLogs.bounded(long, 10)
+        assertTrue(out.startsWith("x".repeat(10)))
+        assertTrue("the cut must be visible", out.contains("truncated"))
+        assertEquals("short", RootLogs.bounded("short", 10))
+    }
+
+    @Test
+    fun `uptime is parsed from the proc line`() {
+        assertEquals(12345L, RootLogs.parseUptime("12345.67 999.00"))
+        assertEquals(null, RootLogs.parseUptime(""))
+        assertEquals(null, RootLogs.parseUptime("not a number"))
     }
 }
