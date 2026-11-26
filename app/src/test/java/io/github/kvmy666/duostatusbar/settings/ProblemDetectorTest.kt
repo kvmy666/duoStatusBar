@@ -4,6 +4,7 @@ import io.github.kvmy666.duostatusbar.diagnostics.CaptureSection
 import io.github.kvmy666.duostatusbar.diagnostics.RootCapture
 import io.github.kvmy666.duostatusbar.diagnostics.SectionState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -194,6 +195,33 @@ class ProblemDetectorTest {
             )
         )
         assertTrue(problems.any { it.type == "crash" && it.location == "systemui" })
+    }
+
+    @Test
+    fun `a crash detail never says records`() {
+        val problems = ProblemDetector.detect(
+            ProblemInputs(
+                capture = capture(
+                    CaptureSection(
+                        "crash records",
+                        SectionState.PRESENT,
+                        "",
+                        "process: com.android.systemui\nsignal 11"
+                    ),
+                    facts()
+                )
+            )
+        )
+        val crash = problems.first { it.type == "crash" }
+        assertEquals("deaths=unknown", crash.detail)
+        problems.forEach { problem ->
+            assertFalse(
+                "a missing counter is not a record count: ${problem.detail}",
+                problem.detail.contains("records")
+            )
+            assertFalse("type must stay a stable code: ${problem.type}", problem.type.contains("records"))
+            assertFalse("location must stay a stable code: ${problem.location}", problem.location.contains("records"))
+        }
     }
 
     @Test

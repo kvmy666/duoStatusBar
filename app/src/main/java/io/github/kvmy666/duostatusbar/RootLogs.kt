@@ -599,22 +599,31 @@ internal object RootLogs {
           for f in ${'$'}(ls -t "${'$'}d"/modules_*.log "${'$'}d"/verbose_*.log "${'$'}d"/lspd.log 2>/dev/null | head -n 6); do
             SEEN_FILES="${'$'}SEEN_FILES ${'$'}f"
             echo "file=${'$'}f"
-            tail -n 100 "${'$'}f" 2>&1
+            MATCHES=${'$'}(grep -a -i -c -E 'DuoSB|duostatusbar' "${'$'}f" 2>/dev/null)
+            echo "matches=${'$'}{MATCHES:-0}"
+            grep -a -i -E 'DuoSB|duostatusbar' "${'$'}f" 2>/dev/null | tail -n 100
           done
           for f in ${'$'}(ls -t "${'$'}d"/*.log 2>/dev/null | head -n 4); do
             case " ${'$'}SEEN_FILES " in *" ${'$'}f "*) continue ;; esac
             echo "file=${'$'}f"
-            tail -n 100 "${'$'}f" 2>&1
+            MATCHES=${'$'}(grep -a -i -c -E 'DuoSB|duostatusbar' "${'$'}f" 2>/dev/null)
+            echo "matches=${'$'}{MATCHES:-0}"
+            grep -a -i -E 'DuoSB|duostatusbar' "${'$'}f" 2>/dev/null | tail -n 100
           done
         done
         echo '=== safe mode ==='
         SAFE_COUNT=0
+        SAFE_READABLE=0
         for f in ${'$'}(ls -t ${frameworkLogGlob("verbose_*.log")} 2>/dev/null | head -n 8); do
           SAFE_COUNT=${'$'}(( SAFE_COUNT + 1 ))
           echo "file=${'$'}f"
+          if head -n 1 "${'$'}f" >/dev/null 2>&1; then
+            SAFE_READABLE=${'$'}(( SAFE_READABLE + 1 ))
+          fi
           grep -a 'LSPosedService-SafeMode' "${'$'}f" 2>/dev/null | tail -n 40
         done
         echo "safeLogFiles=${'$'}SAFE_COUNT"
+        echo "safeReadableFiles=${'$'}SAFE_READABLE"
         echo '=== LSPosed config (enabled / scope) ==='
         SQLITE=${'$'}(command -v sqlite3 2>/dev/null)
         if [ -z "${'$'}SQLITE" ]; then
@@ -630,15 +639,18 @@ internal object RootLogs {
         if [ -n "${'$'}SQLITE" ] && [ -n "${'$'}DB" ]; then
           echo "sqlite=${'$'}SQLITE"
           "${'$'}SQLITE" -header -separator '|' "${'$'}DB" "SELECT * FROM modules WHERE module LIKE '%duostatusbar%';" 2>&1 | head -n 40
-        else
+        elif [ -z "${'$'}SQLITE" ]; then
           echo 'sqlite3=absent'
+        else
+          echo "sqlite=${'$'}SQLITE"
+          echo 'db not found; modules_config.db not queried'
         fi
         echo '=== framework manager ==='
         dumpsys package org.lsposed.manager 2>&1 | grep -a -E 'Package \[|versionName|versionCode|Unable to find|not found' | head -n 20
         echo '=== module.prop ==='
         for f in /data/adb/*/module.prop /data/adb/modules/*/module.prop; do
           [ -f "${'$'}f" ] || continue
-          ID=${'$'}(grep -a -m1 '^id=' "${'$'}f" 2>/dev/null | cut -d= -f2-)
+          ID=${'$'}(grep -a -m1 '^id=' "${'$'}f" 2>/dev/null | cut -d= -f2- | tr -d '\r' | tr -d '"' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
           case "${'$'}ID" in
             *lsposed*|lspatch|zygisk_lspatch|vector|zygisksu|zygisk-next|rezygisk) ;;
             *) continue ;;
@@ -657,15 +669,16 @@ internal object RootLogs {
         dumpsys package io.github.kvmy666.duostatusbar 2>/dev/null | head -n 40
         echo '=== crash records ==='
         echo '-- dropbox system_app_crash --'
-        dumpsys dropbox --print system_app_crash 2>&1 | grep -a -i -B2 -A6 'com.android.systemui' | tail -n 100
+        dumpsys dropbox --print system_app_crash 2>&1 | grep -a -i -B8 -A10 'com.android.systemui' | tail -n 100
         echo '-- dropbox system_app_native_crash --'
-        dumpsys dropbox --print system_app_native_crash 2>&1 | grep -a -i -B2 -A6 'com.android.systemui' | tail -n 100
+        dumpsys dropbox --print system_app_native_crash 2>&1 | grep -a -i -B8 -A10 'com.android.systemui' | tail -n 100
         echo '-- dropbox SYSTEM_TOMBSTONE --'
-        dumpsys dropbox --print SYSTEM_TOMBSTONE 2>&1 | grep -a -i -B2 -A6 'com.android.systemui' | tail -n 100
+        dumpsys dropbox --print SYSTEM_TOMBSTONE 2>&1 | grep -a -i -B8 -A10 'com.android.systemui' | tail -n 100
         echo '=== tombstones ==='
         for t in ${'$'}(ls -t /data/tombstones/tombstone_* 2>/dev/null | head -n 6); do
           if grep -a -q 'com.android.systemui' "${'$'}t" 2>/dev/null; then
             echo "tombstone=${'$'}t"
+            grep -a -m1 'Timestamp:' "${'$'}t" 2>/dev/null | head -n 1
             grep -a -i -B2 -A6 'com.android.systemui' "${'$'}t" | head -n 120
           fi
         done
@@ -785,6 +798,8 @@ internal object RootLogs {
 
     private val SAFE_LOG_FILES = Regex("""safeLogFiles=(\d+)""")
 
+    private val SAFE_READABLE_FILES = Regex("""safeReadableFiles=(\d+)""")
+
     /** The `[ 2026-11-25T00:19:06.527 … ]` prefix LSPosed writes on every verbose line. */
     private val LSPD_LINE_TIME =
         Regex("""^\[\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)""")
@@ -832,11 +847,15 @@ internal object RootLogs {
         val entered: Boolean,
         val lines: List<String>,
         val history: List<String> = emptyList(),
-        val logFiles: Int = 0
+        val logFiles: Int = 0,
+        val readableFiles: Int? = null
     ) {
         /** A count of zero is evidence only when a verbose log was actually read. */
         val readable: Boolean
-            get() = logFiles > 0 || lines.isNotEmpty() || history.isNotEmpty()
+            get() = when {
+                readableFiles != null -> readableFiles > 0 || lines.isNotEmpty() || history.isNotEmpty()
+                else -> logFiles > 0 || lines.isNotEmpty() || history.isNotEmpty()
+            }
     }
 
     internal data class SectionVerdict(val state: SectionState, val reason: String = "")
@@ -862,13 +881,16 @@ internal object RootLogs {
         zone: ZoneId = ZoneId.systemDefault()
     ): SafeModeReport {
         val logFiles = SAFE_LOG_FILES.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val readableFiles = SAFE_READABLE_FILES.find(text)?.groupValues?.get(1)?.toIntOrNull()
         val current = ArrayList<String>()
         val history = ArrayList<String>()
         for (raw in text.lineSequence()) {
             val line = raw.trim()
             if (line.isEmpty() || !line.contains(SAFE_MODE_TAG)) continue
             val at = lspdLineEpoch(line, zone)
-            if (bootEpochMillis != null && at != null && at < bootEpochMillis) {
+            // With a known boot time, an unparseable timestamp is not proof of "this boot": an old
+            // safe-mode line must stay history and must never re-trigger a current crash problem.
+            if (bootEpochMillis != null && (at == null || at < bootEpochMillis)) {
                 history += line
             } else {
                 current += line
@@ -883,7 +905,7 @@ internal object RootLogs {
                 it.contains("stop all modules", ignoreCase = true) ||
                 it.contains("enter safe mode", ignoreCase = true)
         }
-        return SafeModeReport(counter, entered, current, history, logFiles)
+        return SafeModeReport(counter, entered, current, history, logFiles, readableFiles)
     }
 
     private fun lspdLineEpoch(line: String, zone: ZoneId): Long? {
@@ -1152,7 +1174,7 @@ internal object RootLogs {
 
     /** The framework module ids whose `module.prop` is evidence; the user's other modules stay private. */
     internal fun isFrameworkModuleId(id: String): Boolean {
-        val value = id.trim().lowercase()
+        val value = id.trim().trim('"').trim().lowercase()
         if (value.isEmpty()) return false
         return value in FRAMEWORK_MODULE_IDS || value.contains("lsposed")
     }
@@ -1223,6 +1245,7 @@ internal object RootLogs {
         val report = parseSafeMode(section.text, bootEpochMillis)
         val body = buildString {
             appendLine("safeLogFiles=${report.logFiles}")
+            appendLine("safeReadableFiles=${report.readableFiles ?: "unknown"}")
             appendLine("counter=${report.counter ?: if (report.readable) 0 else "unknown"}")
             appendLine("safeMode=${safeModeLabel(report)}")
             report.lines.forEach { appendLine(it) }

@@ -145,7 +145,7 @@ internal object ProblemDetector {
         val deaths = DEATHS.find(section(sections, "systemui deaths")?.text.orEmpty())
             ?.groupValues?.get(1)?.toIntOrNull()
         return if (crashPresent || (deaths ?: 0) > 0) {
-            DetectedProblem("crash", LOCATION_SYSTEMUI, "deaths=${deaths ?: "records"}")
+            DetectedProblem("crash", LOCATION_SYSTEMUI, "deaths=${deaths ?: "unknown"}")
         } else {
             null
         }

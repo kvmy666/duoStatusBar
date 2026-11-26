@@ -95,6 +95,26 @@ class RootLogsTest {
     }
 
     @Test
+    fun `every per-file LSPosed tail is filtered to DuoSB`() {
+        val script = RootLogs.rootScript()
+        assertTrue("the per-file tail must report its match count", script.contains("matches="))
+        val perFileTails = script.lines().filter {
+            it.contains("tail -n 100") && it.contains("${'$'}f")
+        }
+        assertTrue("per-file tails are missing: $perFileTails", perFileTails.isNotEmpty())
+        perFileTails.forEach { line ->
+            assertTrue(
+                "an unfiltered per-file tail can leak another module's log: $line",
+                line.contains("grep -a -i -E 'DuoSB|duostatusbar'")
+            )
+        }
+        assertFalse(
+            "the raw per-file tail must be gone",
+            script.contains("""tail -n 100 "${'$'}f" 2>&1""")
+        )
+    }
+
+    @Test
     fun `the newest modules log scan is newest first and stops at the first DuoSB file`() {
         val script = RootLogs.rootScript()
         assertTrue("the scan must list modules_*.log", script.contains("modules_*.log"))
@@ -329,6 +349,56 @@ class RootLogsTest {
     }
 
     @Test
+    fun `an unparseable safe mode timestamp is history when this boot is known`() {
+        val boot = OffsetDateTime.parse("2026-11-27T00:00:00+03:00").toInstant().toEpochMilli()
+        val text = """
+            safeLogFiles=1
+            safeReadableFiles=1
+            /data/adb/lspd/log/verbose_old.log:LSPosedService-SafeMode System UI crashed 4 time(s), still below the threshold
+        """.trimIndent()
+        val report = RootLogs.parseSafeMode(text, boot, ZoneId.of("+03:00"))
+        assertEquals(
+            "a matching line with no parseable timestamp cannot count for this boot",
+            null,
+            report.counter
+        )
+        assertEquals(1, report.history.size)
+        assertTrue(report.lines.isEmpty())
+        assertFalse(report.entered)
+    }
+
+    @Test
+    fun `an unreadable safe mode log is unknown not zero`() {
+        val report = RootLogs.parseSafeMode("safeLogFiles=3\nsafeReadableFiles=0\n")
+        assertEquals("listed files stay informational", 3, report.logFiles)
+        assertEquals("only readable files count as evidence", 0, report.readableFiles)
+        assertFalse("listed but unreadable is not a readable log", report.readable)
+        assertEquals("unknown", RootLogs.safeModeLabel(report))
+        assertEquals(null, report.counter)
+        assertEquals(
+            "a read log is a real readable file",
+            1,
+            RootLogs.parseSafeMode("safeLogFiles=1\nsafeReadableFiles=1\n").readableFiles
+        )
+
+        val unreadable = RootLogs.privilegedSections(
+            "=== safe mode ===\nsafeLogFiles=3\nsafeReadableFiles=0\n",
+            "",
+            null
+        ).first { it.title == "safe mode" }.text
+        assertTrue("an unreadable log must not report a zero counter: $unreadable", unreadable.contains("counter=unknown"))
+        assertTrue(unreadable.contains("safeMode=unknown"))
+
+        val readable = RootLogs.privilegedSections(
+            "=== safe mode ===\nsafeLogFiles=1\nsafeReadableFiles=1\n",
+            "",
+            null
+        ).first { it.title == "safe mode" }.text
+        assertTrue("a read log with no crashes is a real zero: $readable", readable.contains("counter=0"))
+        assertTrue(readable.contains("safeMode=no"))
+    }
+
+    @Test
     fun `crash records keep only systemui lines`() {
         val text = """
             Process: com.android.systemui
@@ -448,6 +518,20 @@ class RootLogsTest {
     }
 
     @Test
+    fun `module prop ids strip CRLF quotes and whitespace`() {
+        val script = RootLogs.rootScript()
+        assertTrue("CRLF must be stripped before the id case", script.contains("tr -d '\\r'"))
+        assertTrue("surrounding quotes must be stripped", script.contains("tr -d '\"'"))
+        assertTrue(RootLogs.isFrameworkModuleId("\"vector\""))
+        assertTrue(RootLogs.isFrameworkModuleId("vector\r"))
+        assertTrue(RootLogs.isFrameworkModuleId("  \"zygisk_lsposed\"\r  "))
+        assertTrue(RootLogs.isFrameworkModuleId("my-lsposed-fork"))
+        assertFalse(RootLogs.isFrameworkModuleId("\"hybrid_mount\""))
+        listOf("lsposed", "vector", "zygisksu", "zygisk-next", "rezygisk", "lspatch", "zygisk_lspatch")
+            .forEach { assertTrue("framework id $it must stay", RootLogs.isFrameworkModuleId(it)) }
+    }
+
+    @Test
     fun `crash entries older than the boot and the app update are history`() {
         val boot = OffsetDateTime.parse("2026-11-27T00:00:00+03:00").toInstant().toEpochMilli()
         val install = OffsetDateTime.parse("2026-11-27T00:15:00+03:00").toInstant().toEpochMilli()
@@ -505,6 +589,58 @@ class RootLogsTest {
             "the current entry must not be history",
             scoped.history.text.contains("2026-11-27 01:00:00")
         )
+    }
+
+    @Test
+    fun `a current tombstone stays current when its timestamp is echoed first`() {
+        val boot = OffsetDateTime.parse("2026-11-27T00:00:00+03:00").toInstant().toEpochMilli()
+        val text = """
+            tombstone=/data/tombstones/tombstone_12
+            Timestamp: 2026-11-27 00:30:00.123456789+0300
+            Process name is com.android.systemui, uid is 10266, not key_process
+            signal 6 (SIGABRT)
+        """.trimIndent()
+        val scoped = RootLogs.scopeCrashText(text, boot, ZoneId.of("+03:00"))
+        assertEquals(1, scoped.currentCount)
+        assertEquals(0, scoped.historyCount)
+        assertTrue(scoped.current.contains("tombstone_12"))
+        assertFalse(scoped.history.contains("tombstone_12"))
+    }
+
+    @Test
+    fun `a current dropbox entry survives a wider header`() {
+        val boot = OffsetDateTime.parse("2026-11-27T00:00:00+03:00").toInstant().toEpochMilli()
+        val text = """
+            2026-11-27 01:00:00 system_app_crash (text, 100 bytes)
+            SystemUptimeMs: 1000
+            Process: com.android.systemui
+            PID: 1
+            UID: 10266
+            Frozen: false
+            Flags: 0x1
+            Package: com.android.systemui v169912 (16.99.12)
+            Foreground: No
+            Process-Runtime: 10
+            Timestamp: 2026-11-27 01:00:00.123+0300
+        """.trimIndent()
+        val scoped = RootLogs.scopeCrashText(text, boot, ZoneId.of("+03:00"))
+        assertEquals(1, scoped.currentCount)
+        assertEquals(0, scoped.historyCount)
+    }
+
+    @Test
+    fun `tombstones carry their timestamp and dropbox keeps a wide window`() {
+        val script = RootLogs.rootScript()
+        assertTrue(
+            "a tombstone Timestamp outside the match window must be echoed",
+            script.contains("grep -a -m1 'Timestamp:'")
+        )
+        val dropbox = script.lines().filter { it.contains("dumpsys dropbox --print") }
+        assertEquals("all three dropbox sources must be widened", 3, dropbox.size)
+        dropbox.forEach { line ->
+            assertTrue("the entry header must stay adjacent: $line", line.contains("-B8 -A10"))
+            assertFalse("the narrow window is what demoted a current crash: $line", line.contains("-B2 -A6"))
+        }
     }
 
     @Test
@@ -572,6 +708,29 @@ class RootLogsTest {
             errorText.contains("enabled=unknown scope=unknown (modules_config.db not queried)")
         )
         assertFalse("never claim not found from a binary grep", errorText.contains("not found"))
+    }
+
+    @Test
+    fun `the config script distinguishes a missing db from a missing sqlite3`() {
+        val script = RootLogs.rootScript()
+        assertTrue(
+            "a present sqlite3 with no DB must say so",
+            script.contains("db not found; modules_config.db not queried")
+        )
+        assertTrue("a missing sqlite3 is its own state", script.contains("sqlite3=absent"))
+        val missingDb = CaptureSection(
+            "LSPosed config (enabled / scope)",
+            SectionState.PRESENT,
+            "",
+            "db=unknown\nsqlite=/system/bin/sqlite3\ndb not found; modules_config.db not queried"
+        )
+        val text = RootLogs.withModuleScope(missingDb).text
+        assertTrue(
+            "enabled/scope must stay unknown: $text",
+            text.contains("enabled=unknown scope=unknown (modules_config.db not queried)")
+        )
+        assertFalse("a missing DB is not enabled", text.contains("enabled=true"))
+        assertFalse("a missing DB is not a missing binary", text.contains("sqlite3=absent"))
     }
 
     @Test
