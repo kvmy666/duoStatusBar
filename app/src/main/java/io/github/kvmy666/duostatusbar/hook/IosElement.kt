@@ -1,7 +1,4 @@
 package io.github.kvmy666.duostatusbar.hook
 
-/** Which stock occupant an iOS glyph stands in for. */
-internal enum class IosPart { BATTERY, WIFI, CELL }
-
-/** The glyph a future Rive/Canvas implementation draws. Kept separate from [IosPart] on purpose. */
+/** The glyph the Canvas renderer draws; the retired Rive part selector is gone. */
 internal enum class IosIconKind { BATTERY, WIFI, CELL }
