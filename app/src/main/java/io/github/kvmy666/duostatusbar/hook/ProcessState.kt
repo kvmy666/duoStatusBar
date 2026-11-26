@@ -19,10 +19,15 @@ internal object ProcessState {
     /** Set by whichever of the Application bootstrap paths runs first, so start runs once. */
     val started = AtomicBoolean(false)
 
-    /** RED STUB: MainHook owns the install claim through this seam. */
-    fun claimInstall(): Boolean = true
+    /**
+     * Claims the one install for this process. MainHook calls this before it does any work; a second
+     * class-loader load loses and returns without installing. A failed install calls [resetInstall]
+     * so a later load can retry instead of leaving the process permanently half-installed.
+     */
+    fun claimInstall(): Boolean = installed.compareAndSet(false, true)
 
-    /** RED STUB: a failed install releases the claim so a later class-loader load can retry. */
+    /** Releases a claim whose install threw, so the next load is allowed to try again. */
     fun resetInstall() {
+        installed.set(false)
     }
 }

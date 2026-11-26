@@ -15,8 +15,9 @@ class DuoLogTest {
 
     private fun lastLine(): String {
         val text = L.recentText()
-        // recentText prepends a millisecond timestamp; strip it for schema checks.
-        return text.substringAfter(' ')
+        // recentText prepends a millisecond timestamp and the process/pid identity prefix; strip both
+        // for schema checks.
+        return text.substringAfter("pid=").substringAfter(' ')
     }
 
     @Test

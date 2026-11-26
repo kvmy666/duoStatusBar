@@ -19,6 +19,7 @@ import android.widget.LinearLayout
 import java.util.WeakHashMap
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.Breadcrumb
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
@@ -3050,6 +3051,7 @@ internal class DuoIconHost(private val context: Context) {
                 logOnce.once("gate") {
                     L.i("gated off - enable with: ${guard.enableHint}")
                 }
+                Breadcrumb.step("attach:failed")
                 return false
             }
             // A fresh attach is a real change: clear any previous suppress/restore backoff (IOS-LAG).
@@ -3071,6 +3073,7 @@ internal class DuoIconHost(private val context: Context) {
             }
             if (target == null) {
                 L.w("system_icons not found - status bar left untouched")
+                Breadcrumb.step("attach:failed")
                 return false
             }
             root = statusBarRoot
@@ -3141,6 +3144,7 @@ internal class DuoIconHost(private val context: Context) {
             // live. A Rive state machine binds *after* this method returns (it needs the view attached to a
             // window), so hiding here would cover an empty slot; Canvas reports ready immediately.
             candidate.onReady {
+                if (candidate is DuoRiveView) Breadcrumb.step("rive:bind")
                 if (hasBox(candidate.ui) && (candidate.ui.parent === container || candidate.ui.parent === target)) {
                     onElementReady(candidate, target)
                 } else {
@@ -3152,9 +3156,11 @@ internal class DuoIconHost(private val context: Context) {
             forgetAttemptsAfterSurvival(candidate)
             // A fresh element reads the current settings itself, so any pending rebuild is resolved.
             pendingRebuild = LiveRebuild.NONE
+            Breadcrumb.step("attach")
             true
         } catch (t: Throwable) {
             L.e("attach failed: ${t.javaClass.simpleName}: ${t.message}")
+            Breadcrumb.step("attach:failed")
             false
         }
     }
@@ -3396,6 +3402,7 @@ internal class DuoIconHost(private val context: Context) {
             return null
         }
         guard.noteRiveAttempt()
+        Breadcrumb.step("rive:start")
         val rive = DuoRiveView(context, part, appliedDesignStyle)
         if (!rive.start()) {
             // A clean failure, not a death: hand the attempt back so the breaker only counts crashes.

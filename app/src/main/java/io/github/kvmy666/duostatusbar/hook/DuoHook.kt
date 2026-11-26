@@ -22,6 +22,8 @@ import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.Breadcrumb
+import io.github.kvmy666.duostatusbar.ProcessIdentity
 import io.github.kvmy666.duostatusbar.hook.events.flashlightStateFromDispatch
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
@@ -47,6 +49,14 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     private val handler = Handler(Looper.getMainLooper())
     private val attaching = AtomicBoolean(false)
+
+    /**
+     * Defense in depth for a direct [install] call: MainHook owns the per-process claim
+     * ([ProcessState.claimInstall]), so this only stops the same host instance from running its install
+     * body twice. A failed install leaves it set; MainHook's claim reset is what allows a retry with a
+     * fresh host, which is the path that matters.
+     */
+    private val installEntered = AtomicBoolean(false)
 
     /**
      * R3 A6: the one cached feature snapshot every Duo/iOS entry point checks. It is recomputed in
@@ -208,7 +218,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         IosBatteryV2.refresh()
                         applyDuoRegistrations()
                         settingsRereadAttempt = 0
-                        reporter.report(ctx, stage, iosSettings)
+                        reporter.report(ctx, stage, iosSettings, features.owner)
                         return@guard
                     }
                     // Activation left no live map: keep the stock bar and name the missing piece.
@@ -218,7 +228,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     IosRouteDiagnostics.update(iosRoute, rom.id)
                     applyDuoRegistrations()
                     settingsRereadAttempt = 0
-                    reporter.report(ctx, stage, iosSettings)
+                    reporter.report(ctx, stage, iosSettings, features.owner)
                     return@guard
                 }
                 // iOS on but v2 cannot take the bar (uncovered family or missing hook): keep the
@@ -227,7 +237,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 stopIosV2Owners()
                 applyDuoRegistrations()
                 settingsRereadAttempt = 0
-                reporter.report(ctx, stage, iosSettings)
+                reporter.report(ctx, stage, iosSettings, features.owner)
                 return@guard
             }
             // C11: decide the action before touching the live iOS attachment. An unreachable provider
@@ -253,7 +263,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 // pending rotation apply either - the next successful read still has to draw it.
                 if (applySavedSize) orientationPending.set(true)
                 scheduleSettingsReread()
-                reporter.report(ctx, stage, null)
+                reporter.report(ctx, stage, null, features.owner)
                 return@guard
             }
             // Leaving iOS mode restores its stock icons before the Duo path runs. When no iOS host was
@@ -271,7 +281,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 }
                 stopDuoRuntime()
                 applyDuoRegistrations()
-                reporter.report(ctx, stage, snapshot)
+                reporter.report(ctx, stage, snapshot, features.owner)
                 return@guard
             }
             settingsRereadAttempt = 0
@@ -283,7 +293,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             if (!refreshed.duoRuntime) {
                 stopDuoRuntime()
                 applyDuoRegistrations()
-                reporter.report(ctx, stage, settings)
+                reporter.report(ctx, stage, settings, features.owner)
                 return@guard
             }
             // BUG D: the iosTeardown above removed the Duo host. A switch back to Duo (or a REFRESH
@@ -295,7 +305,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     }
                 }
                 enable(ctx, attempt = 0)
-                reporter.report(ctx, stage, settings)
+                reporter.report(ctx, stage, settings, features.owner)
                 return@guard
             }
             when (action) {
@@ -317,13 +327,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             // draw into. The pending flag stays set; the next apply/attach retries.
                             L.w("live settings change with no attached status-bar window - will retry")
                             scheduleAttach(attempt = 0)
-                            reporter.report(ctx, stage, settings)
+                            reporter.report(ctx, stage, settings, features.owner)
                             return@guard
                         }
                         if (!liveHost.rebuildForLiveSettings(root)) {
                             L.w("live settings rebuild failed - retrying the attach (no restart)")
                             scheduleAttach(attempt = 0)
-                            reporter.report(ctx, stage, settings)
+                            reporter.report(ctx, stage, settings, features.owner)
                             return@guard
                         }
                         // The rebuild dropped every extra bar with the old element; rebuild them from
@@ -341,7 +351,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 }
                 SettingsApplyAction.KEEP_UNREACHABLE -> Unit
             }
-            reporter.report(ctx, stage, settings)
+            reporter.report(ctx, stage, settings, features.owner)
         }
     }
 
@@ -387,17 +397,23 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     fun install() {
         L.guard("DuoHook install") {
-            // LSPosed calls handleLoadPackage once per package in scope; on HyperOS System UI is seen
-            // twice (`com.android.systemui` and `system`). Hooking everything twice would double every
-            // callback, so only the first load in the process does anything.
-            if (!ProcessState.installed.compareAndSet(false, true)) {
-                L.i("already installed in this process - skipping duplicate load of ${lp.packageName}")
+            // MainHook owns the per-process install claim. This is only a same-instance guard, so a
+            // direct call cannot run the install body twice; it deliberately does not touch
+            // ProcessState.installed (a second class-loader load is MainHook's duplicate skip).
+            if (!installEntered.compareAndSet(false, true)) {
+                L.i("install already ran on this host - skipping duplicate call")
                 return@guard
             }
             // Earliest point the app can see: before any hook, Rive or ROM work below.
-            AppContextResolver.resolveAppContext()?.let { noteLoadStamp(it) }
+            val loadContext = AppContextResolver.resolveAppContext()
+            if (loadContext != null) {
+                Breadcrumb.bind(loadContext)
+                noteLoadStamp(loadContext)
+            }
             L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
+            Breadcrumb.step("install:ios-engine")
             IosResourceEngine.install(lp.classLoader)
+            Breadcrumb.step("install:battery")
             IosBatteryV2.install(lp.classLoader)
             IosMobileTypePlacement.install(lp.classLoader)
             IosDiagnostics.register(IosRouteDiagnostics)
@@ -406,18 +422,24 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // fires too late (or never) and the status-bar window - already added - was never seen. The
             // users' logs show exactly that: "MainHook loaded" then silence, and the element never drew.
             // Watching addView from the first instant of the process catches the window on every ROM.
+            Breadcrumb.step("install:window")
             hookWindowManagerAddView()
             L.i("install step: window-hook")
+            Breadcrumb.step("install:app")
             hookApplication()
             L.i("install step: app-hook")
             // If the Application already exists (injected late), start now; otherwise Application.onCreate
             // calls [start] the moment it fires, and [bootstrap] retries in case neither is ready yet.
+            Breadcrumb.step("install:adopt")
             adoptExistingWindows()
             L.i("install step: adopt-existing")
+            Breadcrumb.step("install:start")
             startWithCurrentApplication()
             L.i("install step: start-existing")
+            Breadcrumb.step("install:bootstrap")
             bootstrap()
             L.i("install step: bootstrap")
+            Breadcrumb.step("install:done")
             L.i("install step: done")
         }
     }
@@ -823,6 +845,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun start(ctx: Context) {
         if (!ProcessState.started.compareAndSet(false, true)) return
+        Breadcrumb.bind(ctx)
+        Breadcrumb.step("start")
         // First statement, before RomDetection: the new process must be detectable immediately.
         noteLoadStamp(ctx)
         app = ctx
@@ -873,7 +897,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // active/shared fields as the L boot line, not a reduced fragment.
                     DuoSettingsClient.report(
                         ctx,
-                        "loaded · " + featureStatus(features, stage, settings.revision, override)
+                        "process=${ProcessIdentity.processName()} pid=${ProcessIdentity.pid()}" +
+                            " · owner=${features.owner.tag} · loaded · " +
+                            featureStatus(features, stage, settings.revision, override)
                     )
                     DuoSettingsClient.reportFallback(ctx, "")
                 }
@@ -1205,7 +1231,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         host?.setPanelOwner(if (qsExpanded) "qs header" else "shade header")
                     }
                     L.i("Duo attached on attempt $attempt")
-                    reporter.report(ctx, guard.stage(), null)
+                    reporter.report(ctx, guard.stage(), null, features.owner)
                 } else {
                     scheduleAttach(attempt + 1)
                 }

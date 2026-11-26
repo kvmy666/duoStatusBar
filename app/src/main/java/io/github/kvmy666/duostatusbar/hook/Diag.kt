@@ -9,6 +9,7 @@ import android.view.WindowManager
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.DeviceFacts
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.ProcessIdentity
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
@@ -158,7 +159,10 @@ internal object Diag {
             appendLine("  source=${if (fromAsset) "asset-profile" else "code-default"}")
 
             appendLine("systemui:")
-            appendLine("  uid=${Process.myUid()} pid=${Process.myPid()}")
+            appendLine(
+                "  uid=${Process.myUid()} pid=${Process.myPid()} " +
+                    "process=${ProcessIdentity.processName()}"
+            )
             appendPackageInfo(context, this, "com.android.systemui")
 
             appendLine("window:")

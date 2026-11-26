@@ -11,8 +11,10 @@ import android.net.Uri
 import android.os.Bundle
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.ProcessIdentity
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Reads the user's settings out of the app's provider, from inside System UI (FR-03/16/17).
@@ -199,6 +201,25 @@ internal object DuoSettingsClient {
 
     /** How often the bridge may ask the app to push, so a broken provider cannot spam it. */
     private const val BRIDGE_REQUEST_MS = 15_000L
+
+    /** One refusal line per process: a side process must be visible, not noisy. */
+    private val statusWriteRefusedLogged = AtomicBoolean(false)
+
+    /**
+     * A side process has no status bar and no main-process state. Letting it write the app's status or
+     * dump overwrote the real report with "status bar window: not attached" (One UI `:edgelighting`).
+     * The install gate already keeps hooks out of side processes; this is the writer-side guarantee.
+     */
+    private fun refuseSideProcessWrite(): Boolean {
+        if (ProcessIdentity.isMainSystemUi()) return false
+        if (statusWriteRefusedLogged.compareAndSet(false, true)) {
+            L.w(
+                "status write refused: side process=${ProcessIdentity.processName()} " +
+                    "pid=${ProcessIdentity.pid()}"
+            )
+        }
+        return true
+    }
 
     /**
      * Orientation reported by the status-bar window's own configuration change. Resources on the
@@ -709,6 +730,7 @@ internal object DuoSettingsClient {
      * throws.
      */
     fun report(context: Context, status: String) {
+        if (refuseSideProcessWrite()) return
         if (!reportViaProvider(context, "status", "status", status)) {
             broadcastToApp(context, SettingsBridge.ACTION_STATUS_PUSH, SettingsBridge.EXTRA_STATUS, status)
         }
@@ -720,6 +742,7 @@ internal object DuoSettingsClient {
      * release path. Never throws.
      */
     fun reportDump(context: Context, dump: String) {
+        if (refuseSideProcessWrite()) return
         if (!reportViaProvider(context, "dump", "dump", dump)) {
             broadcastToApp(context, SettingsBridge.ACTION_DUMP_PUSH, SettingsBridge.EXTRA_DUMP, dump)
         }
@@ -731,6 +754,7 @@ internal object DuoSettingsClient {
      * at each module load). Never throws.
      */
     fun reportFallback(context: Context, reason: String) {
+        if (refuseSideProcessWrite()) return
         if (!reportViaProvider(context, "fallback", "fallback", reason)) {
             broadcastToApp(context, SettingsBridge.ACTION_FALLBACK_PUSH, SettingsBridge.EXTRA_FALLBACK, reason)
         }

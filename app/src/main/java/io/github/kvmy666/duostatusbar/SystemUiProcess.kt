@@ -9,13 +9,18 @@ package io.github.kvmy666.duostatusbar
  * not match, so every hook was skipped and the status bar never changed — the app then correctly
  * reported "the module was never injected".
  *
- * The process name is the stable identity across OEM builds, so it is checked as well. A pure
- * function, pinned by a unit test.
+ * The process name is the stable identity across OEM builds, so it is checked as well. Only the main
+ * SystemUI process is a target: any `com.android.systemui:<suffix>` (One UI's `:edgelighting` and
+ * `:screenshot`) is a side process with no status bar, and installing there produced reports and a
+ * stamp from a process that never owned the bar. A missing/blank process name can only fall back to
+ * the exact package name. A pure function, pinned by a unit test.
  */
 internal object SystemUiProcess {
 
     const val PACKAGE = "com.android.systemui"
 
-    fun isTarget(packageName: String?, processName: String?): Boolean =
-        packageName == PACKAGE || processName == PACKAGE
+    fun isTarget(packageName: String?, processName: String?): Boolean {
+        if (processName.isNullOrBlank()) return packageName == PACKAGE
+        return processName == PACKAGE
+    }
 }

@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.hook
 import android.content.Context
 import android.view.View
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.ProcessIdentity
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -33,26 +34,25 @@ internal class HookReporter(
         extrasSnapshot = snapshot
     }
 
-    fun report(ctx: Context, stage: Int, settings: ModuleSettings?) {
+    fun report(
+        ctx: Context,
+        stage: Int,
+        settings: ModuleSettings?,
+        /** The mode that owns the bar; a safe default keeps older callers/tests source-compatible. */
+        owner: BarOwner = BarOwner.NONE
+    ) {
         L.guard("DuoHook status report") {
             val element = duo()
-            val renderer = element?.rendererName ?: "none"
-            val status = buildString {
-                append("stage=").append(stage)
-                append(" · renderer=").append(renderer)
-                append(" · attached=").append(element != null)
-                settings?.let {
-                    append(" · size=").append(it.sizePercent).append('%')
-                    append(" · offset=").append(it.offsetX).append("dp")
-                    append(" · split=").append(it.splitIndicators)
-                    append(" · lock=").append(it.lockRing)
-                    append(" · icons=").append(it.indicatorsOffsetX).append("dp")
-                    append(" · edge=").append(it.edgePadding).append('%')
-                    append(" · percent=").append(it.showPercent)
-                    append(" · rev=").append(it.revision)
-                }
-                append(" · riveAttempts=").append(DuoGuard(ctx).attempts())
-            }
+            val status = hookStatusText(
+                process = ProcessIdentity.processName(),
+                pid = ProcessIdentity.pid(),
+                owner = owner.tag,
+                stage = stage,
+                renderer = element?.rendererName ?: "none",
+                attached = element != null,
+                settings = settings,
+                riveAttempts = DuoGuard(ctx).attempts()
+            )
             L.i("status -> app: $status")
             DuoSettingsClient.report(ctx, status)
             reportDiagnostics(ctx, stage, settings, element)
@@ -103,8 +103,6 @@ internal class HookReporter(
 /**
  * The app-visible status line: process identity first, then the owner and the facts the diagnostics
  * screen already showed. Pure so the exact shape is pinned without a Context.
- *
- * RED STUB: returns an empty line so the status-identity test fails before the fix.
  */
 internal fun hookStatusText(
     process: String,
@@ -115,4 +113,22 @@ internal fun hookStatusText(
     attached: Boolean,
     settings: ModuleSettings?,
     riveAttempts: Int
-): String = ""
+): String = buildString {
+    append("process=").append(process)
+    append(" pid=").append(pid)
+    append(" · owner=").append(owner)
+    append(" · stage=").append(stage)
+    append(" · renderer=").append(renderer)
+    append(" · attached=").append(attached)
+    settings?.let {
+        append(" · size=").append(it.sizePercent).append('%')
+        append(" · offset=").append(it.offsetX).append("dp")
+        append(" · split=").append(it.splitIndicators)
+        append(" · lock=").append(it.lockRing)
+        append(" · icons=").append(it.indicatorsOffsetX).append("dp")
+        append(" · edge=").append(it.edgePadding).append('%')
+        append(" · percent=").append(it.showPercent)
+        append(" · rev=").append(it.revision)
+    }
+    append(" · riveAttempts=").append(riveAttempts)
+}

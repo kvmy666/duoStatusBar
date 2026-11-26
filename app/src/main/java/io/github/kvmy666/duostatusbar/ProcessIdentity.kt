@@ -1,24 +1,94 @@
 package io.github.kvmy666.duostatusbar
 
+import android.app.Application
+import android.os.Process
+
 /**
  * The identity of the process the module is running in.
  *
- * RED STUB: the real implementation lands with the process-gate fix. It deliberately exposes the
- * final API only so the failing tests can compile and report their assertions.
+ * It is read once and cached: the process name and pid cannot change during a process's life, and
+ * every log line asks for it. [Application.getProcessName] is API 28+ (the module's minSdk is 33);
+ * it is still guarded because a ROM or a unit-test JVM can throw, and logging must never be the
+ * reason a process dies.
+ *
+ * This object deliberately never calls [L]: [L] calls it to build its line prefix, so any logging here
+ * would recurse. Tests may force the identity; [resetForTest] removes that and the real cache.
  */
 internal object ProcessIdentity {
 
-    fun processName(): String = "unknown"
+    private val lock = Any()
 
-    fun pid(): Int = -1
+    private var nameResolved = false
+    private var name: String? = null
+    private var pidResolved = false
+    private var pid = -1
 
-    fun isMainSystemUi(): Boolean = true
+    @Volatile
+    private var forced = false
 
-    fun prefix(): String = ""
+    @Volatile
+    private var forcedName: String? = null
+
+    @Volatile
+    private var forcedPid: Int? = null
+
+    /** The process name, or `unknown` when the runtime cannot answer. Never throws, never logs. */
+    fun processName(): String {
+        if (forced) return forcedName ?: "unknown"
+        synchronized(lock) {
+            if (!nameResolved) {
+                name = try {
+                    Application.getProcessName()
+                } catch (_: Throwable) {
+                    null
+                }
+                nameResolved = true
+            }
+        }
+        return name ?: "unknown"
+    }
+
+    /** The pid, or `-1` when the runtime cannot answer. Never throws, never logs. */
+    fun pid(): Int {
+        if (forced) return forcedPid ?: -1
+        synchronized(lock) {
+            if (!pidResolved) {
+                pid = try {
+                    Process.myPid()
+                } catch (_: Throwable) {
+                    -1
+                }
+                pidResolved = true
+            }
+        }
+        return pid
+    }
+
+    /**
+     * True only in the main SystemUI process. The process name is the identity that survives the
+     * HyperOS `packageName = system` report and the owner's `com.oplus.keyguard.*` class-loaders;
+     * any `com.android.systemui:<suffix>` is a side process and is false.
+     */
+    fun isMainSystemUi(): Boolean = processName() == SystemUiProcess.PACKAGE
+
+    /** The prefix every module log line starts with. */
+    fun prefix(): String = "process=${processName()} pid=${pid()} "
 
     internal fun forceForTest(name: String?, pid: Int) {
+        forcedName = name
+        forcedPid = pid
+        forced = true
     }
 
     internal fun resetForTest() {
+        forced = false
+        forcedName = null
+        forcedPid = null
+        synchronized(lock) {
+            nameResolved = false
+            name = null
+            pidResolved = false
+            pid = -1
+        }
     }
 }

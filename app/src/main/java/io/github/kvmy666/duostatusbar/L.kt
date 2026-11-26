@@ -38,17 +38,36 @@ object L {
     private var recentBytes = 0
 
     /**
+     * `process=<name> pid=<pid> ` in front of every line. Cached once: the identity cannot change in a
+     * process, and `record` runs for every line on the status-bar path.
+     */
+    @Volatile
+    private var identityPrefix: String? = null
+
+    private fun prefix(): String {
+        val cached = identityPrefix
+        if (cached != null) return cached
+        return synchronized(ringLock) {
+            identityPrefix ?: ProcessIdentity.prefix().also { identityPrefix = it }
+        }
+    }
+
+    /**
      * One entry point for every level. The XposedBridge sink carries no level, so nothing is lost by
      * sending `w`/`d`/`v`/`e` through the same path - and keeping them visible is the whole point: a
      * warning that never arrives is worse than no warning, because it looks like silence.
+     *
+     * Every line carries the process/pid prefix, in both sinks *and* the in-memory ring, so a report
+     * can tell a main-process line from a side-process one without relying on LSPosed's header.
      */
     private fun both(msg: String) {
-        record(msg)
-        sinks(msg)
+        val line = prefix() + msg
+        record(line)
+        sinks(line)
     }
 
     /** Writes to both sinks without keeping the line (used for the bulky diagnostic dump). */
-    fun diag(msg: String) = sinks(msg)
+    fun diag(msg: String) = sinks(prefix() + msg)
 
     private fun sinks(msg: String) {
         try {
@@ -97,6 +116,7 @@ object L {
             synchronized(ringLock) {
                 ring.clear()
                 recentBytes = 0
+                identityPrefix = null
             }
         } catch (_: Throwable) {
         }

@@ -3,24 +3,43 @@ package io.github.kvmy666.duostatusbar
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.hook.DuoHook
+import io.github.kvmy666.duostatusbar.hook.ProcessState
 
 /**
  * Module entry point — declared in `assets/xposed_init`, instantiated by LSPosed.
  *
- * Phase 0 only installs the evidence collector (log-only). Hooks that change SystemUI arrive in
- * Phase 3, and each of those lives behind the same try/catch discipline so that a failure can
- * never take the system down (FR-21).
+ * The gate comes before anything else, including the "loaded" line:
+ *  - a side process (`com.android.systemui:edgelighting`, `:screenshot`, any `:suffix`) and every other
+ *    package emit exactly one `skipped process=… pkg=…` line and do nothing else — no device facts, no
+ *    load stamp, no status/dump write, no hooks (the One UI reports came from `:edgelighting`, a process
+ *    with no status bar, and they overwrote the main process's report);
+ *  - in the main process exactly one class-loader load wins [ProcessState.claimInstall]; a duplicate
+ *    load (LSPosed sees `system` and `com.oplus.keyguard.*` in the same pid) emits one
+ *    `skipped duplicate …` line;
+ *  - only the winner logs the device facts, installs, and logs completion. If the install throws, the
+ *    claim is released so a later load can retry.
+ *
+ * This is the only entry point in the module: `IXposedHookZygoteInit`, the resources hooks and any app
+ * process hook are absent (`assets/xposed_init` names this class alone).
  */
 class MainHook : IXposedHookLoadPackage {
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
-            L.i("MainHook loaded into ${lpparam.packageName} (process=${lpparam.processName})")
+            val process = lpparam.processName
+            val pkg = lpparam.packageName
 
-            // Match the process name as well as the package: on HyperOS / Android 16 the SystemUI
-            // process reports `packageName = "system"`, so a package-only check silently skipped every
-            // hook (issue #5). See [SystemUiProcess].
-            if (SystemUiProcess.isTarget(lpparam.packageName, lpparam.processName)) {
+            if (!SystemUiProcess.isTarget(pkg, process)) {
+                L.i("skipped process=$process pkg=$pkg")
+                return
+            }
+
+            if (!ProcessState.claimInstall()) {
+                L.i("skipped duplicate process=$process pkg=$pkg (already installed pid=${ProcessIdentity.pid()})")
+                return
+            }
+
+            try {
                 // Once per SystemUI load: the two facts that decide whether native Rive can load at all.
                 // A report without them cannot tell "Rive is denied by SELinux" from "Rive crashed".
                 L.i("device: selinux=${DeviceFacts.selinux()} abi=${DeviceFacts.abi()} " +
@@ -28,8 +47,10 @@ class MainHook : IXposedHookLoadPackage {
                 L.i("MainHook step: target matched - installing DuoHook")
                 DuoHook(lpparam).install()
                 L.i("MainHook step: DuoHook.install completed")
-            } else {
-                L.i("out of scope: not SystemUI - doing nothing")
+            } catch (t: Throwable) {
+                // Partial install recovery: let the next class-loader load try once more.
+                ProcessState.resetInstall()
+                throw t
             }
         } catch (t: Throwable) {
             L.e("MainHook.handleLoadPackage", t)
