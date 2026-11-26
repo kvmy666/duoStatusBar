@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
+import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -85,9 +86,12 @@ class DiagnosticsTruthTest {
 
     @Test
     fun `reportRom selects an sdk-gated measured profile only inside its range`() {
+        val marker = RomMarkers.of(
+            systemUiSourceDir = "/system_ext/priv-app/MiuiSystemUI/MiuiSystemUI.apk"
+        )
         val profiles = listOf(
             RomAdapter(
-                id = "gated",
+                id = "hyperos",
                 label = "Gated test profile",
                 systemUiPackage = "com.android.systemui",
                 containerIds = listOf("system_icons"),
@@ -100,12 +104,18 @@ class DiagnosticsTruthTest {
             )
         )
 
-        val at36 = reportRom("Acme", "gatedrom", "product", "display", profiles, 36)
-        assertEquals("gated", at36.id)
+        // Inside the range *and* with the family's proven marker the measured profile is accepted.
+        val at36 = reportRom("Acme", "gatedrom", "product", "display", profiles, 36, marker)
+        assertEquals("hyperos", at36.id)
         assertEquals(true, at36.measured)
 
+        // Without the proven marker the profile must not be selected even inside its range.
+        val noMarker = reportRom("Acme", "gatedrom", "product", "display", profiles, 36, RomMarkers.UNKNOWN)
+        assertEquals("aosp", noMarker.id)
+        assertFalse(noMarker.measured)
+
         // Outside the measured range the profile must not be accepted, so it falls through to AOSP.
-        val at37 = reportRom("Acme", "gatedrom", "product", "display", profiles, 37)
+        val at37 = reportRom("Acme", "gatedrom", "product", "display", profiles, 37, marker)
         assertEquals("aosp", at37.id)
         assertFalse(at37.measured)
     }

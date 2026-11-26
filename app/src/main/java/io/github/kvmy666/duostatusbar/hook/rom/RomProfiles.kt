@@ -68,7 +68,7 @@ internal object RomProfiles {
         buildList {
             for (i in 0 until array.length()) {
                 val o = array.optJSONObject(i) ?: continue
-                val id = o.optString("id")
+                val id = RomFamilies.canonical(o.optString("id"))
                 val containerIds = o.optJSONArray("containerIds").toStringList()
                 if (id.isBlank() || containerIds.isEmpty()) continue
                 add(
@@ -91,7 +91,13 @@ internal object RomProfiles {
                         coverHook = if (o.has("coverHook")) o.optBoolean("coverHook", true) else true,
                         panelExpansionKind = parsePanelExpansionKind(o),
                         panelHookMeasured = o.optBoolean("panelHookMeasured", false),
-                        panelOwnerAvailable = o.optBoolean("panelOwnerAvailable", false)
+                        panelOwnerAvailable = o.optBoolean("panelOwnerAvailable", false),
+                        aliases = o.optJSONArray("aliases").toStringList(),
+                        hideContainerIds = o.optJSONArray("hideContainerIds").toStringList(),
+                        dualSimCompositeIds = o.optJSONArray("dualSimCompositeIds").toStringList(),
+                        keyguardContainerId = o.optString("keyguardContainerId", "system_icons").trim()
+                            .ifBlank { "system_icons" },
+                        shadeBatteryIds = o.optJSONArray("shadeBatteryIds").toStringList()
                     )
                 )
             }

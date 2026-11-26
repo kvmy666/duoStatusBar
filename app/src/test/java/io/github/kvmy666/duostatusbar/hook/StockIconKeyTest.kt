@@ -42,6 +42,12 @@ class StockIconKeyTest {
     /** A Duo-owned view by name, as the module creates. */
     private class DuoPreviewView(context: Context) : View(context)
 
+    /** Android 17 AOSP's Compose icon cluster: a replaced unit, hidden whole. */
+    private class SingleBindableStatusBarComposeIconView(context: Context) : LinearLayout(context)
+
+    /** A generic Compose host (e.g. a centre clock) that must never be classed as an icon cluster. */
+    private class ComposeView(context: Context) : View(context)
+
     @Test
     fun `key prefers slot, then resource id, then class`() {
         val bySlot = FakeIcon(context, "battery")
@@ -150,6 +156,32 @@ class StockIconKeyTest {
         assertSame(clock, inventory[2].view)
         assertEquals("Cellular", inventory[4].label)
         assertSame(secondMobile, inventory[4].view)
+    }
+
+    @Test
+    fun `the Compose icon cluster is a replaced unit`() {
+        val cluster = SingleBindableStatusBarComposeIconView(context)
+        assertEquals(StockIconKind.COMPOSE, StockIconKey.kindOf(cluster))
+        assertTrue(StockIconKey.kindOf(cluster).replaced)
+    }
+
+    @Test
+    fun `a generic ComposeView is never a Compose icon cluster`() {
+        assertEquals(StockIconKind.IGNORED, StockIconKey.kindOf(ComposeView(context)))
+    }
+
+    @Test
+    fun `a Compose cluster is listed as one icon and not walked into`() {
+        val strip = LinearLayout(context)
+        val cluster = SingleBindableStatusBarComposeIconView(context)
+        cluster.addView(FakeIcon(context, "wifi"))
+        strip.addView(cluster)
+
+        val inventory = StockIconKey.inventory(strip)
+
+        assertEquals(1, inventory.size)
+        assertSame(cluster, inventory.single().view)
+        assertEquals(StockIconKind.COMPOSE, inventory.single().kind)
     }
 
     @Test

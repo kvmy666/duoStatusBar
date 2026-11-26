@@ -54,6 +54,15 @@
       "apiMin": 37,
       "apiMax": 37,
       "notes": "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent",
+      "keyguardContainerId": "system_icons_container",
+      "shadeContainerIds": [
+        "normal_control_center_status_bar",
+        "system_icon_area",
+        "shade_header_system_icons",
+        "system_icons"
+      ],
+      "shadeBatteryId": "battery",
+      "shadeMeasured": false,
       "coverHook": true,
       "panelExpansionKind": "fzz_3arg",
       "panelHookMeasured": false
@@ -104,6 +113,9 @@
       ],
       "measured": false,
       "notes": "static aapt2 map only; ColorOS 16 runtime dump missing; old 3.0.4 has quick_qs_status_icons. Removed quick_status_bar_header_system_icons and status_bar_end_side_content after they were absent from the decoded resource tree.",
+      "hideContainerIds": [
+        "signal_cluster"
+      ],
       "shadeContainerIds": [
         "quick_qs_status_icons",
         "system_icons"
@@ -115,7 +127,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "oneui",
+      "id": "samsung",
+      "aliases": [
+        "oneui"
+      ],
       "label": "Samsung One UI (static only)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [
@@ -141,7 +156,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "originos",
+      "id": "vivo",
+      "aliases": [
+        "originos"
+      ],
       "label": "vivo OriginOS / Funtouch (static only)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [
@@ -160,17 +178,27 @@
       "measured": false,
       "notes": "static aapt2 map only; OriginOS runtime dump missing; vivo systemuiplugin is a separate scope",
       "shadeContainerIds": [
+        "vivo_qs_status_icons",
+        "vivo_qs_status_icons_right",
+        "vivo_split_qs_status_icons_right",
         "shade_header_system_icons",
         "system_icons"
       ],
       "shadeBatteryId": "batteryRemainingIcon",
+      "shadeBatteryIds": [
+        "vivo_qs_realbar_battery",
+        "vivo_split_qs_realbar_battery"
+      ],
       "shadeMeasured": false,
       "coverHook": true,
       "panelExpansionKind": "zfz_3arg",
       "panelHookMeasured": false
     },
     {
-      "id": "magicos",
+      "id": "honor",
+      "aliases": [
+        "magicos"
+      ],
       "label": "Honor MagicOS (static only, old APK)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [
@@ -186,6 +214,9 @@
       ],
       "measured": false,
       "notes": "static aapt2 map from MagicOS 11 old build; MagicOS 10 runtime dump missing; hw_system_icons was absent from the decoded tree",
+      "hideContainerIds": [
+        "signal_cluster_container"
+      ],
       "shadeContainerIds": [
         "system_icon_area",
         "statusIcons"
@@ -197,7 +228,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "myos",
+      "id": "motorola",
+      "aliases": [
+        "myos"
+      ],
       "label": "Motorola MyOS / Hello UI (static only)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [
@@ -214,6 +248,9 @@
       ],
       "measured": false,
       "notes": "static aapt2 map only; MyOS runtime dump missing",
+      "dualSimCompositeIds": [
+        "mobile_combo_dual"
+      ],
       "shadeContainerIds": [
         "shade_header_system_icons",
         "system_icons"
@@ -225,7 +262,10 @@
       "panelHookMeasured": false
     },
     {
-      "id": "nothingos",
+      "id": "nothing",
+      "aliases": [
+        "nothingos"
+      ],
       "label": "Nothing OS (static only)",
       "systemUiPackage": "com.android.systemui",
       "containerIds": [

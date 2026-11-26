@@ -26,8 +26,8 @@ import io.github.kvmy666.duostatusbar.Breadcrumb
 import io.github.kvmy666.duostatusbar.hook.events.flashlightStateFromDispatch
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
-import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
+import io.github.kvmy666.duostatusbar.hook.rom.RomResolver
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
@@ -949,15 +949,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         app = ctx
         // Now that a context exists the SystemUI package can be inspected. Only a successful read that
         // proves a non-MIUI SystemUI may switch a Xiaomi-brand device to AOSP; an unreadable one keeps
-        // the old HyperOS/brand behaviour (see [RomMarkers]).
-        rom = RomDetection.forThisRom(
-            Build.MANUFACTURER.orEmpty(),
-            Build.BRAND.orEmpty(),
-            Build.PRODUCT.orEmpty(),
-            Build.DISPLAY.orEmpty(),
-            Build.VERSION.SDK_INT,
-            RomMarkerSource.read(ctx)
-        )
+        // the old HyperOS/brand behaviour (see [RomMarkers]). One resolver so this cannot drift from the
+        // icon host and the diagnostic dump (R15).
+        rom = RomResolver.resolve(ctx)
         // R6/D13/D14: the family is known now, so the iOS owner decision can stop trusting a saved ON.
         // A new process has not attempted a route yet, so it starts from "not failed".
         IosAvailability.routeFailed = false
@@ -1762,7 +1756,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             "shadeProbe:attachExtraBars:window",
             "attachExtraBars window=${ShadeProbe.describe(shade)} attached=${shade.isAttachedToWindow}"
         )
-        host.attachExtra("keyguard bar", shade, "system_icons")
+        host.attachExtra("keyguard bar", shade, rom.keyguardContainerId)
         // The shade header is not in this window; it arrives through hookShadeHeader. It is built early,
         // often before the main bar has attached, so this is also where a failed attempt is retried.
         val header = shadeHeader
@@ -1779,6 +1773,20 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
         val result = host.attachShadeHeader(header, shade)
         ShadeProbe.logOnce("shadeProbe:attachShadeHeader:$result", "attachShadeHeader result=$result")
+        // R10: vivo keeps a GONE/INVISIBLE `combined_qs_header` in the tree, so a present header is not
+        // proof of a usable one. Only a dead header falls back to the window; a usable header that is
+        // simply not laid out yet keeps the existing bounded retry (no second attach path).
+        if (!result &&
+            ShadeRoute.shouldTryWindow(
+                header.isAttachedToWindow, header.visibility, header.isShown
+            )
+        ) {
+            val windowResult = host.attachShadeWindow(shade)
+            ShadeProbe.logOnce(
+                "shadeProbe:attachShadeWindow:fallback:$windowResult",
+                "attachShadeWindow fallback (dead header) result=$windowResult"
+            )
+        }
     }
 
     /**
@@ -1796,26 +1804,30 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      *
      * A hiding pass on a layout change is not enough on the shade header - the ROM repopulates its
      * `StatusIconContainer` afterwards, so the icons came back after every pass. `StatusIconContainer`
-     * is the one container all three bars use for their icons, so hooking its `addView` catches every
-     * icon in every bar at the moment it arrives.
+     * is the one container all three bars use for their icons, so hooking the method that adds an
+     * icon catches every icon in every bar at the moment it arrives.
+     *
+     * R8: `XposedBridge.hookAllMethods` is declared-only and the vendor containers declare
+     * `onViewAdded`/`onViewRemoved`, not `addView`. The targets come from
+     * [IconContainerHooks.declaredTargets] and the reported count is the real unhook count, so a
+     * container that declares neither keeps the layout pass as its documented fallback.
      */
     private fun hookStatusIconContainer() {
         L.guard("DuoHook icon container") {
-            val names = listOf(
-                "com.android.systemui.statusbar.phone.StatusIconContainer",
-                "com.android.systemui.statusbar.views.MiuiStatusIconContainer"
-            )
             val callback = object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     L.guard("DuoHook icon added") {
-                        // R3 A3: the container is the object addView was called on. Registration is
+                        // R8: only an add is an arrival; `onViewRemoved` must not masquerade as one.
+                        val added = param.method.name == "onViewAdded"
+                        // R3 A3: the container is the object the arrival ran on. Registration is
                         // additive; the existing host notifications below stay exactly as they were.
                         val container = param.thisObject as? ViewGroup
                         // R8: the order owner is notified on every route; it is inert unless it is
                         // installed and active, so V2 (which now owns the order) is covered too.
-                        if (container != null) {
+                        if (added && container != null) {
                             IosIconOrder.onIconAdded(container)
                         }
+                        if (!added) return@guard
                         val child = param.args.firstOrNull() as? View ?: return@guard
                         // A6: feed only the owner that is live. The other mode's fields are null while
                         // it is off, but the explicit gate keeps a slow async callback from reaching a
@@ -1824,16 +1836,31 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     }
                 }
             }
-            var hooked = 0
-            for (name in names) {
+            var classes = 0
+            var methods = 0
+            for (name in IconContainerHooks.CLASS_NAMES) {
                 try {
                     val cls = XposedHelpers.findClass(name, lp.classLoader)
-                    XposedBridge.hookAllMethods(cls, "addView", callback)
-                    hooked++
+                    classes++
+                    val targets = IconContainerHooks.declaredTargets(cls)
+                    if (targets.isEmpty()) {
+                        logOnce.once("iconContainer:noTargets:$name") {
+                            L.w("$name: no declared onViewAdded/onViewRemoved")
+                        }
+                        continue
+                    }
+                    for (method in targets) {
+                        methods += XposedBridge.hookAllMethods(cls, method, callback).size
+                    }
                 } catch (_: Throwable) {
                 }
             }
-            L.i("status icon container hooks installed: $hooked")
+            L.i("status icon container hooks installed: classes=$classes methods=$methods")
+            if (methods == 0) {
+                logOnce.once("iconContainer:noMethods") {
+                    L.w("status icon container hooks: no declared onViewAdded/onViewRemoved - layout pass remains the fallback")
+                }
+            }
         }
     }
 

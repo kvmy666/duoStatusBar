@@ -19,16 +19,17 @@ from pathlib import Path
 DECODED = {
     "oxygenos": "reverse/decoded/oneplus-phone",
     "hyperos": "reverse/decoded/xiaomi",
-    "oneui": "reverse/decoded/samsung",
+    "samsung": "reverse/decoded/samsung",
     "coloros": "reverse/decoded/oppo",
-    "originos": "reverse/decoded/vivo",
-    "magicos": "reverse/decoded/honor",
-    "myos": "reverse/decoded/motorola",
-    "nothingos": "reverse/decoded/nothing",
+    "vivo": "reverse/decoded/vivo",
+    "honor": "reverse/decoded/honor",
+    "motorola": "reverse/decoded/motorola",
+    "nothing": "reverse/decoded/nothing",
     # no decoded AOSP tree in the corpus yet
     "aosp": "",
 }
-FIELDS = ("containerIds", "batteryId", "clockId", "shadeContainerIds", "shadeBatteryId")
+FIELDS = ("containerIds", "batteryId", "clockId", "shadeContainerIds", "shadeBatteryId",
+          "shadeBatteryIds", "hideContainerIds", "dualSimCompositeIds", "keyguardContainerId")
 
 
 def names_in_tree(root: Path, wanted: set[str]) -> set[str]:

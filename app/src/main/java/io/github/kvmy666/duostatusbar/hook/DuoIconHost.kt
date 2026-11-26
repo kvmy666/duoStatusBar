@@ -20,10 +20,8 @@ import java.util.WeakHashMap
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.Breadcrumb
-import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
-import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
-import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.hook.events.LiveEventType
+import io.github.kvmy666.duostatusbar.hook.rom.RomResolver
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 
@@ -221,6 +219,14 @@ internal class DuoIconHost(private val context: Context) {
      */
     private var overlayOnCombined = false
 
+    /**
+     * Android 17 AOSP's Compose icon cluster (the outer `ComposeView` the host resolved). It is not a
+     * child of a View strip, so the per-icon pass cannot hide it by class; the host hides it directly
+     * with INVISIBLE so it keeps its layout. Null on a View strip. Re-resolved on re-attach because the
+     * bar is rebuilt (rotation), and restored by the hider on teardown.
+     */
+    private var composeStockAnchor: View? = null
+
     /** The anchor's visibility before the overlay hid it, so teardown can put the stock cluster back. */
     private var anchorOriginalVisibility: Int? = null
 
@@ -258,7 +264,7 @@ internal class DuoIconHost(private val context: Context) {
          * every bar — falling back to this bar's own measurement only when the main bar captured none.
          */
         var basePx = 0
-        val stock = StockIconHider()
+        val stock = StockIconHider(dualSimKeepKeys)
 
         /**
          * True when this slot is the QS cluster (`quick_qs_status_icons`). Its stock icons are two
@@ -423,17 +429,13 @@ internal class DuoIconHost(private val context: Context) {
     private val drawOrder = PanelHandoff.OutgoingLatch()
 
     private val guard = DuoGuard(context)
-    private val rom = RomDetection.forThisRom(
-        Build.MANUFACTURER.orEmpty(),
-        Build.BRAND.orEmpty(),
-        Build.PRODUCT.orEmpty(),
-        Build.DISPLAY.orEmpty(),
-        // Measured profiles from assets may override; only `measured` ones are accepted.
-        RomProfiles.load(context),
-        Build.VERSION.SDK_INT,
-        // A Xiaomi brand alone is not HyperOS; this reads the SystemUI APK/class markers.
-        RomMarkerSource.read(context)
-    )
+    private val rom = RomResolver.resolve(context)
+
+    /**
+     * R12: the dual-SIM composite is one CELLULAR view holding both SIM rows, so hiding it as the
+     * replaced cellular icon would remove both rows. Its stable `id:` keys are kept on every hider.
+     */
+    private val dualSimKeepKeys = rom.dualSimCompositeIds.map { "id:${it.lowercase()}" }.toSet()
 
     /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
     private val finder = ContainerFinder(context, rom, logOnce)
@@ -470,7 +472,7 @@ internal class DuoIconHost(private val context: Context) {
     private val geometry = SlotGeometry(context, rom)
 
     /** Hides and restores the stock views (FR-08/21); owns their remembered original state. */
-    private val hider = StockIconHider()
+    private val hider = StockIconHider(dualSimKeepKeys)
 
     /**
      * IOS-LAG: backoff for the proven Duo 0x0 suppress/restore loop. The owner's CPH2747 dump has 362
@@ -636,7 +638,22 @@ internal class DuoIconHost(private val context: Context) {
             // Centre on the *bar*, not the window it lives in: the shade window is the whole screen, so
             // centring on it put the element 1300 px down the lock screen (measured).
             val bar = finder.findBar(target) ?: target
-            attachInto(name, target, bar, center = true, elementRoot = root, stage = stage, logClass = bar.javaClass.simpleName)
+            // HyperOS's keyguard strip is a `MiuiStatusBatteryContainer`, which lays out only its own
+            // children (C7): draw in the nearest plain frame instead, while the stock strip is hidden.
+            val elementParent = finder.chooseElementParent(target, root)
+            if (elementParent === host) return true // same container as the main element
+            logOnce.once("layout:$name:${System.identityHashCode(elementParent)}") {
+                L.i(
+                    "$name layout: stock=${target.javaClass.simpleName}" +
+                        "[${target.width} x ${target.height}] " +
+                        "parent=${elementParent.javaClass.simpleName} " +
+                        "overlay=${elementParent !== target}"
+                )
+            }
+            attachInto(
+                name, elementParent, bar, center = true, elementRoot = root, stage = stage,
+                logClass = bar.javaClass.simpleName, stockTarget = target
+            )
         } catch (t: Throwable) {
             L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
             false
@@ -1808,31 +1825,39 @@ internal class DuoIconHost(private val context: Context) {
             val side = geometry.extraSidePx(target, capView, slot.basePx)
             candidate.ui.layoutParams = layoutParamsFor(target, side)
             ensureInjectedViewId(candidate.ui, target)
+            // R9: a re-inflated container can still hold Duo views orphaned by an earlier attach. Drop
+            // them (except the live elements we own) before adding this one, so they cannot pile up.
+            removeOrphanDuoViews(
+                target,
+                allElements().map { it.ui } + listOfNotNull(indicators?.ui)
+            )
             target.addView(candidate.ui)
             applyExtraLayout(slot)
             syncExtraIndicators(slot)
             candidate.onReady {
-                if (slot.element !== candidate) return@onReady
-                // Wait for a real measured box before hiding anything. A 0-width child in a custom
-                // header was the measured QS failure; leaving stock is safer than an empty slot.
                 candidate.ui.post {
-                    if (slot.element !== candidate || !candidate.ui.isAttachedToWindow) return@post
                     val width = candidate.ui.width
                     val height = candidate.ui.height
+                    // R9: a detached or 0x0 element must never stay in the tree. It blocks a later
+                    // attach and leaks a view, so remove it unconditionally; the stock icons are
+                    // restored only while this candidate still owns the slot.
+                    if (!candidate.ui.isAttachedToWindow || width <= 0 || height <= 0) {
+                        runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
+                        runCatching { candidate.teardown() }
+                        if (slot.element === candidate) {
+                            L.w("$name element measured 0x0 - removed; stock kept")
+                            slot.stock.restore()
+                            extras.remove(slot)
+                        }
+                        return@post
+                    }
+                    if (slot.element !== candidate) return@post
                     L.i(
                         "$name layout target=${target.javaClass.name}[${target.width}x${target.height}] " +
                             "stock=${stock.javaClass.simpleName}[${stock.width}x${stock.height}] " +
                             "view=${width}x$height side=$side parent=" +
                             "${candidate.ui.parent?.javaClass?.simpleName ?: "none"}"
                     )
-                    if (width <= 0 || height <= 0) {
-                        L.w("$name element measured ${width}x$height - leaving stock")
-                        runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
-                        runCatching { candidate.teardown() }
-                        slot.stock.restore()
-                        extras.remove(slot)
-                        return@post
-                    }
                     // The ready callback arrives from the Rive instance poll, i.e. outside attachExtraView's try.
                     // Guard it here so a hiding failure in an optional bar can never propagate into SystemUI.
                     try {
@@ -1866,14 +1891,40 @@ internal class DuoIconHost(private val context: Context) {
                 // Optional bar: drop the element and leave its stock icons alone.
                 try {
                     L.w("$name element did not bind - leaving its stock icons")
-                    runCatching { target.removeView(candidate.ui) }
+                    runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
                     runCatching { candidate.teardown() }
-                    slot.stock.restore()
-                    extras.remove(slot)
+                    if (slot.element === candidate) {
+                        slot.stock.restore()
+                        extras.remove(slot)
+                    }
                 } catch (t: Throwable) {
                     L.w("$name failed: ${t.javaClass.simpleName}: ${t.message}")
                 }
             }
+            // R9: bounded readiness guard. An element that never binds must not leak in the tree for the
+            // lifetime of the window; after one survival window it is removed and stock is restored.
+            // The timer is scheduled on the attached parent, not the candidate, because a view that was
+            // never attached may never run its own callback.
+            target.postDelayed({
+                try {
+                    if (slot.element === candidate && extras.contains(slot) &&
+                        shouldRemoveUnready(
+                            candidate.isReady,
+                            candidate.ui.isAttachedToWindow,
+                            candidate.ui.width,
+                            candidate.ui.height
+                        )
+                    ) {
+                        L.w("$name element never became ready in ${SURVIVAL_MS}ms - removed; stock kept")
+                        runCatching { (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui) }
+                        runCatching { candidate.teardown() }
+                        slot.stock.restore()
+                        extras.remove(slot)
+                    }
+                } catch (t: Throwable) {
+                    L.w("$name survival: ${t.javaClass.simpleName}: ${t.message}")
+                }
+            }, SURVIVAL_MS)
             return true
         } catch (t: Throwable) {
             // The slot must never outlive a failed injection: it would hide the stock icons with no Duo
@@ -2024,12 +2075,56 @@ internal class DuoIconHost(private val context: Context) {
      * FR-08/08b: hides the stock views per the user's choice — everything, or only what Duo replaces.
      * One place so the main bar, the keyguard bar and the shade header can never disagree.
      */
-    private fun hideStock(container: ViewGroup, keep: View?, keepLayout: View? = null, owner: StockIconHider = hider) {
+    private fun hideStock(
+        container: ViewGroup,
+        keep: View?,
+        keepLayout: View? = null,
+        owner: StockIconHider = hider,
+        composeAnchor: View? = null
+    ) {
         val ours = ourViews()
         if (settings.hideOtherIcons) {
-            owner.hideAllExcept(container, keep, keepLayout, ours)
+            // The Compose anchor is never a View strip child; keep its layout so the bar it draws in
+            // does not collapse.
+            owner.hideAllExcept(container, keep, keepLayout ?: composeAnchor, ours)
         } else {
-            owner.hideReplaced(container, keep, keepLayout, ours, hiddenStockKeys)
+            owner.hideReplaced(container, keep, keepLayout, ours, hiddenStockKeys, composeAnchor)
+            // The pass ignores a generic ComposeView by class; hide the resolved anchor explicitly.
+            composeAnchor?.let { owner.hideKeepLayout(it) }
+        }
+    }
+
+    /**
+     * Hides a ROM's stock signal cluster that lives outside the icon strip (R11/R14).
+     *
+     * Honor and ColorOS keep the Wi-Fi/cellular cluster in a sibling of the strip, so [hideStock] never
+     * reaches it. [ExtraStockScope] filters out ids that do not resolve, containers already `GONE`, and
+     * any target that is (or contains) the strip/element. Only the hider's visibility/`0x0` path is
+     * used - these are shared parents, so no sizing or fitting may run on them.
+     *
+     * Runs on the status-bar window only: the shipped hideContainerIds are status-bar siblings, so
+     * shade/keyguard targets are not in this scope.
+     */
+    private fun hideExtraStockTargets() {
+        val barRoot = root ?: return
+        val exclude = hideStrip ?: host
+        val targets = ExtraStockScope.targets(
+            barRoot,
+            rom,
+            { name -> RomResources.id(context, rom, name) },
+            exclude
+        )
+        for (view in targets) {
+            try {
+                hider.hide(view)
+                logOnce.once("extra-stock:${view.id}:${view.javaClass.simpleName}") {
+                    L.i("hid stock signal cluster outside the strip: ${view.javaClass.simpleName} " +
+                        "id=0x${Integer.toHexString(view.id)}")
+                }
+            } catch (t: Throwable) {
+                L.w("extra stock hide ${view.javaClass.simpleName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}")
+            }
         }
     }
 
@@ -3056,6 +3151,7 @@ internal class DuoIconHost(private val context: Context) {
             }
             // A fresh attach is a real change: clear any previous suppress/restore backoff (IOS-LAG).
             resetThrash()
+            composeStockAnchor = null
             var target = finder.findStatusIconsHost(statusBarRoot)
             var composeAnchor: View? = null
             if (target == null) {
@@ -3068,6 +3164,7 @@ internal class DuoIconHost(private val context: Context) {
                     L.i("Compose status bar: no View strip; drawing in ${parent.javaClass.simpleName} " +
                             "and hiding ${compose.javaClass.simpleName}")
                     composeAnchor = compose
+                    composeStockAnchor = compose
                     target = parent
                 }
             }
@@ -3251,8 +3348,10 @@ internal class DuoIconHost(private val context: Context) {
             hideStock(
                 target,
                 if (candidate.ui.parent === target) candidate.ui else null,
-                if (overlay) anchorBattery else null
+                if (overlay) anchorBattery else null,
+                composeAnchor = composeStockAnchor
             )
+            hideExtraStockTargets()
             hideOverlayAnchor()
             // Hiding may have changed the strip's layout, so the overlay anchor is re-read after it.
             applyLayout()
@@ -3478,7 +3577,8 @@ internal class DuoIconHost(private val context: Context) {
         extras.forEach {
             try {
                 it.stock.restore()
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                L.w("extra ${it.name} restore: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
     }
@@ -3544,8 +3644,10 @@ internal class DuoIconHost(private val context: Context) {
             hideStock(
                 strip,
                 if (ring != null && ring.parent === strip) ring else null,
-                if (overlay) anchorBattery else null
+                if (overlay) anchorBattery else null,
+                composeAnchor = composeStockAnchor
             )
+            hideExtraStockTargets()
             hideOverlayAnchor()
             publishStockIcons()
         } catch (t: Throwable) {
@@ -3606,6 +3708,11 @@ internal class DuoIconHost(private val context: Context) {
             val barRoot = root
             val fresh = barRoot?.let { finder.findStatusIconsHost(it) } ?: hideStrip ?: target
             hideStrip = fresh
+            // A rebuilt A17 bar carries a fresh Compose cluster: re-hide the new one, and keep the old
+            // anchor when the bar cannot be resolved yet.
+            if (composeStockAnchor != null) {
+                composeStockAnchor = barRoot?.let { finder.findComposeIconView(it) } ?: composeStockAnchor
+            }
             val combined = if (overlayOnCombined && barRoot != null) {
                 finder.findCombinedStatusView(barRoot)
             } else {
@@ -3722,13 +3829,28 @@ internal class DuoIconHost(private val context: Context) {
         } catch (_: Throwable) {
         }
         for (slot in extras) {
+            // Each step is guarded on its own: a failed drop or remove must never skip the stock
+            // restore, or the stock icons stay hidden after the element is gone (R17).
             try {
                 drop(slot.indicators, slot.container)
                 slot.indicators = null
+            } catch (t: Throwable) {
+                L.w("extra ${slot.name} teardown indicators: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            try {
                 slot.element?.let { slot.container?.removeView(it.ui) }
+            } catch (t: Throwable) {
+                L.w("extra ${slot.name} teardown remove: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            try {
                 slot.element?.teardown()
+            } catch (t: Throwable) {
+                L.w("extra ${slot.name} teardown view: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            try {
                 slot.stock.restore()
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                L.w("extra ${slot.name} teardown restore: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
         extras.clear()
@@ -3741,6 +3863,7 @@ internal class DuoIconHost(private val context: Context) {
         element = null
         if (restoreStock) {
             hider.restore()
+            composeStockAnchor = null
             // The One UI 8 anchor is hidden directly (it is not in the strip the hider restores), so its
             // own visibility is put back here or the stock cluster would be left invisible after teardown.
             restoreAnchorVisibility()
@@ -4077,7 +4200,8 @@ internal class DuoIconHost(private val context: Context) {
         if (view != null && retry != null) {
             try {
                 view.removeCallbacks(retry)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                L.w("shade retry cancel: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
         shadeRetryView = null
@@ -4092,17 +4216,51 @@ internal class DuoIconHost(private val context: Context) {
         shadeRetrySeenAttached = false
     }
 
-    private companion object {
-        // box = structural validity (attached/visible/laid out) - used for readiness/attach/fallback;
+    internal companion object {
+        // box = structural validity (attached/shown/visible/laid out) - used for readiness/attach/fallback;
         // drawable = ink/alpha on top of box - used for handoff ordering only.
-        /** True only when the view is attached, visible and laid out (structural validity, no alpha). */
+        /**
+         * R9: removes Duo children of [container] that are not in [owned] (live elements/indicators),
+         * returning how many were removed. A re-inflated HyperOS strip used to accumulate 18 orphan
+         * 0x0 views; matching by class simple name keeps it independent of the injected resource id.
+         */
+        internal fun removeOrphanDuoViews(container: ViewGroup, owned: Collection<View>): Int {
+            var removed = 0
+            for (i in container.childCount - 1 downTo 0) {
+                val child = container.getChildAt(i) ?: continue
+                if (!child.javaClass.simpleName.startsWith("Duo", ignoreCase = true)) continue
+                if (owned.any { it === child }) continue
+                try {
+                    container.removeViewAt(i)
+                    removed++
+                } catch (_: Throwable) {
+                    // A layout callback must never throw into SystemUI; leave the child and move on.
+                }
+            }
+            return removed
+        }
+
+        /**
+         * R9: true only for an element that never bound and is detached or has no box. A boxed element
+         * is left to the existing bound/failed callbacks, so a slow-but-working bind is not removed and
+         * an attached 0x0 leak is still caught.
+         */
+        internal fun shouldRemoveUnready(
+            isReady: Boolean,
+            attached: Boolean,
+            width: Int,
+            height: Int
+        ): Boolean = !isReady && (!attached || (width <= 0 && height <= 0))
+
+        /** True only when the view is attached, shown, visible and laid out (structural validity, no alpha). */
         internal fun hasBox(view: View): Boolean = try {
-            view.isAttachedToWindow && view.visibility == View.VISIBLE && view.width > 0 && view.height > 0
+            view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&
+                view.width > 0 && view.height > 0
         } catch (_: Throwable) { false }
 
-        /** True only when the view is attached, visible, laid out and has ink to draw. */
+        /** True only when the view is attached, shown, visible, laid out and has ink to draw. */
         internal fun hasDrawableBox(view: View): Boolean = try {
-            view.isAttachedToWindow && view.visibility == View.VISIBLE &&
+            view.isAttachedToWindow && view.isShown && view.visibility == View.VISIBLE &&
                 view.width > 0 && view.height > 0 && view.alpha > PanelHandoff.EPSILON
         } catch (_: Throwable) {
             false

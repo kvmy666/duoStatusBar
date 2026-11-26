@@ -18,7 +18,7 @@ import java.lang.ref.WeakReference
  *    exact keys the user selected. A battery is always hidden with [hideKeepLayout], because the
  *    overlay is positioned from its frame; a key that matches no view is a no-op, never a hide-all.
  */
-internal class StockIconHider {
+internal class StockIconHider(private val keepKeys: Set<String> = emptySet()) {
 
     private val hiddenOriginals = ArrayList<HiddenState>()
     private val logOnce = LogOnce()
@@ -47,10 +47,18 @@ internal class StockIconHider {
         keepLayout: View? = null,
         alsoKeep: Collection<View> = emptyList()
     ) {
+        val counts = HashMap<String, Int>()
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
             if (child === keep || alsoKeep.any { it === child }) continue
-            if (child === keepLayout) hideKeepLayout(child) else hide(child)
+            if (keepDualSim(child, counts)) continue
+            // The Compose icon cluster is a unit: keep its layout (INVISIBLE) instead of GONE, so it
+            // does not collapse the bar it shares. A generic container keeps the old hide path.
+            if (child === keepLayout || StockIconKey.kindOf(child) == StockIconKind.COMPOSE) {
+                hideKeepLayout(child)
+            } else {
+                hide(child)
+            }
         }
         noteApplied(container)
         logOnce.once("hide") {
@@ -76,9 +84,10 @@ internal class StockIconHider {
         keep: View?,
         keepLayout: View? = null,
         alsoKeep: Collection<View> = emptyList(),
-        selected: Set<String> = emptySet()
+        selected: Set<String> = emptySet(),
+        composeAnchor: View? = null
     ) {
-        walk(container, keep, keepLayout, alsoKeep, selected, HashMap())
+        walk(container, keep, keepLayout, alsoKeep, selected, composeAnchor, HashMap())
         noteApplied(container)
         logOnce.once("hide-replaced") {
             L.i("only the replaced battery/Wi-Fi/cellular and selected status views hidden; " +
@@ -215,7 +224,8 @@ internal class StockIconHider {
                     state.view.layoutParams = lp
                 }
             } catch (t: Throwable) {
-                L.w("restore: ${t.message}")
+                L.w("restore ${state.view.javaClass.simpleName}: " +
+                    "${t.javaClass.simpleName}: ${t.message}")
             }
         }
         hiddenOriginals.clear()
@@ -233,25 +243,33 @@ internal class StockIconHider {
         keepLayout: View?,
         alsoKeep: Collection<View>,
         selected: Set<String>,
+        composeAnchor: View?,
         counts: MutableMap<String, Int>
     ) {
         if (parent !is ViewGroup) return
         for (i in 0 until parent.childCount) {
             val child = parent.getChildAt(i)
+            // The host resolved this generic Compose view as the icon cluster, so hide it whole even
+            // though its class is ignored by the token pass; it keeps its layout like the battery.
+            if (child === composeAnchor) {
+                hideKeepLayout(child)
+                continue
+            }
             if (child === keep || alsoKeep.any { it === child }) continue
             if (StockIconKey.isIgnored(child)) continue
             val kind = StockIconKey.kindOf(child)
             if (kind == StockIconKind.IGNORED) {
                 // A container (or an unreadable wrapper): walk into it, never hide it.
-                walk(child, keep, keepLayout, alsoKeep, selected, counts)
+                walk(child, keep, keepLayout, alsoKeep, selected, composeAnchor, counts)
                 continue
             }
             val base = StockIconKey.baseKey(child)
             val occurrence = (counts[base] ?: 0) + 1
             counts[base] = occurrence
             val key = StockIconKey.key(base, occurrence)
+            if (isKeptDualSim(base, key, child)) continue
             if (!kind.replaced && key !in selected) continue
-            if (kind == StockIconKind.BATTERY || child === keepLayout) {
+            if (kind == StockIconKind.BATTERY || kind == StockIconKind.COMPOSE || child === keepLayout) {
                 hideKeepLayout(child)
             } else {
                 hide(child)
@@ -284,16 +302,52 @@ internal class StockIconHider {
             val occurrence = (counts[base] ?: 0) + 1
             counts[base] = occurrence
             val key = StockIconKey.key(base, occurrence)
+            if (isKeptDualSim(base, key, child)) continue
             if (preserve.any { it === child }) continue
             val hideSelected = key in selected
             val hideNonReplaced = hideOthers && !kind.replaced
             if (!hideSelected && !hideNonReplaced) continue
             if (kind == StockIconKind.BATTERY && !hideSelected) {
                 hideKeepLayout(child)
+            } else if (kind == StockIconKind.COMPOSE) {
+                // The Compose cluster is a leaf for us: hide it INVISIBLE and never recurse into it.
+                hideKeepLayout(child)
             } else {
                 hide(child)
             }
         }
+    }
+
+    /**
+     * R12: counts [view] like a normal pass and keeps it when its base or full key is in [keepKeys].
+     * Used by [hideAllExcept], which does not otherwise number occurrences.
+     */
+    private fun keepDualSim(view: View, counts: MutableMap<String, Int>): Boolean {
+        if (keepKeys.isEmpty()) return false
+        val base = StockIconKey.baseKey(view)
+        val occurrence = (counts[base] ?: 0) + 1
+        counts[base] = occurrence
+        val key = StockIconKey.key(base, occurrence)
+        return isKeptDualSim(base, key, view)
+    }
+
+    /**
+     * True when the view names a kept dual-SIM composite; logs once per key, never per pass.
+     *
+     * R12: the composite is matched by its resource id as well as [base]/[key], because a Motorola
+     * `ModernStatusBarMobileView` exposes `getSlot()`/`getSlotTag()` and so has `slot:mobile` as its
+     * base key while the stored keep key is `id:mobile_combo_dual`.
+     */
+    private fun isKeptDualSim(base: String, key: String, view: View): Boolean {
+        if (keepKeys.isEmpty()) return false
+        val idKey = StockIconKey.idKey(view)
+        val matchedById = idKey != null && idKey in keepKeys
+        if (!matchedById && base !in keepKeys && key !in keepKeys) return false
+        val logKey = if (matchedById) idKey!! else key
+        logOnce.once("dual-sim:$logKey") {
+            L.i("dual-SIM composite kept: ${view.javaClass.simpleName} $logKey (both SIM rows live)")
+        }
+        return true
     }
 
     private fun rememberOriginal(view: View) {

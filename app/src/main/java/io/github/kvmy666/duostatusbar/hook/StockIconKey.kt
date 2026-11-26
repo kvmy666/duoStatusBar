@@ -2,6 +2,7 @@ package io.github.kvmy666.duostatusbar.hook
 
 import android.view.View
 import android.view.ViewGroup
+import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.settings.StockIconInventory
 import io.github.kvmy666.duostatusbar.settings.StockIconInventoryItem
 
@@ -18,12 +19,14 @@ internal enum class StockIconKind {
     WIFI,
     CELLULAR,
     COMBINED,
+    COMPOSE,
     OTHER,
     IGNORED;
 
     /** True for every kind Duo replaces; those are hidden even when the user selected nothing. */
     val replaced: Boolean
-        get() = this == BATTERY || this == WIFI || this == CELLULAR || this == COMBINED
+        get() = this == BATTERY || this == WIFI || this == CELLULAR || this == COMBINED ||
+            this == COMPOSE
 }
 
 /** One stock icon found in the live bar. [key] is what `hiddenStockIcons` stores. */
@@ -49,6 +52,8 @@ internal data class StockIcon(
  * or an unexpected class still yields a usable key/label instead of throwing inside System UI.
  */
 internal object StockIconKey {
+
+    private val logOnce = LogOnce()
 
     /** Children of the OOS composites: part of the icon, never separate entries. */
     private val INNER_IDS = setOf(
@@ -117,6 +122,19 @@ internal object StockIconKey {
     }
 
     /**
+     * The `id:` key for [view], or null when the view has no readable resource id. R12: callers that
+     * must match a resource id even when the view also exposes a slot use this instead of [baseKey],
+     * which prefers `slot:` (a Motorola dual-SIM composite reports `slot:mobile` but must be matched
+     * as `id:mobile_combo_dual`). Guarded: an unreadable id yields null, never a throw.
+     */
+    fun idKey(view: View): String? = try {
+        val id = idName(view)
+        if (id != null) "id:${id.lowercase()}" else null
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
      * The stable key with a 1-based occurrence. The first occurrence keeps the plain base key; the
      * second becomes `#2`, and so on. Occurrence is assigned by [inventory]/the hiding walk, never
      * invented here, so the stored key means the same view in both places.
@@ -133,6 +151,11 @@ internal object StockIconKey {
      */
     fun kindOf(view: View): StockIconKind {
         if (isIgnored(view)) return StockIconKind.IGNORED
+        // Android 17 AOSP draws the whole Wi-Fi/cellular/battery cluster with one Compose view. It is a
+        // single replaced unit, never a container to walk into. Only the status-bar token is matched
+        // (SingleBindableStatusBarComposeIconView / StatusBarComposeIconView), so a hypothetical centre
+        // clock such as `…ComposeIconView` and a generic ComposeView are not hidden as an icon cluster.
+        if (className(view).contains("statusbarcomposeiconview")) return StockIconKind.COMPOSE
         val slot = slotOf(view)?.trim()?.lowercase()
         if (!slot.isNullOrEmpty()) return kindOfToken(slot)
         val id = idName(view)?.lowercase()
@@ -146,7 +169,11 @@ internal object StockIconKey {
     /** True when this view must never appear in the list or be hidden as an icon. */
     fun isIgnored(view: View): Boolean = try {
         isDuoOwned(view) || isStatusDot(view) || isInnerSignal(view)
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+        logOnce.once(view.javaClass.simpleName) {
+            L.w("StockIconKey.isIgnored(${view.javaClass.simpleName}) failed: " +
+                "${t.javaClass.simpleName}: ${t.message}")
+        }
         true
     }
 

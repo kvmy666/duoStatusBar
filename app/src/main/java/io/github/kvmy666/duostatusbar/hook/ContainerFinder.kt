@@ -45,14 +45,18 @@ internal class ContainerFinder(
      * knowing its id. That fallback is what lets a device we have never seen attach instead of doing
      * nothing, and the diagnostic dump records exactly which path was taken.
      */
-    fun findStatusIconsHost(root: View): ViewGroup? {
+    fun findStatusIconsHost(root: View): ViewGroup? =
+        findStatusIconsHost(root) { name -> RomResources.id(context, rom, name) }
+
+    internal fun findStatusIconsHost(root: View, id: (String) -> Int): ViewGroup? {
         logOnce.once("rom") {
             L.i("ROM adapter: ${rom.id} (${rom.label}) - ${rom.notes}")
         }
+        var goneStub: String? = null
         for (name in rom.containerIds) {
-            val id = RomResources.id(context, rom, name)
-            if (id == 0) continue
-            val found = root.findViewById<View>(id)
+            val resolved = id(name)
+            if (resolved == 0) continue
+            val found = root.findViewById<View>(resolved)
             L.d("container $name -> ${found?.javaClass?.simpleName ?: "null"}")
             if (found is ViewGroup) {
                 // A GONE strip is a legacy leftover, not the real one. Android 17 AOSP keeps a
@@ -60,10 +64,21 @@ internal class ContainerFinder(
                 // so injecting there produced a 0x0 element and nothing appeared (Pixel 9 report).
                 if (found.visibility == View.GONE) {
                     L.i("container $name is GONE - skipping it (likely a legacy/Compose strip)")
+                    goneStub = name
                     continue
                 }
                 return found
             }
+        }
+        // The adapter only names the dead View stub on a Compose bar. Its visible parent is not the icon
+        // strip (the icons are not Views), so drawing there would hide the parent and draw beside the
+        // Compose cluster. Hand the attach to the Compose path instead of the old fallbacks.
+        if (goneStub != null && findComposeIconView(root, id) != null) {
+            logOnce.once("goneStubCompose:$goneStub") {
+                L.i("container $goneStub is a GONE stub and a Compose icon cluster exists - " +
+                        "using the Compose path")
+            }
+            return null
         }
         val anchor = stripAroundAnchors(root)
         if (anchor != null) {
@@ -215,12 +230,30 @@ internal class ContainerFinder(
      * mistaken for the icon cluster. The outer `ComposeView` is preferred over the inner
      * `AndroidComposeView`: hiding the outer one hides everything it draws.
      */
-    fun findComposeIconView(root: View): View? {
+    fun findComposeIconView(root: View): View? =
+        findComposeIconView(root) { name -> RomResources.id(context, rom, name) }
+
+    internal fun findComposeIconView(root: View, id: (String) -> Int): View? {
         for (name in listOf("status_bar_end_side_content", "status_bar_end_side_container")) {
-            val id = RomResources.id(context, rom, name)
-            if (id == 0) continue
-            val area = root.findViewById<View>(id) ?: continue
+            val resolved = id(name)
+            if (resolved == 0) continue
+            val area = root.findViewById<View>(resolved) ?: continue
             findComposeDescendant(area)?.let { return it }
+        }
+        // Targeted fallback for a Compose bar whose end-side ids do not resolve: Android 17 AOSP's
+        // `SingleBindableStatusBarComposeIconView` can sit anywhere under the root. A generic
+        // `ComposeView` is deliberately not accepted here - a centre clock may be Compose and must never
+        // be mistaken for the cluster; the end-side probe above still returns it when it really is.
+        return findStatusBarComposeIconView(root)
+    }
+
+    /** First view anywhere under [view] whose class is a `…StatusBarComposeIconView`. */
+    private fun findStatusBarComposeIconView(view: View): View? {
+        if (view.javaClass.simpleName.contains("StatusBarComposeIconView")) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findStatusBarComposeIconView(view.getChildAt(i))?.let { return it }
+            }
         }
         return null
     }
@@ -597,6 +630,8 @@ internal class ContainerFinder(
 
     internal fun findShadeBattery(area: ViewGroup, id: (String) -> Int): View? {
         val names = LinkedHashSet<String>()
+        // Vendor rows (vivo's live QS status container) name their own battery; probe them first.
+        names.addAll(rom.shadeBatteryIds)
         if (rom.shadeBatteryId.isNotBlank()) names.add(rom.shadeBatteryId)
         names.addAll(listOf("batteryRemainingIcon", "battery_icon_view", rom.batteryId, "battery"))
         for (name in names) {

@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.hook
 import android.app.Activity
 import android.content.Context
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.test.core.app.ApplicationProvider
@@ -37,6 +38,34 @@ class StockIconHiderTest {
 
     /** A non-replaced icon view whose name must not match. */
     private class BluetoothHeadsetView(context: Context) : View(context)
+
+    /** Android 17 AOSP's Compose icon cluster: a unit hidden with its layout kept. */
+    private class SingleBindableStatusBarComposeIconView(context: Context) : View(context)
+
+    /** A generic Compose host the host resolved as the cluster; hidden explicitly by the anchor path. */
+    private class ComposeView(context: Context) : View(context)
+
+    /** Motorola's dual-SIM composite: one CELLULAR view whose id carries both SIM rows. */
+    private class MobileSignalGroupView(context: Context) : View(context)
+
+    /**
+     * Motorola's real composite also exposes a slot tag, so its base key is `slot:mobile` even though
+     * the view carries the composite resource id (R12).
+     */
+    private class MotorolaDualSimView(context: Context) : View(context) {
+        @Suppress("unused")
+        fun getSlotTag(): String = "mobile"
+    }
+
+    /** A view whose layout restore fails only after [explode] is armed (R17 independent restore). */
+    private class ExplodingLayoutView(context: Context) : View(context) {
+        var explode = false
+
+        override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
+            if (explode) throw IllegalStateException("layout restore failed")
+            super.setLayoutParams(params)
+        }
+    }
 
     @Test
     fun `wifi, mobile and battery slots are the ones Duo replaces`() {
@@ -237,6 +266,199 @@ class StockIconHiderTest {
         assertEquals(View.GONE, alarm.visibility)
         assertEquals(20, alarm.layoutParams.width)
         assertEquals(18, alarm.layoutParams.height)
+    }
+
+    @Test
+    fun `the Compose cluster is INVISIBLE and is restored`() {
+        val strip = LinearLayout(context)
+        val cluster = SingleBindableStatusBarComposeIconView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(85, 58)
+        }
+        strip.addView(cluster)
+
+        // Default per-icon mode: hideOnlyReplaced with hideOtherIcons off.
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null)
+
+        assertEquals(View.INVISIBLE, cluster.visibility)
+        assertEquals(85, cluster.layoutParams.width)
+        assertEquals(58, cluster.layoutParams.height)
+
+        hider.restore()
+        assertEquals(View.VISIBLE, cluster.visibility)
+        assertEquals(85, cluster.layoutParams.width)
+        assertEquals(58, cluster.layoutParams.height)
+    }
+
+    @Test
+    fun `hide all keeps the Compose cluster laid out`() {
+        val strip = LinearLayout(context)
+        val cluster = SingleBindableStatusBarComposeIconView(context)
+        val alarm = FakeIcon(context, "alarm_clock")
+        strip.addView(cluster)
+        strip.addView(alarm)
+
+        StockIconHider().hideAllExcept(strip, keep = null)
+
+        assertEquals(View.INVISIBLE, cluster.visibility)
+    }
+
+    @Test
+    fun `a generic ComposeView passed as the Compose anchor is hidden and restored`() {
+        val strip = LinearLayout(context)
+        val anchor = ComposeView(context)
+        strip.addView(anchor)
+
+        val hider = StockIconHider()
+        hider.hideReplaced(strip, keep = null, composeAnchor = anchor)
+
+        assertEquals(View.INVISIBLE, anchor.visibility)
+
+        hider.restore()
+        assertEquals(View.VISIBLE, anchor.visibility)
+    }
+
+    @Test
+    fun `hide makes a signal cluster GONE and zero and restore puts it back`() {
+        val cluster = FrameLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(120, 40)
+        }
+
+        val hider = StockIconHider()
+        hider.hide(cluster)
+
+        assertEquals(View.GONE, cluster.visibility)
+        assertEquals(0, cluster.layoutParams.width)
+        assertEquals(0, cluster.layoutParams.height)
+
+        hider.restore()
+
+        assertEquals(View.VISIBLE, cluster.visibility)
+        assertEquals(120, cluster.layoutParams.width)
+        assertEquals(40, cluster.layoutParams.height)
+    }
+
+    // ------------------------------------------------------------------ R12 dual-SIM composite
+
+    private fun dualComposite() = MobileSignalGroupView(context).apply {
+        id = android.R.id.text1 // base key: id:text1
+        layoutParams = LinearLayout.LayoutParams(80, 36)
+    }
+
+    @Test
+    fun `a dual-SIM composite is hidden by the default hider`() {
+        val strip = LinearLayout(context)
+        val composite = dualComposite()
+        strip.addView(composite)
+
+        StockIconHider().hideReplaced(strip, keep = null)
+
+        assertEquals("the old behaviour is still the default", View.GONE, composite.visibility)
+    }
+
+    @Test
+    fun `a kept dual-SIM composite stays visible and the selected key still hides`() {
+        val strip = LinearLayout(context)
+        val composite = dualComposite()
+        val alarm = FakeIcon(context, "alarm_clock")
+        strip.addView(composite)
+        strip.addView(alarm)
+
+        val hider = StockIconHider(setOf("id:text1"))
+        hider.hideReplaced(strip, keep = null, selected = setOf("slot:alarm_clock"))
+
+        assertEquals("both SIM rows must stay live", View.VISIBLE, composite.visibility)
+        assertEquals(View.GONE, alarm.visibility)
+
+        hider.restore()
+        assertEquals("a kept view was never hidden, so restore leaves it alone", View.VISIBLE, composite.visibility)
+    }
+
+    @Test
+    fun `a kept dual-SIM composite survives hide all`() {
+        val strip = LinearLayout(context)
+        val composite = dualComposite()
+        val alarm = FakeIcon(context, "alarm_clock")
+        strip.addView(composite)
+        strip.addView(alarm)
+
+        StockIconHider(setOf("id:text1")).hideAllExcept(strip, keep = null)
+
+        assertEquals("both SIM rows must stay live", View.VISIBLE, composite.visibility)
+        assertEquals(View.GONE, alarm.visibility)
+    }
+
+    private fun slotTaggedDualComposite() = MotorolaDualSimView(context).apply {
+        id = android.R.id.text1 // id key: id:text1; base key stays slot:mobile
+        layoutParams = LinearLayout.LayoutParams(80, 36)
+    }
+
+    @Test
+    fun `a dual-SIM composite that also exposes a slot is kept by its resource id`() {
+        val strip = LinearLayout(context)
+        val composite = slotTaggedDualComposite()
+        strip.addView(composite)
+
+        assertEquals("the view exposes a slot, so baseKey is not the id", "slot:mobile",
+            StockIconKey.baseKey(composite))
+        StockIconHider(setOf("id:text1")).hideReplaced(strip, keep = null)
+
+        assertEquals("the id key must match even when the view exposes a slot",
+            View.VISIBLE, composite.visibility)
+    }
+
+    @Test
+    fun `a slot-tagged dual-SIM composite is hidden by the default hider`() {
+        val strip = LinearLayout(context)
+        val composite = slotTaggedDualComposite()
+        strip.addView(composite)
+
+        StockIconHider().hideReplaced(strip, keep = null)
+
+        assertEquals("default behaviour must not change", View.GONE, composite.visibility)
+    }
+
+    @Test
+    fun `a slot-tagged dual-SIM composite survives hide all by its resource id`() {
+        val strip = LinearLayout(context)
+        val composite = slotTaggedDualComposite()
+        val alarm = FakeIcon(context, "alarm_clock")
+        strip.addView(composite)
+        strip.addView(alarm)
+
+        StockIconHider(setOf("id:text1")).hideAllExcept(strip, keep = null)
+
+        assertEquals("both SIM rows must stay live", View.VISIBLE, composite.visibility)
+        assertEquals(View.GONE, alarm.visibility)
+    }
+
+    // ------------------------------------------------------------------ R17 independent restore
+
+    @Test
+    fun `restore continues after one view throws`() {
+        val strip = LinearLayout(context)
+        val first = ExplodingLayoutView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(40, 30)
+        }
+        val second = ExplodingLayoutView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(20, 18)
+        }
+        strip.addView(first)
+        strip.addView(second)
+
+        val hider = StockIconHider()
+        hider.hideKeepLayout(first)
+        hider.hideKeepLayout(second)
+        assertEquals(View.INVISIBLE, first.visibility)
+        assertEquals(View.INVISIBLE, second.visibility)
+
+        first.explode = true
+        hider.restore()
+
+        assertEquals("the failing view's visibility is still restored", View.VISIBLE, first.visibility)
+        assertEquals("the next view must be restored independently", View.VISIBLE, second.visibility)
+        assertEquals(20, second.layoutParams.width)
+        assertEquals(18, second.layoutParams.height)
     }
 
     // ------------------------------------------------------------------ R3 A6 re-show predicate
