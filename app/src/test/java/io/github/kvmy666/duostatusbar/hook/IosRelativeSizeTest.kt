@@ -60,14 +60,13 @@ class IosRelativeSizeTest {
         Case(
             "wifi",
             IosIconKind.WIFI,
-            IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f),
+            IosVisual(tint = Color.BLACK, wifiLevel = 3f),
             80, 50, 31, 1.0027f, 1.0250f
         ),
         Case(
             "cell-single",
             IosIconKind.CELL,
             IosVisual(
-                part = IosPart.CELL,
                 tint = Color.BLACK,
                 cellMode = IosCellMode.SINGLE,
                 cellRole = IosCellRole.DATA,
@@ -80,7 +79,6 @@ class IosRelativeSizeTest {
             "cell-dual-both",
             IosIconKind.CELL,
             IosVisual(
-                part = IosPart.CELL,
                 tint = Color.BLACK,
                 cellMode = IosCellMode.DUAL,
                 cellRole = IosCellRole.BOTH,

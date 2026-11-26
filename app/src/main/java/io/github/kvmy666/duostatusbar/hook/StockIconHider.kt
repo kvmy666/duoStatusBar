@@ -161,32 +161,6 @@ internal class StockIconHider(private val keepKeys: Set<String> = emptySet()) {
         noteApplied(container)
     }
 
-    /**
-     * Item 8-runtime: the iOS replacement host's hide pass.
-     *
-     * iOS replaces the icons *inside* the stock views, so this pass never hides a view in [preserve]
-     * (the adopted/replaceable icons, computed by the caller as the inventory entries whose key is not
-     * selected). It hides exactly a view whose stable [StockIconKey] is in [selected], and with the
-     * legacy [hideOthers] flag it also hides the non-replaced icons (alarm, sound, Bluetooth…). A
-     * selected battery is `GONE` + 0×0 like any other hidden icon; the `hideKeepLayout` rule is only for
-     * a battery hidden by the legacy "all" switch, where an overlay may still need its frame.
-     *
-     * Occurrence counting is shared with [StockIconKey.inventory], so `id:mobile_combo#2` names the same
-     * SIM here as in the settings list.
-     */
-    fun hideForIos(
-        container: ViewGroup,
-        preserve: Collection<View>,
-        selected: Set<String>,
-        hideOthers: Boolean
-    ) {
-        walkForIos(container, preserve, selected, hideOthers, HashMap())
-        noteApplied(container)
-        logOnce.once("hide-ios") {
-            L.i("iOS stock icons: selected/hide-others applied - $selected")
-        }
-    }
-
     /** True when [view] is one of the icons Duo replaces; see [hideReplaced]. */
     fun isReplaced(view: View): Boolean = StockIconKey.kindOf(view).replaced
 
@@ -270,47 +244,6 @@ internal class StockIconHider(private val keepKeys: Set<String> = emptySet()) {
             if (isKeptDualSim(base, key, child)) continue
             if (!kind.replaced && key !in selected) continue
             if (kind == StockIconKind.BATTERY || kind == StockIconKind.COMPOSE || child === keepLayout) {
-                hideKeepLayout(child)
-            } else {
-                hide(child)
-            }
-        }
-    }
-
-    /**
-     * The iOS pass: walk every icon (counted in the same order as [StockIconKey.inventory]) but hide
-     * only the selected keys and, with [hideOthers], the non-replaced icons. A [preserve] view is
-     * counted and then skipped, so its occurrence suffix still names it correctly.
-     */
-    private fun walkForIos(
-        parent: View,
-        preserve: Collection<View>,
-        selected: Set<String>,
-        hideOthers: Boolean,
-        counts: MutableMap<String, Int>
-    ) {
-        if (parent !is ViewGroup) return
-        for (i in 0 until parent.childCount) {
-            val child = parent.getChildAt(i)
-            if (StockIconKey.isIgnored(child)) continue
-            val kind = StockIconKey.kindOf(child)
-            if (kind == StockIconKind.IGNORED) {
-                walkForIos(child, preserve, selected, hideOthers, counts)
-                continue
-            }
-            val base = StockIconKey.baseKey(child)
-            val occurrence = (counts[base] ?: 0) + 1
-            counts[base] = occurrence
-            val key = StockIconKey.key(base, occurrence)
-            if (isKeptDualSim(base, key, child)) continue
-            if (preserve.any { it === child }) continue
-            val hideSelected = key in selected
-            val hideNonReplaced = hideOthers && !kind.replaced
-            if (!hideSelected && !hideNonReplaced) continue
-            if (kind == StockIconKind.BATTERY && !hideSelected) {
-                hideKeepLayout(child)
-            } else if (kind == StockIconKind.COMPOSE) {
-                // The Compose cluster is a leaf for us: hide it INVISIBLE and never recurse into it.
                 hideKeepLayout(child)
             } else {
                 hide(child)

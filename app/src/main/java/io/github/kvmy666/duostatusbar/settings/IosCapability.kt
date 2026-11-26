@@ -42,9 +42,6 @@ internal data class IosCapability(
         append(" at=").append(at)
     }
 
-    /** Alias kept for callers that read the wire value as an "encode" step. */
-    fun encode(): String = format()
-
     companion object {
         /** The `Settings.Global` key the module writes and this app reads. */
         const val KEY = "duo_statusbar_ios_capability"

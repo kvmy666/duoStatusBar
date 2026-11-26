@@ -75,11 +75,10 @@ jobs:
           grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
           echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
 
-          # The Rive-based iOS bar owns the icons outright, so there must be no
-          # IosRiveView left in the app sources (IosRiveAbsenceTest asserts the
-          # same invariant from the test side).
+          # The Rive-based iOS renderer is retired, so there must be no
+          # IosRiveView left in the app sources. This guard is permanent.
           if grep -rn "IosRiveView" app/src/main; then
-            echo "::error::IosRiveView must not exist in app/src/main; see IosRiveAbsenceTest"
+            echo "::error::IosRiveView must not exist in app/src/main; the Rive iOS renderer is retired"
             exit 1
           fi
           echo "IosRiveView absent from app/src/main"
@@ -135,11 +134,11 @@ jobs:
           python3 tools/check-rive-eases.py rive/ios/scene.rml
 
       # The app preview and the status-bar module must draw the *same* file, for
-      # both Duo scenes and the iOS scene. The .riv files are authored in rive/
-      # and committed into the app, so this catches the failure mode where one
-      # is rebuilt and the other is forgotten — which shows up as "the preview
-      # looks right, the phone does not". Verifies offline and checks hashes.
-      - name: Both Rive scenes must verify and match the shipped .riv files
+      # both Duo scenes. The .riv files are authored in rive/ and committed into
+      # the app, so this catches the failure mode where one is rebuilt and the
+      # other is forgotten — which shows up as "the preview looks right, the phone
+      # does not". Verifies offline and checks hashes.
+      - name: Both Duo Rive scenes must verify and match the shipped .riv files
         run: bash tools/check-rive-shipped.sh
 
   # Fast feedback only. Branch protection must require BOTH `build` and `rive`

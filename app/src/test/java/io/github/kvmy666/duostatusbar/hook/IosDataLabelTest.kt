@@ -48,8 +48,8 @@ class IosDataLabelTest {
 
     @Test
     fun `NONE and unsupported labels draw nothing`() {
+        // DORMANT (R13): an explicitly empty Wi-Fi slot, not a live route.
         val none = IosVisual(
-            part = IosPart.WIFI,
             tint = Color.BLACK,
             wifiLevel = 3f,
             wifiSlot = IosWifiSlot.None
@@ -62,7 +62,7 @@ class IosDataLabelTest {
 
     @Test
     fun `WIFI still draws the exact Wi-Fi glyph`() {
-        val default = IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f)
+        val default = IosVisual(tint = Color.BLACK, wifiLevel = 3f)
         val explicit = default.copy(wifiSlot = IosWifiSlot.Wifi)
         val bitmap = render(default)
         assertTrue("default WIFI drew no ink", inkCount(bitmap) > 0)
@@ -290,10 +290,9 @@ class IosDataLabelTest {
     private val glyphPad = 8f
 
     private fun baseWifiVisual(): IosVisual =
-        IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f)
+        IosVisual(tint = Color.BLACK, wifiLevel = 3f)
 
     private fun labelVisual(label: String): IosVisual = IosVisual(
-        part = IosPart.WIFI,
         tint = Color.BLACK,
         wifiLevel = 3f,
         wifiSlot = IosWifiSlot.DataType(label)

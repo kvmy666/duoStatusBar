@@ -470,7 +470,7 @@ class IosBatteryV2Test {
         IosBatteryV2.activate(context, rom("aosp"), percentInside = false, lowThreshold = 20)
 
         assertFalse(IosBatteryV2.isActive)
-        assertFalse(IosBatteryV2.installed)
+        assertFalse(IosBatteryV2.installedFor("aosp"))
         assertTrue(IosBatteryV2.diagnosticLines().single().contains("active=false"))
     }
 
@@ -518,8 +518,6 @@ class IosBatteryV2Test {
         try {
             assertTrue(IosBatteryV2.installedFor("samsung"))
             assertFalse(IosBatteryV2.installedFor("oxygenos"))
-            // Back-compat: `installed` is still "either owner".
-            assertTrue(IosBatteryV2.installed)
         } finally {
             IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = false)
         }

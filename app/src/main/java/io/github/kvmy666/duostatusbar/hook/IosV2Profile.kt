@@ -28,20 +28,12 @@ internal enum class IosBatteryOwner { OPLUS, AOSP }
  */
 internal object IosV2Profile {
 
-    /** Every family id the module knows, in the same spelling as `RomAdapter.id`. */
-    val FAMILIES = listOf(
-        "oxygenos",
-        "samsung",
-        "hyperos",
-        "nothing",
-        "motorola",
-        "vivo",
-        "aosp",
-        "coloros",
-        "honor"
-    )
-
-    /** The resource engine owns Wi-Fi/cell/type replacement only on these families. */
+    /**
+     * The resource engine owns Wi-Fi/cell/type replacement only on these families.
+     *
+     * Every other family is DORMANT (R13) measured data, not unsupported hardware: its resource table
+     * is kept so a later route flip needs no new evidence, but no live route activates it.
+     */
     fun engineFamily(id: String): Boolean = id == "oxygenos" || id == "samsung"
 
     /** The battery hook is needed whenever the engine is (one owner per icon). */
@@ -96,9 +88,9 @@ internal object IosV2Profile {
     fun typePlacementFamily(id: String): Boolean = id == "oxygenos"
 
     /**
-     * The `mobile -> wifi` slot permutation needs both a measured `StatusBarIconList` **and** a
-     * measured `StatusIconContainer`; only OxygenOS has both. Permuting the slots without moving the
-     * same child would desynchronise slot/view indices, so every other V2 family keeps stock order.
+     * The order path is enabled only on OxygenOS, where the swap is measured. Samsung exposes the same
+     * `StatusBarIconList`/`StatusIconContainer` class names but the permutation is UNVERIFIED there;
+     * every other family keeps stock order.
      */
     fun orderFamily(id: String): Boolean = id == "oxygenos"
 }

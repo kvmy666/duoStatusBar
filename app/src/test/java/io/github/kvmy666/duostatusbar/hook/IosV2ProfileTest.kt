@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import io.github.kvmy666.duostatusbar.hook.rom.RomFamilies
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -19,7 +20,7 @@ class IosV2ProfileTest {
     fun `battery owner is the measured class family per v2 family`() {
         assertEquals(IosBatteryOwner.OPLUS, IosV2Profile.batteryOwner("oxygenos"))
         assertEquals(IosBatteryOwner.AOSP, IosV2Profile.batteryOwner("samsung"))
-        for (id in IosV2Profile.FAMILIES.filter { it != "oxygenos" && it != "samsung" }) {
+        for (id in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" && it != "samsung" }) {
             assertNull(id, IosV2Profile.batteryOwner(id))
         }
     }
@@ -28,7 +29,7 @@ class IosV2ProfileTest {
     fun `stacked and extras are owned only on the measured OxygenOS family`() {
         assertTrue(IosV2Profile.stackedFamily("oxygenos"))
         assertTrue(IosV2Profile.extrasFamily("oxygenos"))
-        for (id in IosV2Profile.FAMILIES.filter { it != "oxygenos" }) {
+        for (id in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" }) {
             assertFalse(id, IosV2Profile.stackedFamily(id))
             assertFalse(id, IosV2Profile.extrasFamily(id))
         }
@@ -73,18 +74,18 @@ class IosV2ProfileTest {
     fun `existing family booleans are unchanged`() {
         assertEquals(
             listOf("oxygenos", "samsung"),
-            IosV2Profile.FAMILIES.filter { IosV2Profile.engineFamily(it) }
+            RomFamilies.CANONICAL_IDS.filter { IosV2Profile.engineFamily(it) }
         )
-        for (id in IosV2Profile.FAMILIES) {
+        for (id in RomFamilies.CANONICAL_IDS) {
             assertEquals(id, IosV2Profile.engineFamily(id), IosV2Profile.batteryFamily(id))
         }
         assertEquals(
             listOf("oxygenos"),
-            IosV2Profile.FAMILIES.filter { IosV2Profile.typePlacementFamily(it) }
+            RomFamilies.CANONICAL_IDS.filter { IosV2Profile.typePlacementFamily(it) }
         )
         assertEquals(
             listOf("oxygenos"),
-            IosV2Profile.FAMILIES.filter { IosV2Profile.orderFamily(it) }
+            RomFamilies.CANONICAL_IDS.filter { IosV2Profile.orderFamily(it) }
         )
     }
 }

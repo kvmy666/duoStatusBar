@@ -43,8 +43,6 @@ internal data class RomAdapter(
     val shadeContainerIds: List<String> = emptyList(),
     /** The shade/QS battery view; empty means no shade battery is configured. */
     val shadeBatteryId: String = "",
-    /** Ordered probes for the shade/QS status-icon hosts; empty means none are known. */
-    val shadeStatusIconIds: List<String> = emptyList(),
     /** True only when the shade ids were read off a device. */
     val shadeMeasured: Boolean = false,
     /**
@@ -70,7 +68,10 @@ internal data class RomAdapter(
      * report cover/expansion via [panelExpansionKind], but never QS-vs-shade ownership.
      */
     val panelOwnerAvailable: Boolean = false,
-    /** Legacy ids that still name this family (asset migration); keep the canonical [id] everywhere. */
+    /**
+     * Legacy ids that still name this family (asset metadata only); keep the canonical [id] everywhere.
+     * Runtime canonicalisation uses `RomFamilies.canonical`, never this list.
+     */
     val aliases: List<String> = emptyList(),
     /**
      * Vendor signal-cluster containers that sit beside the icon strip and must be hidden directly.

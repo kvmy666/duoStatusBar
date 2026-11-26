@@ -145,7 +145,6 @@ class IosMappingTest {
     @Test
     fun `normal battery takes the dynamic tint`() {
         val v = battery(level = 64)
-        assertEquals(IosPart.BATTERY, v.part)
         assertEquals(0.64f, v.batteryLevel, 0.0001f)
         assertEquals(IosBatteryState.NORMAL, v.batteryState)
         assertEquals(tint, v.batteryFillColor)

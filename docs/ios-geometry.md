@@ -1,5 +1,10 @@
 # iOS glyph geometry — the one source of truth
 
+> **Historical note (2.1.2).** The current iOS bar is Canvas: `IosGeometry.kt` →
+> `IosGlyphRenderer`/`IosDrawables`. The `ios.riv` binary and the Rive renderer were removed and are no
+> longer packaged. The R5B/R6/R10A hashes and byte counts below are historical records; `rive/ios/scene.rml`
+> is kept as the design source for a future Rive port.
+
 `hook/IosGeometry.kt` holds these numbers; `rive/ios/scene.rml` repeats them. The battery body is
 `H = 100` design units. The reference captures are kept outside the repository; this document is the
 frozen record of the numbers, thresholds and ±px.
@@ -587,8 +592,8 @@ white-on-white and black-on-black cells vanish by design (the true knockout reve
 background), not because of a bug.
 
 At R6 time `rive/ios/scene.rml` and `app/src/main/res/raw/ios.riv` stayed untouched: the iOS runtime
-is Canvas-only (`IosRenderers.kt:8-24`), so the scene did not represent the percentage or the labels,
-and the shipped hash remained
+was Canvas-only (`IosRenderers.kt:8-24` at the time; today `IosGlyphRenderer`/`IosDrawables`), so the
+scene did not represent the percentage or the labels, and the shipped hash remained
 `0a46bfb42aa61d1157b2f8d10b633744bf1215aa72a25cb6b29dd04dec57a9fe` (historical). R10A later rebuilt
 the scene with the traced digits (labels stay Canvas-only).
 

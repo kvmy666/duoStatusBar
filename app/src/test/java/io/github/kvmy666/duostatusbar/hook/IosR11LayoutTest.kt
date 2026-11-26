@@ -41,16 +41,15 @@ class IosR11LayoutTest {
     }
 
     private val cellBoth = IosVisual(
-        part = IosPart.CELL,
         cellMode = IosCellMode.DUAL,
         cellRole = IosCellRole.BOTH,
         cellBars = 4f,
         cellDots = 1f
     )
-    private val cellSingle = IosVisual(part = IosPart.CELL, cellMode = IosCellMode.SINGLE, cellBars = 4f)
-    private val wifi = IosVisual(part = IosPart.WIFI, wifiLevel = 3f)
-    private val label5g = IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
-    private val battery = IosVisual(part = IosPart.BATTERY, batteryLevel = 1f)
+    private val cellSingle = IosVisual(cellMode = IosCellMode.SINGLE, cellBars = 4f)
+    private val wifi = IosVisual(wifiLevel = 3f)
+    private val label5g = IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
+    private val battery = IosVisual(batteryLevel = 1f)
 
     /** R11 px per artboard unit for [kind], independent of the production helper. */
     private fun pxPerUnit(kind: IosIconKind, visual: IosVisual): Float {
@@ -264,15 +263,14 @@ class IosR11LayoutRobolectricTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
     private val cellBoth = IosVisual(
-        part = IosPart.CELL,
         cellMode = IosCellMode.DUAL,
         cellRole = IosCellRole.BOTH,
         cellBars = 4f,
         cellDots = 1f
     )
-    private val label5g = IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
-    private val wifi = IosVisual(part = IosPart.WIFI, wifiLevel = 3f)
-    private val battery = IosVisual(part = IosPart.BATTERY, batteryLevel = 1f)
+    private val label5g = IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
+    private val wifi = IosVisual(wifiLevel = 3f)
+    private val battery = IosVisual(batteryLevel = 1f)
 
     @Before
     fun setUp() {
@@ -393,7 +391,6 @@ class IosR11LayoutRobolectricTest {
                 IosDrawables.create(
                     IosIconKind.CELL,
                     IosVisual(
-                        part = IosPart.CELL,
                         cellMode = IosCellMode.DUAL,
                         cellRole = IosCellRole.BOTH,
                         cellBars = 4f,
@@ -405,21 +402,21 @@ class IosR11LayoutRobolectricTest {
             label.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.WIFI,
-                    IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G")),
+                    IosVisual(wifiSlot = IosWifiSlot.DataType("5G")),
                     20, 16, relativeSize = false, captureColorFilter = true
                 )
             )
             wifiSignal.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.WIFI,
-                    IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+                    IosVisual(wifiLevel = 3f),
                     70, 51, relativeSize = false, captureColorFilter = true
                 )
             )
             batteryLeaf.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.BATTERY,
-                    IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                    IosVisual(batteryLevel = 1f),
                     93, 45, relativeSize = false, captureColorFilter = true
                 )
             )
@@ -446,7 +443,7 @@ class IosR11LayoutRobolectricTest {
         leaf.setImageDrawable(
             IosDrawables.create(
                 IosIconKind.BATTERY,
-                IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                IosVisual(batteryLevel = 1f),
                 93, 45, relativeSize = false, captureColorFilter = true
             )
         )

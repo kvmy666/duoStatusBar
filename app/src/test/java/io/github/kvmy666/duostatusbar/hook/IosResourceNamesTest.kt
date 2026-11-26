@@ -1,7 +1,10 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import io.github.kvmy666.duostatusbar.hook.rom.RomFamilies
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,7 +26,8 @@ class IosResourceNamesTest {
     }
 
     @Test
-    fun `wifi mapping for a three-level source uses a ceiling`() {
+    fun `dormant three-level tables use a ceiling (data only)`() {
+        // Only the dormant HyperOS/vivo tables pass top = 3; engineFamily is false for both.
         assertEquals(listOf(0, 1, 2, 3), (0..3).map { IosResourceNames.wifiDots(it, 3) })
         // A value above the source top stays on the strongest arc.
         assertEquals(3, IosResourceNames.wifiDots(9, 3))
@@ -91,7 +95,7 @@ class IosResourceNamesTest {
         assertEquals(19, hidden.map { it.name }.toSet().size) // no duplicates
         assertTrue(hidden.all { it.kind == IosResourceKind.HIDDEN && it.value == 0 })
         // Only the OxygenOS family gets hide-extras entries.
-        for (family in IosV2Profile.FAMILIES.filter { it != "oxygenos" }) {
+        for (family in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" }) {
             assertTrue("$family has hide-extras", IosResourceNames.hiddenSpecs(family).isEmpty())
         }
     }
@@ -100,7 +104,7 @@ class IosResourceNamesTest {
 
     @Test
     fun `every label is a supported iOS label`() {
-        for (family in IosV2Profile.FAMILIES) {
+        for (family in RomFamilies.CANONICAL_IDS) {
             for (spec in IosResourceNames.specs(family).filter { it.kind == IosResourceKind.LABEL }) {
                 assertTrue(
                     "$family ${spec.name} has label '${spec.label}'",
@@ -112,7 +116,7 @@ class IosResourceNamesTest {
 
     @Test
     fun `no family repeats a named package-entry pair`() {
-        for (family in IosV2Profile.FAMILIES) {
+        for (family in RomFamilies.CANONICAL_IDS) {
             val seen = HashSet<Pair<String, String>>()
             for (spec in IosResourceNames.specs(family)) {
                 if (spec.name.isEmpty()) continue // measured raw framework ids carry no name
@@ -141,7 +145,7 @@ class IosResourceNamesTest {
     }
 
     @Test
-    fun `family coverage matches the measured tables`() {
+    fun `live and dormant tables keep their exact measured counts`() {
         // Exact counts keep a future edit from silently dropping a measured entry.
         assertEquals(113, IosResourceNames.specs("oxygenos").size) // 94 + 19 R8 hide-extras
         assertEquals(108, IosResourceNames.specs("samsung").size)
@@ -154,10 +158,14 @@ class IosResourceNamesTest {
         assertTrue(IosResourceNames.specs("coloros").isEmpty())
         assertTrue(IosResourceNames.specs("honor").isEmpty())
         assertTrue(IosResourceNames.specs("unknown").isEmpty())
+        for (id in listOf("hyperos", "nothing", "motorola", "vivo")) {
+            assertFalse("$id dormant", IosV2Profile.engineFamily(id))
+            assertNull("$id dormant", IosV2Profile.batteryOwner(id))
+        }
     }
 
     @Test
-    fun `dormant families keep their measured coverage`() {
+    fun `measured tables keep their data and only oxygenos-samsung are live`() {
         val samsung = IosResourceNames.specs("samsung")
         assertEquals("LTE", samsung.first { it.name == "stat_sys_data_connected_lte" }.label)
         assertEquals("5G", samsung.first { it.name == "stat_sys_data_connected_5g" }.label)
@@ -185,5 +193,10 @@ class IosResourceNamesTest {
         assertEquals(3, vivo.first { it.name == "vivo_wifi_signal_3" }.value)
         assertEquals(0, vivo.first { it.name == "vivo_wifi_unavailable" }.value)
         assertEquals(4, vivo.first { it.name == "vivo_signal_strength_4" }.value)
+
+        for (id in listOf("hyperos", "nothing", "motorola", "vivo")) {
+            assertFalse("$id dormant", IosV2Profile.engineFamily(id))
+            assertNull("$id dormant", IosV2Profile.batteryOwner(id))
+        }
     }
 }

@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import io.github.kvmy666.duostatusbar.hook.rom.RomFamilies
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -45,10 +46,10 @@ class IosRouteTest {
 
     @Test
     fun `the icon order is owned only on the measured oxygenos family`() {
-        // Samsung resolves the slot list but not the measured container; activating the order there
-        // would permute slots without moving the child and desynchronise the indices.
+        // Samsung exposes the same class names but the order permutation is UNVERIFIED there; enabling
+        // it could desynchronise slot/view indices, so every other family keeps stock order.
         assertTrue(IosV2Profile.orderFamily("oxygenos"))
-        for (id in IosV2Profile.FAMILIES.filter { it != "oxygenos" }) {
+        for (id in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" }) {
             assertFalse(id, IosV2Profile.orderFamily(id))
         }
     }

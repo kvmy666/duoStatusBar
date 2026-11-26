@@ -20,17 +20,25 @@ internal enum class IosCellMode { SINGLE, DUAL }
  * two-SIM cluster. [OTHER] is kept because the artboard still supports a single row per role, while
  * the runtime single-SIM path uses [DATA].
  */
-internal enum class IosCellRole { DATA, OTHER, BOTH }
+internal enum class IosCellRole {
+    DATA,
+
+    /**
+     * DORMANT (R13): measured artboard data for a single "other" SIM row. No live route constructs it;
+     * the runtime single-SIM path uses [DATA] and the two-SIM cluster uses [BOTH].
+     */
+    OTHER,
+    BOTH
+}
 
 /**
  * Everything an iOS status-bar glyph needs, derived from system state.
  *
  * Pure data on purpose, like [DuoVisual]: this is the half that can go wrong silently, so it stays free
  * of Android types and is unit-tested (`IosMappingTest`) instead of being debugged on a phone. One
- * snapshot is shared by every occupant; [part] selects which glyph it describes.
+ * snapshot is shared by every occupant; the glyph kind is passed alongside it at draw time.
  */
 internal data class IosVisual(
-    val part: IosPart,
     val visible: Boolean = true,
     val tint: Int = 0,
     /** Battery charge 0..1. */

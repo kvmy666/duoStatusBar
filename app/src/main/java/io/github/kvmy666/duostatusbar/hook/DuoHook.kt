@@ -672,9 +672,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             val extrasSupported = IosV2Profile.extrasFamily(rom.id)
             if (stackedSupported) IosStackedSim.install(lp.classLoader)
             if (extrasSupported) IosExtras.install(lp.classLoader, rom.systemUiPackage)
-            // R8: only OxygenOS has both measured order containers. On a family with the slot list
-            // but no container, permuting the slots without moving the child desynchronises the
-            // slot/view indices, so leave its stock order alone (restore is a no-op when inactive).
+            // R8: the order path is enabled only on OxygenOS, where the swap is measured. Samsung
+            // exposes the same class names but the permutation is UNVERIFIED there; enabling it could
+            // desynchronise slot/view indices, so every other family keeps stock order (restore is a
+            // no-op when inactive).
             if (IosV2Profile.orderFamily(rom.id)) {
                 // Repeat the idempotent install in case a previous teardown released the hooks.
                 IosIconOrder.install(lp.classLoader)

@@ -381,41 +381,4 @@ object SignalMapping {
             else -> ""
         }
     }
-
-    /**
-     * The iOS Wi-Fi-slot data label for a `TelephonyManager.NETWORK_TYPE_*` value.
-     *
-     * Android-free like [networkGeneration], but this is the iOS vocabulary (R4B draws it): `5G+` on
-     * mmWave NR, `5G` on NR, `LTE` for LTE, `4G` for LTE-CA/HSPAP, `3G` for the UMTS/EVDO family,
-     * `E` for EDGE and `G` for GPRS/GSM/CDMA/1xRTT/IDEN. Unknown types and mobile data switched off
-     * are empty so the slot stays off rather than naming a path that is not carrying data.
-     *
-     * [mmWave] only upgrades a connected NR service (`NR_FREQUENCY_RANGE_MMWAVE`); it never turns a
-     * non-NR type into `5G+`.
-     */
-    fun dataTypeLabel(
-        type: Int,
-        nrConnected: Boolean,
-        mmWave: Boolean,
-        dataEnabled: Boolean
-    ): String {
-        if (!dataEnabled) return ""
-        if (nrConnected && mmWave) return "5G+"
-        if (nrConnected) return "5G"
-        return when (type) {
-            // NETWORK_TYPE_NR
-            20 -> "5G"
-            // NETWORK_TYPE_LTE
-            13 -> "LTE"
-            // NETWORK_TYPE_LTE_CA, NETWORK_TYPE_HSPAP
-            19, 15 -> "4G"
-            // UMTS, EVDO_0/0_A/A/B, HSDPA, HSUPA, HSPA, EHRPD, TD_SCDMA
-            3, 5, 6, 8, 9, 10, 12, 14, 17 -> "3G"
-            // NETWORK_TYPE_EDGE
-            2 -> "E"
-            // GPRS, GSM, CDMA, 1xRTT, IDEN
-            1, 16, 4, 7, 11 -> "G"
-            else -> ""
-        }
-    }
 }

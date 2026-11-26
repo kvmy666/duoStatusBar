@@ -310,28 +310,28 @@ class IosGeometryTest {
 
         val single = IosGeometry.inkBox(
             IosIconKind.CELL,
-            IosVisual(part = IosPart.CELL, cellMode = IosCellMode.SINGLE)
+            IosVisual(cellMode = IosCellMode.SINGLE)
         )
         assertEquals(142.9f, single.width, 0.001f)
         assertEquals(92.9f, single.height, 0.001f)
 
         val dual = IosGeometry.inkBox(
             IosIconKind.CELL,
-            IosVisual(part = IosPart.CELL, cellMode = IosCellMode.DUAL, cellRole = IosCellRole.BOTH)
+            IosVisual(cellMode = IosCellMode.DUAL, cellRole = IosCellRole.BOTH)
         )
         assertEquals(147.9f, dual.width, 0.001f)
         assertEquals(103.3f, dual.height, 0.001f)
 
         val wifi = IosGeometry.inkBox(
             IosIconKind.WIFI,
-            IosVisual(part = IosPart.WIFI, wifiLevel = 3f)
+            IosVisual(wifiLevel = 3f)
         )
         assertEquals(0.9454f, wifi.height / IosGeometry.UNIT_HEIGHT, 0.02f)
         assertTrue("wifi ink ${wifi.width} x ${wifi.height}", wifi.width in 124f..129f)
 
         val label = IosGeometry.inkBox(
             IosIconKind.WIFI,
-            IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
+            IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
         )
         assertEquals(IosGeometry.Wifi.ARTBOARD_MARGIN, label.left, 0.001f)
         assertEquals(IosGeometry.DataLabel.TOP, label.top, 0.001f)

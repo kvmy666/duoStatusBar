@@ -112,7 +112,6 @@ class IosLabelStrokeWeightTest {
                 canvas,
                 IosIconKind.WIFI,
                 IosVisual(
-                    part = IosPart.WIFI,
                     visible = true,
                     tint = ink,
                     wifiSlot = IosWifiSlot.DataType(label)

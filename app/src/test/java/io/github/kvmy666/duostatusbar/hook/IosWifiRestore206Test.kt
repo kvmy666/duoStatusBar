@@ -147,7 +147,7 @@ class IosWifiRestore206Test {
     // ------------------------------------------------------------------------------------ render
 
     private fun renderCurrent(width: Int, height: Int): Bitmap {
-        val visual = IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f)
+        val visual = IosVisual(tint = Color.BLACK, wifiLevel = 3f)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val drawable = IosDrawables.create(IosIconKind.WIFI, visual, width, height)
         drawable.setBounds(0, 0, width, height)

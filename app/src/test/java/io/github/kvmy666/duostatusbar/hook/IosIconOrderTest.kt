@@ -24,12 +24,6 @@ class IosIconOrderTest {
         override fun toString(): String = "Slot($slotName)"
     }
 
-    /**
-     * The measured HyperOS 3 `StatusBarIconList$Slot` shape: only a private `mName` field, no
-     * `getName()` (`reverse/smali/xiaomi/.../StatusBarIconList$Slot.smali`).
-     */
-    class HyperOsSlot(private val mName: String)
-
     /** A slot-like entry with no name accessor at all. */
     class OpaqueEntry
 
@@ -189,31 +183,6 @@ class IosIconOrderTest {
     }
 
     @Test
-    fun `hyperos mName-only slots are read, permuted and restored by identity`() {
-        val wifi = HyperOsSlot("wifi")
-        val mobile = HyperOsSlot("mobile")
-        val battery = HyperOsSlot("battery")
-        val live = IosIconOrder.seedSlotEntriesForTest(listOf(wifi, mobile, battery))
-        IosIconOrder.markMovableSurfaceForTest()
-
-        val slots = arrayListOf<Any>(HyperOsSlot("wifi"), HyperOsSlot("mobile"))
-        assertSame(slots, IosIconOrder.readSlotsForTest(SlotListHolder(slots)))
-
-        IosIconOrder.activate()
-
-        assertEquals(3, live.size)
-        assertSame(mobile, live[0])
-        assertSame(wifi, live[1])
-        assertSame(battery, live[2])
-
-        IosIconOrder.restore()
-
-        assertSame(wifi, live[0])
-        assertSame(mobile, live[1])
-        assertSame(battery, live[2])
-    }
-
-    @Test
     fun `a string slot list still permutes through activate`() {
         val live = IosIconOrder.seedSlotListForTest(listOf("wifi", "mobile", "battery"))
         IosIconOrder.markMovableSurfaceForTest()
@@ -319,7 +288,7 @@ class IosIconOrderTest {
             candidates.contains("com.android.systemui.statusbar.phone.ui.IconManager")
         )
         assertTrue(
-            "phone (OxygenOS/HyperOS): $candidates",
+            "phone (older OxygenOS): $candidates",
             candidates.contains("com.android.systemui.statusbar.phone.IconManager")
         )
         assertTrue(

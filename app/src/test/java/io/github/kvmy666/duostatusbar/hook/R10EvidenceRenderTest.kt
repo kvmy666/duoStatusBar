@@ -114,7 +114,6 @@ class R10EvidenceRenderTest {
     }
 
     private fun batteryVisual(case: BatteryCase): IosVisual = IosVisual(
-        part = IosPart.BATTERY,
         tint = case.tint,
         batteryLevel = case.level,
         batteryState = case.state,
@@ -149,7 +148,6 @@ class R10EvidenceRenderTest {
     }
 
     private fun labelVisual(label: String, tint: Int): IosVisual = IosVisual(
-        part = IosPart.WIFI,
         tint = tint,
         wifiSlot = IosWifiSlot.DataType(label)
     )
@@ -171,7 +169,6 @@ class R10EvidenceRenderTest {
 
             // The actual runtime path: battery percentInside at level d/100 (knockout).
             val visual = IosVisual(
-                part = IosPart.BATTERY,
                 tint = BLACK,
                 batteryLevel = d / 100f,
                 batteryState = IosBatteryState.NORMAL,
@@ -212,7 +209,6 @@ class R10EvidenceRenderTest {
 
     private fun writeRowIcons(dir: File) {
         val cell = IosVisual(
-            part = IosPart.CELL,
             tint = BLACK,
             cellMode = IosCellMode.DUAL,
             cellRole = IosCellRole.BOTH,
@@ -253,7 +249,6 @@ class R10EvidenceRenderTest {
             val unitPx = IosSlotLayout.unit(screenW)
             val gapPx = IosSlotLayout.gap(screenW)
             val cell = IosVisual(
-                part = IosPart.CELL,
                 tint = BLACK,
                 cellMode = IosCellMode.DUAL,
                 cellRole = IosCellRole.BOTH,

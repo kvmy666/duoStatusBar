@@ -43,17 +43,15 @@ class R11EvidenceRenderTest {
     }
 
     private val cellBoth = IosVisual(
-        part = IosPart.CELL,
         tint = WHITE,
         cellMode = IosCellMode.DUAL,
         cellRole = IosCellRole.BOTH,
         cellBars = 4f,
         cellDots = 4f
     )
-    private val wifiVisual = IosVisual(part = IosPart.WIFI, tint = WHITE, wifiLevel = 3f)
-    private val label5g = IosVisual(part = IosPart.WIFI, tint = WHITE, wifiSlot = IosWifiSlot.DataType("5G"))
+    private val wifiVisual = IosVisual(tint = WHITE, wifiLevel = 3f)
+    private val label5g = IosVisual(tint = WHITE, wifiSlot = IosWifiSlot.DataType("5G"))
     private val batteryVisual = IosVisual(
-        part = IosPart.BATTERY,
         tint = WHITE,
         batteryLevel = 1f,
         batteryState = IosBatteryState.NORMAL,

@@ -140,7 +140,6 @@ class IosR5LabelStripTest {
         canvas.drawColor(background)
 
         val cell = IosVisual(
-            part = IosPart.CELL,
             tint = Color.WHITE,
             cellMode = IosCellMode.DUAL,
             cellRole = IosCellRole.BOTH,
@@ -148,12 +147,10 @@ class IosR5LabelStripTest {
             cellDots = 4f
         )
         val label = IosVisual(
-            part = IosPart.WIFI,
             tint = Color.WHITE,
             wifiSlot = IosWifiSlot.DataType("5G")
         )
         val battery = IosVisual(
-            part = IosPart.BATTERY,
             tint = Color.WHITE,
             batteryLevel = 0.2121f,
             batteryState = IosBatteryState.NORMAL,

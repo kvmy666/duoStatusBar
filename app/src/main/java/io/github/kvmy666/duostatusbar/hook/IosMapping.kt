@@ -98,7 +98,6 @@ internal object IosMapping {
         }
         val clampedLevel = level.coerceIn(0, 100)
         return IosVisual(
-            part = IosPart.BATTERY,
             visible = true,
             tint = tint,
             batteryLevel = clampedLevel / 100f,

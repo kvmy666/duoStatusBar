@@ -81,21 +81,21 @@ class IosSlotLayoutRobolectricTest {
             signal.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.CELL,
-                    IosVisual(part = IosPart.CELL, cellBars = 4f),
+                    IosVisual(cellBars = 4f),
                     60, 51, relativeSize = false, captureColorFilter = true
                 )
             )
             wifiSignal.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.WIFI,
-                    IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+                    IosVisual(wifiLevel = 3f),
                     70, 51, relativeSize = false, captureColorFilter = true
                 )
             )
             batteryLeaf.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.BATTERY,
-                    IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                    IosVisual(batteryLevel = 1f),
                     82, 51, relativeSize = false, captureColorFilter = true
                 )
             )
@@ -107,7 +107,7 @@ class IosSlotLayoutRobolectricTest {
             label.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.WIFI,
-                    IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G")),
+                    IosVisual(wifiSlot = IosWifiSlot.DataType("5G")),
                     20, 16, relativeSize = false, captureColorFilter = true
                 )
             )
@@ -173,7 +173,6 @@ class IosSlotLayoutRobolectricTest {
                 IosDrawables.create(
                     IosIconKind.CELL,
                     IosVisual(
-                        part = IosPart.CELL,
                         cellMode = IosCellMode.DUAL,
                         cellRole = IosCellRole.BOTH,
                         cellBars = 4f,
@@ -185,21 +184,21 @@ class IosSlotLayoutRobolectricTest {
             label.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.WIFI,
-                    IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G")),
+                    IosVisual(wifiSlot = IosWifiSlot.DataType("5G")),
                     52, 42, relativeSize = false, captureColorFilter = true
                 )
             )
             hiddenSignal.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.CELL,
-                    IosVisual(part = IosPart.CELL, cellBars = 4f),
+                    IosVisual(cellBars = 4f),
                     67, 47, relativeSize = false, captureColorFilter = true
                 )
             )
             batteryLeaf.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.BATTERY,
-                    IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                    IosVisual(batteryLevel = 1f),
                     93, 45, relativeSize = false, captureColorFilter = true
                 )
             )
@@ -292,12 +291,12 @@ class IosSlotLayoutRobolectricTest {
 
         val mobile = IosSlotLayout.metrics(
             IosIconKind.CELL,
-            IosVisual(part = IosPart.CELL, cellBars = 4f),
+            IosVisual(cellBars = 4f),
             1272, 100, 0, 63
         )
         val wifi = IosSlotLayout.metrics(
             IosIconKind.WIFI,
-            IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+            IosVisual(wifiLevel = 3f),
             1272, 100, 0, 63
         )
         val expected = mobile.outerWidth + wifi.outerWidth
@@ -348,7 +347,7 @@ class IosSlotLayoutRobolectricTest {
         batteryLeaf.setImageDrawable(
             IosDrawables.create(
                 IosIconKind.BATTERY,
-                IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                IosVisual(batteryLevel = 1f),
                 82, 51, relativeSize = false, captureColorFilter = true
             )
         )
@@ -432,21 +431,21 @@ class IosSlotLayoutRobolectricTest {
         cellSignal.setImageDrawable(
             IosDrawables.create(
                 IosIconKind.CELL,
-                IosVisual(part = IosPart.CELL, cellBars = 4f),
+                IosVisual(cellBars = 4f),
                 60, 51, relativeSize = false, captureColorFilter = true
             )
         )
         wifiSignal.setImageDrawable(
             IosDrawables.create(
                 IosIconKind.WIFI,
-                IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+                IosVisual(wifiLevel = 3f),
                 70, 51, relativeSize = false, captureColorFilter = true
             )
         )
         batteryLeaf.setImageDrawable(
             IosDrawables.create(
                 IosIconKind.BATTERY,
-                IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                IosVisual(batteryLevel = 1f),
                 82, 51, relativeSize = false, captureColorFilter = true
             )
         )
@@ -484,7 +483,7 @@ class IosSlotLayoutRobolectricTest {
         batteryLeaf.setImageDrawable(
             IosDrawables.create(
                 IosIconKind.BATTERY,
-                IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                IosVisual(batteryLevel = 1f),
                 82, 51, relativeSize = false, captureColorFilter = true
             )
         )
@@ -696,14 +695,13 @@ class IosSlotLayoutRobolectricTest {
     fun `real dump tree gets the one-row R9 spec at 1272`() {
         val tree = DumpTree(context)
         val cellVisual = IosVisual(
-            part = IosPart.CELL,
             cellMode = IosCellMode.DUAL,
             cellRole = IosCellRole.BOTH,
             cellBars = 4f,
             cellDots = 1f
         )
-        val labelVisual = IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
-        val batteryVisual = IosVisual(part = IosPart.BATTERY, batteryLevel = 1f)
+        val labelVisual = IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
+        val batteryVisual = IosVisual(batteryLevel = 1f)
 
         assertTrue(IosSlotLayout.registerMobile(tree.signal, tree.label))
         assertTrue(IosSlotLayout.registerBattery(tree.battery, tree.batteryLeaf))
@@ -782,9 +780,9 @@ class IosSlotLayoutRobolectricTest {
 
     @Test
     fun `at 200 percent every leaf centre stays on the stock row centre`() {
-        val cellVisual = IosVisual(part = IosPart.CELL, cellBars = 4f)
-        val labelVisual = IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
-        val batteryVisual = IosVisual(part = IosPart.BATTERY, batteryLevel = 1f)
+        val cellVisual = IosVisual(cellBars = 4f)
+        val labelVisual = IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
+        val batteryVisual = IosVisual(batteryLevel = 1f)
         val mobile = IosSlotLayout.mobileMetrics(
             cellVisual, labelVisual, 1272, 200, 0, 98, 0, 63
         )
@@ -819,7 +817,7 @@ class IosSlotLayoutRobolectricTest {
         // The three-outers row: cell 200 % (outer 94), Wi-Fi 98 % and battery 100 % (outer 63 each).
         val wifi = IosSlotLayout.metrics(
             IosIconKind.WIFI,
-            IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+            IosVisual(wifiLevel = 3f),
             1272, 98, 0, 63
         )
         val singleMobile = IosSlotLayout.metrics(IosIconKind.CELL, cellVisual, 1272, 200, 0, 63)
@@ -935,10 +933,10 @@ class IosSlotLayoutRobolectricTest {
             val wifiLeafLeft = tree.wifiOuter.left + tree.wifiGroup.left + tree.wifiCombo.left +
                 (tree.wifiSignal.layoutParams as FrameLayout.LayoutParams).leftMargin
             val wifiInkLeftAbs = wifiLeafLeft +
-                IosGeometry.inkBox(IosIconKind.WIFI, IosVisual(part = IosPart.WIFI)).left *
+                IosGeometry.inkBox(IosIconKind.WIFI, IosVisual()).left *
                 IosSlotLayout.unit(1272) * scale / 100f
             val wifiInkRightAbs = wifiInkLeftAbs +
-                IosGeometry.inkBox(IosIconKind.WIFI, IosVisual(part = IosPart.WIFI)).width *
+                IosGeometry.inkBox(IosIconKind.WIFI, IosVisual()).width *
                 IosSlotLayout.unit(1272) * scale / 100f
             val batteryLeafLeft = tree.battery.left +
                 (tree.batteryLeaf.layoutParams as FrameLayout.LayoutParams).leftMargin

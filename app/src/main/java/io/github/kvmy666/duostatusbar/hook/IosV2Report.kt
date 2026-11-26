@@ -53,7 +53,7 @@ internal object IosV2Report {
             "placement=${IosMobileTypePlacement.hookClassesForDiagnostics} " +
             "extras=${IosExtras.hookClassesForDiagnostics} " +
             "order=${IosIconOrder.hookClassesForDiagnostics}")
-        out.add("  counters " + countersField(context))
+        out.add("  counters " + countersField())
         out.add("  settings " + settingsField(settings))
         appendEvidence(out, context, home)
         out
@@ -97,12 +97,9 @@ internal object IosV2Report {
             if (resolved) "(0x${id.toString(16)})" else ""
     }
 
-    private fun countersField(context: Context?): String {
-        val guards = try {
-            context?.let { IosGuard(it).attempts() } ?: 0
-        } catch (_: Throwable) {
-            0
-        }
+    private fun countersField(): String {
+        // The iOS Rive breaker is gone; the token stays 0 for dump compatibility.
+        val guards = 0
         return "failures=${IosV2Log.failures} retries=${IosV2Log.retries} " +
             "firstFailure=${IosV2Log.first} orderPasses=${IosIconOrder.passes} " +
             "orderMoves=${IosIconOrder.moves} extrasHidden=${IosExtras.hiddenCount()} " +

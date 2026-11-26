@@ -138,7 +138,6 @@ class RomProfilesTest {
                   "containerIds": ["system_icons"],
                   "shadeContainerIds": ["quick_qs_status_icons", "shade_header_system_icons"],
                   "shadeBatteryId": "batteryRemainingIcon",
-                  "shadeStatusIconIds": ["statusIcons"],
                   "shadeMeasured": true
                 }
               ]
@@ -150,7 +149,6 @@ class RomProfilesTest {
             p.shadeContainerIds
         )
         assertEquals("batteryRemainingIcon", p.shadeBatteryId)
-        assertEquals(listOf("statusIcons"), p.shadeStatusIconIds)
         assertTrue(p.shadeMeasured)
     }
 
@@ -248,7 +246,6 @@ class RomProfilesTest {
         val p = RomProfiles.parse(json).single()
         assertEquals(emptyList<String>(), p.shadeContainerIds)
         assertEquals("", p.shadeBatteryId)
-        assertEquals(emptyList<String>(), p.shadeStatusIconIds)
         assertFalse(p.shadeMeasured)
         assertEquals("system_icons", p.keyguardContainerId)
         assertEquals(emptyList<String>(), p.shadeBatteryIds)

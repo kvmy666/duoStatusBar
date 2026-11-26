@@ -107,7 +107,7 @@ class IosExtrasTest {
                     if (ourGlyph) {
                         IosDrawables.create(
                             IosIconKind.WIFI,
-                            IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+                            IosVisual(wifiLevel = 3f),
                             70, 51, relativeSize = false, captureColorFilter = true
                         )
                     } else {

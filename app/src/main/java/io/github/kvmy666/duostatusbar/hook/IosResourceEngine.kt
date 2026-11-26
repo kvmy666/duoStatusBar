@@ -480,13 +480,6 @@ internal object IosResourceEngine : IosDiagnosticSource {
 
     // ----------------------------------------------------------------------------------- build
 
-    /** Test seam: build a map without publishing or activating it. */
-    internal fun buildForTest(
-        context: android.content.Context,
-        rom: RomAdapter,
-        settings: ModuleSettings? = null
-    ): Snapshot? = buildMap(context, rom, settings)?.snapshot
-
     /** A built map plus the B2 evidence computed during the same pass (never re-resolved later). */
     private class BuildResult(
         val snapshot: Snapshot,
@@ -523,6 +516,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
             var hiddenNoRestorable = 0
             for (spec in specs) {
                 val pkg = spec.packageName.ifBlank { rom.systemUiPackage }
+                // rawId is DORMANT (R13) Motorola data; kept generic so a future route flip needs no
+                // engine change.
                 val id = if (spec.rawId != 0) {
                     spec.rawId
                 } else {
@@ -787,24 +782,21 @@ internal object IosResourceEngine : IosDiagnosticSource {
 
     private fun visualFor(slot: IosResourceSlot, tint: Int): IosVisual = when (slot) {
         is IosResourceSlot.Wifi -> IosVisual(
-            part = IosPart.WIFI,
             tint = tint,
             wifiLevel = slot.dots.toFloat()
         )
         is IosResourceSlot.Cell -> IosVisual(
-            part = IosPart.CELL,
             tint = tint,
             cellMode = IosCellMode.SINGLE,
             cellRole = IosCellRole.DATA,
             cellBars = slot.dots.toFloat()
         )
         is IosResourceSlot.Label -> IosVisual(
-            part = IosPart.WIFI,
             tint = tint,
             wifiSlot = IosWifiSlot.DataType(slot.text)
         )
         // Never drawn: a HIDDEN entry's state is the gate, not a glyph.
-        is IosResourceSlot.Hidden -> IosVisual(part = IosPart.WIFI, tint = tint, wifiLevel = 0f)
+        is IosResourceSlot.Hidden -> IosVisual(tint = tint, wifiLevel = 0f)
     }
 
     private fun drawableKind(slot: IosResourceSlot): IosIconKind = when (slot) {

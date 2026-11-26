@@ -57,24 +57,25 @@ better and add tests, but they must not change any of the following.
 10. **iOS mode (IOS-B1).** The iOS mode is additive and leaves the Duo surface untouched:
     `DuoBinder`, `PROPERTY_COUNT` (59), `rive/duo/scene.rml`, `rive/duo/scene_old.rml`,
     `app/src/main/res/raw/duo.riv`, the `Duo` artboard/state machine and Duo's attach/hide paths are
-    unchanged. The iOS surface owns a separate `ios.riv` (artboards `Ios` battery, `IosWifi`, `IosCell`;
-    state machine `Ios` in each), and `IosBinder` with `IOS_PROPERTY_COUNT = 12`; the frozen property
-    table is `docs/ios-rive-contract.md`.
+    unchanged. The iOS bar is delivered by the v2 system-resource engine: `IosResourceEngine` replaces
+    the measured stock drawables with `IosDrawables`/`IosGlyphRenderer` (Canvas), `IosBatteryV2` owns
+    the battery, and `IosSlotLayout` sizes the leaves. `ios.riv` is not packaged and there is no
+    `IosBinder`/`IosRiveView`; the retired property table is kept as historical design in
+    `docs/ios-rive-contract.md`.
     One settings column is appended after `design_style`, in portrait and landscape: `ios_mode`
     (bool, default `0`). An older app omits it and the module falls back to that default; an older
     module ignores it. `rowFor` / `encoded()` stay positional, so the column is appended, never inserted.
     Gate: with `ios_mode = 1` and no adb override, `DuoGuard.stageFor(...)` resolves `OFF`, so the Duo
     element never draws. An explicit `duo_statusbar_stage` override (`0`/`1`/`2`) always wins (C10):
-    override `2` means Duo draws and iOS stays suppressed; `duo_statusbar_stage 0` kills both. The iOS
-    breaker owns separate keys (`duo_statusbar_ios_rive_attempts`, `duo_statusbar_ios_rive_attempt_at`)
-    and never shares Duo's counters.
-    `IosRenderers.DRAWING_READY == true`; `IosRiveView` (real Rive, internal Canvas fallback) and
-    `IosCanvasView` draw the glyphs. The flag was flipped only after `ios.riv` was reproducible and
-    covered by `tools/check-rive-shipped.sh` (rule 10); the Rive view implements C1/C2/C8/M1 and the
-    host uses Canvas when the attached bar is not hardware accelerated. Suppression
+    override `2` means Duo draws and iOS stays suppressed; `duo_statusbar_stage 0` kills both. There is
+    no iOS Rive breaker and no iOS attempt/stage key; `iosAttempts=0` and `guardAttempts=0` stay as
+    frozen dump tokens for compatibility.
+    The bar draws through `IosDrawables`/`IosGlyphRenderer` (Canvas); `ios.riv` is not packaged and the
+    shipped gate verifies only the two Duo scenes. Suppression
     families and strategies are frozen by the measured device dumps (see docs/ios-geometry.md) §2.5;
     unknown or opaque families are skipped and the stock icon stays (fail silent). `Diag` adds one line to
-    the `module:` section, `iosMode=... iosAttempts=...`; no existing line changes.
+    the `module:` section, `iosMode=... iosAttempts=...`; `iosAttempts` is a frozen compatibility field
+    and is always `0`; no existing line changes.
 
 ## Safety procedure for every refactor phase
 

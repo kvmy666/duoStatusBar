@@ -3,7 +3,6 @@ package io.github.kvmy666.duostatusbar.ui
 import io.github.kvmy666.duostatusbar.hook.IosBatteryState
 import io.github.kvmy666.duostatusbar.hook.IosCellMode
 import io.github.kvmy666.duostatusbar.hook.IosCellRole
-import io.github.kvmy666.duostatusbar.hook.IosPart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,9 +30,6 @@ class IosPreviewTest {
     @Test
     fun `every frame carries the three glyphs on the frame tint`() {
         for (state in iosPreviewStates()) {
-            assertEquals(IosPart.CELL, state.cell.part)
-            assertEquals(IosPart.WIFI, state.wifi.part)
-            assertEquals(IosPart.BATTERY, state.battery.part)
             assertTrue(state.cell.visible)
             assertTrue(state.wifi.visible)
             assertTrue(state.battery.visible)

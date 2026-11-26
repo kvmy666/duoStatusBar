@@ -115,7 +115,6 @@ class IosR9InkRatioTest {
     @Test
     fun `single cell bar heights and block match R9`() {
         val visual = IosVisual(
-            part = IosPart.CELL,
             tint = Color.BLACK,
             cellMode = IosCellMode.SINGLE,
             cellRole = IosCellRole.DATA,
@@ -140,7 +139,6 @@ class IosR9InkRatioTest {
     @Test
     fun `dual cell block and dots match R9`() {
         val visual = IosVisual(
-            part = IosPart.CELL,
             tint = Color.BLACK,
             cellMode = IosCellMode.DUAL,
             cellRole = IosCellRole.BOTH,
@@ -160,7 +158,7 @@ class IosR9InkRatioTest {
 
     @Test
     fun `wifi ink matches the restored 2_0_6 arcs and dot`() {
-        val visual = IosVisual(part = IosPart.WIFI, tint = Color.BLACK, wifiLevel = 3f)
+        val visual = IosVisual(tint = Color.BLACK, wifiLevel = 3f)
         val rendered = render(IosIconKind.WIFI, visual)
         val ink = inkBox(rendered.bitmap) ?: error("wifi drew no ink")
         val expected = IosGeometry.inkBox(IosIconKind.WIFI, visual)
@@ -173,7 +171,6 @@ class IosR9InkRatioTest {
     @Test
     fun `5G label ink matches the R10 cap and traced width`() {
         val visual = IosVisual(
-            part = IosPart.WIFI,
             tint = Color.BLACK,
             wifiSlot = IosWifiSlot.DataType("5G")
         )

@@ -48,7 +48,6 @@ class IosStackedSimTest {
     private fun cell(level: Float): IosCellDrawable = IosDrawables.create(
         IosIconKind.CELL,
         IosVisual(
-            part = IosPart.CELL,
             tint = 0xFFFFFFFF.toInt(),
             cellMode = IosCellMode.SINGLE,
             cellRole = IosCellRole.DATA,
@@ -156,7 +155,6 @@ class IosStackedSimTest {
     @Test
     fun `stacked visual keeps data bars and swaps in the other level as dots`() {
         val base = IosVisual(
-            part = IosPart.CELL,
             tint = 0xFFFFFFFF.toInt(),
             cellBars = 4f,
             cellDots = 1f,

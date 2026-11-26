@@ -106,18 +106,18 @@ class IosV2DiagTest {
         IosSlotLayout.activate(ModuleSettings.DEFAULT)
 
         tree.wifiSignal.setImageDrawable(
-            glyph(IosIconKind.WIFI, IosVisual(part = IosPart.WIFI, wifiLevel = 3f), 60, 51)
+            glyph(IosIconKind.WIFI, IosVisual(wifiLevel = 3f), 60, 51)
         )
         assertTrue(IosSlotLayout.registerWifi(tree.wifiSignal))
 
         tree.signal.setImageDrawable(
-            glyph(IosIconKind.CELL, IosVisual(part = IosPart.CELL, cellBars = 3f), 60, 51)
+            glyph(IosIconKind.CELL, IosVisual(cellBars = 3f), 60, 51)
         )
         tree.label.visibility = View.VISIBLE
         tree.label.setImageDrawable(
             glyph(
                 IosIconKind.WIFI,
-                IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G")),
+                IosVisual(wifiSlot = IosWifiSlot.DataType("5G")),
                 20,
                 16
             )
@@ -125,7 +125,7 @@ class IosV2DiagTest {
         assertTrue(IosSlotLayout.registerMobile(tree.signal, tree.label))
 
         tree.batteryLeaf.setImageDrawable(
-            glyph(IosIconKind.BATTERY, IosVisual(part = IosPart.BATTERY, batteryLevel = 0.5f), 82, 51)
+            glyph(IosIconKind.BATTERY, IosVisual(batteryLevel = 0.5f), 82, 51)
         )
         assertTrue(IosSlotLayout.registerBattery(tree.battery, tree.batteryLeaf))
     }

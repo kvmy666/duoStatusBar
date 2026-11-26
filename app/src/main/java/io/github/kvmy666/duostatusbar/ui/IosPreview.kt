@@ -31,7 +31,6 @@ import io.github.kvmy666.duostatusbar.hook.IosCellRole
 import io.github.kvmy666.duostatusbar.hook.IosGeometry
 import io.github.kvmy666.duostatusbar.hook.IosIconKind
 import io.github.kvmy666.duostatusbar.hook.IosMapping
-import io.github.kvmy666.duostatusbar.hook.IosPart
 import io.github.kvmy666.duostatusbar.hook.IosVisual
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import kotlinx.coroutines.delay
@@ -83,14 +82,13 @@ internal fun iosPreviewStates(percentInside: Boolean = false): List<IosPreviewSt
             ).copy(percentInside = percentInside)
             val dual = simIndex == 1
             val cell = IosVisual(
-                part = IosPart.CELL,
                 tint = tint,
                 cellMode = if (dual) IosCellMode.DUAL else IosCellMode.SINGLE,
                 cellRole = if (dual) IosCellRole.BOTH else IosCellRole.DATA,
                 cellBars = if (dual) 2f else 4f,
                 cellDots = if (dual) 3f else 0f
             )
-            val wifi = IosVisual(part = IosPart.WIFI, tint = tint, wifiLevel = 3f)
+            val wifi = IosVisual(tint = tint, wifiLevel = 3f)
             states.add(
                 IosPreviewState(
                     dark = dark,

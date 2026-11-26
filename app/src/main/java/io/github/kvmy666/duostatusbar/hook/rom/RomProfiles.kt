@@ -86,7 +86,6 @@ internal object RomProfiles {
                         apiMax = o.optInt("apiMax", Int.MAX_VALUE),
                         shadeContainerIds = o.optJSONArray("shadeContainerIds").toStringList(),
                         shadeBatteryId = o.optString("shadeBatteryId").trim(),
-                        shadeStatusIconIds = o.optJSONArray("shadeStatusIconIds").toStringList(),
                         shadeMeasured = o.optBoolean("shadeMeasured", false),
                         coverHook = if (o.has("coverHook")) o.optBoolean("coverHook", true) else true,
                         panelExpansionKind = parsePanelExpansionKind(o),

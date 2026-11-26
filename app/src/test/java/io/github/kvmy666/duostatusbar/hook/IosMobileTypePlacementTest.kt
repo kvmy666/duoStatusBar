@@ -177,7 +177,7 @@ class IosMobileTypePlacementTest {
 
     private fun cellGlyph(transform: IosUserTransform): IosGlyphDrawable = IosDrawables.create(
         IosIconKind.CELL,
-        IosVisual(part = IosPart.CELL, cellBars = 4f, userTransform = transform),
+        IosVisual(cellBars = 4f, userTransform = transform),
         60,
         51,
         relativeSize = true,

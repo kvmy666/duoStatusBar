@@ -446,21 +446,21 @@ class ModeOwnerMatrixTest {
             signal.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.CELL,
-                    IosVisual(part = IosPart.CELL, cellBars = 4f),
+                    IosVisual(cellBars = 4f),
                     60, 51, relativeSize = false, captureColorFilter = true
                 )
             )
             wifiSignal.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.WIFI,
-                    IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+                    IosVisual(wifiLevel = 3f),
                     70, 51, relativeSize = false, captureColorFilter = true
                 )
             )
             batteryLeaf.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.BATTERY,
-                    IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+                    IosVisual(batteryLevel = 1f),
                     82, 51, relativeSize = false, captureColorFilter = true
                 )
             )
@@ -468,14 +468,14 @@ class ModeOwnerMatrixTest {
             stackedData.signal.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.CELL,
-                    IosVisual(part = IosPart.CELL, cellBars = 4f),
+                    IosVisual(cellBars = 4f),
                     60, 63, relativeSize = true, captureColorFilter = true
                 )
             )
             stackedOther.signal.setImageDrawable(
                 IosDrawables.create(
                     IosIconKind.CELL,
-                    IosVisual(part = IosPart.CELL, cellBars = 2f),
+                    IosVisual(cellBars = 2f),
                     60, 63, relativeSize = true, captureColorFilter = true
                 )
             )

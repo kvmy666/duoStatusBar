@@ -69,7 +69,7 @@ jobs:
           echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
 
           if grep -rn "IosRiveView" app/src/main; then
-            echo "::error::IosRiveView must not exist in app/src/main; see IosRiveAbsenceTest"
+            echo "::error::IosRiveView must not exist in app/src/main; the Rive iOS renderer is retired"
             exit 1
           fi
           echo "IosRiveView absent from app/src/main"
@@ -142,7 +142,7 @@ jobs:
           python3 tools/check-rive-eases.py rive/duo/scene_old.rml
           python3 tools/check-rive-eases.py rive/ios/scene.rml
 
-      - name: Both Rive scenes must verify and match the shipped .riv files
+      - name: Both Duo Rive scenes must verify and match the shipped .riv files
         run: bash tools/check-rive-shipped.sh
 
       - name: Decode keystore

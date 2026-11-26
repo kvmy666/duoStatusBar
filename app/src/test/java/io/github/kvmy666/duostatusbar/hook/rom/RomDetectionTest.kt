@@ -151,7 +151,6 @@ class RomDetectionTest {
         )
         assertEquals(emptyList<String>(), rom.shadeContainerIds)
         assertEquals("", rom.shadeBatteryId)
-        assertEquals(emptyList<String>(), rom.shadeStatusIconIds)
         assertFalse(rom.shadeMeasured)
         assertFalse(rom.panelOwnerAvailable)
     }

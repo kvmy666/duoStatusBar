@@ -39,7 +39,7 @@ class IosSliderRegistrationTest {
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
-    private val wifiVisual = IosVisual(part = IosPart.WIFI, wifiLevel = 3f)
+    private val wifiVisual = IosVisual(wifiLevel = 3f)
 
     @Before
     fun setUp() {
@@ -186,7 +186,7 @@ class IosSliderRegistrationTest {
 
     @Test
     fun `single cell slider resizes the live leaf and outer at 70 100 150`() {
-        val visual = IosVisual(part = IosPart.CELL, cellMode = IosCellMode.SINGLE, cellBars = 4f)
+        val visual = IosVisual(cellMode = IosCellMode.SINGLE, cellBars = 4f)
         assertCellScales(
             visual,
             listOf(
@@ -200,7 +200,6 @@ class IosSliderRegistrationTest {
     @Test
     fun `stacked dual cell slider resizes the live leaf and outer at 70 100 150`() {
         val visual = IosVisual(
-            part = IosPart.CELL,
             cellMode = IosCellMode.DUAL,
             cellRole = IosCellRole.BOTH,
             cellBars = 4f,

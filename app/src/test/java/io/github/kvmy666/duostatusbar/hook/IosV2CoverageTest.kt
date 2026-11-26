@@ -56,7 +56,8 @@ class IosV2CoverageTest {
     }
 
     @Test
-    fun `raw-id specs fall back to their hex id in the tried list`() {
+    fun `dormant Motorola raw-id data formats as hex`() {
+        // No live route builds this spec; the Motorola table is DORMANT (R13) measured data.
         val raw = IosResourceSpec(
             name = "",
             kind = IosResourceKind.WIFI,

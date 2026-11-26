@@ -19,9 +19,9 @@ internal enum class IosResourceKind { WIFI, CELL, LABEL, HIDDEN }
  * [IosResourceNames.wifiDots]/[IosResourceNames.cellDots] and are applied while building the specs, so
  * the engine only has to paint the result.
  *
- * [rawId] is used only for the measured framework ids that have no name in the tree (Motorola Wi-Fi);
- * every other entry is resolved by [name] in [packageName] at runtime (ids differ between builds —
- * `.pm/evidence/r7/build/A-oxygenos-names.md:25-30`).
+ * [rawId] is used only for the measured framework ids that have no name in the tree (Motorola Wi-Fi,
+ * which is DORMANT (R13) data); every other entry is resolved by [name] in [packageName] at runtime
+ * (ids differ between builds — `.pm/evidence/r7/build/A-oxygenos-names.md:25-30`).
  */
 internal data class IosResourceSpec(
     val name: String,
@@ -52,7 +52,12 @@ internal data class IosResourceSpec(
  */
 internal object IosResourceNames {
 
-    /** Stock Wi-Fi bars (0..[top]) -> iOS arcs (0..3). */
+    /**
+     * Stock Wi-Fi bars (0..[top]) -> iOS arcs (0..3).
+     *
+     * The non-4 `top` branch exists for the DORMANT (R13) HyperOS/vivo tables; no live route passes
+     * `top == 3`.
+     */
     fun wifiDots(level: Int, top: Int): Int {
         if (level <= 0 || top <= 0) return 0
         if (top == 4) return SignalMapping.wifiDotsForStockBars(level)
@@ -418,6 +423,10 @@ internal object IosResourceNames {
 
     // ------------------------------------------------------------------------------- HyperOS
 
+    /**
+     * DORMANT (R13): measured data only. No production route reads this table: [IosV2Profile.engineFamily]
+     * is false and `IosResourceEngine.activate` refuses. Kept so an R13 route flip needs no new evidence.
+     */
     private fun hyperos(): List<IosResourceSpec> = buildList {
         addAll(wifiLevels("stat_sys_wifi_signal_", 0, 3, top = 3))
         addAll(wifiLevels("stat_sys_wifi_signal_unavailable_", 0, 3, top = 3))
@@ -438,6 +447,10 @@ internal object IosResourceNames {
 
     // ------------------------------------------------------------------------------- Nothing
 
+    /**
+     * DORMANT (R13): measured data only. No production route reads this table: [IosV2Profile.engineFamily]
+     * is false and `IosResourceEngine.activate` refuses. Kept so an R13 route flip needs no new evidence.
+     */
     private fun nothing(): List<IosResourceSpec> = buildList {
         addAll(wifiLevels("ic_wifi_", 0, 4, top = 4))
         (0..4).forEach { add(wifi("ic_wifi_${it}_error", it, top = 4)) }
@@ -488,6 +501,10 @@ internal object IosResourceNames {
 
     // ------------------------------------------------------------------------------ Motorola
 
+    /**
+     * DORMANT (R13): measured data only. No production route reads this table: [IosV2Profile.engineFamily]
+     * is false and `IosResourceEngine.activate` refuses. Kept so an R13 route flip needs no new evidence.
+     */
     private fun motorola(): List<IosResourceSpec> = buildList {
         // Measured framework Wi-Fi ids; no names exist in the tree (B:633-639).
         (0..4).forEach { level ->
@@ -543,6 +560,10 @@ internal object IosResourceNames {
 
     // ---------------------------------------------------------------------------------- vivo
 
+    /**
+     * DORMANT (R13): measured data only. No production route reads this table: [IosV2Profile.engineFamily]
+     * is false and `IosResourceEngine.activate` refuses. Kept so an R13 route flip needs no new evidence.
+     */
     private fun vivo(): List<IosResourceSpec> = buildList {
         addAll(wifiLevels("vivo_wifi_signal_", 0, 3, top = 3))
         add(wifi("vivo_wifi_signal_empty", 0, top = 3))

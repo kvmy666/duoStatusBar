@@ -49,16 +49,17 @@ internal object IosIconOrder {
     private const val WIFI = "wifi"
     private const val MOBILE = "mobile"
 
-    /** Slot-list classes, measured on OxygenOS 16/17 and HyperOS 3. */
+    /**
+     * Slot-list classes, measured on OxygenOS 16/17. HyperOS 3 uses the same `phone.ui` class, but the
+     * order is not installed there.
+     */
     private val SLOT_LIST_CLASSES = listOf(
-        "com.android.systemui.statusbar.phone.ui.StatusBarIconList",
-        "com.android.systemui.statusbar.phone.StatusBarIconList"
+        "com.android.systemui.statusbar.phone.ui.StatusBarIconList"
     )
 
     /** The one container every measured home/keyguard/QS/shade surface uses. */
     private val CONTAINER_CLASSES = listOf(
-        "com.android.systemui.statusbar.phone.StatusIconContainer",
-        "com.android.systemui.statusbar.views.MiuiStatusIconContainer"
+        "com.android.systemui.statusbar.phone.StatusIconContainer"
     )
 
     /**
@@ -1190,9 +1191,6 @@ internal object IosIconOrder {
         if (skip) scheduleRestore()
         return skip
     }
-
-    /** Kept for older tests: posted passes run on the main looper, so there is nothing to flush here. */
-    internal fun flushForTest() = Unit
 
     /**
      * Test-only movable surface for the pure tests: `activate()` now refuses to permute slots when no

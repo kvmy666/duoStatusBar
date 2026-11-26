@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Offline release gate: verify all Rive scenes (Duo new, Duo old, iOS) with the
-# installed Rive CLI and compare the committed .riv files against pinned sha256 hashes. This gate does
-# not rebuild the .riv files; it verifies the scenes and checks the binaries.
+# Offline release gate: verify the Duo scenes (new and old) with the installed Rive CLI and compare
+# the committed .riv files against pinned sha256 hashes. This gate does not rebuild the .riv files; it
+# verifies the scenes and checks the binaries.
 #
 # The committed .riv files were produced offline by Rive 1.8.0 `--once` from
 # these scenes and are verified with Rive 1.9.2.
@@ -13,13 +13,10 @@ cd "$ROOT"
 
 SHIPPED_NEW_HASH="4c59e9dc0860d9d6a117889499ccb904bc6138078efe709a12d8d539aa55b817"
 SHIPPED_OLD_HASH="464586cad821ce8d8a801822e45adc4f77d7c68169ffecd09c69bcaf01176cf0"
-SHIPPED_IOS_HASH="fe5034a4c735072b40c56a5cf808cde1c0a886f2fa2a4d682b72df77ca3bdf1b"
 SHIPPED_NEW="app/src/main/res/raw/duo.riv"
 SHIPPED_OLD="app/src/main/res/raw/duo_old.riv"
-SHIPPED_IOS="app/src/main/res/raw/ios.riv"
 SCENE="rive/duo/scene.rml"
 SCENE_OLD="rive/duo/scene_old.rml"
-SCENE_IOS="rive/ios/scene.rml"
 
 if command -v rive >/dev/null 2>&1; then
     RIVE="$(command -v rive)"
@@ -47,13 +44,13 @@ if ! printf '1.9.1\n%s\n' "$RIVE_VERSION" | sort -V -C; then
     exit 1
 fi
 
-for scene in "$SCENE" "$SCENE_OLD" "$SCENE_IOS"; do
+for scene in "$SCENE" "$SCENE_OLD"; do
     if [ ! -f "$scene" ]; then
         echo "error: missing Rive scene: $scene" >&2
         exit 1
     fi
 done
-for riv in "$SHIPPED_NEW" "$SHIPPED_OLD" "$SHIPPED_IOS"; do
+for riv in "$SHIPPED_NEW" "$SHIPPED_OLD"; do
     if [ ! -f "$riv" ]; then
         echo "error: missing shipped Rive file: $riv" >&2
         exit 1
@@ -82,7 +79,6 @@ verify_scene() {
 }
 
 verify_scene rive/duo "$SCENE"
-verify_scene rive/ios "$SCENE_IOS"
 
 cp -p "$SCENE" "$SCENE_BACKUP"
 cp -p "$SCENE_OLD" "$SCENE"
@@ -96,11 +92,9 @@ hash_file() {
 
 NEW_HASH="$(hash_file "$SHIPPED_NEW")"
 OLD_HASH="$(hash_file "$SHIPPED_OLD")"
-IOS_HASH="$(hash_file "$SHIPPED_IOS")"
 
 echo "$SHIPPED_NEW  $NEW_HASH"
 echo "$SHIPPED_OLD  $OLD_HASH"
-echo "$SHIPPED_IOS  $IOS_HASH"
 
 status=0
 if [ "$NEW_HASH" != "$SHIPPED_NEW_HASH" ]; then
@@ -111,12 +105,8 @@ if [ "$OLD_HASH" != "$SHIPPED_OLD_HASH" ]; then
     echo "error: $SHIPPED_OLD hash $OLD_HASH != expected $SHIPPED_OLD_HASH" >&2
     status=1
 fi
-if [ "$IOS_HASH" != "$SHIPPED_IOS_HASH" ]; then
-    echo "error: $SHIPPED_IOS hash $IOS_HASH != expected $SHIPPED_IOS_HASH" >&2
-    status=1
-fi
 if [ "$status" -ne 0 ]; then
     exit "$status"
 fi
 
-echo "all Rive scenes verify offline and match the shipped .riv hashes"
+echo "all Duo Rive scenes verify offline and match the shipped .riv hashes"

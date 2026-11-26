@@ -79,7 +79,7 @@ gate "provider authority matches in manifest and DuoPrefs" bash -c '
 
 echo "-- no IosRiveView in app/src/main"
 if grep -rn "IosRiveView" app/src/main; then
-    echo "error: IosRiveView must not appear in app/src/main (see IosRiveAbsenceTest)" >&2
+    echo "error: IosRiveView must not appear in app/src/main; the Rive iOS renderer is retired" >&2
     fail "IosRiveView absence"
 fi
 

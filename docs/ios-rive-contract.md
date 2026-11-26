@@ -1,5 +1,9 @@
 # `ios.riv` binding contract — artboards and state machine `Ios`
 
+> **RETIRED (2.1.2).** No code implements this contract. `ios.riv` is no longer packaged and there is no
+> `IosBinder`/`IosRiveView`; the bar draws via `IosDrawables`/`IosGlyphRenderer`. `rive/ios/scene.rml` is
+> kept as design evidence for a future Rive port. The property table below is historical design.
+
 This is the property contract for the iOS status-bar scene (`rive/ios/scene.rml` →
 `app/src/main/res/raw/ios.riv`).
 

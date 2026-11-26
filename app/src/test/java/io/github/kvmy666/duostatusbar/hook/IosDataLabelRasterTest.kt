@@ -374,10 +374,9 @@ class IosDataLabelRasterTest {
     // ------------------------------------------------------------------------------------ helpers
 
     private fun wifiVisual(tint: Int): IosVisual =
-        IosVisual(part = IosPart.WIFI, tint = tint, wifiLevel = 3f)
+        IosVisual(tint = tint, wifiLevel = 3f)
 
     private fun labelVisual(label: String, tint: Int): IosVisual = IosVisual(
-        part = IosPart.WIFI,
         tint = tint,
         wifiLevel = 3f,
         wifiSlot = IosWifiSlot.DataType(label)

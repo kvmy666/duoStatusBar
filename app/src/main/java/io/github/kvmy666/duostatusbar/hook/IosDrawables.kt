@@ -182,19 +182,13 @@ internal abstract class IosGlyphDrawable(
         invalidateSelf()
     }
 
-    private fun fallbackVisual(): IosVisual = visual ?: IosVisual(part = partOf(kind))
+    private fun fallbackVisual(): IosVisual = visual ?: IosVisual()
 
     private fun fallbackArtboardWidth(): Int =
         IosGlyphRenderer.artboardWidth(kind, fallbackVisual()).roundToInt()
 
     private fun fallbackArtboardHeight(): Int =
         IosGlyphRenderer.artboardHeight(kind, fallbackVisual()).roundToInt()
-
-    private fun partOf(kind: IosIconKind): IosPart = when (kind) {
-        IosIconKind.BATTERY -> IosPart.BATTERY
-        IosIconKind.WIFI -> IosPart.WIFI
-        IosIconKind.CELL -> IosPart.CELL
-    }
 }
 
 /** The battery glyph as a drawable; see [IosGlyphDrawable]. */

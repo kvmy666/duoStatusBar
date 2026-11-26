@@ -88,12 +88,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     @Volatile
     private var installedFlag = false
 
-    /** True once at least one battery view class was resolved in this process. */
-    val installed: Boolean get() = installedFlag
-
     /**
-     * R4: true only when **this family's** battery owner installed. `installed` stays "either" for the
-     * diagnostic/back-compat, but selection and activation must never be satisfied by a foreign hook.
+     * R4: true only when **this family's** battery owner installed. Selection and activation must never
+     * be satisfied by a foreign hook.
      */
     internal fun installedFor(familyId: String): Boolean = IosV2Profile.batteryOwnerInstalled(
         familyId,
@@ -108,9 +105,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     private var oplusClass: Class<*>? = null
 
     /**
-     * R4: the two constructor-hook results tracked separately. [installed] stays "either" for
-     * back-compat/diagnostics, but route/activation trust only the family's own owner through
-     * [installedFor]; an Oplus hook on Samsung (or the reverse) must not select the route.
+     * R4: the two constructor-hook results tracked separately. Route/activation trust only the
+     * family's own owner through [installedFor]; an Oplus hook on Samsung (or the reverse) must not
+     * select the route.
      */
     @Volatile
     private var oplusConstructorHooked = false
@@ -1115,7 +1112,6 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         private fun visualFor(): IosVisual {
             val snapshot = reading
                 ?: return IosVisual(
-                    part = IosPart.BATTERY,
                     visible = false,
                     tint = tint,
                     percentInside = percentInside,

@@ -34,7 +34,7 @@ class ReportFactsTest {
           ios v2 runtimeMisses: family=oxygenos wifi=0 cell=0 label=0 hidden=0
           ios v2 delivery: resourcesImpl calls=11; viewIcons=ImageView:IosWifiDrawable
           hooks2 stacked=ok placement=ok extras=ok order=ok
-          counters failures=0 retries=1 firstFailure=none orderPasses=3 orderMoves=1 extrasHidden=2 engineCalls=9 engineHits=7 stackedSwaps=0 guardAttempts=1
+          counters failures=0 retries=1 firstFailure=none orderPasses=3 orderMoves=1 extrasHidden=2 engineCalls=9 engineHits=7 stackedSwaps=0 guardAttempts=0
           ios v2 miss family=oxygenos piece=battery tried=StatBatteryMeterView
           ios v2 miss family=oxygenos piece=stacked tried=BatteryViewBinder
           ios v2 miss family=oxygenos piece=extras tried=IosExtrasView

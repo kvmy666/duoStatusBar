@@ -175,6 +175,7 @@ class IosDrawablesTest {
     @Test
     fun `dual rows use the row artboard and draw only their row`() {
         val dataVisual = cellVisual(IosCellMode.DUAL, IosCellRole.DATA, bars = 4f, dots = 0f)
+        // DORMANT (R13): models the artboard's single "other" row, not a live route.
         val otherVisual = cellVisual(IosCellMode.DUAL, IosCellRole.OTHER, bars = 0f, dots = 4f)
         val data = IosDrawables.create(IosIconKind.CELL, dataVisual, 0, 0)
         val other = IosDrawables.create(IosIconKind.CELL, otherVisual, 0, 0)
@@ -589,7 +590,7 @@ class IosDrawablesTest {
     ): IosVisual = IosMapping.battery(level, 20, saver, plugged, status, tint)
 
     private fun wifiVisual(level: Float = 3f, tint: Int = Color.BLACK): IosVisual =
-        IosVisual(part = IosPart.WIFI, tint = tint, wifiLevel = level)
+        IosVisual(tint = tint, wifiLevel = level)
 
     private fun cellVisual(
         mode: IosCellMode,
@@ -598,7 +599,6 @@ class IosDrawablesTest {
         dots: Float = 3f,
         tint: Int = Color.BLACK
     ): IosVisual = IosVisual(
-        part = IosPart.CELL,
         tint = tint,
         cellMode = mode,
         cellRole = role,

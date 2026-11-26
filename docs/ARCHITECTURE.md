@@ -90,21 +90,26 @@ iOS mode is an opt-in replacement for the stock battery/Wi-Fi/cellular icons, bu
 than inside it. The two paths are mutually exclusive: while iOS mode is active, `DuoGuard.stage()`
 resolves `OFF`, `DuoHook` stops and tears down the Duo host, and no Duo element is created. An explicit
 `duo_statusbar_stage` override still wins (override `2` draws Duo and suppresses iOS; `0` kills both).
-When `ios_mode` is `0` (the default) no iOS host exists and the Duo path is unchanged. The iOS surface is
-implemented: `IosRenderers.DRAWING_READY` is `true`, the Rive scene and the Canvas fallback draw the
-same geometry, and a saved ON suppresses a stock drawing only after one renderer has started.
+When `ios_mode` is `0` (the default) no iOS host exists and the Duo path is unchanged. The iOS bar is
+delivered by the v2 system-resource engine: `IosResourceEngine` replaces the measured stock drawables
+with `IosDrawables`/`IosGlyphRenderer` (Canvas), `IosBatteryV2` owns the battery, and `IosSlotLayout`
+sizes the leaves. There is no Rive runtime for iOS and `ios.riv` is not shipped; `IosCanvasView` is the
+settings preview only.
 
 | File | Responsibility |
 |---|---|
-| `hook/IosGuard.kt` | Gate (`active(iosMode, adbOverride)`) and the separate iOS Rive breaker (`duo_statusbar_ios_rive_attempts`, `duo_statusbar_ios_rive_attempt_at`); it reuses `DuoGuard.shouldAllowRive` as pure policy but never shares Duo's counters |
-| `hook/IosIconHost.kt` | Per-surface host (main bar, keyguard bar, shade header), one per bar because the host owns one overlay layer and one attach state; every surface shares one `IosSizeOwner` so extras reuse the home bar's pinned size (M15). Dual SIM is one stacked cluster view over both mobile slots, with a fail-silent restore |
-| `hook/IosSkin.kt` | Leaf-level stock-drawing suppression and exact restore (`ALPHA`, `CLEAR_DRAWABLE`, `INVISIBLE_KEEP_SLOT`); `UNKNOWN` and opaque families use `SKIP` and leave the stock icon untouched |
+| `hook/IosGuard.kt` | Gate (`active(iosMode, adbOverride)`); no breaker or attempt key (the Rive breaker was removed) |
+| `hook/IosResourceEngine.kt`, `hook/IosResourceNames.kt` | Resolve and replace the measured stock drawables per family; OxygenOS and Samsung are the only live families (the rest are dormant R13 data) |
+| `hook/IosDrawables.kt`, `hook/IosGlyphRenderer.kt` | Canvas glyphs and their draw order |
+| `hook/IosBatteryV2.kt` | Battery owner: hooks the measured view/binder and draws the glyph |
+| `hook/IosSlotLayout.kt` | One size owner per attach; sizes the leaves for every surface |
+| `hook/IosStackedSim.kt`, `hook/IosExtras.kt`, `hook/IosMobileTypePlacement.kt` | OxygenOS stacked-SIM, hide-extras and data-type placement |
+| `hook/IosIconOrder.kt` | The measured OxygenOS `mobile -> wifi` slot permutation |
 | `hook/IosMapping.kt`, `hook/IosVisual.kt` | Pure state mapping (battery/Wi-Fi/cellular, tint, battery state) into one immutable `IosVisual`; no view or resource access |
-| `hook/IosBinder.kt` | The `ios.riv` binding contract: `IOS_PROPERTY_COUNT = 12`; names and table in `docs/ios-rive-contract.md` |
-| `hook/IosRiveView.kt`, `hook/IosCanvasView.kt`, `hook/IosRenderers.kt` | Rive renderer (real `ios.riv`, artboard per kind, internal Canvas fallback) and the Canvas fallback from `IosGeometry`; `DRAWING_READY = true`; the host still leaves a stock icon when neither renderer starts |
-| `ui/IosPreview.kt` | Live 12-frame preview (light/dark, 1/2 SIM, six battery states) using the real `IosCanvasView` and `IosGeometry` |
-| `hook/DuoHook.kt` | Lifecycle integration: creates, refreshes and tears down the iOS hosts, keeps the two modes exclusive, and never routes iOS through the Duo attach path |
-| `hook/Diag.kt` | Additive `module:` line `iosMode=... iosAttempts=...`; existing dump lines are unchanged |
+| `hook/IosCanvasView.kt` | Settings preview only |
+| `ui/IosPreview.kt` | Live 12-frame preview (light/dark, 1/2 SIM, six battery states) using `IosCanvasView` and `IosGeometry` |
+| `hook/DuoHook.kt` | Lifecycle integration: activates the v2 engine and its owners, keeps the two modes exclusive, and never routes iOS through the Duo attach path |
+| `hook/Diag.kt` | Additive `module:` line `iosMode=... iosAttempts=...`; `iosAttempts` is a frozen compatibility field and is always `0` |
 
 ---
 
@@ -179,7 +184,7 @@ Installed by `DuoHook` after the stage gate (except the window/application hooks
 | `ShadeHeaderController` constructors + `ViewStub.inflate` | Shade header surface | `DuoHook.kt:1069-1136` |
 | `NotificationShadeWindowControllerImpl.onShadeOrQsExpanded(Boolean)` | Shade/QS visibility | `DuoHook.kt:698-844` |
 | `ShadeExpansionStateManager.onPanelExpansionChanged(F,Z,Z,String,PanelType)` | Panel expansion → hand-off | same |
-| `StatusIconContainer` / `MiuiStatusIconContainer.addView` | Watch the strip for re-adds | `DuoHook.kt:939-964` |
+| `StatusIconContainer` / `MiuiStatusIconContainer.onViewAdded/onViewRemoved` | Watch the strip for re-adds | `DuoHook.kt:939-964` |
 | `StatusBarIconView.onDarkChanged` / `setIconColor` | Bar tint | `DuoHook.kt:974-996` |
 | `FlashlightControllerImpl.dispatchListeners(int,boolean)` | Flashlight event | `DuoHook.kt:998-1017` |
 | `TakeScreenshotExecutorImpl.executeScreenshotsAsync` | Screenshot event | `DuoHook.kt:1019-1035` |
@@ -573,7 +578,7 @@ flowchart TD
     G2 --> CI
 ```
 
-`tools/check-rive-shipped.sh` is the CI/release gate: it `rive . --verify`s both scenes and compares the committed `.riv` files against pinned SHA-256 constants (`tools/check-rive-shipped.sh:12-15,19-43,45-56,60-84,90-107`). `tools/build-rive-both.sh` remains the owner-run local/manual rebuild gate: it fails closed if the CLI is absent or outside `>=1.9.1 <2.0.0` (`tools/build-rive-both.sh:7-31`), copies the Rive project to `mktemp`, builds the new scene, swaps `scene_old.rml` over `scene.rml` to build the old one, compares both SHA-256 values with `res/raw`, and requires the two hashes to differ (anti-noop) (`build-rive-both.sh:34-98`); it is no longer called by CI. `rive.yaml` excludes `scene_old.rml` from the default document build (`rive/duo/rive.yaml:2-4`).
+`tools/check-rive-shipped.sh` is the CI/release gate: it `rive . --verify`s both Duo scenes and compares the committed `.riv` files against pinned SHA-256 constants. `tools/build-rive-both.sh` remains the owner-run local/manual rebuild gate: it fails closed if the CLI is absent or outside `>=1.9.1 <2.0.0` (`tools/build-rive-both.sh:7-31`), copies the Rive project to `mktemp`, builds the new scene, swaps `scene_old.rml` over `scene.rml` to build the old one, compares both SHA-256 values with `res/raw`, and requires the two hashes to differ (anti-noop) (`build-rive-both.sh:34-98`); it is no longer called by CI. `rive.yaml` excludes `scene_old.rml` from the default document build (`rive/duo/rive.yaml:2-4`).
 
 ### 10.3 Gates
 
@@ -742,7 +747,7 @@ Every line below was opened on 2026-11-19 in the working tree; the quote is the 
 | A SHA mismatch refuses the APK | `app/src/main/java/io/github/kvmy666/duostatusbar/settings/UpdateDownloadWorker.kt:52` — `if (sha.isNotEmpty() && actual != sha) {` |
 | The installer is the system package installer | `app/src/main/java/io/github/kvmy666/duostatusbar/settings/UpdateNotifications.kt:94` — `val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)` |
 | CI proves JDK 17 | `.github/workflows/ci.yml:18` — `java-version: '17'` |
-| CI runs the Rive parity gate | `.github/workflows/ci.yml:62` — `run: bash tools/check-rive-shipped.sh` |
+| CI runs the Rive parity gate | `.github/workflows/ci.yml:143` — `run: bash tools/check-rive-shipped.sh` |
 | The Rive gate fails closed | `tools/build-rive-both.sh:13` — `echo "       install it or put it on PATH; this gate fails closed and never skips" >&2` |
 | Both raw scenes are kept | `app/src/main/res/raw/keep.xml:9` — `<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/duo,@raw/duo_old" />` |
 | The host accepts measured profiles | `app/src/main/java/io/github/kvmy666/duostatusbar/hook/DuoIconHost.kt:403` — `RomProfiles.load(context),` |

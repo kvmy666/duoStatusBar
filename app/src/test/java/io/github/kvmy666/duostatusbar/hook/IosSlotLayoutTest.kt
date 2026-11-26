@@ -22,26 +22,26 @@ class IosSlotLayoutTest {
 
     private fun wifi() = IosSlotLayout.metrics(
         IosIconKind.WIFI,
-        IosVisual(part = IosPart.WIFI, wifiLevel = 3f),
+        IosVisual(wifiLevel = 3f),
         screenW, 100, 0, stockRowH
     )
 
     private fun cell() = IosSlotLayout.metrics(
         IosIconKind.CELL,
-        IosVisual(part = IosPart.CELL, cellBars = 4f),
+        IosVisual(cellBars = 4f),
         screenW, 100, 0, stockRowH
     )
 
     private fun battery(scale: Int = 100, offset: Int = 0) = IosSlotLayout.metrics(
         IosIconKind.BATTERY,
-        IosVisual(part = IosPart.BATTERY, batteryLevel = 1f),
+        IosVisual(batteryLevel = 1f),
         screenW, scale, offset, stockRowH
     )
 
     private fun labelMode(cellScale: Int = 100, cellOffset: Int = 0, labelScale: Int = 100) =
         IosSlotLayout.mobileMetrics(
-            IosVisual(part = IosPart.CELL, cellBars = 4f),
-            IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G")),
+            IosVisual(cellBars = 4f),
+            IosVisual(wifiSlot = IosWifiSlot.DataType("5G")),
             screenW, cellScale, cellOffset, labelScale, 0, stockRowH
         )
 
@@ -113,16 +113,16 @@ class IosSlotLayoutTest {
             51.89f,
             IosGeometry.inkBox(
                 IosIconKind.WIFI,
-                IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
+                IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
             ).width * s,
             0.01f
         )
 
-        val cellInk = inkWidth(IosIconKind.CELL, IosVisual(part = IosPart.CELL, cellBars = 4f), 100)
-        val cellInkLeft = slot.leaf.left + IosGeometry.inkBox(IosIconKind.CELL, IosVisual(part = IosPart.CELL)).left * s
+        val cellInk = inkWidth(IosIconKind.CELL, IosVisual(cellBars = 4f), 100)
+        val cellInkLeft = slot.leaf.left + IosGeometry.inkBox(IosIconKind.CELL, IosVisual()).left * s
         val labelInkLeft = label.left + IosGeometry.inkBox(
             IosIconKind.WIFI,
-            IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
+            IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
         ).left * s
         assertTrue(abs((labelInkLeft - (cellInkLeft + cellInk)) - gap) <= 1.5f)
     }
@@ -131,19 +131,19 @@ class IosSlotLayoutTest {
     fun `no ink leaves its own slot and no neighbour overlaps at 50 100 130 150 200`() {
         for (scale in listOf(50, 100, 130, 150, 200)) {
             val wifi = wifi(scale)
-            val wInk = inkWidth(IosIconKind.WIFI, IosVisual(part = IosPart.WIFI), scale)
+            val wInk = inkWidth(IosIconKind.WIFI, IosVisual(), scale)
             assertTrue("wifi scale=$scale", wifi.leaf.left + wInk <= wifi.outerWidth + 1)
 
             val cell = cell(scale)
-            val cInk = inkWidth(IosIconKind.CELL, IosVisual(part = IosPart.CELL, cellBars = 4f), scale)
+            val cInk = inkWidth(IosIconKind.CELL, IosVisual(cellBars = 4f), scale)
             assertTrue("cell scale=$scale", cell.leaf.left + cInk <= cell.outerWidth + 1)
 
             val battery = battery(scale)
-            val bInk = inkWidth(IosIconKind.BATTERY, IosVisual(part = IosPart.BATTERY), scale)
+            val bInk = inkWidth(IosIconKind.BATTERY, IosVisual(), scale)
             assertTrue("battery scale=$scale", battery.leaf.left + bInk <= battery.outerWidth + 1)
 
             // The slots abut; the ink gap is exactly G because each ink has G/2 padding in its slot.
-            val wifiInk = IosGeometry.inkBox(IosIconKind.WIFI, IosVisual(part = IosPart.WIFI))
+            val wifiInk = IosGeometry.inkBox(IosIconKind.WIFI, IosVisual())
             val leftPad = wifi.leaf.left + wifiInk.left * s * scale / 100f
             val rightPad = wifi.outerWidth - (wifi.leaf.left + wInk)
             assertEquals(gap, leftPad + rightPad, 1.5f)
@@ -164,11 +164,11 @@ class IosSlotLayoutTest {
     }
 
     private fun wifi(scale: Int): IosSlotMetrics = IosSlotLayout.metrics(
-        IosIconKind.WIFI, IosVisual(part = IosPart.WIFI), screenW, scale, 0, stockRowH
+        IosIconKind.WIFI, IosVisual(), screenW, scale, 0, stockRowH
     )
 
     private fun cell(scale: Int): IosSlotMetrics = IosSlotLayout.metrics(
-        IosIconKind.CELL, IosVisual(part = IosPart.CELL, cellBars = 4f), screenW, scale, 0, stockRowH
+        IosIconKind.CELL, IosVisual(cellBars = 4f), screenW, scale, 0, stockRowH
     )
 
     @Test
@@ -188,8 +188,8 @@ class IosSlotLayoutTest {
 
     @Test
     fun `200 percent outers grow and every leaf stays centred in its own outer`() {
-        val cellVisual = IosVisual(part = IosPart.CELL, cellBars = 4f)
-        val labelVisual = IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
+        val cellVisual = IosVisual(cellBars = 4f)
+        val labelVisual = IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
 
         // The cell artboard is 105.6 units, so 200 % is 94 px and fills its own outer.
         val cell200 = IosSlotLayout.metrics(IosIconKind.CELL, cellVisual, screenW, 200, 0, stockRowH)
@@ -246,12 +246,12 @@ class IosSlotLayoutTest {
     @Test
     fun `label mode with a scaled cell keeps the label at one gap after the scaled ink`() {
         val slot = labelMode(cellScale = 200)
-        val cellInk = IosGeometry.inkBox(IosIconKind.CELL, IosVisual(part = IosPart.CELL)).width * s * 2f
+        val cellInk = IosGeometry.inkBox(IosIconKind.CELL, IosVisual()).width * s * 2f
         val labelInkLeft = slot.label!!.left + IosGeometry.inkBox(
             IosIconKind.WIFI,
-            IosVisual(part = IosPart.WIFI, wifiSlot = IosWifiSlot.DataType("5G"))
+            IosVisual(wifiSlot = IosWifiSlot.DataType("5G"))
         ).left * s
-        val cellInkLeft = slot.leaf.left + IosGeometry.inkBox(IosIconKind.CELL, IosVisual(part = IosPart.CELL)).left * s * 2f
+        val cellInkLeft = slot.leaf.left + IosGeometry.inkBox(IosIconKind.CELL, IosVisual()).left * s * 2f
         assertTrue(abs((labelInkLeft - (cellInkLeft + cellInk)) - gap) <= 1.5f)
         assertEquals((cellInk + gap + 51.89f + gap).roundToInt(), slot.outerWidth)
     }

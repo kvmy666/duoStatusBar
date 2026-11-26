@@ -142,11 +142,10 @@ class IosDrawableParityTest {
     )
 
     private fun wifiVisual(tint: Int, level: Int): IosVisual =
-        IosVisual(part = IosPart.WIFI, tint = tint, wifiLevel = level.toFloat())
+        IosVisual(tint = tint, wifiLevel = level.toFloat())
 
     private fun cellStates(tint: Int): List<Pair<String, IosVisual>> = listOf(
         "single" to IosVisual(
-            part = IosPart.CELL,
             tint = tint,
             cellMode = IosCellMode.SINGLE,
             cellRole = IosCellRole.DATA,
@@ -154,11 +153,11 @@ class IosDrawableParityTest {
         ),
         "dual-both" to dualCell(tint, IosCellRole.BOTH),
         "dual-data" to dualCell(tint, IosCellRole.DATA),
+        // DORMANT (R13): models the artboard's single "other" row, not a live route.
         "dual-other" to dualCell(tint, IosCellRole.OTHER)
     )
 
     private fun dualCell(tint: Int, role: IosCellRole): IosVisual = IosVisual(
-        part = IosPart.CELL,
         tint = tint,
         cellMode = IosCellMode.DUAL,
         cellRole = role,
@@ -186,7 +185,6 @@ class IosDrawableParityTest {
     )
 
     private fun cell(prog: Prog): IosVisual = IosVisual(
-        part = IosPart.CELL,
         tint = tint(prog.dark),
         cellMode = if (prog.simDual) IosCellMode.DUAL else IosCellMode.SINGLE,
         cellRole = if (prog.simDual) IosCellRole.BOTH else IosCellRole.DATA,
@@ -195,7 +193,7 @@ class IosDrawableParityTest {
     )
 
     private fun wifi(prog: Prog): IosVisual =
-        IosVisual(part = IosPart.WIFI, tint = tint(prog.dark), wifiLevel = 3f)
+        IosVisual(tint = tint(prog.dark), wifiLevel = 3f)
 
     // ----------------------------------------------------------------------------- rendering
 

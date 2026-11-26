@@ -172,10 +172,6 @@ internal object IosGeometry {
 
         fun dualBarLeft(index: Int): Float = LEFT + index * DUAL_PITCH
 
-        fun singleBarHeight(index: Int): Float = SINGLE_BAR_HEIGHTS[index]
-
-        fun dualBarHeight(index: Int): Float = DUAL_BAR_HEIGHTS[index]
-
         fun dotCenterX(index: Int): Float = LEFT + index * DUAL_PITCH + DOT_W / 2f
 
         fun dotCenterY(): Float = DOT_TOP + DOT_H / 2f

@@ -133,7 +133,6 @@ class IosCanvasRasterTest {
     )
 
     private fun cell(prog: Prog): IosVisual = IosVisual(
-        part = IosPart.CELL,
         tint = tint(prog.dark),
         cellMode = if (prog.simDual) IosCellMode.DUAL else IosCellMode.SINGLE,
         cellRole = if (prog.simDual) IosCellRole.BOTH else IosCellRole.DATA,
@@ -142,7 +141,7 @@ class IosCanvasRasterTest {
     )
 
     private fun wifi(prog: Prog): IosVisual =
-        IosVisual(part = IosPart.WIFI, tint = tint(prog.dark), wifiLevel = 3f)
+        IosVisual(tint = tint(prog.dark), wifiLevel = 3f)
 
     private fun lightSingle() = Prog(
         dark = false, simDual = false, batteryLevel = 100,

@@ -46,7 +46,6 @@ class IosCapabilityTest {
             "owner=ios family=oxygenos supported=true route=v2 rev=42 pid=1234 at=1700000000000",
             capability.format()
         )
-        assertEquals("encode is the same wire value", capability.format(), capability.encode())
     }
 
     @Test

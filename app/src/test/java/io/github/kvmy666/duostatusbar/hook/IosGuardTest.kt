@@ -67,7 +67,7 @@ class IosGuardTest {
         for (override in listOf(DuoGuard.OFF, DuoGuard.ICONS_ONLY, DuoGuard.RIVE)) {
             assertFalse(IosGuard.active(true, override, drawingReady = true))
         }
-        // The real scene/renderers ship in this build, so the default availability is true.
+        // The real v2 engine ships in this build, so the default availability is true.
         assertTrue(IosGuard.active(iosMode = true, adbOverride = null))
     }
 

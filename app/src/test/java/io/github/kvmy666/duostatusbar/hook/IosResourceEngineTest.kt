@@ -165,8 +165,8 @@ class IosResourceEngineTest {
         assertEquals(IosUserTransform.IDENTITY, wifiDrawable.userTransform)
         assertEquals(IosUserTransform.IDENTITY, cellDrawable.userTransform)
 
-        val wifiVisual = IosVisual(part = IosPart.WIFI, wifiLevel = 3f)
-        val cellVisual = IosVisual(part = IosPart.CELL, cellBars = 4f)
+        val wifiVisual = IosVisual(wifiLevel = 3f)
+        val cellVisual = IosVisual(cellBars = 4f)
         val wifi100 = IosSlotLayout.metrics(IosIconKind.WIFI, wifiVisual, 1272, 100, 0, 63)
         val wifi200 = IosSlotLayout.metrics(IosIconKind.WIFI, wifiVisual, 1272, 200, 0, 63)
         val cell100 = IosSlotLayout.metrics(IosIconKind.CELL, cellVisual, 1272, 100, 0, 63)
@@ -306,11 +306,14 @@ class IosResourceEngineTest {
     // --------------------------------------------------------------------------------- gating
 
     @Test
-    fun `activate ignores a non-v2 family and stays inactive`() {
-        assertFalse(IosResourceEngine.activate(context(), rom("aosp"), synchronous = true))
-        assertFalse(IosResourceEngine.isActive)
-        assertEquals(0, IosResourceEngine.mapSize)
-        assertTrue(IosResourceEngine.diagnosticLines().single().contains("family=none"))
+    fun `activate ignores every non-v2 family and stays inactive`() {
+        // Dormant (R13) measured families must refuse activation exactly like host-only families.
+        for (id in listOf("aosp", "hyperos", "nothing", "motorola", "vivo", "coloros", "honor")) {
+            assertFalse(id, IosResourceEngine.activate(context(), rom(id), synchronous = true))
+            assertFalse(id, IosResourceEngine.isActive)
+            assertEquals(id, 0, IosResourceEngine.mapSize)
+            assertTrue(id, IosResourceEngine.diagnosticLines().single().contains("family=none"))
+        }
     }
 
     // --------------------------------------------------------------------------------- install

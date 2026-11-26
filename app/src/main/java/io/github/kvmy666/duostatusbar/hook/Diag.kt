@@ -259,10 +259,11 @@ internal object Diag {
             appendLine("  renderer=${element?.rendererName ?: "none"} ready=${element?.isReady ?: false}")
             // B3: one line, absent while Rive bound. The reason code names the failed stage.
             RiveBindReport.last()?.let { appendLine("  " + riveBindDiagLine(it)) }
-            // Additive: the iOS skin has its own breaker and its own percentage source. Read from the
-            // dump's settings when present, otherwise the last cached read; never an extra provider read.
+            // Additive: the iOS Rive breaker is gone, so `iosAttempts` stays 0 for dump compatibility.
+            // Read the mode from the dump's settings when present, otherwise the last cached read;
+            // never an extra provider read.
             val iosSettings = settings ?: DuoSettingsClient.lastRead()
-            appendLine("  iosMode=${iosSettings?.iosMode ?: false} iosAttempts=${IosGuard(context).attempts()}")
+            appendLine("  iosMode=${iosSettings?.iosMode ?: false} iosAttempts=0")
             appendIosLines(this, iosLines)
             appendIosV2Block(this, context, settings, root, extraRoots)
             settings?.let {
