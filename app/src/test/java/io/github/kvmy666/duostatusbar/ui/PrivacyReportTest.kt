@@ -4,6 +4,8 @@ import android.content.Context
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.hook.Diag
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -98,6 +100,31 @@ class PrivacyReportTest {
             assertTrue(diagnostics.contains("version=2.1.2"))
             assertTrue(diagnostics.contains("uid:pid:tid=0:7525:7530"))
             assertTrue(diagnostics.contains("ssid=[redacted]"))
+        }
+    }
+
+    @Test
+    fun `the manifest redacts completeness reasons and stays valid JSON`() {
+        val reason = "unreadable: ssid=HomeSweetHome; carrierName=ACME Telecom; " +
+            "alice@example.com; +44 20 7946 0958; imei=356789012345678; " +
+            "serial=ABC123SECRET; account=Alice Account; " +
+            "android.text=Hello secret notification"
+        val dest = File(tmp.root, "manifest-privacy.zip")
+        DuoReport.writeZip(
+            dest,
+            inputs().copy(completeness = mapOf("crash records" to reason))
+        )
+        ZipFile(dest).use { zf ->
+            val text = zf.getInputStream(zf.getEntry("manifest.json"))
+                .bufferedReader().readText()
+            // A broken redaction (an unescaped quote eaten from a value) must fail here, not on a
+            // reader's machine.
+            val manifest = JSONObject(text)
+            assertEquals("duo-report/1", manifest.getString("schema"))
+            val completeness = manifest.getJSONObject("completeness")
+            assertTrue(completeness.has("crash records"))
+            assertNoSecret(text, "manifest.json")
+            assertTrue("ordinary diagnostics must survive: $text", text.contains("crash records"))
         }
     }
 

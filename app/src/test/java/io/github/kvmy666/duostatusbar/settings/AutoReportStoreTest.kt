@@ -147,6 +147,19 @@ class AutoReportStoreTest {
     }
 
     @Test
+    fun `a reporter failure does not count as a send`() {
+        val state = AutoReportLedger.queueReporterFailure(
+            AutoReportState(day = 3L),
+            "upload",
+            "IOException",
+            identity.version,
+            identity.model
+        )
+        assertEquals("a failed upload must leave the cap untouched", 0, state.sendsToday)
+        assertTrue(AutoReportLedger.canSend(state, 1))
+    }
+
+    @Test
     fun `a reporter failure becomes a queued problem with the stage and class`() {
         val state = AutoReportLedger.queueReporterFailure(
             AutoReportState(),

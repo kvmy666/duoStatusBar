@@ -216,6 +216,94 @@ class AutoReportPulseTest {
     }
 
     @Test
+    fun `a failed upload does not consume the daily cap`() {
+        val store = FakeStore()
+        val sender = FakeSender(zipOutcome = SendOutcome.Failed("IOException"))
+        val failed = pulse(
+            store,
+            FakeCollector(problems = listOf(attach)),
+            sender = sender,
+            maxPerDay = 1
+        ).run()
+        assertEquals(PulseAction.FAILED, failed.action)
+        assertEquals("a failed send is not a send", 0, failed.sends)
+        assertEquals("a failed send must not use the daily cap", 0, store.state.sendsToday)
+
+        sender.zipOutcome = SendOutcome.Sent
+        val retried = pulse(
+            store,
+            FakeCollector(problems = emptyList()),
+            sender = sender,
+            maxPerDay = 1
+        ).run()
+        assertEquals(PulseAction.ZIP_SENT, retried.action)
+        assertEquals(1, retried.sends)
+        assertEquals(1, store.state.sendsToday)
+    }
+
+    @Test
+    fun `a failed summary does not consume the daily cap`() {
+        val store = FakeStore()
+        val sender = FakeSender()
+        pulse(store, FakeCollector(problems = listOf(attach)), sender = sender, maxPerDay = 2).run()
+        assertEquals(1, store.state.sendsToday)
+
+        sender.summaryOutcome = SendOutcome.Failed("SocketTimeoutException")
+        val failed = pulse(
+            store,
+            FakeCollector(problems = listOf(attach)),
+            sender = sender,
+            maxPerDay = 2
+        ).run()
+        assertEquals(PulseAction.FAILED, failed.action)
+        assertEquals(0, failed.sends)
+        assertEquals("a failed summary must not use the daily cap", 1, store.state.sendsToday)
+
+        sender.summaryOutcome = SendOutcome.Sent
+        val retried = pulse(
+            store,
+            FakeCollector(problems = emptyList()),
+            sender = sender,
+            maxPerDay = 2
+        ).run()
+        assertEquals(PulseAction.SUMMARY_SENT, retried.action)
+        assertEquals(1, retried.sends)
+        assertEquals(2, store.state.sendsToday)
+    }
+
+    @Test
+    fun `three successful sends cap the day`() {
+        val store = FakeStore()
+        val sender = FakeSender()
+        val problems = listOf(
+            DetectedProblem("attach", "attach"),
+            DetectedProblem("fallback", "rive"),
+            DetectedProblem("hook", "panel")
+        )
+        problems.forEach { problem ->
+            val sent = pulse(
+                store,
+                FakeCollector(problems = listOf(problem)),
+                sender = sender
+            ).run()
+            assertEquals(PulseAction.ZIP_SENT, sent.action)
+            assertEquals(1, sent.sends)
+        }
+        assertEquals(3, store.state.sendsToday)
+        assertEquals(3, sender.zipCalls)
+
+        val capped = pulse(
+            store,
+            FakeCollector(problems = listOf(DetectedProblem("ios_miss", "wifi"))),
+            sender = sender
+        ).run()
+        assertEquals(PulseAction.CAPPED, capped.action)
+        assertEquals(0, capped.sends)
+        assertEquals("a capped pulse sends nothing", 3, sender.zipCalls)
+        assertTrue(store.state.pending.isNotEmpty())
+    }
+
+    @Test
     fun `a zip failure becomes a reporter fingerprint and sends no zip`() {
         val store = FakeStore()
         val sender = FakeSender()
