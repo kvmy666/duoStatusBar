@@ -70,29 +70,36 @@ internal object DuoReport {
                 // Manifest first, so a reader sees the schema before the payloads.
                 val manifest = JSONObject()
                 manifest.put("schema", "duo-report/1")
-                manifest.put("generatedAt", inputs.generatedAt)
-                manifest.put("appVersion", inputs.appVersion)
-                manifest.put("buildType", inputs.buildType)
+                manifest.put("generatedAt", manifestValue(inputs.generatedAt))
+                manifest.put("appVersion", manifestValue(inputs.appVersion))
+                manifest.put("buildType", manifestValue(inputs.buildType))
                 val device = JSONObject()
-                for ((k, v) in inputs.device) device.put(k, v)
+                for ((k, v) in inputs.device) device.put(k, manifestValue(v))
                 manifest.put("device", device)
                 val adapter = JSONObject()
-                for ((k, v) in inputs.adapter) adapter.put(k, v)
+                for ((k, v) in inputs.adapter) adapter.put(k, manifestValue(v))
                 manifest.put("adapter", adapter)
                 val entries = JSONArray()
                 for (name in entryNames) entries.put(name)
                 manifest.put("entries", entries)
                 val completeness = JSONObject()
-                for ((name, state) in inputs.completeness) completeness.put(name, state)
+                for ((name, state) in inputs.completeness) completeness.put(name, manifestValue(state))
                 manifest.put("completeness", completeness)
 
                 val manifestText = try {
-                    manifest.toString(2)
+                    // The manifest is written outside writeTextEntry, so it must pass the same privacy
+                    // choke point. Values are redacted first so a labelled value at the end of a JSON
+                    // string cannot make the whole-text pass swallow the closing quote. A rule that
+                    // still consumes a line (notification text) must not corrupt the schema, so the
+                    // already-redacted values are kept when the text pass would not parse.
+                    val raw = manifest.toString(2)
+                    val redacted = Redact.text(raw)
+                    if (isJson(redacted)) redacted else raw
                 } catch (t: Throwable) {
                     throw IllegalStateException("manifest serialize failed: ${t.message}", t)
                 }
                 zos.putNextEntry(ZipEntry("manifest.json"))
-                zos.write((manifestText ?: "{}").toByteArray(Charsets.UTF_8))
+                zos.write(manifestText.toByteArray(Charsets.UTF_8))
                 zos.closeEntry()
 
                 writeTextEntry(zos, "diagnostics.txt", inputs.diagnostics)
@@ -110,6 +117,23 @@ internal object DuoReport {
                 }
             }
         }
+    }
+
+    /**
+     * Redacts one manifest value. A value Redact changed keeps a guard space, so the whole-manifest
+     * pass cannot let a labelled value at the end of a JSON string swallow the closing quote.
+     */
+    private fun manifestValue(value: String): String {
+        val redacted = Redact.text(value)
+        return if (redacted == value) value else "$redacted "
+    }
+
+    /** Whether [text] is still a JSON object (the manifest's shape). */
+    private fun isJson(text: String): Boolean = try {
+        JSONObject(text)
+        true
+    } catch (_: Throwable) {
+        false
     }
 
     private fun writeTextEntry(zos: ZipOutputStream, name: String, text: String) {
