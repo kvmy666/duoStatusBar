@@ -225,13 +225,16 @@ class RomDetectionTest {
 
     @Test
     fun `existing adapters carry their static shade maps and keep their selection`() {
-        val oxygen = RomDetection.forThisRom("OnePlus", "OnePlus", "p", "d")
+        // The measured shade map belongs to CPH2747 only; the brand alone no longer claims it (R18).
+        val oxygen = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16", 36
+        )
         assertEquals("oxygenos", oxygen.id)
         assertEquals(
             listOf("quick_qs_status_icons", "shade_header_system_icons"),
             oxygen.shadeContainerIds
         )
-        assertTrue("OnePlus shade was measured on the device", oxygen.shadeMeasured)
+        assertTrue("CPH2747 shade was measured on the device", oxygen.shadeMeasured)
 
         val hyper = RomDetection.forThisRom(
             "Xiaomi", "24129PN74G", "dada", "CP2A.260605.016", 37, hyperOsMarkers
@@ -310,6 +313,40 @@ class RomDetectionTest {
         val sdk36 = RomDetection.forThisRom("OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747:16", 36)
         assertFalse("SDK 36 is not proof of OxygenOS", sdk36.measured)
         assertTrue(sdk36.notes.contains("brand-match (unverified)"))
+    }
+
+    @Test
+    fun `oxygenos shade map is measured only on the CPH2747 identity`() {
+        // The shade ids were read on CPH2747 (evidence: diagnostics-dump MODEL/PRODUCT/DISPLAY), so the
+        // measured flag is keyed to that build, not to the SDK alone (R18).
+        val cph2747 = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16", 36
+        )
+        assertEquals("oxygenos", cph2747.id)
+        assertEquals(
+            listOf("quick_qs_status_icons", "shade_header_system_icons"),
+            cph2747.shadeContainerIds
+        )
+        assertEquals("batteryRemainingIcon", cph2747.shadeBatteryId)
+        assertTrue("the shade ids were measured on CPH2747", cph2747.shadeMeasured)
+    }
+
+    @Test
+    fun `a different oneplus identity with sdk 36 does not claim the measured shade map`() {
+        val other = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "OP9999", "OnePlus/OP9999:16", 36
+        )
+        assertEquals("oxygenos", other.id)
+        assertFalse("the shade map was read on CPH2747 only (R18)", other.shadeMeasured)
+        assertEquals(
+            "the probe ids still describe OxygenOS",
+            listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
+            other.containerIds
+        )
+        assertEquals(
+            listOf("quick_qs_status_icons", "shade_header_system_icons"),
+            other.shadeContainerIds
+        )
     }
 
     @Test

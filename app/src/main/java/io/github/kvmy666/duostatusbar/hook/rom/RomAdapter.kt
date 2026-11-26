@@ -125,7 +125,7 @@ internal object RomDetection {
         val haystack = haystack(manufacturer, brand, product, display)
         val selected = when {
             haystack.contains("samsung") -> samsung()
-            haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs(api, markers)
+            haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs(api, haystack)
             haystack.contains("oppo") || haystack.contains("oplus") || haystack.contains("coloros") ->
                 colorOs()
             haystack.contains("xiaomi") || haystack.contains("redmi") || haystack.contains("poco") ->
@@ -218,12 +218,16 @@ internal object RomDetection {
      * `.pm/evidence/duo-report-20261119-200742/diagnostics.txt:56-57`, `diagnostics-dump.txt:2197`),
      * which is identical to AOSP. There is no distinguishing Oplus marker today, so the brand match
      * cannot become proof: the ids below are still the measured ones, the `measured` flag is not.
-     * [markers] is accepted to keep the call shape uniform; no marker can prove OxygenOS yet
-     * ([RomMarkers.provesFamily]).
+     *
+     * The shade ids were read on **CPH2747 only** (evidence:
+     * `.pm/evidence/duo-report-20261119-200742/diagnostics-dump.txt:4-6`: `MODEL=CPH2747`,
+     * `PRODUCT=CPH2747`, `DISPLAY=CPH2747_16.0.9.400(EX01)`), so [shadeMeasured] is keyed to that
+     * identity plus the SDK window — never to the SDK or the brand alone. The family [measured] flag
+     * still requires a proven marker ([RomMarkers.provesFamily]), which OxygenOS does not have.
      */
-    @Suppress("UNUSED_PARAMETER")
-    private fun oxygenOs(api: Int, markers: RomMarkers): RomAdapter {
+    private fun oxygenOs(api: Int, identity: String): RomAdapter {
         val verified = api == 0 || api in 36..36
+        val shadeVerified = verified && identity.contains("cph2747")
         return RomAdapter(
         id = "oxygenos",
         label = "OxygenOS / OnePlus",
@@ -237,7 +241,7 @@ internal object RomDetection {
         measured = false,
         shadeContainerIds = listOf("quick_qs_status_icons", "shade_header_system_icons"),
         shadeBatteryId = "batteryRemainingIcon",
-        shadeMeasured = verified,
+        shadeMeasured = shadeVerified,
         coverHook = true,
         panelExpansionKind = "panel_type_5arg",
         panelHookMeasured = verified,
