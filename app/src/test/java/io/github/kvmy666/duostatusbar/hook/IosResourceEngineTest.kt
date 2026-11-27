@@ -303,6 +303,33 @@ class IosResourceEngineTest {
         )
     }
 
+    @Test
+    fun `a partial samsung piece logs a miss line while oxygenos stays frozen`() {
+        // u1127 dump :982 / module log :1060: Samsung resolved 17/30 cell specs, so a partial piece
+        // must name its miss. OxygenOS keeps its frozen report shape (coverage only unless nothing
+        // resolved).
+        val partial = IosPieceCoverage(
+            piece = "cell",
+            resolved = 17,
+            total = 30,
+            tried = listOf("stat_sys_signal_null")
+        )
+
+        val samsung = IosResourceEngine.coverageReport(listOf(partial), "samsung", LongArray(4))
+        assertEquals(2, samsung.size)
+        assertEquals(
+            "ios v2 coverage family=samsung piece=cell resolved=17/30 tried=stat_sys_signal_null",
+            samsung[0]
+        )
+        assertEquals(
+            "ios v2 miss family=samsung piece=cell tried=stat_sys_signal_null",
+            samsung[1]
+        )
+
+        val oxygenos = IosResourceEngine.coverageReport(listOf(partial), "oxygenos", LongArray(4))
+        assertEquals(1, oxygenos.size)
+    }
+
     // --------------------------------------------------------------------------------- gating
 
     @Test
