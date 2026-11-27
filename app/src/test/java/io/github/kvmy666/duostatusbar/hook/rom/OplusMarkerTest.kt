@@ -37,42 +37,34 @@ class OplusMarkerTest {
     }
 
     @Test
-    fun `detectInClassLoader returns the first present class marker`() {
+    fun `detectClassMarkers returns the first present class marker`() {
         val markers = OplusMarker.CLASS_MARKERS
-        assertEquals(
-            "class:${markers[0]}",
-            OplusMarker.detectInClassLoader(FakeClassLoader(setOf(markers[0])))
-        )
+        assertEquals("class:${markers[0]}", OplusMarker.detectClassMarkers { it == markers[0] })
         // Every marker alone proves the family and is reported verbatim.
-        assertEquals(
-            "class:${markers[1]}",
-            OplusMarker.detectInClassLoader(FakeClassLoader(setOf(markers[1])))
-        )
-        assertEquals(
-            "class:${markers[2]}",
-            OplusMarker.detectInClassLoader(FakeClassLoader(setOf(markers[2])))
-        )
+        assertEquals("class:${markers[1]}", OplusMarker.detectClassMarkers { it == markers[1] })
+        assertEquals("class:${markers[2]}", OplusMarker.detectClassMarkers { it == markers[2] })
         // When more than one resolves, the list order decides which marker is reported.
         assertEquals(
             "class:${markers[0]}",
-            OplusMarker.detectInClassLoader(FakeClassLoader(setOf(markers[2], markers[0])))
+            OplusMarker.detectClassMarkers { it == markers[2] || it == markers[0] }
         )
     }
 
     @Test
-    fun `detectInClassLoader returns empty for absent markers and a null loader`() {
-        assertEquals("", OplusMarker.detectInClassLoader(FakeClassLoader(emptySet())))
-        assertEquals("", OplusMarker.detectInClassLoader(null))
+    fun `detectClassMarkers returns empty for absent markers`() {
+        assertEquals("", OplusMarker.detectClassMarkers { false })
     }
 
-    /**
-     * A minimal loader that resolves exactly [present] and nothing else. The null parent makes the
-     * lookup deterministic: `Class.forName` cannot fall back to a bootstrap copy of an Oplus class.
-     */
-    private class FakeClassLoader(private val present: Set<String>) : ClassLoader(null) {
-        protected override fun loadClass(name: String, resolve: Boolean): Class<*> {
-            if (name in present) return String::class.java
-            throw ClassNotFoundException(name)
-        }
+    @Test
+    fun `detectClassMarkers returns empty for a real loader without the markers`() {
+        assertEquals(
+            "",
+            OplusMarker.detectInClassLoader(ClassLoader.getSystemClassLoader())
+        )
+    }
+
+    @Test
+    fun `detectInClassLoader returns empty for a null loader`() {
+        assertEquals("", OplusMarker.detectInClassLoader(null))
     }
 }

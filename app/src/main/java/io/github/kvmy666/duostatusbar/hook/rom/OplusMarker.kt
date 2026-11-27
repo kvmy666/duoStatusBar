@@ -50,13 +50,24 @@ internal object OplusMarker {
      */
     fun detectInClassLoader(loader: ClassLoader?): String {
         if (loader == null) return ""
-        for (name in CLASS_MARKERS) {
+        return detectClassMarkers { name ->
             try {
                 Class.forName(name, false, loader)
-                return "class:$name"
+                true
             } catch (_: Throwable) {
                 // Not present in this loader; try the next marker.
+                false
             }
+        }
+    }
+
+    /**
+     * Pure seam behind [detectInClassLoader]: returns `class:<name>` for the first marker in
+     * [CLASS_MARKERS] order for which [exists] is true, else "". No logging.
+     */
+    internal fun detectClassMarkers(exists: (String) -> Boolean): String {
+        for (name in CLASS_MARKERS) {
+            if (exists(name)) return "class:$name"
         }
         return ""
     }
