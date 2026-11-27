@@ -89,11 +89,17 @@ class BreadcrumbWiringTest {
             tail
         )
         assertEquals("a step name must not repeat in the ring: $tail", tail.size, tail.toSet().size)
+        val lineFormat = Regex("""^\d+\|process=com\.android\.systemui\|pid=4321\|step=[a-z:-]+$""")
         assertFalse(
             "the value format must stay readable: ${sink.globals.last()}",
-            sink.globals.any {
-                !Regex("""^\d+\|process=com\.android\.systemui\|pid=4321\|step=[a-z:-]+$""").matches(it)
+            sink.globals.any { value ->
+                value.split("\n").any { !lineFormat.matches(it) }
             }
+        )
+        assertEquals(
+            "the last written Settings.Global value must be the ordered report-visible ring tail",
+            Breadcrumb.linesForTest(),
+            sink.globals.last().split("\n")
         )
     }
 

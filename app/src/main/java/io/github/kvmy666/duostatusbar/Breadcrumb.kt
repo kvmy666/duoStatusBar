@@ -26,8 +26,10 @@ internal interface BreadcrumbSink {
  * outright (see `hook/DuoGuard.kt`), so the reporter's `cat` never saw a ring. A file ring nobody can
  * read is not a breadcrumb, so it was dropped; `Settings.Global` is the only readable sink.
  *
- * The value is `ts|process=<p>|pid=<pid>|step=<name>`. A failed write never stops the next step and
- * nothing here ever throws: a breadcrumb that kills the process it is meant to diagnose is useless.
+ * The value is the in-process ring itself: up to eight `ts|process=<p>|pid=<pid>|step=<name>` lines,
+ * newline-separated with the newest last, so a report that reads only `Settings.Global` still shows
+ * the sequence that led to the last step. A failed write never stops the next step and nothing here
+ * ever throws: a breadcrumb that kills the process it is meant to diagnose is useless.
  */
 internal object Breadcrumb {
 
@@ -75,7 +77,7 @@ internal object Breadcrumb {
         }
     }
 
-    /** The last breadcrumb written to `Settings.Global`, or null when there is none / unreadable. */
+    /** The last breadcrumb written to `Settings.Global` (the multi-line ring), or null when unreadable. */
     fun last(context: Context): String? = try {
         Settings.Global.getString(context.contentResolver, KEY)
     } catch (_: Throwable) {
@@ -85,14 +87,15 @@ internal object Breadcrumb {
     private fun flush() {
         try {
             val target: BreadcrumbSink
-            val latest: String
+            val value: String
             synchronized(lock) {
                 target = sink ?: return
                 if (!pending) return
-                latest = ring.lastOrNull() ?: return
+                if (ring.isEmpty()) return
+                value = ring.joinToString("\n")
             }
             try {
-                target.putGlobal(latest)
+                target.putGlobal(value)
             } catch (_: Throwable) {
             }
             synchronized(lock) { pending = false }

@@ -72,4 +72,25 @@ class BreadcrumbTest {
         assertTrue(ring.any { it.endsWith("|step=step-4") })
         assertTrue(ring.any { it.endsWith("|step=step-11") })
     }
+
+    @Test
+    fun `the written value is the ordered eight-line ring so a report sees the sequence`() {
+        for (i in 0 until 12) Breadcrumb.step("step-$i")
+
+        val value = sink.globals.last()
+        val lines = value.split("\n")
+        assertEquals("the report-visible value must be the bounded ring", 8, lines.size)
+        assertEquals(
+            "the value must hold the ring in order, oldest first",
+            listOf("step-4", "step-5", "step-6", "step-7", "step-8", "step-9", "step-10", "step-11"),
+            lines.map { it.substringAfter("|step=") }
+        )
+        lines.forEach { line ->
+            assertTrue(
+                "unexpected breadcrumb line: $line",
+                Regex("""^\d+\|process=com\.android\.systemui\|pid=4321\|step=step-\d+$""")
+                    .matches(line)
+            )
+        }
+    }
 }
