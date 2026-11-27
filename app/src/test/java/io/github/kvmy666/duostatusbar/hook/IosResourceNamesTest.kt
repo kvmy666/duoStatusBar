@@ -151,6 +151,20 @@ class IosResourceNamesTest {
     }
 
     @Test
+    fun `samsung maps the measured One UI extra signal families`() {
+        val samsung = IosResourceNames.specs("samsung")
+        // reverse/decoded/samsung/res/values/public.xml (One UI 16-11, SDK 36).
+        assertEquals(2, samsung.first { it.name == "stat_sys_wifi6_signal_3" }.value)
+        assertEquals(3, samsung.first { it.name == "stat_sys_wifi_signal_wifi_calling_4" }.value)
+        assertEquals(0, samsung.first { it.name == "stat_sys_wifi7_signal_0" }.value)
+        val nullVzw = samsung.first { it.name == "stat_sys_signal_null_vzw" }
+        assertEquals(IosResourceKind.CELL, nullVzw.kind)
+        assertEquals(0, nullVzw.value)
+        assertEquals("LTE", samsung.first { it.name == "ic_lte_mobiledata" }.label)
+        assertEquals("5G", samsung.first { it.name == "stat_sys_data_type_at_signal_area_5ga" }.label)
+    }
+
+    @Test
     fun `a spec without an explicit package resolves through the rom package`() {
         // R7 P5: the default is blank so the engine can use `rom.systemUiPackage` (m4).
         val specs = IosResourceNames.specs("oxygenos")
@@ -165,7 +179,9 @@ class IosResourceNamesTest {
         // Exact counts keep a future edit from silently dropping a measured entry.
         assertEquals(113, IosResourceNames.specs("oxygenos").size) // 94 + 19 R8 hide-extras
         assertEquals(113, IosResourceNames.specs("coloros").size) // the same live Oplus table (R17D)
-        assertEquals(108, IosResourceNames.specs("samsung").size)
+        // 108 + 25 Wi-Fi (5 families) + 4 no-service + 41 labels (the two *_5g_plus_mobiledata_default*
+        // entries in the R17C list are included, so the sum is 178, not the brief's 176).
+        assertEquals(178, IosResourceNames.specs("samsung").size)
         assertEquals(38, IosResourceNames.specs("hyperos").size)
         assertEquals(25, IosResourceNames.specs("nothing").size)
         assertEquals(21, IosResourceNames.specs("motorola").size)

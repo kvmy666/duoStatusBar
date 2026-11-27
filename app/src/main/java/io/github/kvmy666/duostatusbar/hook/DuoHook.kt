@@ -454,6 +454,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
             Breadcrumb.step("install:ios-engine")
             IosResourceEngine.install(lp.classLoader)
+            // R17C: the reload owner is a new diagnostics source; it stays empty for every family
+            // except Samsung, so the OxygenOS output is byte-identical.
+            runCatching {
+                IosStatusIconRefresh.install()
+                IosStatusIconRefresh.bindRoots { listOfNotNull(statusBarRoot, shadeRoot, shadeHeader) }
+            }.onFailure { IosV2Log.failureOnce("duohook.refresh.install", it) }
             Breadcrumb.step("install:ios-engine-ok")
             Breadcrumb.step("install:battery")
             // R17D: the host classloader is the only place the Oplus SystemUI classes are visible before
@@ -691,7 +697,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun activateIosV2(ctx: Context, settings: ModuleSettings, synchronous: Boolean): Boolean {
         if (iosRoute != IosRoute.V2) return false
         return try {
-            val engineReady = IosResourceEngine.activate(ctx, rom, settings, synchronous)
+            val engineReady = IosResourceEngine.activate(ctx, rom, settings, synchronous) {
+                IosStatusIconRefresh.request(rom.id)
+            }
             if (!engineReady) {
                 // R7 P5: no map (async without a previous snapshot, or an empty build) means the caller
                 // must keep the HOST owner; cancel any scheduled build and touch no view.
@@ -755,6 +763,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             IosDiagnostics.register(IosR8Report)
             iosRoute = IosRoute.V2
+            // R17C: the first reload pass after the owners are in place; coalesced with the
+            // onPublished request from a synchronous engine build.
+            runCatching { IosStatusIconRefresh.request(rom.id) }
+                .onFailure { IosV2Log.failureOnce("duohook.refresh.activate", it) }
             Breadcrumb.step("ios:v2-active")
             // R6/D13/D14: a successful activation clears any earlier route refusal.
             IosAvailability.routeFailed = false
@@ -773,6 +785,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * decides the route.
      */
     private fun stopIosV2Owners() {
+        // R17C: the deactivation is the stock-restore pass; remember whether the engine was live so a
+        // reload runs only for a bar that actually had v2 drawables installed.
+        val engineWasLive = IosResourceEngine.isActive
         // R9: put every stock LayoutParams/clip flag/scale type back before the drawables are restored.
         runCatching { IosSlotLayout.restoreAll() }
             .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.layout", it) }
@@ -792,6 +807,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.battery", it) }
         runCatching { IosResourceEngine.deactivate() }
             .onFailure { IosV2Log.failureOnce("duohook.stopIosV2.engine", it) }
+        // R17C: the engine is already inactive here, so the pass reloads the stock drawables the same
+        // way (updateDrawable(true)); only a bar that had v2 drawables asks for it.
+        if (engineWasLive) {
+            runCatching { IosStatusIconRefresh.request(rom.id) }
+                .onFailure { IosV2Log.failureOnce("duohook.refresh.stop", it) }
+        }
     }
 
     /**
@@ -939,6 +960,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     ?: return@guard
                 statusBarRoot = found
                 L.i("existing status bar window found: ${found.javaClass.name}")
+                requestIconRefreshIfLive()
                 scheduleAttach(attempt = 0)
                 // Now that a SystemUI-owned context exists, the bootstrap can succeed even when the
                 // ActivityThread lookups did not.
@@ -967,6 +989,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             if (found !== cached) {
                 statusBarRoot = found
                 L.i("existing status bar window adopted: ${found.javaClass.name}")
+                requestIconRefreshIfLive()
             }
             return found
         }
@@ -984,9 +1007,22 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         if (shadeRoot != null) return
         shadeRoot = view
         L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
+        requestIconRefreshIfLive()
         if (monitor != null) {
             attachExtraBars(view)
             addShadeLayoutListener(view)
+        }
+    }
+
+    /**
+     * R17C: asks for one coalesced Samsung reload pass when the engine is live and a root was just
+     * captured; the roots provider reads the fields at post time, so the pass sees the new tree.
+     */
+    private fun requestIconRefreshIfLive() {
+        try {
+            if (IosResourceEngine.isActive) IosStatusIconRefresh.request(rom.id)
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("duohook.refresh.root", t)
         }
     }
 
@@ -1327,6 +1363,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             if (existing != null && existing.isAttachedToWindow) return
                             statusBarRoot = view
                             L.i("status bar window found: ${view.javaClass.name}")
+                            requestIconRefreshIfLive()
                             scheduleAttach(attempt = 0)
                         }
                         AppContextResolver.TYPE_NOTIFICATION_SHADE -> adoptShadeWindow(view)
@@ -2095,6 +2132,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                             ShadeProbe.tree("header (ctor)", view)
                             L.i("shade header view: ${view.javaClass.name}")
                             shadeHeader = view
+                            requestIconRefreshIfLive()
                             if (features.duoRuntime) {
                                 view.post {
                                     shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }
@@ -2128,6 +2166,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 ShadeProbe.tree("header (stub)", view)
                                 L.i("shade header inflated from a stub: ${view.javaClass.name}")
                                 shadeHeader = view
+                                requestIconRefreshIfLive()
                                 if (features.duoRuntime) {
                                     view.post {
                                         shadeHeader?.let { host?.attachShadeHeader(it, shadeRoot) }

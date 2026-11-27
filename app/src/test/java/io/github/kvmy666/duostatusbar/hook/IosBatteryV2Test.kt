@@ -434,6 +434,45 @@ class IosBatteryV2Test {
         assertEquals(View.VISIBLE, forward.visibility)
     }
 
+    // ------------------------------------------------------------------ R17C density rebuild
+
+    @Test
+    fun `a density change rebuilds the glyph at the new stock size and restores the new stock`() {
+        val f = fixture()
+        val controller = f.controller()
+        assertTrue(controller.install(reading(level = 50), saver = false))
+        assertEquals(60, f.image.drawable.intrinsicWidth)
+        assertEquals(40, f.image.drawable.intrinsicHeight)
+
+        // Samsung's BatteryMeterViewController$1.onDensityOrFontScaleChanged sets a fresh
+        // SamsungBatteryMeterDrawable on the same ImageView (smali:116-120, :265-273).
+        val newStock = BitmapDrawable(
+            context.resources,
+            Bitmap.createBitmap(90, 60, Bitmap.Config.ARGB_8888)
+        )
+        f.image.setImageDrawable(newStock)
+
+        assertTrue(controller.reapplyAfterConfig())
+        assertTrue(f.image.drawable is IosBatteryDrawable)
+        assertEquals(90, f.image.drawable.intrinsicWidth)
+        assertEquals(60, f.image.drawable.intrinsicHeight)
+
+        // The captured stock must be the one this listener minted, not the install-time drawable.
+        controller.restore()
+        assertSame(newStock, f.image.drawable)
+    }
+
+    @Test
+    fun `the icon leaf is found by field type when mBatteryIconView is absent`() {
+        val root = FakeBatteryView(context)
+        assertEquals(root.alternateIcon, IosBatteryV2.iconFieldByType(root))
+    }
+
+    private class FakeBatteryView(context: Context) : FrameLayout(context) {
+        @JvmField
+        val alternateIcon = ImageView(context)
+    }
+
     // ------------------------------------------------------------------ bolts
 
     @Test

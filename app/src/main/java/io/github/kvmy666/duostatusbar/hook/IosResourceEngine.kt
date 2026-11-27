@@ -147,6 +147,19 @@ internal object IosResourceEngine : IosDiagnosticSource {
     @Volatile
     private var activeFamily: String = ""
 
+    // R17C: the package a miss must belong to, and the bounded name table for a non-OxygenOS report.
+    // The table survives a same-family re-activation that does NOT pass through deactivate (rapid
+    // settings revisions must not throw away the boot misses; the Fold built the map three times);
+    // deactivate clears it deliberately.
+    @Volatile
+    private var activePackage: String = ""
+
+    @Volatile
+    private var missFamily: String = ""
+
+    @Volatile
+    private var missNames: IosMissNames? = null
+
     private var generation: Long = 0L
 
     private var installDone = false
@@ -271,7 +284,8 @@ internal object IosResourceEngine : IosDiagnosticSource {
         context: android.content.Context,
         rom: RomAdapter,
         settings: ModuleSettings? = null,
-        synchronous: Boolean = false
+        synchronous: Boolean = false,
+        onPublished: (() -> Unit)? = null
     ): Boolean {
         var gen = 0L
         var previousLive = false
@@ -286,6 +300,13 @@ internal object IosResourceEngine : IosDiagnosticSource {
             }
             gen = ++generation
             activeFamily = rom.id
+            activePackage = rom.systemUiPackage
+            if (missFamily != rom.id) {
+                // A different family is a different resource table: start the miss table fresh. A
+                // same-family re-activation keeps the boot misses instead of resetting them.
+                missNames = IosMissNames()
+                missFamily = rom.id
+            }
             resetCountersLocked()
             activatedAtMs = System.currentTimeMillis()
             mapReadyAtMs = 0L
@@ -319,6 +340,15 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     L.i(line)
                 }
             }
+            if (published) {
+                // The caller's reload owner runs after the map is live; a failure here must not undo
+                // the publish (the stock bar already drew this map's drawables).
+                try {
+                    onPublished?.invoke()
+                } catch (t: Throwable) {
+                    IosV2Log.failureOnce("engine.onPublished", t)
+                }
+            }
         }
         if (synchronous) {
             work()
@@ -343,6 +373,9 @@ internal object IosResourceEngine : IosDiagnosticSource {
             generation++
             snapshot = null
             activeFamily = ""
+            activePackage = ""
+            missFamily = ""
+            missNames = null
             mapReadyAtMs = 0L
             lastCoverage = emptyList()
         }
@@ -382,6 +415,10 @@ internal object IosResourceEngine : IosDiagnosticSource {
                     val elapsed = System.nanoTime() - started
                     if (elapsed > maxMissNanos) maxMissNanos = elapsed
                 }
+                // R17C: name the miss only outside OxygenOS (its log is frozen). The package filter
+                // runs on the miss path; the entry-name lookup runs once per new id in the bounded
+                // table, so a notification icon never resolves a name more than once.
+                if (activeFamily != "oxygenos") noteMiss(id, args[0])
                 return
             }
             val wrapper = args[0] as? Resources ?: return
@@ -406,6 +443,40 @@ internal object IosResourceEngine : IosDiagnosticSource {
         } catch (t: Throwable) {
             // Whole body guarded: any unexpected failure leaves the stock load path untouched.
             IosV2Log.failureOnce("engine.loadDrawable", t)
+        }
+    }
+
+    /**
+     * R17C: a miss path only, outside OxygenOS. The package filter keeps app notification icons out
+     * of the name table, and [IosMissNames] resolves an entry name only once per new id. Any failure
+     * is silent.
+     */
+    private fun noteMiss(id: Int, arg: Any?) {
+        try {
+            val tracker = missNames ?: return
+            val resources = arg as? Resources ?: return
+            val pkg = try {
+                resources.getResourcePackageName(id)
+            } catch (t: Throwable) {
+                return
+            }
+            val expected = activePackage
+            if (expected.isNotEmpty() && pkg != expected) return
+            val family = missFamily
+            val name = tracker.record(id) {
+                try {
+                    resources.getResourceEntryName(id)
+                } catch (t: Throwable) {
+                    null
+                }
+            }
+            if (!name.isNullOrBlank()) {
+                logOnce.once("ios-miss:$family:$id") {
+                    L.i("ios v2 miss family=$family res=$name")
+                }
+            }
+        } catch (t: Throwable) {
+            IosV2Log.failureOnce("engine.missName", t)
         }
     }
 
@@ -640,12 +711,26 @@ internal object IosResourceEngine : IosDiagnosticSource {
 
     override fun diagnosticLines(): List<String> {
         val snap = snapshot
-        return listOf(
-            "$TAG: family=${activeFamily.ifEmpty { "none" }} active=${snap != null} " +
-                "installed=$installedFlag calls=$calls hits=$hits misses=$misses " +
-                "badPackage=$badPackage failures=$failures map=${snap?.size ?: 0} " +
-                "maxMissNs=$maxMissNanos"
-        )
+        val base = "$TAG: family=${activeFamily.ifEmpty { "none" }} active=${snap != null} " +
+            "installed=$installedFlag calls=$calls hits=$hits misses=$misses " +
+            "badPackage=$badPackage failures=$failures map=${snap?.size ?: 0} " +
+            "maxMissNs=$maxMissNanos"
+        // R17C: the first line is byte-identical; the miss table adds one line only on a non-OxygenOS
+        // family that actually recorded a name. An inactive/empty table is exactly one line.
+        if (activeFamily.isEmpty() || activeFamily == "oxygenos") return listOf(base)
+        val top = missNames?.top(8).orEmpty()
+        return if (top.isEmpty()) listOf(base) else listOf(base, missTopLine(activeFamily, top))
+    }
+
+    /**
+     * R17C: true when [id] is in the live map for [pkg] (or when no package was read). The reload
+     * pass uses this to decide whether an icon's resource is the one the map already replaced.
+     */
+    internal fun isMappedForRefresh(id: Int, pkg: String?): Boolean {
+        val snap = snapshot ?: return false
+        val index = snap.indexOf(id)
+        if (index < 0) return false
+        return pkg == null || snap.accepts(index, pkg)
     }
 
     /** Coverage lines for a build/report; a piece with zero resolved (or a runtime miss) gets a miss line. */
@@ -660,7 +745,10 @@ internal object IosResourceEngine : IosDiagnosticSource {
             out.add(coverageLine(family, piece))
             val index = IOS_PIECES.indexOf(piece.piece)
             val runtimeMiss = index >= 0 && index < misses.size && misses[index] > 0L
-            if (piece.resolved == 0 || runtimeMiss) {
+            // R17C: a partial piece is named on non-OxygenOS families (Samsung 17/30 cell), while the
+            // frozen OxygenOS report keeps its old zero-resolved/runtime-miss rule.
+            val partial = iosMapDropsEnabled(family) && piece.resolved < piece.total
+            if (piece.resolved == 0 || runtimeMiss || partial) {
                 out.add(missLine(family, piece.piece, piece.tried))
             }
         }

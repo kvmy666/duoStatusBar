@@ -133,10 +133,16 @@ class IosV2CoverageTest {
 
     @Test
     fun `battery stacked and extras miss lines use the fixed measured tried names`() {
+        // Samsung's batteryProbePlan is AOSP-only: the miss line must not name the OxygenOS classes.
         assertEquals(
-            "ios v2 miss family=samsung piece=battery " +
-                "tried=StatBatteryMeterView,BatteryViewBinder,BatteryMeterView",
+            "ios v2 miss family=samsung piece=battery tried=BatteryMeterView",
             batteryMissLine("samsung")
+        )
+        // OxygenOS keeps the exact measured view/binder/view list (byte-identical to 2.1.x).
+        assertEquals(
+            "ios v2 miss family=oxygenos piece=battery " +
+                "tried=StatBatteryMeterView,BatteryViewBinder,BatteryMeterView",
+            batteryMissLine("oxygenos")
         )
         assertEquals(
             "ios v2 miss family=oxygenos piece=stacked tried=OplusStatusBarMobileViewBinder",
