@@ -91,11 +91,15 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     /**
      * R4: true only when **this family's** battery owner installed. Selection and activation must never
      * be satisfied by a foreign hook.
+     *
+     * R17D: ColorOS also proves the Oplus binder hook ([IosV2Profile.requiresOplusBinder]); OxygenOS
+     * keeps its measured view-only rule.
      */
     internal fun installedFor(familyId: String): Boolean = IosV2Profile.batteryOwnerInstalled(
         familyId,
         oplusConstructorHooked,
-        aospConstructorHooked
+        aospConstructorHooked,
+        oplusBinderHooked
     )
 
     private var installDone = false
@@ -114,6 +118,13 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 
     @Volatile
     private var aospConstructorHooked = false
+
+    /**
+     * R17D: true when at least one Oplus `BatteryViewBinder` method was really hooked. ColorOS needs
+     * this too (a view-only hook can be overwritten by the binder); OxygenOS does not.
+     */
+    @Volatile
+    private var oplusBinderHooked = false
 
     private val stateLock = Any()
 
@@ -209,7 +220,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
      * R4: only the family's own owner is probed. `oxygenos` keeps the measured Oplus view/binder +
      * AOSP view probe and its exact failure messages; `samsung` probes only the AOSP view (an absent
      * Oplus class is not a Samsung failure and must not appear in `hooks ... battery=`). An
-     * empty/unknown family keeps the historical any-class probe.
+     * empty/unknown family keeps the historical any-class probe. R17D: ColorOS reports installed only
+     * when the Oplus view *and* binder hooks really installed; OxygenOS keeps its view-only rule.
      */
     @Synchronized
     fun install(classLoader: ClassLoader, familyId: String = "") {
@@ -237,8 +249,12 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             if (IosBatteryProbe.OPLUS_BINDER in plan) {
                 val binder = findClass(OPLUS_BINDER_CLASS, classLoader)
                 noteClass(OPLUS_BINDER_CLASS.substringAfterLast('.'), binder != null)
-                if (binder != null) hookOplusBinder(binder, oplus) else
+                if (binder != null) {
+                    oplusBinderHooked = hookOplusBinder(binder, oplus)
+                } else {
                     countFailure("no OxygenOS battery binder class")
+                    oplusBinderHooked = false
+                }
             }
 
             if (IosBatteryProbe.AOSP_VIEW in plan) {
@@ -261,7 +277,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 
             // R7 P5: a resolved class is not a working hook. V2 may only be selected when at least
             // one constructor hook was actually installed; otherwise the host stays the owner.
-            installedFlag = batteryHookInstalled(oplusHooked, aospHooked)
+            // R17D: ColorOS also needs the binder hook; OxygenOS keeps its measured view-only rule.
+            installedFlag = batteryHookInstalled(oplusHooked, aospHooked) &&
+                (!IosV2Profile.requiresOplusBinder(familyId) || oplusBinderHooked)
             if (!installedFlag) {
                 logOnce.once("ios-battery-no-class") {
                     L.w("$TAG no battery view hook installed - battery stays stock")
@@ -322,10 +340,16 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         return constructors
     }
 
-    private fun hookOplusBinder(cls: Class<*>, oplus: Class<*>?) {
-        if (oplus == null) return
+    /**
+     * R17D: hooks the Oplus binder pushes and reports whether at least one method was really hooked.
+     * false when the view class is absent or no push method resolved. ColorOS requires this too
+     * ([IosV2Profile.requiresOplusBinder]); OxygenOS keeps its measured view-only rule.
+     */
+    private fun hookOplusBinder(cls: Class<*>, oplus: Class<*>?): Boolean {
+        if (oplus == null) return false
+        var hooked = false
         for (name in OPLUS_BINDER_METHODS) {
-            hookSafely("oplus-binder-$name") {
+            val result = hookSafely("oplus-binder-$name") {
                 XposedBridge.hookAllMethods(cls, name, object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         try {
@@ -340,7 +364,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                     }
                 })
             }
+            if (result) hooked = true
         }
+        return hooked
     }
 
     private fun hookAospView(cls: Class<*>): Boolean {
@@ -891,12 +917,19 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     }
 
     /**
-     * Test seam (R4): publish the two constructor-hook results without Xposed, so the owner rule can
-     * be exercised. Call with `false, false` in a `finally` to restore the process state.
+     * Test seam (R4): publish the constructor-hook results and, R17D, whether the Oplus binder hooked,
+     * without Xposed, so the owner rule can be exercised. [installedFlag] keeps the historical
+     * any-owner back-compat value; family selection uses [installedFor]. Call with `false, false` in a
+     * `finally` to restore the process state.
      */
-    internal fun setOwnerHooksForTest(oplusHooked: Boolean, aospHooked: Boolean) {
+    internal fun setOwnerHooksForTest(
+        oplusHooked: Boolean,
+        aospHooked: Boolean,
+        oplusBinderHooked: Boolean = false
+    ) {
         oplusConstructorHooked = oplusHooked
         aospConstructorHooked = aospHooked
+        this.oplusBinderHooked = oplusBinderHooked
         installedFlag = batteryHookInstalled(oplusHooked, aospHooked)
     }
 

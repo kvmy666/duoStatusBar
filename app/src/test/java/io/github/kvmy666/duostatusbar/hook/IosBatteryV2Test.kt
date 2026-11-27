@@ -530,6 +530,34 @@ class IosBatteryV2Test {
     }
 
     @Test
+    fun `coloros needs the oplus binder hook but oxygenos does not`() {
+        IosBatteryV2.setOwnerHooksForTest(
+            oplusHooked = true,
+            aospHooked = false,
+            oplusBinderHooked = false
+        )
+        try {
+            // The view hook alone is not enough for ColorOS: the binder must also have installed.
+            assertFalse(IosBatteryV2.installedFor("coloros"))
+            // OxygenOS keeps its measured view-only rule (freeze).
+            assertTrue(IosBatteryV2.installedFor("oxygenos"))
+        } finally {
+            IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = false)
+        }
+
+        IosBatteryV2.setOwnerHooksForTest(
+            oplusHooked = true,
+            aospHooked = false,
+            oplusBinderHooked = true
+        )
+        try {
+            assertTrue(IosBatteryV2.installedFor("coloros"))
+        } finally {
+            IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = false)
+        }
+    }
+
+    @Test
     fun `a Samsung owner-only install satisfies samsung but not oxygenos`() {
         IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = true)
         try {

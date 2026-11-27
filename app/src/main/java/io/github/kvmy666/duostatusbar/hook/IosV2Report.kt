@@ -138,6 +138,8 @@ internal object IosV2Report {
         if (IosV2Profile.stackedFamily(family)) {
             val stacked = IosStackedSim.missingBindersForDiagnostics
             if (stacked.isNotEmpty()) out.add(stackedMissLine(family, stacked))
+        }
+        if (IosV2Profile.extrasFamily(family)) {
             val extras = IosExtras.missingBindersForDiagnostics
             if (extras.isNotEmpty()) out.add(extrasMissLine(family, extras))
         }

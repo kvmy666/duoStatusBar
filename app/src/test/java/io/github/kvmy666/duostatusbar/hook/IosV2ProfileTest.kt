@@ -81,6 +81,42 @@ class IosV2ProfileTest {
     }
 
     @Test
+    fun `coloros requires the oplus battery binder`() {
+        assertFalse(
+            "coloros must prove the Oplus binder, not just the view",
+            IosV2Profile.batteryOwnerInstalled(
+                "coloros", oplusHooked = true, aospHooked = false, oplusBinderHooked = false
+            )
+        )
+        assertTrue(
+            IosV2Profile.batteryOwnerInstalled(
+                "coloros", oplusHooked = true, aospHooked = false, oplusBinderHooked = true
+            )
+        )
+        // OxygenOS keeps its measured view-only rule: no binder proof is required (freeze).
+        assertTrue(
+            IosV2Profile.batteryOwnerInstalled(
+                "oxygenos", oplusHooked = true, aospHooked = false, oplusBinderHooked = false
+            )
+        )
+        // The AOSP owner and a non-family are unchanged.
+        assertTrue(
+            IosV2Profile.batteryOwnerInstalled(
+                "samsung", oplusHooked = false, aospHooked = true, oplusBinderHooked = false
+            )
+        )
+        assertFalse(IosV2Profile.batteryOwnerInstalled("hyperos", true, true, oplusBinderHooked = true))
+    }
+
+    @Test
+    fun `requires the oplus binder only on coloros`() {
+        assertTrue(IosV2Profile.requiresOplusBinder("coloros"))
+        assertFalse(IosV2Profile.requiresOplusBinder("oxygenos"))
+        assertFalse(IosV2Profile.requiresOplusBinder("samsung"))
+        assertFalse(IosV2Profile.requiresOplusBinder("aosp"))
+    }
+
+    @Test
     fun `existing family booleans are unchanged`() {
         assertEquals(
             listOf("oxygenos", "coloros", "samsung"),

@@ -56,15 +56,26 @@ internal object IosV2Profile {
     }
 
     /**
+     * R17D: ColorOS must prove the Oplus `BatteryViewBinder` too, not just the battery view; OxygenOS
+     * keeps its measured view-only rule. A view hook alone leaves ColorOS's binder free to push its own
+     * drawable back, so the family is only installed when both parts really hooked.
+     */
+    fun requiresOplusBinder(id: String): Boolean = id == "coloros"
+
+    /**
      * R4: true only when the family's **own** battery owner installed. A constructor hook from the
      * other family never satisfies this family (the R4 rule: Samsung with only the Oplus hook is off).
+     *
+     * R17D: an Oplus family that [requiresOplusBinder] (ColorOS) also needs the Oplus binder hook;
+     * OxygenOS keeps its measured view-only rule and the default `true` keeps old call sites unchanged.
      */
     fun batteryOwnerInstalled(
         id: String,
         oplusHooked: Boolean,
-        aospHooked: Boolean
+        aospHooked: Boolean,
+        oplusBinderHooked: Boolean = true
     ): Boolean = when (batteryOwner(id)) {
-        IosBatteryOwner.OPLUS -> oplusHooked
+        IosBatteryOwner.OPLUS -> oplusHooked && (!requiresOplusBinder(id) || oplusBinderHooked)
         IosBatteryOwner.AOSP -> aospHooked
         null -> false
     }

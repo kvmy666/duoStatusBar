@@ -28,8 +28,8 @@ import java.util.concurrent.ConcurrentHashMap
  * the leaf `ImageView`s so a toggle is one gate flip plus `requestLayout()`/`invalidate()` (no
  * rebind, no overlay, no attach).
  *
- * iOS off is zero effect: [hidden] defaults to false, and only OxygenOS maps
- * [IosResourceKind.HIDDEN] entries, so every other ROM keeps its stock badge/arrows untouched.
+ * iOS off is zero effect: [hidden] defaults to false, and only the Oplus families (OxygenOS/ColorOS)
+ * map [IosResourceKind.HIDDEN] entries, so every other ROM keeps its stock badge/arrows untouched.
  */
 internal object IosExtras {
 
