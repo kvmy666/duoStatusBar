@@ -504,12 +504,29 @@ class IosBatteryV2Test {
             ),
             batteryProbePlan("oxygenos")
         )
+        // R17D: ColorOS is the same measured Oplus battery owner, so it probes the same classes.
+        assertEquals(
+            "coloros probes the same Oplus battery classes as oxygenos",
+            listOf(
+                IosBatteryProbe.OPLUS_VIEW,
+                IosBatteryProbe.OPLUS_BINDER,
+                IosBatteryProbe.AOSP_VIEW
+            ),
+            batteryProbePlan("coloros")
+        )
+        assertEquals(batteryProbePlan("oxygenos"), batteryProbePlan("coloros"))
         // Samsung must not probe the Oplus view/binder: the absent classes are not Samsung failures
         // and must not show as foreign `missing:` entries in `hooks ... battery=`.
         assertEquals(listOf(IosBatteryProbe.AOSP_VIEW), batteryProbePlan("samsung"))
         // An empty/unknown family keeps today's any-class probe.
         assertEquals(batteryProbePlan("oxygenos"), batteryProbePlan(""))
         assertEquals(batteryProbePlan("oxygenos"), batteryProbePlan("hyperos"))
+    }
+
+    @Test
+    fun `coloros uses the Oplus battery owner and ignores the AOSP hook`() {
+        assertTrue(IosV2Profile.batteryOwnerInstalled("coloros", oplusHooked = true, aospHooked = false))
+        assertFalse(IosV2Profile.batteryOwnerInstalled("coloros", oplusHooked = false, aospHooked = true))
     }
 
     @Test

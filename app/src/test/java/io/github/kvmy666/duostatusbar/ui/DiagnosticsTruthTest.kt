@@ -1,10 +1,12 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
+import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -168,5 +170,43 @@ class DiagnosticsTruthTest {
         val at37 = reportRom("Acme", "gatedrom", "product", "display", profiles, 37, marker)
         assertEquals("aosp", at37.id)
         assertFalse(at37.measured)
+    }
+
+    // ------------------------------------------------------------- R17D: the adapter summary line
+
+    @Test
+    fun `adapterSummary keeps the current text for null and a no-marker adapter`() {
+        // `unknown` is the current null spelling (`rom?.id ?: "unknown"`); a real AOSP adapter keeps
+        // the exact current line, with no extra marker field.
+        assertEquals("rom adapter: unknown (measured=false)", adapterSummary(null))
+        val aosp = RomAdapter(
+            id = "aosp",
+            label = "AOSP",
+            systemUiPackage = "com.android.systemui",
+            containerIds = listOf("system_icons"),
+            batteryId = "battery",
+            notes = "AOSP baseline"
+        )
+        assertEquals("rom adapter: aosp (measured=false)", adapterSummary(aosp))
+    }
+
+    @Test
+    fun `adapterSummary names the marker on a marker-proven coloros adapter`() {
+        val marker =
+            "class:com.oplus.systemui.statusbar.pipeline.battery.ui.view.StatBatteryMeterView"
+        val markers = RomMarkers.of(
+            systemUiSourceDir = "/system_ext/priv-app/SystemUI/SystemUI.apk",
+            systemUiApplicationClass = "com.android.systemui.SystemUIApplication",
+            oplusMarker = marker
+        )
+        val rom = RomDetection.forThisRom(
+            "realme", "realme", "RMX5011RU", "RMX5011_17.0.0.110(EX01)", 37, markers
+        )
+        assertEquals("coloros", rom.id)
+        assertTrue(rom.marker.isNotBlank())
+        assertEquals(
+            "rom adapter: coloros (measured=false, marker=$marker)",
+            adapterSummary(rom)
+        )
     }
 }

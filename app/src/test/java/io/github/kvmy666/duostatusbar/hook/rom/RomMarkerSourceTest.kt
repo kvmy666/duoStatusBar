@@ -46,4 +46,32 @@ class RomMarkerSourceTest {
         )
         if (!markers.read) assertEquals(RomMarkers.UNKNOWN, markers)
     }
+
+    @Test
+    fun `an oplus marker is a read but not proof of a non-miui systemui`() {
+        // R17D: the marker is a positive Oplus proof. It is a field of the read record, but with no
+        // source path or application class it still says nothing about MIUI either way.
+        val markers = RomMarkers.of(
+            oplusMarker =
+                "class:com.oplus.systemui.statusbar.pipeline.battery.ui.view.StatBatteryMeterView"
+        )
+        assertTrue("a marker is a read field", markers.read)
+        assertTrue(markers.hasOplusMarker)
+        assertTrue(markers.provesFamily("coloros"))
+        assertFalse("a marker-only record is not non-MIUI proof", markers.provesNonMiui)
+    }
+
+    @Test
+    fun `a package manager failure reads no oplus marker`() {
+        val context = RuntimeEnvironment.getApplication()
+        val failing = object : android.content.ContextWrapper(context) {
+            override fun getPackageManager(): android.content.pm.PackageManager =
+                throw SecurityException("denied")
+        }
+
+        val markers = RomMarkerSource.read(failing)
+        assertEquals(RomMarkers.UNKNOWN, markers)
+        assertEquals("", markers.oplusMarker)
+        assertFalse(markers.hasOplusMarker)
+    }
 }

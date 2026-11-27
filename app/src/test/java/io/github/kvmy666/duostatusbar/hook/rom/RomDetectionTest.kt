@@ -27,6 +27,31 @@ class RomDetectionTest {
         systemUiApplicationClass = "com.android.systemui.SystemUIApplication"
     )
 
+    /**
+     * The Oplus battery class measured on the realme RMX5011
+     * (`.pm/evidence/u1127/new-duo-report-20261127-175643/diagnostics.txt:91`) and on the OnePlus
+     * PLK110 (`duo-report-20261127-150754/diagnostics.txt:108`).
+     */
+    private val oplusMarker =
+        "class:com.oplus.systemui.statusbar.pipeline.battery.ui.view.StatBatteryMeterView"
+
+    /**
+     * A full SystemUI package record with the Oplus marker. The realme RMX5011 still reports the AOSP
+     * adapter today (`new-duo-report-20261127-175643/diagnostics.txt:50`), and its SystemUI path/class
+     * are the ones CPH2747 also reports, so the marker is the only positive proof.
+     */
+    private val oplusMarkers = RomMarkers.of(
+        systemUiSourceDir = "/system_ext/priv-app/SystemUI/SystemUI.apk",
+        systemUiApplicationClass = "com.android.systemui.SystemUIApplication",
+        oplusMarker = oplusMarker
+    )
+
+    /** The RMX5011 build identity from `new-duo-report-20261127-175643/diagnostics.txt` (SDK 37). */
+    private fun rmx5011(markers: RomMarkers = RomMarkers.UNKNOWN): RomAdapter =
+        RomDetection.forThisRom(
+            "realme", "realme", "RMX5011RU", "RMX5011_17.0.0.110(EX01)", 37, markers
+        )
+
     @Test
     fun `oneplus cph2747 keeps the measured ids and is measured on that identity`() {
         // CPH2747's SystemUI is /system_ext/priv-app/SystemUI/SystemUI.apk with
@@ -671,6 +696,182 @@ class RomDetectionTest {
             "read without any field is still not proof",
             RomMarkers(read = true).provesNonMiui
         )
+    }
+
+    // ------------------------------------------------------------- R17D: the Oplus marker family
+
+    @Test
+    fun `realme with an oplus marker selects the marker coloros adapter`() {
+        val rom = rmx5011(oplusMarkers)
+        assertEquals("coloros", rom.id)
+        assertEquals(oplusMarker, rom.marker)
+        assertEquals(
+            listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
+            rom.containerIds
+        )
+        assertEquals("battery", rom.batteryId)
+        assertEquals("clock", rom.clockId)
+        assertEquals(
+            listOf("quick_qs_status_icons", "shade_header_system_icons"),
+            rom.shadeContainerIds
+        )
+        assertEquals("batteryRemainingIcon", rom.shadeBatteryId)
+        assertTrue(rom.coverHook)
+        assertEquals("panel_type_5arg", rom.panelExpansionKind)
+        assertFalse(rom.panelHookMeasured)
+        assertFalse(rom.panelOwnerAvailable)
+        assertFalse("the marker adapter is not device-measured", rom.measured)
+        assertFalse("the shade ids are not device-measured", rom.shadeMeasured)
+        assertTrue(
+            "the notes must name the marker proof: ${rom.notes}",
+            rom.notes.startsWith("family=oplus via marker $oplusMarker (unverified)")
+        )
+        assertFalse(
+            "a proven marker is not a brand match: ${rom.notes}",
+            rom.notes.contains("brand-match")
+        )
+    }
+
+    @Test
+    fun `realme without a marker stays aosp`() {
+        // Evidence: `.pm/evidence/u1127/new-duo-report-20261127-175643/diagnostics.txt:50` - the
+        // RMX5011 reports `rom adapter: aosp (measured=false)` today.
+        val rom = rmx5011()
+        assertEquals("aosp", rom.id)
+        assertEquals("", rom.marker)
+    }
+
+    @Test
+    fun `oppo without a marker keeps the static coloros adapter`() {
+        val rom = RomDetection.forThisRom("OPPO", "OPPO", "CPH2451", "OPPO/CPH2451:14", 14)
+        assertEquals("coloros", rom.id)
+        assertEquals("", rom.marker)
+        assertEquals(
+            listOf("quick_qs_status_icons", "quick_status_bar_header_system_icons", "system_icons"),
+            rom.shadeContainerIds
+        )
+        assertEquals(listOf("signal_cluster"), rom.hideContainerIds)
+        assertEquals("battery", rom.shadeBatteryId)
+        assertFalse(rom.coverHook)
+        assertEquals("none", rom.panelExpansionKind)
+    }
+
+    @Test
+    fun `oppo with a marker uses the marker coloros data`() {
+        val rom = RomDetection.forThisRom(
+            "OPPO", "OPPO", "CPH2451", "OPPO/CPH2451:14", 14, oplusMarkers
+        )
+        assertEquals("coloros", rom.id)
+        assertEquals(oplusMarker, rom.marker)
+        assertEquals(
+            listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
+            rom.containerIds
+        )
+        assertEquals(
+            listOf("quick_qs_status_icons", "shade_header_system_icons"),
+            rom.shadeContainerIds
+        )
+        assertTrue(rom.coverHook)
+        assertEquals("panel_type_5arg", rom.panelExpansionKind)
+    }
+
+    @Test
+    fun `a marker-only record proves coloros and nothing else`() {
+        val markerOnly = RomMarkers.of(oplusMarker = oplusMarker)
+        assertTrue("a marker is a read field", markerOnly.read)
+        assertTrue(markerOnly.hasOplusMarker)
+        assertTrue(markerOnly.provesFamily("coloros"))
+        assertFalse("a marker-only record does not prove HyperOS", markerOnly.provesFamily("hyperos"))
+        assertFalse("a marker-only record does not prove OxygenOS", markerOnly.provesFamily("oxygenos"))
+        assertFalse("a marker with no source/class is not non-MIUI proof", markerOnly.provesNonMiui)
+    }
+
+    @Test
+    fun `a marker-only record never changes samsung pixel or xiaomi selection`() {
+        val markerOnly = RomMarkers.of(oplusMarker = oplusMarker)
+        // Samsung is selected before any marker branch.
+        assertEquals(
+            RomDetection.forThisRom(
+                "samsung", "samsung", "dm1q", "samsung/dm1q/dm1q:14", 36, RomMarkers.UNKNOWN
+            ),
+            RomDetection.forThisRom(
+                "samsung", "samsung", "dm1q", "samsung/dm1q/dm1q:14", 36, markerOnly
+            )
+        )
+        // Pixel/Google is not an Oplus family: AOSP either way.
+        assertEquals(
+            RomDetection.forThisRom("Google", "google", "husky", "Google/husky:16", 36, RomMarkers.UNKNOWN),
+            RomDetection.forThisRom("Google", "google", "husky", "Google/husky:16", 36, markerOnly)
+        )
+        // The Xiaomi brand keeps the old HyperOS rule, and a marker-only record cannot make it
+        // measured because the source/class fields are blank.
+        val xiaomiUnknown = RomDetection.forThisRom("Xiaomi", "Redmi", "p", "d", 37, RomMarkers.UNKNOWN)
+        val xiaomiMarker = RomDetection.forThisRom("Xiaomi", "Redmi", "p", "d", 37, markerOnly)
+        assertEquals("hyperos", xiaomiMarker.id)
+        assertEquals(xiaomiUnknown, xiaomiMarker)
+    }
+
+    @Test
+    fun `cph2747 is byte-identical with and without the oplus marker`() {
+        val without = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16", 36, RomMarkers.UNKNOWN
+        )
+        val with = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "CPH2747", "OnePlus/CPH2747/OP611FL1:16", 36, oplusMarkers
+        )
+        assertEquals("oxygenos", with.id)
+        assertEquals("the marker must not leak into OxygenOS", "", with.marker)
+        assertEquals("OnePlus CPH2747 is provably unchanged by the marker", without, with)
+    }
+
+    @Test
+    fun `plk110 is unchanged by the marker`() {
+        // Evidence: `.pm/evidence/u1127/duo-report-20261127-150754/diagnostics.txt:67` reports
+        // oxygenos, `:108-109` show the same Oplus battery/clock classes as the realme.
+        val without = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "PLK110", "PLK110_17.0.1.201(CN01)", 37, RomMarkers.UNKNOWN
+        )
+        val with = RomDetection.forThisRom(
+            "OnePlus", "OnePlus", "PLK110", "PLK110_17.0.1.201(CN01)", 37, oplusMarkers
+        )
+        assertEquals("oxygenos", with.id)
+        assertEquals(without, with)
+    }
+
+    @Test
+    fun `a measured coloros asset profile needs the oplus marker`() {
+        val measuredColorOs = RomAdapter(
+            id = "coloros",
+            label = "ColorOS marker profile",
+            systemUiPackage = "com.android.systemui",
+            containerIds = listOf("asset_only_container"),
+            batteryId = "battery",
+            notes = "measured",
+            match = listOf("realme"),
+            measured = true,
+            apiMin = 37,
+            apiMax = 37
+        )
+        val profiles = listOf(measuredColorOs)
+
+        // Without the marker the measured profile is rejected and realme stays AOSP.
+        val without = RomDetection.forThisRom(
+            "realme", "realme", "RMX5011RU", "RMX5011_17.0.0.110(EX01)",
+            profiles, 37, RomMarkers.UNKNOWN
+        )
+        assertEquals("aosp", without.id)
+        assertFalse(without.measured)
+        assertFalse(without.containerIds.contains("asset_only_container"))
+
+        // The Oplus marker proves the family, so the measured profile is accepted.
+        assertTrue(oplusMarkers.provesFamily("coloros"))
+        val with = RomDetection.forThisRom(
+            "realme", "realme", "RMX5011RU", "RMX5011_17.0.0.110(EX01)",
+            profiles, 37, oplusMarkers
+        )
+        assertEquals("coloros", with.id)
+        assertTrue("the measured asset profile is accepted with the marker", with.measured)
+        assertEquals("asset_only_container", with.containerIds.first())
     }
 
 }

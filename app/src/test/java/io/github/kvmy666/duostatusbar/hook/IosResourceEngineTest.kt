@@ -306,9 +306,10 @@ class IosResourceEngineTest {
     // --------------------------------------------------------------------------------- gating
 
     @Test
-    fun `activate ignores every non-v2 family and stays inactive`() {
-        // Dormant (R13) measured families must refuse activation exactly like host-only families.
-        for (id in listOf("aosp", "hyperos", "nothing", "motorola", "vivo", "coloros", "honor")) {
+    fun `activate ignores host-only and dormant families and stays inactive`() {
+        // R17D: ColorOS is now a live family and is no longer in this list. The dormant (R13) measured
+        // families must refuse activation exactly like the host-only ones.
+        for (id in listOf("aosp", "hyperos", "nothing", "motorola", "vivo", "honor")) {
             assertFalse(id, IosResourceEngine.activate(context(), rom(id), synchronous = true))
             assertFalse(id, IosResourceEngine.isActive)
             assertEquals(id, 0, IosResourceEngine.mapSize)

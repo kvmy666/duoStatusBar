@@ -94,10 +94,26 @@ class IosResourceNamesTest {
         assertEquals(expected, hidden.map { it.name }.toSet())
         assertEquals(19, hidden.map { it.name }.toSet().size) // no duplicates
         assertTrue(hidden.all { it.kind == IosResourceKind.HIDDEN && it.value == 0 })
-        // Only the OxygenOS family gets hide-extras entries.
-        for (family in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" }) {
+        // The live Oplus family (ColorOS) shares the same hide-extras entries; every other family
+        // has none.
+        for (family in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" && it != "coloros" }) {
             assertTrue("$family has hide-extras", IosResourceNames.hiddenSpecs(family).isEmpty())
         }
+    }
+
+    @Test
+    fun `coloros mirrors the OxygenOS resource table including the hidden specs`() {
+        // R17D: ColorOS is live on the measured Oplus table, so it must be the same 113 specs and the
+        // same 19 hidden leaves as OxygenOS (dropping one would silently hide a stock icon).
+        val oxygen = IosResourceNames.specs("oxygenos")
+        val coloros = IosResourceNames.specs("coloros")
+        assertEquals(113, coloros.size)
+        assertEquals(oxygen, coloros)
+        assertEquals(19, IosResourceNames.hiddenSpecs("coloros").size)
+        assertEquals(
+            IosResourceNames.hiddenSpecs("oxygenos"),
+            IosResourceNames.hiddenSpecs("coloros")
+        )
     }
 
     // -------------------------------------------------------------------------------- all maps
@@ -148,6 +164,7 @@ class IosResourceNamesTest {
     fun `live and dormant tables keep their exact measured counts`() {
         // Exact counts keep a future edit from silently dropping a measured entry.
         assertEquals(113, IosResourceNames.specs("oxygenos").size) // 94 + 19 R8 hide-extras
+        assertEquals(113, IosResourceNames.specs("coloros").size) // the same live Oplus table (R17D)
         assertEquals(108, IosResourceNames.specs("samsung").size)
         assertEquals(38, IosResourceNames.specs("hyperos").size)
         assertEquals(25, IosResourceNames.specs("nothing").size)
@@ -155,7 +172,6 @@ class IosResourceNamesTest {
         assertEquals(11, IosResourceNames.specs("vivo").size)
         // Host-only / unsupported families have no resource map.
         assertTrue(IosResourceNames.specs("aosp").isEmpty())
-        assertTrue(IosResourceNames.specs("coloros").isEmpty())
         assertTrue(IosResourceNames.specs("honor").isEmpty())
         assertTrue(IosResourceNames.specs("unknown").isEmpty())
         for (id in listOf("hyperos", "nothing", "motorola", "vivo")) {

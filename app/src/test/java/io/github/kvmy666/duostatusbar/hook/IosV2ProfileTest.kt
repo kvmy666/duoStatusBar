@@ -19,17 +19,23 @@ class IosV2ProfileTest {
     @Test
     fun `battery owner is the measured class family per v2 family`() {
         assertEquals(IosBatteryOwner.OPLUS, IosV2Profile.batteryOwner("oxygenos"))
+        // R17D: ColorOS uses the same measured Oplus battery owner as OxygenOS.
+        assertEquals(IosBatteryOwner.OPLUS, IosV2Profile.batteryOwner("coloros"))
         assertEquals(IosBatteryOwner.AOSP, IosV2Profile.batteryOwner("samsung"))
-        for (id in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" && it != "samsung" }) {
+        for (id in RomFamilies.CANONICAL_IDS.filter {
+            it != "oxygenos" && it != "coloros" && it != "samsung"
+        }) {
             assertNull(id, IosV2Profile.batteryOwner(id))
         }
     }
 
     @Test
-    fun `stacked and extras are owned only on the measured OxygenOS family`() {
+    fun `stacked and extras are owned only on the measured Oplus families`() {
         assertTrue(IosV2Profile.stackedFamily("oxygenos"))
         assertTrue(IosV2Profile.extrasFamily("oxygenos"))
-        for (id in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" }) {
+        assertTrue("coloros binds the same Oplus stacked cluster", IosV2Profile.stackedFamily("coloros"))
+        assertTrue("coloros binds the same Oplus extras leaves", IosV2Profile.extrasFamily("coloros"))
+        for (id in RomFamilies.CANONICAL_IDS.filter { it != "oxygenos" && it != "coloros" }) {
             assertFalse(id, IosV2Profile.stackedFamily(id))
             assertFalse(id, IosV2Profile.extrasFamily(id))
         }
@@ -42,6 +48,10 @@ class IosV2ProfileTest {
 
         assertTrue(IosV2Profile.batteryOwnerInstalled("samsung", oplusHooked = false, aospHooked = true))
         assertFalse(IosV2Profile.batteryOwnerInstalled("samsung", oplusHooked = true, aospHooked = false))
+
+        // R17D: ColorOS owns the Oplus hook, never the AOSP one.
+        assertTrue(IosV2Profile.batteryOwnerInstalled("coloros", oplusHooked = true, aospHooked = false))
+        assertFalse(IosV2Profile.batteryOwnerInstalled("coloros", oplusHooked = false, aospHooked = true))
 
         // A non-family has no owner at all, whatever was hooked.
         assertFalse(IosV2Profile.batteryOwnerInstalled("hyperos", true, true))
@@ -73,7 +83,7 @@ class IosV2ProfileTest {
     @Test
     fun `existing family booleans are unchanged`() {
         assertEquals(
-            listOf("oxygenos", "samsung"),
+            listOf("oxygenos", "coloros", "samsung"),
             RomFamilies.CANONICAL_IDS.filter { IosV2Profile.engineFamily(it) }
         )
         for (id in RomFamilies.CANONICAL_IDS) {

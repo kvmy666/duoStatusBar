@@ -230,6 +230,38 @@ class RomProfilesTest {
     }
 
     @Test
+    fun `the shipped unmeasured coloros profile does not override a marker-proven realme`() {
+        // R17D: the asset coloros entry matches "realme" (`assets/rom-profiles.json`) but is
+        // unmeasured, so the marker-proven code adapter must win. Evidence for the realme identity:
+        // `.pm/evidence/u1127/new-duo-report-20261127-175643/diagnostics.txt:50` (aosp today).
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val profiles = RomProfiles.load(context)
+        val asset = profiles.first { it.id == "coloros" }
+        assertFalse("the shipped coloros profile is unmeasured", asset.measured)
+        assertTrue("the shipped profile would match realme", asset.match.contains("realme"))
+
+        val marker =
+            "class:com.oplus.systemui.statusbar.pipeline.battery.ui.view.StatBatteryMeterView"
+        val markers = RomMarkers.of(
+            systemUiSourceDir = "/system_ext/priv-app/SystemUI/SystemUI.apk",
+            systemUiApplicationClass = "com.android.systemui.SystemUIApplication",
+            oplusMarker = marker
+        )
+
+        val rom = RomDetection.forThisRom(
+            "realme", "realme", "RMX5011RU", "RMX5011_17.0.0.110(EX01)", profiles, 37, markers
+        )
+        assertEquals("coloros", rom.id)
+        assertEquals(marker, rom.marker)
+        // The asset's coloros list starts with statusIcons; the Oplus report ids must be used instead.
+        assertEquals(
+            listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
+            rom.containerIds
+        )
+        assertFalse("the unmeasured asset entry must not make it measured", rom.measured)
+    }
+
+    @Test
     fun `missing or blank shade fields default to empty`() {
         val json = """
             {
