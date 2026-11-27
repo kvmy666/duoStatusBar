@@ -228,8 +228,9 @@ internal class DuoRiveView(
                     L.w("no view model instance after $MAX_POLLS polls - one late retry in ${LATE_RETRY_MS}ms")
                     pollForInstance(LATE_RETRY_MS)
                 } else {
-                    L.w("no view model instance after $MAX_POLLS polls - Rive element did not bind")
-                    noteFailure("poll", "no view model instance after $MAX_POLLS polls")
+                    val late = if (lateRetryTried) " + one late retry" else ""
+                    L.w("no view model instance after $MAX_POLLS polls$late - Rive element did not bind")
+                    noteFailure("poll", "no view model instance after $MAX_POLLS polls$late")
                     failedActions.toList().forEach { it() }
                     readyActions.clear()
                     failedActions.clear()
@@ -240,10 +241,11 @@ internal class DuoRiveView(
                     pollForInstance()
                 } else if (lateRetryDue(polls, MAX_POLLS, lateRetryTried)) {
                     lateRetryTried = true
-                    L.w("instance poll: ${t.javaClass.simpleName}: ${t.message} - one late retry in ${LATE_RETRY_MS}ms")
+                    L.i("instance poll failed after $MAX_POLLS polls - one late retry in ${LATE_RETRY_MS}ms")
                     pollForInstance(LATE_RETRY_MS)
                 } else {
-                    noteFailure("poll", "instance poll: ${t.javaClass.simpleName}: ${t.message.orEmpty()}")
+                    val late = if (lateRetryTried) " + one late retry" else ""
+                    noteFailure("poll", "instance poll: ${t.javaClass.simpleName}: ${t.message.orEmpty()} after $MAX_POLLS polls$late")
                     failedActions.toList().forEach { it() }
                 }
             }

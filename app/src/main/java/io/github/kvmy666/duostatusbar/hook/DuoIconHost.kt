@@ -3339,7 +3339,7 @@ internal class DuoIconHost(private val context: Context) {
             L.i("live rebuild: hide state reset before the fresh element hides")
         }
         if (!boxAcceptable(candidate, target)) {
-            L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} - not ready; scheduling fallback")
+            L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} - not ready; falling back to Canvas")
             L.w("Duo box detail: target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"} " +
                     "shown=${candidate.ui.isShown} vis=${candidate.ui.visibility} " +
                     "attached=${candidate.ui.isAttachedToWindow} ready=${candidate.isReady}")
@@ -3378,15 +3378,16 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /**
-     * The Rive element never bound its view model. Rather than leave an empty slot, it is replaced by the
-     * no-native Canvas element, which draws the ring and the percentage from the same mapping (FR-21).
+     * The element cannot draw: Rive never bound its view model, or a bound element's box failed on a
+     * shown bar (wrong parent or 0x0). Rather than leave an empty slot, it is replaced by the no-native
+     * Canvas element, which draws the ring and the percentage from the same mapping (FR-21).
      */
     private fun onElementFailed(candidate: DuoElement, target: ViewGroup, boxFailure: Boolean = false) {
         if (element !== candidate) return
         // B3: name the stage. The view recorded the first real reason; a box/host failure that did not
         // come through DuoRiveView still gets a stable code instead of an empty parenthesis.
         if (boxFailure) {
-            RiveBindReport.recordIfAbsent("box", "shown box ${candidate.ui.width}x${candidate.ui.height}")
+            RiveBindReport.recordIfAbsent("box", "box ${candidate.ui.width}x${candidate.ui.height} shown=${candidate.ui.isShown}")
         } else {
             RiveBindReport.recordIfAbsent("bind", "element not bound")
         }
@@ -3441,7 +3442,7 @@ internal class DuoIconHost(private val context: Context) {
             }
         }
         ensureCanvasBox(canvas, target, 0)
-        L.i("element: Canvas (fallback after Rive did not bind)")
+        L.i("element: Canvas (fallback after Rive ${if (boxFailure) "did not draw" else "did not bind"})")
     }
 
     /**
