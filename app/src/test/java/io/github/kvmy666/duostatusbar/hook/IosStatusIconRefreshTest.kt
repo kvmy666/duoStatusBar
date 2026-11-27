@@ -55,6 +55,36 @@ class IosStatusIconRefreshTest {
     }
 
     @Test
+    fun `a glyph outside a signal slot is refreshed during the stock pass`() {
+        // The view still holds one of our drawables (possibly wrapped), so the stock pass must reload it.
+        val refreshed = ArrayList<String>()
+        val result = refreshTargets(
+            listOf(
+                RefreshTarget("custom", mapped = false, glyph = true) { refreshed.add("glyph"); true }
+            )
+        )
+
+        assertEquals(RefreshResult(icons = 1, reloaded = 1, failed = 0), result)
+        assertEquals(listOf("glyph"), refreshed)
+    }
+
+    @Test
+    fun `force refreshes every status target as a last resort`() {
+        // No slot name, no mapped id and no glyph: only a forced pass may touch them.
+        val refreshed = ArrayList<String>()
+        val result = refreshTargets(
+            listOf(
+                RefreshTarget("custom", mapped = false) { refreshed.add("first"); true },
+                RefreshTarget(null, mapped = false) { refreshed.add("second"); true }
+            ),
+            force = true
+        )
+
+        assertEquals(RefreshResult(icons = 2, reloaded = 2, failed = 0), result)
+        assertEquals(listOf("first", "second"), refreshed)
+    }
+
+    @Test
     fun `a refresh after the map is ready replaces a previously stock icon`() {
         // A loader that served stock before the map existed and glyphs afterwards.
         class FakeLoader {

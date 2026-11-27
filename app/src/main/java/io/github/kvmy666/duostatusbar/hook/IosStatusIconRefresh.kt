@@ -1,9 +1,11 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.graphics.drawable.DrawableWrapper
 import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import io.github.kvmy666.duostatusbar.L
 import java.util.Collections
 import java.util.IdentityHashMap
@@ -13,6 +15,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal data class RefreshTarget(
     val slot: String?,
     val mapped: Boolean,
+    /** R17C: the view currently holds one of our drawables (possibly inside a wrapper). */
+    val glyph: Boolean = false,
     val reload: () -> Boolean
 )
 
@@ -32,15 +36,16 @@ internal fun isSignalSlot(slot: String?): Boolean {
 }
 
 /**
- * R17C: reloads only the mapped or signal targets. A reload that throws counts as failed and the pass
- * continues, so one bad view can never stop the rest of the bar from picking up the published map.
+ * R17C: reloads the mapped, signal or glyph targets. A reload that throws counts as failed and the
+ * pass continues, so one bad view can never stop the rest of the bar from picking up the published
+ * map. [force] is the last-resort pass that refreshes every collected status target (see [runPosted]).
  */
-internal fun refreshTargets(targets: List<RefreshTarget>): RefreshResult {
+internal fun refreshTargets(targets: List<RefreshTarget>, force: Boolean = false): RefreshResult {
     var icons = 0
     var reloaded = 0
     var failed = 0
     for (target in targets) {
-        if (!target.mapped && !isSignalSlot(target.slot)) continue
+        if (!force && !target.mapped && !isSignalSlot(target.slot) && !target.glyph) continue
         icons++
         val ok = try {
             target.reload()
@@ -91,6 +96,8 @@ internal object IosStatusIconRefresh : IosDiagnosticSource {
     private var lastFailed = 0
     @Volatile
     private var lastMode = "stock"
+    @Volatile
+    private var lastFallback = false
 
     fun install() {
         try {
@@ -144,14 +151,23 @@ internal object IosStatusIconRefresh : IosDiagnosticSource {
                 IosV2Log.failureOnce("refresh.collect", t)
                 emptyList()
             }
-            val result = refreshTargets(targets)
+            var result = refreshTargets(targets)
+            var fallback = false
+            // Last resort: when the slot-name heuristic and the id read find nothing, reload every
+            // collected status target once, so a build with different Samsung slot strings still picks
+            // up its icons. Still one coalesced pass, not a loop.
+            if (result.icons == 0 && targets.isNotEmpty()) {
+                fallback = true
+                result = refreshTargets(targets, force = true)
+            }
+            lastFallback = fallback
             lastIcons = result.icons
             lastReloaded = result.reloaded
             lastFailed = result.failed
             if (result.icons > 0 || result.failed > 0) {
                 L.i(
-                    "ios v2 refresh: family=samsung mode=$lastMode icons=${result.icons} " +
-                        "reloaded=${result.reloaded} failed=${result.failed}"
+                    "ios v2 refresh: family=samsung mode=$lastMode fallback=$lastFallback " +
+                        "icons=${result.icons} reloaded=${result.reloaded} failed=${result.failed}"
                 )
             }
         } catch (t: Throwable) {
@@ -175,7 +191,8 @@ internal object IosStatusIconRefresh : IosDiagnosticSource {
             if (isStatusBarIconView(view)) {
                 val slot = readSlot(view)
                 val mapped = readMapped(view)
-                out.add(RefreshTarget(slot, mapped) { reloadView(view) })
+                val glyph = hasOurGlyph(view)
+                out.add(RefreshTarget(slot, mapped, glyph) { reloadView(view) })
             }
             if (view !is ViewGroup) continue
             try {
@@ -221,6 +238,28 @@ internal object IosStatusIconRefresh : IosDiagnosticSource {
     }
 
     /**
+     * True when the view currently draws one of our glyphs. Samsung's `StatusBarIconView.getIcon`
+     * wraps the drawable in a `ScalingDrawableWrapper`, so the glyph can sit a few wrappers deep;
+     * the walk is bounded so an unexpected cycle can never hang the pass.
+     */
+    private fun hasOurGlyph(view: View): Boolean = try {
+        var drawable = (view as? ImageView)?.drawable
+        var depth = 0
+        var found = false
+        while (drawable != null && depth < 4) {
+            if (drawable is IosGlyphDrawable) {
+                found = true
+                break
+            }
+            drawable = (drawable as? DrawableWrapper)?.drawable
+            depth++
+        }
+        found
+    } catch (t: Throwable) {
+        false
+    }
+
+    /**
      * `updateDrawable(true)` is the reload owner; `set(mIcon)` cannot be used because the unchanged
      * icon short-circuits (`StatusBarIconView.smali:1971`). A missing field or method leaves the view
      * untouched.
@@ -245,7 +284,7 @@ internal object IosStatusIconRefresh : IosDiagnosticSource {
     override fun diagnosticLines(): List<String> {
         if (lastFamily != FAMILY || requests <= 0 || lastIcons <= 0) return emptyList()
         return listOf(
-            "ios v2 refresh: family=samsung mode=$lastMode requests=$requests " +
+            "ios v2 refresh: family=samsung mode=$lastMode fallback=$lastFallback requests=$requests " +
                 "icons=$lastIcons reloaded=$lastReloaded failed=$lastFailed"
         )
     }

@@ -148,8 +148,9 @@ internal object IosResourceEngine : IosDiagnosticSource {
     private var activeFamily: String = ""
 
     // R17C: the package a miss must belong to, and the bounded name table for a non-OxygenOS report.
-    // The table survives a same-family re-activation (a rapid settings revision must not throw away
-    // the boot misses; the Fold built the map three times).
+    // The table survives a same-family re-activation that does NOT pass through deactivate (rapid
+    // settings revisions must not throw away the boot misses; the Fold built the map three times);
+    // deactivate clears it deliberately.
     @Volatile
     private var activePackage: String = ""
 
