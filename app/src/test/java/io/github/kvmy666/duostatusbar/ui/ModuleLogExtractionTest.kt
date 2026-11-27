@@ -98,13 +98,13 @@ class ModuleLogExtractionTest {
 
     @Test
     fun `the auto collector detector sees the module log from the dump`() {
-        val dump = "header\n$marker\nios v2 miss piece=wifi\n"
+        val dump = "header\n$marker\nDuoHook install failed: wifi\n"
         val log = AutoReportManager.detectorModuleLog(dump, "app-ring-only")
-        assertEquals("ios v2 miss piece=wifi", log)
+        assertEquals("DuoHook install failed: wifi", log)
         val problems = ProblemDetector.detect(ProblemInputs(moduleLog = log, iosActive = true))
         assertTrue(
             "detector missed the module log from the dump: $problems",
-            problems.any { it.type == "ios_miss" && it.location == "wifi" }
+            problems.any { it.type == "hook" && it.location == "hook" }
         )
     }
 }
