@@ -19,6 +19,7 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomResolver
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
+import io.github.kvmy666.duostatusbar.settings.ModuleLoadDiagnosis
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.SettingsHistory
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
@@ -243,6 +244,11 @@ internal fun buildDiagnostics(
     val heartbeatAt = DuoPrefs.heartbeat(context)
     val now = System.currentTimeMillis()
     val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
+    // Guidance for the never-loaded case: read from the same capture the header describes, so the
+    // "likely cause" matches the facts below instead of guessing from the package list alone.
+    val loadDiagnosis = runCatching {
+        ModuleLoadDiagnosis.of(context, health, capture, captureFailure)
+    }.getOrNull()
     // One gate for every report path: after an unscope and a System UI restart the refresh times out,
     // but the stored same-build status/dump from the dead run survive and carry no stale version label.
     // Dropping them here keeps every fact below from describing a process that is gone.
@@ -303,6 +309,18 @@ internal fun buildDiagnostics(
         }
         appendLine("settings: $settings")
         appendLine("module load: $loadLine")
+        // Only a never-loaded module needs an explanation; every other state keeps the old header.
+        // This is guidance for the reader, not an automatic-report trigger.
+        if (health?.state == ModuleState.NEVER_LOADED) {
+            loadDiagnosis?.reportCause()?.let { appendLine("likely cause: $it") }
+            loadDiagnosis?.reportStep()?.let { appendLine("next step: $it") }
+            if (loadDiagnosis?.reportCannotReadFrameworkLogs == true) {
+                appendLine(
+                    "report capability: root or Shizuku is not granted, so LSPosed and framework " +
+                        "logs were not read."
+                )
+            }
+        }
         appendLine("module: ").append(evidenceStatus.ifEmpty { "no report yet" })
         if (evidenceHistory.isNotEmpty()) {
             appendLine("history:")

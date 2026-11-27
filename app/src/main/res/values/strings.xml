@@ -180,6 +180,17 @@
     <string name="module_health_ios_unsupported_text">Duo stays on because iOS mode is not supported on this UI yet.</string>
     <string name="module_health_open_lsposed">Open LSPosed</string>
     <string name="module_health_scope_hint">Turn on Duo and choose the status bar.</string>
+    <string name="module_health_cause_lsposed_missing">LSPosed not detected</string>
+    <string name="module_health_fix_lsposed_missing">Install LSPosed (Zygisk) and reboot your phone.</string>
+    <string name="module_health_cause_not_enabled">Duo is not enabled in LSPosed</string>
+    <string name="module_health_fix_not_enabled">Enable Duo Status Bar in LSPosed, then restart System UI.</string>
+    <string name="module_health_cause_not_scoped">System UI is not in Duo\'s scope</string>
+    <string name="module_health_fix_not_scoped">Add System UI to Duo\'s scope in LSPosed, then restart System UI.</string>
+    <string name="module_health_cause_scoped_not_loaded">LSPosed is set up but Duo did not load</string>
+    <string name="module_health_fix_scoped_not_loaded">Restart System UI or reboot your phone.</string>
+    <string name="module_health_cause_unknown_scope">Duo is not enabled, or System UI is not in its scope</string>
+    <string name="module_health_fix_unknown_scope">In LSPosed, enable Duo Status Bar and add System UI to its scope, then restart System UI.</string>
+    <string name="module_health_report_no_framework_logs">Root or Shizuku is not granted, so this report cannot read LSPosed or framework logs.</string>
     <string name="module_health_contact">Contact on Telegram</string>
     <string name="module_health_contact_hint">Contact here if it still does not work.</string>
     <string name="module_health_export">Export my log</string>

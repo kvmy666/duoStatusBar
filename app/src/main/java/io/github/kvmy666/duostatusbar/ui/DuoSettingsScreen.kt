@@ -62,6 +62,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.FreshSnapshot
 import io.github.kvmy666.duostatusbar.settings.IosCapability
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
+import io.github.kvmy666.duostatusbar.settings.ModuleLoadDiagnosis
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 import io.github.kvmy666.duostatusbar.settings.SnapshotRefresh
 import io.github.kvmy666.duostatusbar.settings.ModuleState
@@ -132,6 +133,11 @@ fun DuoSettingsScreen(
     // Send button enables right after the user grants access.
     var accessGranted by remember {
         mutableStateOf(DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted())
+    }
+    // Why LSPosed never injected the module (manager missing, not enabled, System UI out of scope).
+    // Recomputed with the health poll; it is guidance only and never triggers a report by itself.
+    val loadDiagnosis = remember(moduleHealth) {
+        ModuleLoadDiagnosis.of(context, moduleHealth)
     }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
     var autoReport by remember {
@@ -470,6 +476,7 @@ fun DuoSettingsScreen(
         if (moduleHealth.state != ModuleState.OK && query.isBlank()) {
             ModuleHealthCard(
                 health = moduleHealth,
+                diagnosis = loadDiagnosis,
                 busy = collecting,
                 onOpenLsposed = { openLsposed(context) },
                 onRestart = { restartSystemUi(context, "module-health") },

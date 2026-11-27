@@ -45,8 +45,8 @@ android {
         // AOSP path and reports through the diagnostic dump if anything is off. targetSdk stays 36.
         minSdk = 33
         targetSdk = 36
-        versionCode = 113
-        versionName = "2.1.3"
+        versionCode = 114
+        versionName = "2.1.4"
         // Telegram log delivery. Prefer the relay URL (Worker holds the bot token, so no secret is in the
         // APK); otherwise fall back to the direct bot token; otherwise the button opens the share sheet.
         // The relay URL is public (the Worker enforces its own rate limit), so it is baked into every

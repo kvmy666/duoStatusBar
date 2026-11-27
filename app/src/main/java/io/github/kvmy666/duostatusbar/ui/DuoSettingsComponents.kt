@@ -62,6 +62,8 @@ import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+import io.github.kvmy666.duostatusbar.settings.LoadCause
+import io.github.kvmy666.duostatusbar.settings.LoadDiagnosis
 import io.github.kvmy666.duostatusbar.settings.ModuleHealth
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
@@ -167,9 +169,36 @@ internal fun StageOverrideAlert(
 }
 
 /**
+ * The cause line for a never-loaded module, as a real resource (the card never carries user-facing
+ * English inline). A null cause or [LoadCause.NOT_NEEDED] keeps the generic hint.
+ */
+internal fun causeTitleRes(cause: LoadCause?): Int? = when (cause) {
+    LoadCause.LSPOSED_MISSING -> R.string.module_health_cause_lsposed_missing
+    LoadCause.NOT_ENABLED -> R.string.module_health_cause_not_enabled
+    LoadCause.NOT_SCOPED -> R.string.module_health_cause_not_scoped
+    LoadCause.SCOPED_BUT_NOT_LOADED -> R.string.module_health_cause_scoped_not_loaded
+    LoadCause.ENABLE_OR_SCOPE_UNKNOWN -> R.string.module_health_cause_unknown_scope
+    LoadCause.NOT_NEEDED, null -> null
+}
+
+/** The fix line that pairs with [causeTitleRes]; null when there is no real cause. */
+internal fun causeFixRes(cause: LoadCause?): Int? = when (cause) {
+    LoadCause.LSPOSED_MISSING -> R.string.module_health_fix_lsposed_missing
+    LoadCause.NOT_ENABLED -> R.string.module_health_fix_not_enabled
+    LoadCause.NOT_SCOPED -> R.string.module_health_fix_not_scoped
+    LoadCause.SCOPED_BUT_NOT_LOADED -> R.string.module_health_fix_scoped_not_loaded
+    LoadCause.ENABLE_OR_SCOPE_UNKNOWN -> R.string.module_health_fix_unknown_scope
+    LoadCause.NOT_NEEDED, null -> null
+}
+
+/**
  * The module-health card: the module is not running, is running old code after an update, or is
  * loaded but cannot report — those are red, and offer the two ways to recover plus a one-tap report,
  * which is what a "no report in the log" report needs to become actionable.
+ *
+ * [diagnosis] explains *why* LSPosed never injected the module (no manager, enabled out of scope,
+ * stale System UI). It is optional so the card still renders with the generic hint when the app could
+ * not read the config.
  *
  * [ModuleState.DISABLED], [ModuleState.IOS_ACTIVE] and [ModuleState.IOS_UNSUPPORTED] are not failures:
  * the module is loaded and the user's mode choice explains the bar, so the card is neutral and offers
@@ -178,6 +207,7 @@ internal fun StageOverrideAlert(
 @Composable
 internal fun ModuleHealthCard(
     health: ModuleHealth,
+    diagnosis: LoadDiagnosis? = null,
     busy: Boolean,
     onOpenLsposed: () -> Unit,
     onRestart: () -> Unit,
@@ -229,7 +259,27 @@ internal fun ModuleHealthCard(
                 // the module has produced nothing to report. A user in this state can never send a useful dump,
                 // so the report button is replaced by the two recovery steps and a way to reach support.
                 state == ModuleState.NEVER_LOADED -> {
-                    Text(stringResource(R.string.module_health_scope_hint), style = MaterialTheme.typography.bodySmall)
+                    val causeTitle = causeTitleRes(diagnosis?.cause)
+                    val causeFix = causeFixRes(diagnosis?.cause)
+                    if (causeTitle != null && causeFix != null) {
+                        Text(
+                            stringResource(causeTitle),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(stringResource(causeFix), style = MaterialTheme.typography.bodySmall)
+                        if (diagnosis?.reportCannotReadFrameworkLogs == true) {
+                            Text(
+                                stringResource(R.string.module_health_report_no_framework_logs),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    } else {
+                        Text(
+                            stringResource(R.string.module_health_scope_hint),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                     Button(onClick = onOpenLsposed, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.module_health_open_lsposed))
                     }
