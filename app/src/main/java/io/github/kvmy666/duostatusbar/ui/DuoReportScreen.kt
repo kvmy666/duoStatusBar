@@ -34,6 +34,7 @@ import androidx.compose.ui.res.stringResource
 import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
 import io.github.kvmy666.duostatusbar.settings.SnapshotRefresh
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import kotlinx.coroutines.Dispatchers
@@ -125,6 +126,12 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                         val captureFailure = captured.exceptionOrNull()
                             ?.let { "${it.javaClass.simpleName}: ${it.message}" }
                         val logs = capture?.render().orEmpty()
+                        // The live health decides whether a timed-out snapshot is this run's evidence
+                        // or the leftovers of a module that was unscoped and restarted.
+                        val health = withContext(Dispatchers.IO) {
+                            runCatching { ModuleHealthCheck.of(context) }.getOrNull()
+                        }
+                        val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, health?.state)
                         val report = buildFullReport(
                             context,
                             problem,
@@ -140,7 +147,8 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                             logs,
                             capture = capture,
                             captureFailure = captureFailure,
-                            dumpAt = snapshot.dumpAt
+                            dumpAt = snapshot.dumpAt,
+                            evidenceLive = evidenceLive
                         )
                         val zip = withContext(Dispatchers.IO) {
                             writeReportZip(
@@ -149,7 +157,8 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                                 logs,
                                 snapshot.status,
                                 snapshot.dump,
-                                snapshot.dumpAt
+                                snapshot.dumpAt,
+                                evidenceLive = evidenceLive
                             )
                         }
                         val handle = telegramUser.trim().let {

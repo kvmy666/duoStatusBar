@@ -152,6 +152,21 @@ class ModuleHealthTest {
         )
     }
 
+    // An unknown APK update stamp (0) must not be read as "this APK is newer than the module": that
+    // claimed the app build with nothing proving the loaded process is it.
+    @Test
+    fun `an unknown app update stamp has no proven running build`() {
+        assertEquals(
+            null,
+            ModuleHealthCheck.runningVersion(
+                loadedAt = 200L,
+                appUpdatedAt = 0L,
+                dumpVersion = "2.1.1",
+                appVersion = "2.1.3"
+            )
+        )
+    }
+
     @Test
     fun `a module that never loaded has no running build`() {
         assertEquals(

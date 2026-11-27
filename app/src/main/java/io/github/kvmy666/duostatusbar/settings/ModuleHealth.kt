@@ -191,6 +191,9 @@ internal object ModuleHealthCheck {
         appVersion: String
     ): String? = when {
         loadedAt <= 0L -> null
+        // An unknown update stamp (0) proves nothing: comparing it would call any loaded module the app
+        // build. Only two known stamps can order the loaded code against this APK.
+        appUpdatedAt <= 0L -> null
         appUpdatedAt > loadedAt -> dumpVersion?.trim()?.takeIf { it.isNotEmpty() }
         loadedAt > appUpdatedAt -> appVersion.trim().takeIf { it.isNotEmpty() }
         else -> null

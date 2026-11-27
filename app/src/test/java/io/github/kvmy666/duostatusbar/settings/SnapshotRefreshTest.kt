@@ -122,4 +122,22 @@ class SnapshotRefreshTest {
         assertTrue(SnapshotRefresh.shouldRequest(0L, 1L, ""))
         assertTrue(SnapshotRefresh.shouldRequest(0L, 0L, "process=com.android.systemui"))
     }
+
+    @Test
+    fun `stored evidence is usable only when it is fresh or the module is not never loaded`() {
+        val stored = previous.copy(refreshed = false)
+        assertFalse("a timed-out snapshot with no health proves nothing", SnapshotRefresh.evidenceUsable(stored, null))
+        assertFalse(
+            "a timed-out snapshot from a never-loaded module is dead-run evidence",
+            SnapshotRefresh.evidenceUsable(stored, ModuleState.NEVER_LOADED)
+        )
+        assertTrue(SnapshotRefresh.evidenceUsable(stored, ModuleState.OK))
+        assertTrue(SnapshotRefresh.evidenceUsable(stored, ModuleState.NOT_REPORTING))
+        assertTrue(SnapshotRefresh.evidenceUsable(stored, ModuleState.NEEDS_RESTART))
+        assertTrue(
+            "a fresh snapshot is live even when the heartbeat says never loaded",
+            SnapshotRefresh.evidenceUsable(stored.copy(refreshed = true), ModuleState.NEVER_LOADED)
+        )
+        assertTrue(SnapshotRefresh.evidenceUsable(stored.copy(refreshed = true), null))
+    }
 }

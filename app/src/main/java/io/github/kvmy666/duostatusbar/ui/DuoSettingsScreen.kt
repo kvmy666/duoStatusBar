@@ -290,8 +290,11 @@ fun DuoSettingsScreen(
             collecting = false
             val message = problem.trim()
             // One bounded ask; the report builder and the ZIP share the same snapshot. A stored dump that
-            // did not refresh is still evidence, and the report labels its build/time as stale.
+            // did not refresh is still evidence while the module is alive; the report labels its build/time.
             val snapshot = refreshedDump()
+            // A timed-out snapshot on a NEVER_LOADED module is the previous run's leftovers; the
+            // report and the ZIP must drop its status/dump instead of describing a dead process.
+            val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, moduleHealth.state)
             val report = buildFullReport(
                 context, problem, settings,
                 snapshot.status,
@@ -299,13 +302,15 @@ fun DuoSettingsScreen(
                 snapshot.dump,
                 moduleLoadAt,
                 logs,
-                dumpAt = snapshot.dumpAt
+                dumpAt = snapshot.dumpAt,
+                evidenceLive = evidenceLive
             )
             // Prefer the self-contained report ZIP; fall back to the legacy text path when it cannot be
             // built (no diagnostics dir, IO failure, ...).
             val zip = withContext(Dispatchers.IO) {
                 writeReportZip(
-                    context, report, logs, snapshot.status, snapshot.dump, snapshot.dumpAt
+                    context, report, logs, snapshot.status, snapshot.dump, snapshot.dumpAt,
+                    evidenceLive = evidenceLive
                 )
             }
             if (zip == null) {
@@ -472,7 +477,10 @@ fun DuoSettingsScreen(
                                     snapshot.dump,
                                     moduleLoadAt,
                                     logs,
-                                    dumpAt = snapshot.dumpAt
+                                    dumpAt = snapshot.dumpAt,
+                                    evidenceLive = SnapshotRefresh.evidenceUsable(
+                                        snapshot, moduleHealth.state
+                                    )
                                 )
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                             exportLog.launch("duo-log-$stamp.txt")
@@ -505,7 +513,10 @@ fun DuoSettingsScreen(
                                     if (snapshot.status.isNotBlank()) history else emptyList(),
                                     snapshot.dump,
                                     moduleLoadAt,
-                                    dumpAt = snapshot.dumpAt
+                                    dumpAt = snapshot.dumpAt,
+                                    evidenceLive = SnapshotRefresh.evidenceUsable(
+                                        snapshot, moduleHealth.state
+                                    )
                                 ) +
                                     "\n\n===== device capture =====\n" + logs
                             )
@@ -656,7 +667,8 @@ fun DuoSettingsScreen(
                         snapshot.dump,
                         moduleLoadAt,
                         logs,
-                        dumpAt = snapshot.dumpAt
+                        dumpAt = snapshot.dumpAt,
+                        evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, moduleHealth.state)
                     )
                     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                     exportLog.launch("duo-log-$stamp.txt")

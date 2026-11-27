@@ -217,28 +217,37 @@ internal object AutoReportManager {
         val status = snapshot.status
         val dump = snapshot.dump
         val fallback = DuoPrefs.fallback(context)
+        // Health is read before the evidence decision: it is the live fact that says whether a
+        // timed-out snapshot is a dead run's leftovers (NEVER_LOADED) or still this module's evidence.
         val health = collectorRead("health", failures) { ModuleHealthCheck.of(context) }
+        val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, health?.state)
         val current = DuoPrefs.read(context)
         val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
         val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
         val moduleEnabled = portrait.enabled || landscape.enabled ||
             portrait.iosMode || landscape.iosMode
         val updatePending = health?.state == ModuleState.NEEDS_RESTART
-        // While an update is pending the stored dump/status belong to the previous build; iOS cannot be
-        // judged from them either, so no ios_miss report is raised from stale evidence.
-        val iosActive = (portrait.iosMode || landscape.iosMode) && !updatePending
-        val moduleLog = collectorRead("module-log", failures) {
-            detectorModuleLog(dump, L.recentText())
-        } ?: ""
+        // While an update is pending the stored dump/status belong to the previous build; after a
+        // timeout on a dead run they belong to a process that is gone. iOS cannot be judged from either,
+        // so no ios_miss report is raised from stale evidence.
+        val iosActive = (portrait.iosMode || landscape.iosMode) && !updatePending && evidenceLive
+        val moduleLog = if (evidenceLive) {
+            collectorRead("module-log", failures) {
+                detectorModuleLog(dump, L.recentText())
+            } ?: ""
+        } else {
+            ""
+        }
         val captureFailure = failures.joinToString("; ").ifBlank { null }
-        // The report keeps the stale evidence (buildDiagnostics labels the dump), but the detector must
-        // not treat the previous build's attach/hook/iOS lines as this run's problems.
+        val storedSuppressed = updatePending || !evidenceLive
+        // The report keeps live evidence (buildDiagnostics labels an old build's dump), but the detector
+        // must not treat a previous build's or a dead run's attach/hook/iOS lines as this run's problems.
         val problems = ProblemDetector.detect(
             ProblemInputs(
-                status = if (updatePending) "" else status,
-                dump = if (updatePending) "" else dump,
-                fallback = if (updatePending) "" else fallback,
-                moduleLog = if (updatePending) "" else moduleLog,
+                status = if (storedSuppressed) "" else status,
+                dump = if (storedSuppressed) "" else dump,
+                fallback = if (storedSuppressed) "" else fallback,
+                moduleLog = if (storedSuppressed) "" else moduleLog,
                 moduleState = health?.state,
                 moduleEnabled = moduleEnabled,
                 iosActive = iosActive,
@@ -258,7 +267,8 @@ internal object AutoReportManager {
             dumpAt = snapshot.dumpAt,
             capture = capture,
             captureText = logs,
-            captureFailure = captureFailure
+            captureFailure = captureFailure,
+            evidenceLive = evidenceLive
         )
         return AutoReportCollected(
             report = report,
@@ -267,7 +277,8 @@ internal object AutoReportManager {
             dump = dump,
             dumpAt = snapshot.dumpAt,
             sections = capture?.sections?.size ?: 0,
-            problems = problems
+            problems = problems,
+            evidenceLive = evidenceLive
         )
     }
 
@@ -278,7 +289,8 @@ internal object AutoReportManager {
             collected.logs,
             collected.status,
             collected.dump,
-            collected.dumpAt
+            collected.dumpAt,
+            evidenceLive = collected.evidenceLive
         ) ?: throw IllegalStateException("zip unavailable")
         return ZipArtifact(file, file.length())
     }

@@ -1,9 +1,11 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -67,6 +69,60 @@ class LogReporterZipTest {
                 .bufferedReader().readText()
             assertTrue(text.startsWith("[stale diagnostic dump from 1.4.2"))
             assertTrue("the original evidence must survive", text.contains("version: 1.4.2"))
+        }
+    }
+
+    @Test
+    fun `evidenceLive false drops the stored status history and dump`() {
+        val context = RuntimeEnvironment.getApplication()
+        val status = "process=com.android.systemui pid=7525 · owner=ios · stage=2"
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: ${BuildConfig.VERSION_NAME} (code 1, debug=false)\n" +
+            "DUMP-MARKER\n"
+        val report = buildDiagnostics(
+            context = context,
+            settings = DuoSettings(),
+            status = status,
+            history = listOf("HISTORY-MARKER"),
+            dump = dump,
+            moduleLoadAt = 0L,
+            dumpAt = 123L,
+            evidenceLive = false
+        )
+        assertFalse("stored status must be gone: $report", report.contains("owner=ios"))
+        assertFalse(
+            "stored status must be gone: $report",
+            report.contains("process=com.android.systemui")
+        )
+        assertFalse("stored history must be gone: $report", report.contains("HISTORY-MARKER"))
+        assertFalse("stored dump must be gone: $report", report.contains("DUMP-MARKER"))
+        assertTrue(
+            "the report must say there is no live module report: $report",
+            report.contains("no report yet")
+        )
+    }
+
+    @Test
+    fun `an evidence dead zip carries no stored status or dump`() {
+        val context = RuntimeEnvironment.getApplication()
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: ${BuildConfig.VERSION_NAME} (code 1, debug=false)\n" +
+            "DUMP-MARKER\n"
+        val file = writeReportZip(
+            context,
+            report = "diag",
+            logs = "logs",
+            status = "STATUS-MARKER",
+            dump = dump,
+            evidenceLive = false
+        )
+        assertNotNull(file)
+        ZipFile(file!!).use { zf ->
+            assertNull("a dead dump must not be embedded", zf.getEntry("diagnostics-dump.txt"))
+            val moduleLog = zf.getInputStream(zf.getEntry("module-log.txt"))
+                .bufferedReader().readText()
+            assertFalse("stored dump must be gone: $moduleLog", moduleLog.contains("DUMP-MARKER"))
+            assertFalse("stored status must be gone: $moduleLog", moduleLog.contains("STATUS-MARKER"))
         }
     }
 

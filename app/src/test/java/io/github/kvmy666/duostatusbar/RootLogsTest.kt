@@ -660,6 +660,7 @@ class RootLogsTest {
         val script = RootLogs.rootScript()
         assertTrue("per-directory .log glob missing", script.contains("/*.log"))
         assertTrue("safe mode reads verbose_*.log", script.contains("verbose_*.log"))
+        assertTrue("the safe mode scan must be bounded to 8 files", script.contains("head -n 8"))
         assertTrue("safe mode reports how many logs were read", script.contains("safeLogFiles="))
         assertTrue(
             "safe mode greps only the LSPosed tag",
@@ -698,6 +699,8 @@ class RootLogsTest {
         ).forEach { assertTrue(it, RootLogs.isFrameworkModuleId(it)) }
         listOf(
             "AppleFonts",
+            "instagram",
+            "com.instagram.android",
             "com.instagram.android-morphe",
             "com.hevy-morphe",
             "hybrid_mount",

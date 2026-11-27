@@ -437,7 +437,8 @@ internal object ReportFacts {
         captureText: String = "",
         captureFailure: String? = null,
         formatTimestamp: (Long) -> String = { it.toString() },
-        appVersion: String = ""
+        appVersion: String = "",
+        dumpAt: Long = 0L
     ): String = buildString {
         appendLine("=== per-piece status ===")
 
@@ -464,7 +465,8 @@ internal object ReportFacts {
         val dumpBuild = dumpVersion(dump)?.trim()?.takeIf { it.isNotEmpty() }
         if (runningBuild != null && dumpBuild != null && dumpBuild != runningBuild) {
             appendLine(liveStatusBlock(status))
-            val writtenAt = dumpWrittenAt(dump)
+            // The module's own dump stamp survives a missing/truncated embedded log; prefer it.
+            val writtenAt = dumpAt.takeIf { it > 0L } ?: dumpWrittenAt(dump)
             val written = writtenAt?.let { " written ${formatTimestamp(it)}" }
                 ?: " written at an unknown time"
             appendLine(

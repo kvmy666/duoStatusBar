@@ -9,6 +9,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -233,8 +234,11 @@ class ModuleHealthOfTest {
     // previous build must not make the current module look old.
     @Test
     fun `of reports the app build for a module loaded after the update`() {
-        val updatedAt = context.packageManager
-            .getPackageInfo(context.packageName, 0).lastUpdateTime
+        // Robolectric reports 0 (unknown) for lastUpdateTime; set a real install stamp so the
+        // load-after-update rule has two known stamps to compare.
+        val updatedAt = 1_000L
+        shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName)
+            .lastUpdateTime = updatedAt
         stampFresh(updatedAt + 10_000L)
         DuoPrefs.writeDump(
             context,
@@ -251,8 +255,9 @@ class ModuleHealthOfTest {
 
     @Test
     fun `of still names the app build without a dump in the current session`() {
-        val updatedAt = context.packageManager
-            .getPackageInfo(context.packageName, 0).lastUpdateTime
+        val updatedAt = 1_000L
+        shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName)
+            .lastUpdateTime = updatedAt
         stampFresh(updatedAt + 10_000L)
         DuoPrefs.writeDump(context, "Duo Status Bar diagnostic dump\nbuild:\n")
 

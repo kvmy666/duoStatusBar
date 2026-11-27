@@ -41,6 +41,18 @@ internal object SnapshotRefresh {
     fun shouldRequest(loadedAt: Long, heartbeatAt: Long, status: String): Boolean =
         loadedAt > 0L || heartbeatAt > 0L || status.isNotBlank()
 
+    /**
+     * Whether a report may read the snapshot's status/dump as evidence at all.
+     *
+     * A refreshed snapshot is live by definition. A stored one is only usable while the live health
+     * says the module is not [ModuleState.NEVER_LOADED]: after an unscope and a System UI restart the
+     * request times out, but the stored same-build status/dump from the dead run survive, and there is
+     * no version label to catch them. Blanking those inputs is the one gate every report path shares.
+     * An unknown state proves nothing, so it is not usable either.
+     */
+    fun evidenceUsable(snapshot: FreshSnapshot, state: ModuleState?): Boolean =
+        snapshot.refreshed || (state != null && state != ModuleState.NEVER_LOADED)
+
     /** The stored values as a snapshot that does not claim to be fresh. */
     fun stored(context: Context): FreshSnapshot = try {
         FreshSnapshot(

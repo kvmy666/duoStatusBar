@@ -64,7 +64,8 @@ class ReportFactsTest {
         revision: Long = 7L,
         captureText: String = this.captureText,
         captureFailure: String? = null,
-        appVersion: String = "2.1.2"
+        appVersion: String = "2.1.2",
+        dumpAt: Long = 0L
     ) = ReportFacts.perPieceStatus(
         status = status,
         dump = dump,
@@ -75,7 +76,8 @@ class ReportFactsTest {
         captureText = captureText,
         captureFailure = captureFailure,
         formatTimestamp = { "2026-01-01 00:00:00" },
-        appVersion = appVersion
+        appVersion = appVersion,
+        dumpAt = dumpAt
     )
 
     // R16-B: with an update pending the report prints one clear state and no per-piece "missing:".
@@ -166,6 +168,33 @@ class ReportFactsTest {
         assertFalse("a stale dump must not produce missing: spam:\n$out", out.contains("missing:"))
         assertFalse("a live module must not be called NEVER_LOADED:\n$out", out.contains("NEVER_LOADED"))
         assertFalse("dump-derived per-piece facts must be absent", out.contains("ios engine"))
+    }
+
+    // The embedded module log can be missing or truncated; the module's own dump stamp still says
+    // when the stale dump was written, so the report never needs "written at an unknown time".
+    @Test
+    fun `the dump timestamp names the stale dump time when the log cannot`() {
+        val staleDump = """
+            Duo Status Bar diagnostic dump
+            version: 2.1.1 (code 111, debug=false)
+        """.trimIndent()
+        val out = facts(
+            dump = staleDump,
+            health = ModuleHealth(
+                ModuleState.OK,
+                100L,
+                50L,
+                ModuleMode.IOS,
+                runningVersion = "2.1.3"
+            ),
+            appVersion = "2.1.3",
+            dumpAt = 1795696331873L
+        )
+        assertTrue(
+            "the dump stamp must name the time: $out",
+            out.contains("dump: STALE diagnostic dump from 2.1.1 written 2026-01-01 00:00:00;")
+        )
+        assertFalse("the time must not be unknown: $out", out.contains("unknown time"))
     }
 
     @Test

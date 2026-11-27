@@ -138,15 +138,17 @@ internal fun moduleLoadLine(
     history: List<String>,
     lastLoadAt: Long,
     heartbeatAt: Long,
-    nowMs: Long
+    nowMs: Long,
+    liveContact: Boolean = false
 ): String = when {
     moduleLoadAt > 0L -> formatTimestamp(moduleLoadAt)
     lastLoadAt > 0L -> {
         // A load stamp alone does not prove the module is still here: after an unscope and a System UI
         // restart, the old stamp survives. Pair it with a fresh heartbeat, or the report would present
-        // the previous run's load as current.
-        val fresh = heartbeatAt > 0L &&
-            (nowMs <= 0L || nowMs - heartbeatAt <= DuoPrefs.HEARTBEAT_STALE_MS)
+        // the previous run's load as current. A live contact (a snapshot the module answered now) is
+        // the proof, so an old build that writes no heartbeat is not called stopped.
+        val fresh = liveContact || (heartbeatAt > 0L &&
+            (nowMs <= 0L || nowMs - heartbeatAt <= DuoPrefs.HEARTBEAT_STALE_MS))
         if (fresh) {
             formatTimestamp(lastLoadAt)
         } else {
@@ -156,7 +158,7 @@ internal fun moduleLoadLine(
     heartbeatAt > 0L -> {
         val stamp = "${formatTimestamp(heartbeatAt)} (heartbeat)"
         // An old beat means the module was unscoped and System UI restarted without it.
-        if (nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS) {
+        if (!liveContact && nowMs - heartbeatAt > DuoPrefs.HEARTBEAT_STALE_MS) {
             "$stamp, module not running now"
         } else {
             stamp
@@ -196,23 +198,45 @@ internal fun buildDiagnostics(
     /** Set when the capture itself threw; every capture section then says so. */
     captureFailure: String? = null,
     /** The user's own description; printed right after the completeness header. */
-    userMessage: String? = null
+    userMessage: String? = null,
+    evidenceLive: Boolean = true,
+    liveContact: Boolean = evidenceLive
 ): String {
     val loadAt = DuoPrefs.moduleLoadTime(context)
     val heartbeatAt = DuoPrefs.heartbeat(context)
     val now = System.currentTimeMillis()
     val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
+    // One gate for every report path: after an unscope and a System UI restart the refresh times out,
+    // but the stored same-build status/dump from the dead run survive and carry no stale version label.
+    // Dropping them here keeps every fact below from describing a process that is gone.
+    val evidenceStatus = if (evidenceLive) status else ""
+    val evidenceHistory = if (evidenceLive) history else emptyList()
+    val evidenceDump = if (evidenceLive) dump else ""
+    val evidenceDumpAt = if (evidenceLive) {
+        dumpAt.takeIf { it > 0L }
+            ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
+    } else {
+        0L
+    }
     // An installed update is the one clear state: the old build is loaded, and only a restart loads
     // this one. The moduleLoadLine stale-heartbeat wording would wrongly say it is not running.
     val loadLine = if (health?.state == ModuleState.NEEDS_RESTART) {
         updatePendingLine(health.runningVersion, BuildConfig.VERSION_NAME)
     } else {
-        moduleLoadLine(moduleLoadAt, status, history, loadAt, heartbeatAt, now)
+        moduleLoadLine(
+            moduleLoadAt,
+            evidenceStatus,
+            evidenceHistory,
+            loadAt,
+            heartbeatAt,
+            now,
+            liveContact = liveContact
+        )
     }
     val sections = ReportCompleteness.build(
-        status = status,
-        history = history,
-        dump = dump,
+        status = evidenceStatus,
+        history = evidenceHistory,
+        dump = evidenceDump,
         moduleLoad = loadLine,
         capture = capture,
         captureText = captureText,
@@ -221,8 +245,8 @@ internal fun buildDiagnostics(
     val lastChange = runCatching { SettingsHistory.read(context) }.getOrNull()
     val revision = runCatching { DuoPrefs.revision(context) }.getOrDefault(0L)
     val perPiece = ReportFacts.perPieceStatus(
-        status = status,
-        dump = dump,
+        status = evidenceStatus,
+        dump = evidenceDump,
         settings = settings,
         health = health,
         lastChange = lastChange,
@@ -231,7 +255,8 @@ internal fun buildDiagnostics(
         captureText = captureText,
         captureFailure = captureFailure,
         formatTimestamp = ::formatTimestamp,
-        appVersion = BuildConfig.VERSION_NAME
+        appVersion = BuildConfig.VERSION_NAME,
+        dumpAt = evidenceDumpAt
     )
     val raw = buildString {
         appendLine("Duo Status Bar diagnostics")
@@ -245,10 +270,10 @@ internal fun buildDiagnostics(
         }
         appendLine("settings: $settings")
         appendLine("module load: $loadLine")
-        appendLine("module: ").append(status.ifEmpty { "no report yet" })
-        if (history.isNotEmpty()) {
+        appendLine("module: ").append(evidenceStatus.ifEmpty { "no report yet" })
+        if (evidenceHistory.isNotEmpty()) {
             appendLine("history:")
-            history.forEach { appendLine("  $it") }
+            evidenceHistory.forEach { appendLine("  $it") }
         }
         appendLine()
         append(perPiece)
@@ -257,14 +282,13 @@ internal fun buildDiagnostics(
         // module state it came from - the facts that fix a "nothing happens" report.
         append(appEnvironment(context))
         // The full dump (build identity, id probes, view tree, readers). Empty in release.
-        if (dump.isNotEmpty()) {
+        if (evidenceDump.isNotEmpty()) {
             appendLine()
             append(
                 labelStaleDump(
-                    dump,
+                    evidenceDump,
                     BuildConfig.VERSION_NAME,
-                    dumpAt = dumpAt.takeIf { it > 0L }
-                        ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L),
+                    dumpAt = evidenceDumpAt,
                     now = now
                 )
             )
@@ -361,7 +385,8 @@ internal fun buildFullReport(
     /** Set when collecting the capture threw. */
     captureFailure: String? = null,
     /** When [dump] was written (see [DuoPrefs.dumpAt]); 0 falls back to the stored stamp. */
-    dumpAt: Long = 0L
+    dumpAt: Long = 0L,
+    evidenceLive: Boolean = true
 ): String {
     val raw = buildString {
         append(
@@ -376,7 +401,8 @@ internal fun buildFullReport(
                 capture = capture,
                 captureText = logs,
                 captureFailure = captureFailure,
-                userMessage = problem
+                userMessage = problem,
+                evidenceLive = evidenceLive
             )
         )
         append("\n\n===== device capture =====\n")
@@ -448,11 +474,21 @@ internal fun writeReportZip(
     status: String,
     dump: String,
     /** When [dump] was written (see [DuoPrefs.dumpAt]); 0 falls back to the stored stamp. */
-    dumpAt: Long = 0L
+    dumpAt: Long = 0L,
+    evidenceLive: Boolean = true
 ): File? = try {
     val dir = context.getExternalFilesDir("diagnostics") ?: return null
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
     val destination = File(dir, "duo-report-$stamp.zip")
+    // Same gate as buildDiagnostics: a dead-run status/dump must not be embedded in the ZIP either.
+    val evidenceStatus = if (evidenceLive) status else ""
+    val evidenceDump = if (evidenceLive) dump else ""
+    val evidenceDumpAt = if (evidenceLive) {
+        dumpAt.takeIf { it > 0L }
+            ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
+    } else {
+        0L
+    }
 
     val rom = runCatching {
         reportRom(
@@ -483,9 +519,9 @@ internal fun writeReportZip(
     )
 
     // The module pushed its own log inside the dump; the app's ring here is only this process.
-    val moduleLog = moduleLogFromDump(dump)
+    val moduleLog = moduleLogFromDump(evidenceDump)
         ?: "[app-process log; module log not present]\n" +
-            runCatching { L.recentText() }.getOrElse { status }
+            runCatching { L.recentText() }.getOrElse { evidenceStatus }
 
     val inputs = DuoReportInputs(
         generatedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date()),
@@ -496,13 +532,12 @@ internal fun writeReportZip(
         diagnostics = report,
         moduleLog = moduleLog,
         logcat = logs,
-        diagnosticsDump = dump.takeIf { it.isNotBlank() }
+        diagnosticsDump = evidenceDump.takeIf { it.isNotBlank() }
             ?.let {
                 labelStaleDump(
                     it,
                     BuildConfig.VERSION_NAME,
-                    dumpAt = dumpAt.takeIf { at -> at > 0L }
-                        ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
+                    dumpAt = evidenceDumpAt
                 )
             },
         screenshotPng = null,

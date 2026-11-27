@@ -37,7 +37,9 @@ internal data class AutoReportCollected(
     val sections: Int,
     val problems: List<DetectedProblem>,
     /** When the dump was written, so the ZIP labels a stale one with its time. */
-    val dumpAt: Long = 0L
+    val dumpAt: Long = 0L,
+    /** False when the snapshot is a dead run's leftovers; the ZIP must not embed them. */
+    val evidenceLive: Boolean = true
 )
 
 internal data class ZipArtifact(val file: File?, val bytes: Long)

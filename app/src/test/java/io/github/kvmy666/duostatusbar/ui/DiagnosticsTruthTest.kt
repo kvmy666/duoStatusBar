@@ -64,6 +64,24 @@ class DiagnosticsTruthTest {
         )
     }
 
+    // A fresh snapshot proves the module answered this report even when an old build writes no
+    // heartbeat; the load line must not reuse the stale-heartbeat "not running now" wording.
+    @Test
+    fun `a live contact load line never says the module stopped`() {
+        assertEquals(
+            formatTimestamp(2_000L),
+            moduleLoadLine(0L, "", emptyList(), 2_000L, 0L, 4_000L, liveContact = true)
+        )
+        assertEquals(
+            "${formatTimestamp(3_000L)} (heartbeat)",
+            moduleLoadLine(
+                0L, "", emptyList(), 0L, 3_000L,
+                3_000L + DuoPrefs.HEARTBEAT_STALE_MS + 1L,
+                liveContact = true
+            )
+        )
+    }
+
     @Test
     fun `a module that reported without a stamp is unknown, never never`() {
         assertEquals(

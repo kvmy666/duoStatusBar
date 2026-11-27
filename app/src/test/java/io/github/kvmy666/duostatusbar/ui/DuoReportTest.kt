@@ -17,6 +17,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.junit.rules.TemporaryFolder
 import java.io.File
@@ -46,8 +47,11 @@ class DuoReportTest {
     @Test
     fun `buildDiagnostics labels a stale dump with time and prints the live mode`() {
         val context: Context = ApplicationProvider.getApplicationContext()
-        val updatedAt = context.packageManager
-            .getPackageInfo(context.packageName, 0).lastUpdateTime
+        // Robolectric reports 0 (unknown) for lastUpdateTime; a known install stamp is what proves the
+        // loaded module started after this APK was installed.
+        val updatedAt = 1_000L
+        shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName)
+            .lastUpdateTime = updatedAt
         Settings.Global.putLong(
             context.contentResolver, "duo_statusbar_last_load", updatedAt + 10_000L
         )
