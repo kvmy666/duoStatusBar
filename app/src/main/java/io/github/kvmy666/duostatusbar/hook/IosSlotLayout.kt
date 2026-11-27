@@ -941,8 +941,30 @@ internal object IosSlotLayout {
         // Writing our summed px makes both chain children fixed and the default spread style distributes
         // the leftover into three gaps: owner CPH2747 279 = 128 + 89 + 3x20, so the shade 5G->battery
         // ink gap read 36 px instead of 16.74 while the main bar (LinearLayout) stayed packed.
-        if (isMatchConstraintRow(row)) return
+        if (isMatchConstraintRow(row)) {
+            // Leaving the row to the solver also leaves the stock height (63 QS, 101 shade). The stock
+            // row is `gravity=end|top`, so the 63 px icon container sat at the top of the 101 shade row
+            // while the fixed 63 px battery stayed centred in the cluster: owner CPH2747 read the
+            // battery 19 px lower. Centre only the icon container; keep every width/height stock.
+            centerVerticallyInRow(container)
+            return
+        }
         fitContainer(row)
+    }
+
+    /**
+     * R18 item 1: centres the icon container in a taller stock row without touching the row's size.
+     * The measured `StatusIconContainer` is a `LinearLayout` child; its stock vertical gravity is
+     * captured (and restored by [restoreAll]) and only the vertical bits are replaced. A sibling such
+     * as the privacy chip keeps its own stock position, and on the 63 px QS row this is a no-op.
+     */
+    private fun centerVerticallyInRow(container: ViewGroup) {
+        val params = container.layoutParams as? LinearLayout.LayoutParams ?: return
+        capture(container, params)
+        val gravity = (params.gravity and Gravity.HORIZONTAL_GRAVITY_MASK) or Gravity.CENTER_VERTICAL
+        if (params.gravity == gravity) return
+        params.gravity = gravity
+        container.requestLayout()
     }
 
     /**
