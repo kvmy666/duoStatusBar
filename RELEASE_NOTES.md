@@ -1,12 +1,14 @@
-# Duo Status Bar 2.1.2
+# Duo Status Bar 2.1.3
 
-Version 2.1.2 (112) improves how the module attaches to System UI, makes diagnostic reports complete, and adds optional automatic problem reports.
+Version 2.1.3 (113) improves how the module attaches to System UI, makes diagnostic reports complete and private, and adds optional automatic problem reports. It includes every change prepared for 2.1.2.
 
 ## Changes
 
+- After updating, restart the phone once so System UI loads the new module; the app now says when a restart is still needed.
+- Optional automatic problem reports: a consent choice after an update, with both buttons unlocked after 5 seconds. Reports are sent only when a problem is detected, each problem once and at most 3 reports a day, through the relay with no bot token in the app. Manual reports work whether or not automatic reports are enabled.
+- Reports refresh the live module data, record the module's last steps, and read LSPosed and safe-mode logs from their real location. They no longer collect root-manager logs or the list of installed root modules.
 - The module now installs only into the real System UI process, so full diagnostic reports are no longer overwritten by helper processes; this fixes the "module not running" and missing-report confusion.
 - Every report section now states present, empty, unreadable or skipped with a reason, and reports include a persisted breadcrumb plus crash and framework logs.
-- Opt-in automatic problem reports are off by default: a 5-second consent choice after launch or update, at most 3 sends a day, sent only when a problem is detected and network and battery conditions allow, through the relay with no bot token in the app; a 24-hour work pulse only checks for problems when network and battery conditions allow, and sends only when one is detected, without continuous polling.
 - Re-ordering iOS icons no longer changes the live icon list inside the vendor call, fixing the System UI crash loop when iOS mode is enabled while System UI runs.
 - The iOS mode switch is unavailable with a clear explanation on interfaces that cannot draw it; a saved iOS-on falls back to Duo instead of showing nothing, and the health screen reports "iOS active" instead of "disabled".
 - Pixel and AOSP devices hide the Compose icon cluster correctly, and the module attaches when the stock icon strip is an empty stub.
