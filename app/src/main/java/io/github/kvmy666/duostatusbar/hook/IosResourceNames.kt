@@ -45,10 +45,10 @@ internal data class IosResourceSpec(
  * The per-ROM resource name tables, taken verbatim from the measured trees:
  * `.pm/evidence/r7/build/A-oxygenos-names.md` (OxygenOS) and `B-other-roms-names.md` (the rest).
  *
- * Only OxygenOS and Samsung are live in the v2 route; the HyperOS/Nothing/Motorola/vivo tables are
- * complete so a later route flip needs no new evidence, but they are not activated. No activity,
- * arrow, or AOSP `ic_no_internet_*`/`ic_*mobiledata` entry is mapped anywhere: those are not the bar's
- * leaves on these ROMs (A:40-41, A:59-63, A:136-138).
+ * OxygenOS, ColorOS/realme (the same measured Oplus names) and Samsung are live in the v2 route; the
+ * HyperOS/Nothing/Motorola/vivo tables are complete so a later route flip needs no new evidence, but
+ * they are not activated. No activity, arrow, or AOSP `ic_no_internet_*`/`ic_*mobiledata` entry is
+ * mapped anywhere: those are not the bar's leaves on these ROMs (A:40-41, A:59-63, A:136-138).
  */
 internal object IosResourceNames {
 
@@ -72,7 +72,7 @@ internal object IosResourceNames {
 
     /** The specs for [familyId]; an unknown or host-only family has none. */
     fun specs(familyId: String): List<IosResourceSpec> = when (familyId) {
-        "oxygenos" -> oxygenos()
+        "oxygenos", "coloros" -> oxygenos()
         "samsung" -> samsung()
         "hyperos" -> hyperos()
         "nothing" -> nothing()
@@ -82,7 +82,8 @@ internal object IosResourceNames {
     }
 
     /**
-     * The [IosResourceKind.HIDDEN] entries of [familyId] (empty for every non-OxygenOS family).
+     * The [IosResourceKind.HIDDEN] entries of [familyId] (empty for every non-Oplus-live family;
+     * ColorOS shares the OxygenOS table).
      *
      * No-gap proof: these ids land on the `wifi_left`/`wifi_inout`/`data_inout` leaves, which are
      * `wrap_content` with no min width or padding, so a 0x0 gate collapses the slot

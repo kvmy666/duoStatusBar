@@ -138,7 +138,7 @@ internal object IosV2Report {
         ) {
             out.add(batteryMissLine(family))
         }
-        if (family == "oxygenos") {
+        if (IosV2Profile.stackedFamily(family)) {
             val stacked = IosStackedSim.missingBindersForDiagnostics
             if (stacked.isNotEmpty()) out.add(stackedMissLine(family, stacked))
             val extras = IosExtras.missingBindersForDiagnostics

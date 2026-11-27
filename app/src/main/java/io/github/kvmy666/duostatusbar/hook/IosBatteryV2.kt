@@ -559,7 +559,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     }
 
     private fun resolveBoltIds(context: Context, rom: RomAdapter): IntArray {
-        if (rom.id != "oxygenos") return IntArray(0)
+        if (IosV2Profile.batteryOwner(rom.id) != IosBatteryOwner.OPLUS) return IntArray(0)
         val ids = ArrayList<Int>(OPLUS_BOLT_NAMES.size)
         for (name in OPLUS_BOLT_NAMES) {
             val id = RomResources.id(context, rom, name)
@@ -1195,12 +1195,12 @@ internal enum class IosBatteryProbe { OPLUS_VIEW, OPLUS_BINDER, AOSP_VIEW }
 /**
  * R4: which measured battery classes to probe for [familyId].
  *
- * OxygenOS probes the Oplus view + binder and then the AOSP view exactly as before; Samsung probes
- * only its own AOSP-shaped view (so the absent Oplus classes never appear as `missing:` or as
- * failures); an empty/unknown family keeps the historical any-class probe.
+ * OxygenOS and ColorOS/realme probe the Oplus view + binder and then the AOSP view exactly as before;
+ * Samsung probes only its own AOSP-shaped view (so the absent Oplus classes never appear as `missing:`
+ * or as failures); an empty/unknown family keeps the historical any-class probe.
  */
 internal fun batteryProbePlan(familyId: String): List<IosBatteryProbe> = when (familyId) {
-    "oxygenos" -> listOf(
+    "oxygenos", "coloros" -> listOf(
         IosBatteryProbe.OPLUS_VIEW,
         IosBatteryProbe.OPLUS_BINDER,
         IosBatteryProbe.AOSP_VIEW

@@ -24,8 +24,11 @@ internal enum class IosBatteryOwner { OPLUS, AOSP }
  *
  * Family ids are exactly the ones [io.github.kvmy666.duostatusbar.hook.rom.RomAdapter] uses.
  * OxygenOS is the measured reference (resource map + Oplus battery owner). Samsung has the
- * resource map and the AOSP battery owner, but its runtime is unverified. Every other family keeps
- * the stock bar, and its resource table is dormant (R13).
+ * resource map and the AOSP battery owner, but its runtime is unverified. ColorOS/realme is a
+ * non-measured Oplus family: it reuses the measured Oplus resource names and battery owner, and the
+ * route is only deliverable when the Oplus battery constructor hook actually installs. Unresolved
+ * resource names/binders there stay stock with the existing per-piece miss/coverage logs. Every other
+ * family keeps the stock bar, and its resource table is dormant (R13).
  */
 internal object IosV2Profile {
 
@@ -35,17 +38,19 @@ internal object IosV2Profile {
      * Every other family is DORMANT (R13) measured data, not unsupported hardware: its resource table
      * is kept so a later route flip needs no new evidence, but no live route activates it.
      */
-    fun engineFamily(id: String): Boolean = id == "oxygenos" || id == "samsung"
+    fun engineFamily(id: String): Boolean =
+        id == "oxygenos" || id == "samsung" || id == "coloros"
 
     /** The battery hook is needed whenever the engine is (one owner per icon). */
     fun batteryFamily(id: String): Boolean = engineFamily(id)
 
     /**
      * R4: the single battery owner per family, or null when iOS battery mode is not delivered there.
-     * OxygenOS -> the measured Oplus view/binder; Samsung -> the AOSP `BatteryMeterView`.
+     * OxygenOS and ColorOS/realme -> the measured Oplus view/binder; Samsung -> the AOSP
+     * `BatteryMeterView`.
      */
     fun batteryOwner(id: String): IosBatteryOwner? = when (id) {
-        "oxygenos" -> IosBatteryOwner.OPLUS
+        "oxygenos", "coloros" -> IosBatteryOwner.OPLUS
         "samsung" -> IosBatteryOwner.AOSP
         else -> null
     }
@@ -64,11 +69,19 @@ internal object IosV2Profile {
         null -> false
     }
 
-    /** R4/R8: the two-SIM cluster is a measured Oplus binder only. */
-    fun stackedFamily(id: String): Boolean = id == "oxygenos"
+    /**
+     * R4/R8: the two-SIM cluster is a measured Oplus binder. ColorOS/realme shares the same Oplus
+     * binder classes as OxygenOS; every hook is guarded and logs a per-piece miss when a class is
+     * absent, so the stock bar is kept.
+     */
+    fun stackedFamily(id: String): Boolean = id == "oxygenos" || id == "coloros"
 
-    /** R4/R8: the hide-extras leaves are measured Oplus binders only. */
-    fun extrasFamily(id: String): Boolean = id == "oxygenos"
+    /**
+     * R4/R8: the hide-extras leaves are measured Oplus binders. ColorOS/realme shares the same Oplus
+     * binder classes as OxygenOS; every hook is guarded and logs a per-piece miss when a class is
+     * absent, so the stock bar is kept.
+     */
+    fun extrasFamily(id: String): Boolean = id == "oxygenos" || id == "coloros"
 
     /**
      * R4: the route-unavailable battery line.
@@ -91,7 +104,8 @@ internal object IosV2Profile {
     /**
      * The order path is enabled only on OxygenOS, where the swap is measured. Samsung exposes the same
      * `StatusBarIconList`/`StatusIconContainer` class names but the permutation is UNVERIFIED there;
-     * every other family keeps stock order.
+     * ColorOS is UNVERIFIED too, and enabling it could desynchronise slot/view indices. Every other
+     * family keeps stock order.
      */
     fun orderFamily(id: String): Boolean = id == "oxygenos"
 }
