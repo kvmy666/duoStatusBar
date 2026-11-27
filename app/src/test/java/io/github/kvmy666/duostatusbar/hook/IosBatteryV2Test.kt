@@ -204,6 +204,47 @@ class IosBatteryV2Test {
         }
     }
 
+    @Test
+    fun `zero-size retries are capped per view and reset after a successful install`() {
+        IosBatteryV2.resetCountersForTest()
+        try {
+            val root = FrameLayout(context)
+            val image = ImageView(context)
+            root.addView(image)
+            val refused = IosBatteryV2.Controller(root, image, IntArray(0), context, false, 20)
+
+            repeat(10) {
+                assertFalse(refused.install(reading(level = 70), saver = false))
+                IosBatteryV2.noteInstallRefused(refused)
+            }
+
+            var line = IosBatteryV2.diagnosticLines().single()
+            assertTrue("retries must stop at the cap: $line", line.contains("retries=4"))
+            assertTrue("a bounded retry is not a failure: $line", line.contains("failures=0"))
+            assertTrue(
+                "the first reason must stay the zero-size retry: $line",
+                line.contains("firstFailure=retry_stock_size_0x0_<=_0")
+            )
+
+            // The same view later gains a real 60x40 stock box: it must still install, and the
+            // per-view budget resets so a later zero-size refusal is counted again.
+            image.setImageDrawable(stockDrawable())
+            val positive = IosBatteryV2.Controller(root, image, IntArray(0), context, false, 20)
+            assertTrue(positive.install(reading(level = 70), saver = false))
+
+            image.setImageDrawable(null)
+            val refusedAgain = IosBatteryV2.Controller(root, image, IntArray(0), context, false, 20)
+            assertFalse(refusedAgain.install(reading(level = 70), saver = false))
+            IosBatteryV2.noteInstallRefused(refusedAgain)
+
+            line = IosBatteryV2.diagnosticLines().single()
+            assertTrue("the reset view is counted again: $line", line.contains("retries=5"))
+            assertTrue("still no failures: $line", line.contains("failures=0"))
+        } finally {
+            IosBatteryV2.resetCountersForTest()
+        }
+    }
+
     // ------------------------------------------------------------------ user transform (R7 P4)
 
     @Test

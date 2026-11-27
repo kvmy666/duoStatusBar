@@ -17,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowBuild
 
 /**
  * REL210: the additive `ios v2 diag:` block (surfaces/slots, clock, classes, counters, settings) and
@@ -283,6 +284,67 @@ class IosV2DiagTest {
             "rive bind: reason=poll detail=no_view_model_instance_after_25_polls",
             lineAfter(lines, "rive bind:").trim()
         )
+    }
+
+    // ------------------------------------------------------------------ R18 miss gating
+
+    @Test
+    fun `an installed battery owner never prints a battery miss but a real absence does`() {
+        // The report resolves its family from the ROM when the engine is inactive.
+        ShadowBuild.setManufacturer("OnePlus")
+        ShadowBuild.setBrand("OnePlus")
+        ShadowBuild.setProduct("CPH2747")
+        // Force the report to resolve the family from the ROM instead of a stale active engine.
+        IosResourceEngine.deactivate()
+        IosBatteryV2.resetCountersForTest()
+        try {
+            // The owner report's first token is a zero-size boot retry, not a miss.
+            val root = FrameLayout(context)
+            val image = ImageView(context)
+            root.addView(image)
+            val controller =
+                IosBatteryV2.Controller(root, image, IntArray(0), context, false, 20)
+            assertFalse(controller.install(IosBatteryReading(level = 70, plugged = false, status = 0)))
+            IosBatteryV2.noteInstallRefused(controller)
+            assertEquals("retry_stock_size_0x0_<=_0", IosBatteryV2.firstFailureForDiagnostics)
+
+            IosBatteryV2.setOwnerHooksForTest(
+                oplusHooked = true,
+                aospHooked = true,
+                oplusBinderHooked = true
+            )
+            assertTrue(IosBatteryV2.installedFor("oxygenos"))
+            val installed = IosV2Report.lines(
+                context,
+                iosSettings(),
+                FrameLayout(context),
+                emptyList()
+            )
+            assertFalse(
+                "an installed owner must not report piece=battery: $installed",
+                installed.any { it.contains("piece=battery") }
+            )
+
+            IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = false)
+            assertFalse(IosBatteryV2.installedFor("oxygenos"))
+            val missing = IosV2Report.lines(
+                context,
+                iosSettings(),
+                FrameLayout(context),
+                emptyList()
+            )
+            assertTrue(
+                "a real absence keeps the exact measured text: $missing",
+                missing.contains(
+                    "ios v2 miss family=oxygenos piece=battery " +
+                        "tried=StatBatteryMeterView,BatteryViewBinder,BatteryMeterView"
+                )
+            )
+        } finally {
+            IosBatteryV2.setOwnerHooksForTest(oplusHooked = false, aospHooked = false)
+            IosBatteryV2.resetCountersForTest()
+            ShadowBuild.reset()
+        }
     }
 
     @Test
