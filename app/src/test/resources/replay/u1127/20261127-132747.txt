@@ -32,4 +32,4 @@ uptime=15486s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=INFINIX BRAND=Infinix MODEL=redacted X6728
+MANUFACTURER=INFINIX BRAND=Infinix MODEL=redacted
