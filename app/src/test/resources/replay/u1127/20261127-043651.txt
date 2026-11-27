@@ -30,4 +30,4 @@ uptime=73385s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=motorola BRAND=motorola MODEL=redacted g - 2026
+MANUFACTURER=motorola BRAND=motorola MODEL=redacted

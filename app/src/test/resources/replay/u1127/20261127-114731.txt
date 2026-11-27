@@ -35,4 +35,4 @@ uptime=46968s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=Google BRAND=google MODEL=redacted 7a
+MANUFACTURER=Google BRAND=google MODEL=redacted

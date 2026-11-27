@@ -88,7 +88,9 @@ internal object ProblemDetector {
         }
         if (!inputs.updatePending &&
             (inputs.fallback.isNotBlank() ||
-                containsAny(records, "rive bind failed", "rive bind: reason=", "rivebind="))
+                // Only the current status is a current fact. The dump carries a history block, so a
+                // recovered bind's old failure line must not re-trigger fallback on every pulse.
+                containsAny(inputs.status, "rive bind failed", "rive bind: reason=", "rivebind="))
         ) {
             found += DetectedProblem("fallback", LOCATION_RIVE)
         }

@@ -123,11 +123,28 @@ class ProblemDetectorTest {
     }
 
     @Test
-    fun `a rive bind failure in the dump is a problem`() {
+    fun `a rive bind failure in the current status is a problem`() {
         val problems = ProblemDetector.detect(
-            ProblemInputs(dump = "rive bind: reason=surface detail=no-surface", capture = capture(facts()))
+            ProblemInputs(
+                status = "process=com.android.systemui pid=1 · owner=duo · stage=2 · " +
+                    "renderer=none · attached=false · riveBind=bind",
+                capture = capture(facts())
+            )
         )
         assertTrue(problems.any { it.type == "fallback" && it.location == "rive" })
+    }
+
+    @Test
+    fun `a stale rive bind line in the dump history is not a problem`() {
+        val problems = ProblemDetector.detect(
+            ProblemInputs(
+                status = "owner=duo stage=2 renderer=Rive attached=true",
+                dump = "history:\n  1795698346608 stage=2 · renderer=none · rive bind: reason=bind",
+                moduleState = ModuleState.OK,
+                capture = capture(facts())
+            )
+        )
+        assertTrue(problems.none { it.type == "fallback" })
     }
 
     @Test
