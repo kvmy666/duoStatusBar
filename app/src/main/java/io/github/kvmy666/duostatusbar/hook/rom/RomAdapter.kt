@@ -338,8 +338,9 @@ internal object RomDetection {
      * project, not new guesses.
      *
      * The family is proven, the **device** is not: [measured] and [shadeMeasured] stay false, and the
-     * note keeps the "unverified" promise. The modern Oplus tree has no `signal_cluster`, so
-     * [hideContainerIds] stays empty rather than inheriting the static ColorOS list.
+     * note keeps the "unverified" promise. [hideContainerIds] keeps the harmless `signal_cluster`
+     * fallback for an older OPPO tree whose vendor cluster sits outside `system_icons`; neither measured
+     * modern dump (realme RMX5011 / OnePlus PLK110) contains that id, so it is a no-op there.
      */
     private fun colorOsMarker(marker: String): RomAdapter = RomAdapter(
         id = "coloros",
@@ -356,12 +357,18 @@ internal object RomDetection {
         shadeContainerIds = listOf("quick_qs_status_icons", "shade_header_system_icons"),
         shadeBatteryId = "batteryRemainingIcon",
         shadeMeasured = false,
+        // The marker branch is the modern Oplus SystemUI measured on the realme RMX5011 / OnePlus
+        // PLK110; the static ColorOS branch is the old, unverified OPPO tree. The marker family reuses
+        // the OxygenOS panel kind (5-arg panel owner), so it keeps cover/panel_type_5arg.
         coverHook = true,
         panelExpansionKind = "panel_type_5arg",
         panelHookMeasured = false,
         panelOwnerAvailable = false,
         marker = marker,
-        measured = false
+        measured = false,
+        // Harmless fallback for older OPPO builds where the vendor cluster sits outside `system_icons`;
+        // neither measured modern dump (RMX5011/PLK110) contains this id, so it is a no-op there.
+        hideContainerIds = listOf("signal_cluster")
     )
 
     /**

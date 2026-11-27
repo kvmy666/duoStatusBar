@@ -773,6 +773,9 @@ class RomDetectionTest {
         )
         assertTrue(rom.coverHook)
         assertEquals("panel_type_5arg", rom.panelExpansionKind)
+        // The harmless older-OPPO fallback is kept on the marker adapter; neither measured modern dump
+        // (RMX5011/PLK110) contains this id, so it is a no-op there.
+        assertEquals(listOf("signal_cluster"), rom.hideContainerIds)
     }
 
     @Test
