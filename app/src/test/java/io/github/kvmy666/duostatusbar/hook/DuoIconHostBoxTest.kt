@@ -118,17 +118,52 @@ class DuoIconHostBoxTest {
     }
 
     /**
-     * The fallback decision is wider than [DuoIconHost.hasBox], which stays strict: a not-shown bar is
-     * deferred instead of treated as a bind failure. Evidence: the 2026-11-27 LG LM-V600, OnePlus
-     * PLK110 and Samsung SM-S948Q reports, where Rive bound before the main bar was shown.
+     * The fallback decision is wider than [DuoIconHost.hasBox], which stays strict, but only for an
+     * attached Rive: a not-shown bar is deferred instead of treated as a bind failure. Canvas and
+     * detached views keep the strict rule. Evidence: the 2026-11-27 LG LM-V600, OnePlus PLK110 and
+     * Samsung SM-S948Q reports, where Rive bound before the main bar was shown.
      */
     @Test
-    fun `a not-shown bar defers the box judgement instead of failing the bind`() {
-        assertTrue(DuoIconHost.attachBoxAcceptable(parentOk = true, hasBox = false, shown = false))
-        assertTrue(DuoIconHost.attachBoxAcceptable(parentOk = true, hasBox = true, shown = false))
-        assertTrue(DuoIconHost.attachBoxAcceptable(parentOk = true, hasBox = true, shown = true))
-        assertFalse(DuoIconHost.attachBoxAcceptable(parentOk = true, hasBox = false, shown = true))
-        assertFalse(DuoIconHost.attachBoxAcceptable(parentOk = false, hasBox = true, shown = false))
+    fun `a not-shown attached Rive defers the box judgement`() {
+        assertTrue(
+            DuoIconHost.attachBoxAcceptable(
+                parentOk = true, hasBox = false, shown = false, attached = true, deferHidden = true
+            )
+        )
+        assertTrue(
+            DuoIconHost.attachBoxAcceptable(
+                parentOk = true, hasBox = true, shown = false, attached = true, deferHidden = true
+            )
+        )
+        assertTrue(
+            DuoIconHost.attachBoxAcceptable(
+                parentOk = true, hasBox = true, shown = true, attached = true, deferHidden = true
+            )
+        )
+        assertFalse(
+            "shown 0x0 still falls back",
+            DuoIconHost.attachBoxAcceptable(
+                parentOk = true, hasBox = false, shown = true, attached = true, deferHidden = true
+            )
+        )
+        assertFalse(
+            "a wrong parent is never accepted",
+            DuoIconHost.attachBoxAcceptable(
+                parentOk = false, hasBox = true, shown = false, attached = true, deferHidden = true
+            )
+        )
+        assertFalse(
+            "a detached Rive is not deferred",
+            DuoIconHost.attachBoxAcceptable(
+                parentOk = true, hasBox = false, shown = false, attached = false, deferHidden = true
+            )
+        )
+        assertFalse(
+            "Canvas keeps the strict rule",
+            DuoIconHost.attachBoxAcceptable(
+                parentOk = true, hasBox = false, shown = false, attached = true, deferHidden = false
+            )
+        )
     }
 
     @Test

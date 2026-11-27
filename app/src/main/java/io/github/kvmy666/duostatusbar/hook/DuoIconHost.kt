@@ -3458,14 +3458,23 @@ internal class DuoIconHost(private val context: Context) {
         attachBoxAcceptable(
             parentOk = candidate.ui.parent === container || candidate.ui.parent === target,
             hasBox = hasBox(candidate.ui),
-            shown = candidate.ui.isShown
+            shown = candidate.ui.isShown,
+            attached = candidate.ui.isAttachedToWindow,
+            deferHidden = candidate is DuoRiveView
         )
 
     /** Bounded post-layout validation for an attached element. Falls back to Canvas on a 0x0 box. */
     private fun verifyAttachedBox(candidate: DuoElement, target: ViewGroup, frame: Int) {
         if (element !== candidate) return
         val parentOk = candidate.ui.parent === host || candidate.ui.parent === target
-        if (attachBoxAcceptable(parentOk, hasBox(candidate.ui), candidate.ui.isShown)) return
+        if (attachBoxAcceptable(
+                parentOk,
+                hasBox(candidate.ui),
+                candidate.ui.isShown,
+                candidate.ui.isAttachedToWindow,
+                candidate is DuoRiveView
+            )
+        ) return
         if (frame < 6) {
             (host ?: target).requestLayout()
             candidate.ui.requestLayout()
@@ -3508,6 +3517,12 @@ internal class DuoIconHost(private val context: Context) {
     /** Triggers the Canvas fallback for the main element when it has no drawable box. */
     private fun ensureMainFallback() {
         val candidate = element ?: return
+        if (candidate is DuoRiveView && candidate.isReady &&
+            candidate.ui.isAttachedToWindow && !candidate.ui.isShown
+        ) {
+            L.i("Duo box: main copy not shown - keeping the bound Rive instead of falling back")
+            return
+        }
         val target = hideStrip ?: (host as? ViewGroup) ?: return
         onElementFailed(candidate, target, boxFailure = true)
     }
@@ -3662,7 +3677,7 @@ internal class DuoIconHost(private val context: Context) {
         // A ready Rive on a not-shown bar (main bar behind QS/keyguard) has no box, but that is not a
         // failure: keep the element and let it draw when the bar appears. Only a shown 0x0 is restored.
         val live = element
-        if (live != null && !hasBox(live.ui) && !live.ui.isShown) return
+        if (live is DuoRiveView && live.ui.isAttachedToWindow && !hasBox(live.ui) && !live.ui.isShown) return
         if (element?.ui?.let { !hasBox(it) } == true) {
             if (!thrashTripped) L.w("Duo box: 0x0 on reapply - restoring stock icons")
             restoreStockGuarded("Duo box stayed 0x0 on reapply")
@@ -4311,13 +4326,19 @@ internal class DuoIconHost(private val context: Context) {
         ): Boolean = !isReady && (!attached || (width <= 0 && height <= 0))
 
         /**
-         * A not-shown bar (main bar behind the keyguard/QS, a keyguard bar not laid out yet) has no
-         * usable box, but that is not evidence that Rive failed to bind: the view model binds
-         * independently of layout. Keep the candidate and let it draw when the bar appears; the
-         * shown-bar 0x0 case still falls back. [hasBox] itself stays strict (L11).
+         * Whether the current box is good enough to keep. Only a bound Rive attached to its window may
+         * defer the box judgement on a not-shown bar (main bar behind the keyguard/QS, a keyguard bar
+         * not laid out yet): the view model binds independently of layout, so keep the candidate and
+         * let it draw when the bar appears. Canvas (which reports ready before layout) and detached
+         * views keep the strict [hasBox] rule, and a shown-bar 0x0 still falls back.
          */
-        internal fun attachBoxAcceptable(parentOk: Boolean, hasBox: Boolean, shown: Boolean): Boolean =
-            parentOk && (hasBox || !shown)
+        internal fun attachBoxAcceptable(
+            parentOk: Boolean,
+            hasBox: Boolean,
+            shown: Boolean,
+            attached: Boolean,
+            deferHidden: Boolean
+        ): Boolean = parentOk && (hasBox || (deferHidden && attached && !shown))
 
         /** True only when the view is attached, shown, visible and laid out (structural validity, no alpha). */
         internal fun hasBox(view: View): Boolean = try {
