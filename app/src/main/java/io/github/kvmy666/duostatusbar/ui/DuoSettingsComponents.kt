@@ -79,6 +79,13 @@ internal fun interface SearchGate {
     operator fun invoke(vararg text: String): Boolean
 }
 
+/**
+ * The settings search rule: a row is shown when the query appears in its label or any detail text.
+ * A blank query shows every row. Kept top-level so it can be unit-tested without the screen.
+ */
+internal fun settingsMatches(query: String, vararg text: String): Boolean =
+    query.isBlank() || text.any { it.contains(query.trim(), ignoreCase = true) }
+
 @Composable
 internal fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -475,10 +482,11 @@ internal fun SettingSwitch(
     checked: Boolean,
     enabled: Boolean = true,
     preview: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
     onChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -489,6 +497,25 @@ internal fun SettingSwitch(
         }
         GlassSwitch(checked = checked, enabled = enabled, onCheckedChange = onChange)
     }
+}
+
+/**
+ * The one automatic-report consent switch, rendered on both the Settings About card and the Report
+ * page. Both call sites receive the same value/callback from MainActivity, so the two switches are
+ * two views of one state instead of two independent settings.
+ */
+@Composable
+internal fun AutoReportSetting(
+    autoReport: Boolean,
+    onToggleAutoReport: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SettingSwitch(
+        label = stringResource(R.string.settings_auto_report),
+        detail = stringResource(R.string.settings_auto_report_detail),
+        checked = autoReport,
+        modifier = modifier
+    ) { on -> onToggleAutoReport(on) }
 }
 
 /**

@@ -49,7 +49,11 @@ private val REPORT_CATEGORIES = listOf("Bug", "Device support", "Feature request
  * follow-up path, so no separate Telegram ticket bot is required for this flow.
  */
 @Composable
-fun DuoReportScreen(modifier: Modifier = Modifier) {
+fun DuoReportScreen(
+    autoReport: Boolean,
+    onToggleAutoReport: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
@@ -77,6 +81,16 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // The same consent switch as Settings > About, at the top of the Report page, so it is
+            // discoverable after the dialog was answered rather than buried at the bottom of About.
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    AutoReportSetting(
+                        autoReport = autoReport,
+                        onToggleAutoReport = onToggleAutoReport
+                    )
+                }
+            }
             Text(stringResource(R.string.report_label), style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 REPORT_CATEGORIES.forEach { label ->
@@ -206,6 +220,15 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(stringResource(R.string.report_ticket_created), style = MaterialTheme.typography.headlineSmall)
+        // Keep the consent switch at the top of the Report page in the success state too.
+        GlassCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                AutoReportSetting(
+                    autoReport = autoReport,
+                    onToggleAutoReport = onToggleAutoReport
+                )
+            }
+        }
         Text(stringResource(R.string.report_ticket_keep), style = MaterialTheme.typography.bodyMedium)
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

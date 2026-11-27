@@ -1110,7 +1110,8 @@ internal fun AboutSection(
     if (matches(stringResource(R.string.section_about), stringResource(R.string.settings_status),
             stringResource(R.string.settings_export_log),
             stringResource(R.string.settings_check_updates), stringResource(R.string.settings_donate),
-            stringResource(R.string.settings_auto_report))
+            stringResource(R.string.settings_auto_report),
+            stringResource(R.string.settings_auto_report_detail))
     ) GlassCard(
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
@@ -1153,12 +1154,12 @@ internal fun AboutSection(
                 checked = checkUpdates
             ) { on -> onToggleUpdates(on) }
             // Opt-in automatic problem reports. The switch is the consent answer: on schedules the
-            // first pulse now, off cancels every scheduled pulse immediately.
-            SettingSwitch(
-                label = stringResource(R.string.settings_auto_report),
-                detail = stringResource(R.string.settings_auto_report_detail),
-                checked = autoReport
-            ) { on -> onToggleAutoReport(on) }
+            // first pulse now, off cancels every scheduled pulse immediately. The same control is on
+            // the Report page; both are backed by MainActivity's one state.
+            AutoReportSetting(
+                autoReport = autoReport,
+                onToggleAutoReport = onToggleAutoReport
+            )
             OutlinedButton(
                 onClick = onCheckNow,
                 enabled = !checkingUpdate,

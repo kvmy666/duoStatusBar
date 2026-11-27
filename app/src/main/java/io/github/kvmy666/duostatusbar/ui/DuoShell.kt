@@ -96,7 +96,10 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
-fun DuoShell() {
+fun DuoShell(
+    autoReport: Boolean,
+    onToggleAutoReport: (Boolean) -> Unit
+) {
     var page by rememberSaveable { mutableStateOf(DuoPage.HOME) }
     var navInteracting by remember { mutableStateOf(false) }
     GlassBackdrop(
@@ -123,9 +126,18 @@ fun DuoShell() {
             when (page) {
                 DuoPage.HOME -> DuoHomeScreen()
                 DuoPage.CUSTOMIZATION -> CustomizationPage()
-                DuoPage.REPORT -> DuoReportScreen(Modifier.fillMaxSize())
+                DuoPage.REPORT -> DuoReportScreen(
+                    autoReport = autoReport,
+                    onToggleAutoReport = onToggleAutoReport,
+                    modifier = Modifier.fillMaxSize()
+                )
                 DuoPage.SETTINGS -> Box(Modifier.fillMaxSize()) {
-                    DuoSettingsScreen(Modifier.fillMaxSize(), showCustomization = false)
+                    DuoSettingsScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        showCustomization = false,
+                        autoReport = autoReport,
+                        onToggleAutoReport = onToggleAutoReport
+                    )
                     IconButton(
                         onClick = { page = DuoPage.HOME },
                         modifier = Modifier

@@ -42,10 +42,22 @@ class MainActivity : ComponentActivity() {
                     var showConsent by remember {
                         mutableStateOf(ConsentGate.shouldShow(AutoReportStore.consent(context)))
                     }
-                    DuoShell()
+                    // The one automatic-report state: both the Settings switch and the Report switch
+                    // read it, and the consent dialog writes it too, so the answer is visible at once.
+                    var autoReport by remember {
+                        mutableStateOf(ConsentGate.enabled(AutoReportStore.consent(context)))
+                    }
+                    fun setAutoReport(on: Boolean) {
+                        AutoReportManager.answerConsent(context, on)
+                        autoReport = on
+                    }
+                    DuoShell(
+                        autoReport = autoReport,
+                        onToggleAutoReport = ::setAutoReport
+                    )
                     if (showConsent) {
                         ConsentDialog { allow ->
-                            AutoReportManager.answerConsent(context, allow)
+                            setAutoReport(allow)
                             showConsent = false
                         }
                     }

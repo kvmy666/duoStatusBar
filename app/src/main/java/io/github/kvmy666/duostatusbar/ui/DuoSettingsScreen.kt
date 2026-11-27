@@ -51,9 +51,6 @@ import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RestartOutcome
 import io.github.kvmy666.duostatusbar.RootLogs
-import io.github.kvmy666.duostatusbar.settings.AutoReportManager
-import io.github.kvmy666.duostatusbar.settings.AutoReportStore
-import io.github.kvmy666.duostatusbar.settings.ConsentGate
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.BackupCodec
@@ -103,7 +100,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun DuoSettingsScreen(
     modifier: Modifier = Modifier,
-    showCustomization: Boolean = true
+    showCustomization: Boolean = true,
+    autoReport: Boolean,
+    onToggleAutoReport: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val orientation = DuoOrientation.of(LocalConfiguration.current.orientation)
@@ -140,9 +139,6 @@ fun DuoSettingsScreen(
         ModuleLoadDiagnosis.of(context, moduleHealth)
     }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
-    var autoReport by remember {
-        mutableStateOf(ConsentGate.enabled(AutoReportStore.consent(context)))
-    }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -224,8 +220,7 @@ fun DuoSettingsScreen(
         }
     }
     /** Settings search: a row is shown when the query appears in its label or its detail. */
-    fun matches(vararg text: String): Boolean =
-        query.isBlank() || text.any { it.contains(query.trim(), ignoreCase = true) }
+    fun matches(vararg text: String): Boolean = settingsMatches(query, *text)
 
     val search = SearchGate { matches(*it) }
 
@@ -245,7 +240,6 @@ fun DuoSettingsScreen(
             moduleHealth = ModuleHealthCheck.of(context)
             iosCapability = IosCapability.read(context, DuoPrefs.moduleLoadTime(context))
             accessGranted = DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted()
-            autoReport = ConsentGate.enabled(AutoReportStore.consent(context))
         }
     }
 
@@ -461,15 +455,17 @@ fun DuoSettingsScreen(
                 color = MaterialTheme.colorScheme.secondary,
                 fontWeight = FontWeight.Medium
             )
-
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                label = { Text(stringResource(R.string.settings_search)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
+
+        // The search box is on both routes: the About card and its automatic-report switch live on the
+        // Settings route (showCustomization=false), so hiding the box there made them unfindable.
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            label = { Text(stringResource(R.string.settings_search)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
 
         // Red health card: not loaded, running old code after an update, or loaded but unable to report
         // (the One UI 8 "Unknown authority" case). Recovery buttons plus a one-tap report.
@@ -721,11 +717,7 @@ fun DuoSettingsScreen(
                 }
             },
             autoReport = autoReport,
-            onToggleAutoReport = { on ->
-                autoReport = on
-                // Turning on triggers the first pulse; turning off cancels every scheduled pulse.
-                AutoReportManager.answerConsent(context, on)
-            },
+            onToggleAutoReport = onToggleAutoReport,
             checkingUpdate = checkingUpdate,
             onCheckNow = {
                 checkingUpdate = true
