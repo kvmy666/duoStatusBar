@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -158,6 +159,29 @@ class LogReporterZipTest {
                 .bufferedReader().readText()
             assertFalse("stored dump must be gone: $moduleLog", moduleLog.contains("DUMP-MARKER"))
             assertFalse("stored status must be gone: $moduleLog", moduleLog.contains("STATUS-MARKER"))
+        }
+    }
+
+    @Test
+    fun `a blank dump ignores a stored dump time and adds no dump entry`() {
+        val context = RuntimeEnvironment.getApplication()
+        DuoPrefs.writeDump(context, "")
+        assertTrue("setup must leave a stored stamp", DuoPrefs.dumpAt(context) > 0L)
+        val evidence = reportEvidence("STATUS-MARKER", "", 0L, evidenceLive = true)
+
+        assertEquals("a blank dump has no dump time", 0L, evidenceDumpTime(context, evidence, true))
+
+        val file = writeReportZip(
+            context,
+            report = "diag",
+            logs = "logs",
+            status = evidence.status,
+            dump = evidence.dump,
+            dumpAt = evidence.dumpAt
+        )
+        assertNotNull(file)
+        ZipFile(file!!).use { zf ->
+            assertNull("a blank dump must not add a dump entry", zf.getEntry("diagnostics-dump.txt"))
         }
     }
 

@@ -202,6 +202,22 @@ internal fun reportEvidence(
     ReportEvidence("", "", 0L)
 }
 
+/**
+ * The dump time a report may print. A blank dump has no timestamp, even when the stored stamp is left
+ * over from the status-only snapshot that replaced it (B1); only a non-blank live dump may fall back
+ * to [DuoPrefs.dumpAt].
+ */
+internal fun evidenceDumpTime(
+    context: Context,
+    evidence: ReportEvidence,
+    evidenceLive: Boolean
+): Long = if (evidenceLive && evidence.dump.isNotBlank()) {
+    evidence.dumpAt.takeIf { it > 0L }
+        ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
+} else {
+    0L
+}
+
 /** The report the About buttons send — one text, shared or written to a file. */
 internal fun buildDiagnostics(
     context: Context,
@@ -234,12 +250,7 @@ internal fun buildDiagnostics(
     val evidenceStatus = evidence.status
     val evidenceHistory = if (evidenceLive) history else emptyList()
     val evidenceDump = evidence.dump
-    val evidenceDumpAt = if (evidenceLive) {
-        evidence.dumpAt.takeIf { it > 0L }
-            ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
-    } else {
-        0L
-    }
+    val evidenceDumpAt = evidenceDumpTime(context, evidence, evidenceLive)
     // An installed update is the one clear state: the old build is loaded, and only a restart loads
     // this one. The moduleLoadLine stale-heartbeat wording would wrongly say it is not running.
     val loadLine = if (health?.state == ModuleState.NEEDS_RESTART) {
@@ -506,12 +517,7 @@ internal fun writeReportZip(
     val evidence = reportEvidence(status, dump, dumpAt, evidenceLive)
     val evidenceStatus = evidence.status
     val evidenceDump = evidence.dump
-    val evidenceDumpAt = if (evidenceLive) {
-        evidence.dumpAt.takeIf { it > 0L }
-            ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
-    } else {
-        0L
-    }
+    val evidenceDumpAt = evidenceDumpTime(context, evidence, evidenceLive)
 
     val rom = runCatching {
         reportRom(
