@@ -143,6 +143,26 @@ class BreadcrumbWiringTest {
         }
     }
 
+    @Test
+    fun `the start block reports the capability before its breadcrumb`() {
+        val hook = read("app/src/main/java/io/github/kvmy666/duostatusbar/hook/DuoHook.kt")
+        val marker = "L.guard(\"DuoHook start\")"
+        val markerAt = hook.indexOf(marker)
+        assertTrue("DuoHook.kt is missing $marker", markerAt >= 0)
+        val startBlock = hook.substring(markerAt + marker.length)
+        val report = startBlock.indexOf("reportIosCapability(ctx)")
+        val breadcrumb = startBlock.indexOf("Breadcrumb.step(\"ios:capability\")")
+        assertTrue("the DuoHook start block is missing reportIosCapability(ctx)", report >= 0)
+        assertTrue(
+            "the DuoHook start block is missing Breadcrumb.step(\"ios:capability\")",
+            breadcrumb >= 0
+        )
+        assertTrue(
+            "reportIosCapability(ctx) must run before Breadcrumb.step(\"ios:capability\") in the start block",
+            report < breadcrumb
+        )
+    }
+
     /** Reads a project file from the test working directory (the app module) or its parents. */
     private fun read(relative: String): String {
         var dir: File? = File(System.getProperty("user.dir") ?: ".")

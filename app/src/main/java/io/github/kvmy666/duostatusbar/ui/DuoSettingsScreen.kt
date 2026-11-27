@@ -541,12 +541,13 @@ fun DuoSettingsScreen(
                     }
                 },
                 onGitHub = {
+                    val detail = fallback
                     scope.launch {
                         val stored = withContext(Dispatchers.IO) {
                             SnapshotRefresh.stored(context)
                         }
                         val evidenceLive = freshEvidenceUsable(stored)
-                        openGitHubIssue(context, fallback, if (evidenceLive) stored.status else "")
+                        openGitHubIssue(context, detail, if (evidenceLive) stored.status else "")
                     }
                 },
                 onDismiss = {
