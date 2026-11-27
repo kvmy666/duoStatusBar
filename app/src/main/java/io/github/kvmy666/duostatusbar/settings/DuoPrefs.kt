@@ -1,8 +1,10 @@
 package io.github.kvmy666.duostatusbar.settings
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.provider.Settings
+import java.io.File
 
 /**
  * The user's settings, and the contract that carries them into System UI (FR-03/16/17).
@@ -553,7 +555,48 @@ object DuoPrefs {
     private const val KEY_LANDSCAPE_SET = "landscape_set"
     private const val HISTORY_LIMIT = 20
 
-    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    /**
+     * The single accessor for the settings file.
+     *
+     * OWNER OVERRIDE (Duo 2.1.6, replacing AGENTS.md rule 6 for this one case): a brand-new
+     * install starts enabled, in the classic single-SIM Duo design. The value is materialised
+     * into the store on the first open, so every reader (provider, bridge, module client, backup)
+     * sees it; it is never re-applied to a store that already exists, so a stored `enabled=false`
+     * — and an existing store that predates this key — keeps today's value.
+     *
+     * The check is the *file*, not `contains(COL_ENABLED)` alone: an existing install whose prefs
+     * file exists but lacks `enabled` must stay false (the legacy case), while only a store whose
+     * file did not exist is a first install. Android and Robolectric do not create the XML until a
+     * write, so existence is captured before opening. Seeding writes the portrait keys only —
+     * landscape reads portrait until it is edited — and deliberately does not bump the revision,
+     * touch [SettingsHistory], or broadcast, because none of those are user activity.
+     *
+     * The module-side [DuoSettingsClient.DEFAULT] stays false on purpose (C11): an unreachable
+     * provider must never be mistaken for "on". This seed only changes what a real app store holds.
+     */
+    internal fun prefs(context: Context): SharedPreferences {
+        val fileExisted = prefsFile(context).exists()
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (shouldSeedFirstRun(fileExisted, p.contains(COL_ENABLED))) {
+            p.edit()
+                .putBoolean(COL_ENABLED, true)
+                .putBoolean(COL_IOS_MODE, false)
+                .putString(COL_DESIGN_STYLE, DESIGN_OLD)
+                .commit()
+        }
+        return p
+    }
+
+    /** The prefs XML path; checked before [Context.getSharedPreferences] so the read cannot create it. */
+    private fun prefsFile(context: Context): File =
+        File(context.applicationInfo.dataDir, "shared_prefs/$PREFS.xml")
+
+    /**
+     * Pure first-run matrix: only a file that did not exist *and* has no stored enabled key is a
+     * fresh install. Any existing file — even one without the key — is an existing user.
+     */
+    internal fun shouldSeedFirstRun(fileExisted: Boolean, enabledKeyExists: Boolean): Boolean =
+        !fileExisted && !enabledKeyExists
 
     private fun prefix(orientation: DuoOrientation): String =
         if (orientation == DuoOrientation.LANDSCAPE) LAND_PREFIX else ""
@@ -803,7 +846,7 @@ object DuoPrefs {
     }
 
     fun revision(context: Context): Long =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_REVISION, 0L)
+        prefs(context).getLong(KEY_REVISION, 0L)
 
     /**
      * Issue #4: whether the user asked Shizuku to hide the phone's own Wi-Fi/cellular/battery icons
@@ -811,11 +854,11 @@ object DuoPrefs {
      * never needs this value, so it must not become part of the app↔module provider contract.
      */
     fun hideStockIcons(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .getBoolean(KEY_HIDE_STOCK_ICONS, false)
 
     fun writeHideStockIcons(context: Context, value: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .edit()
             .putBoolean(KEY_HIDE_STOCK_ICONS, value)
             .apply()
@@ -829,11 +872,11 @@ object DuoPrefs {
      * capture never runs `su` before this flag is set, so no root prompt appears uninvited.
      */
     fun rootAllowed(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .getBoolean(KEY_ROOT_ALLOWED, false)
 
     fun writeRootAllowed(context: Context, value: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .edit()
             .putBoolean(KEY_ROOT_ALLOWED, value)
             .apply()
@@ -844,10 +887,10 @@ object DuoPrefs {
      * [StockIconInventory]. Empty means the module has not reported a live bar yet.
      */
     fun readStockIcons(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STOCK_ICONS, "") ?: ""
+        prefs(context).getString(KEY_STOCK_ICONS, "") ?: ""
 
     fun writeStockIcons(context: Context, json: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .edit()
             .putString(KEY_STOCK_ICONS, json)
             .apply()
@@ -859,20 +902,20 @@ object DuoPrefs {
      * "please send the log" alert. Cleared at each module load and when the user dismisses the alert.
      */
     fun fallback(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_FALLBACK, "") ?: ""
+        prefs(context).getString(KEY_FALLBACK, "") ?: ""
 
     fun writeFallback(context: Context, reason: String) {
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val p = prefs(context)
         if (reason.isEmpty()) p.edit().remove(KEY_FALLBACK).apply()
         else p.edit().putString(KEY_FALLBACK, reason).apply()
     }
 
     /** Whether the background update check is enabled (on by default; the user can switch it off). */
     fun checkUpdates(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CHECK_UPDATES, true)
+        prefs(context).getBoolean(KEY_CHECK_UPDATES, true)
 
     fun writeCheckUpdates(context: Context, value: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .edit()
             .putBoolean(KEY_CHECK_UPDATES, value)
             .apply()
@@ -883,10 +926,10 @@ object DuoPrefs {
      * bot cannot be spammed by repeated taps. Wall-clock ms, or 0 when never.
      */
     fun logSentAt(context: Context): Long =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LOG_SENT_AT, 0L)
+        prefs(context).getLong(KEY_LOG_SENT_AT, 0L)
 
     fun writeLogSentAt(context: Context, at: Long) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .edit()
             .putLong(KEY_LOG_SENT_AT, at)
             .apply()
@@ -894,10 +937,10 @@ object DuoPrefs {
 
     /** The release version already announced, so the same update is not notified over and over. */
     fun updateNotified(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_UPDATE_NOTIFIED, "") ?: ""
+        prefs(context).getString(KEY_UPDATE_NOTIFIED, "") ?: ""
 
     fun writeUpdateNotified(context: Context, version: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .edit()
             .putString(KEY_UPDATE_NOTIFIED, version)
             .apply()
@@ -905,10 +948,10 @@ object DuoPrefs {
 
     /** Wall-clock ms of the last successful update check, so the 1/day cadence holds across restarts. */
     fun lastUpdateCheck(context: Context): Long =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_UPDATE_CHECK_AT, 0L)
+        prefs(context).getLong(KEY_UPDATE_CHECK_AT, 0L)
 
     fun writeLastUpdateCheck(context: Context, at: Long) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .edit()
             .putLong(KEY_UPDATE_CHECK_AT, at)
             .apply()
@@ -916,10 +959,10 @@ object DuoPrefs {
 
     /** What the module last reported about itself, for the diagnostics screen. */
     fun status(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATUS, "") ?: ""
+        prefs(context).getString(KEY_STATUS, "") ?: ""
 
     fun writeStatus(context: Context, status: String) {
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val p = prefs(context)
         // A cheap rolling history: appended only when it changes, so a burst of identical reports (the
         // element is re-checked on every layout change) does not turn into a wall of the same line.
         val previous = p.getString(KEY_STATUS, "")
@@ -937,7 +980,7 @@ object DuoPrefs {
      * the module thought it was doing is worth far more than the final state.
      */
     fun statusHistory(context: Context): List<String> =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .getStringSet(KEY_HISTORY, emptySet())
             .orEmpty()
             .sorted()
@@ -947,7 +990,7 @@ object DuoPrefs {
      * Empty in release builds, where the module never sends one.
      */
     fun dump(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DUMP, "") ?: ""
+        prefs(context).getString(KEY_DUMP, "") ?: ""
 
     /**
      * Wall-clock ms when [dump] was last written, or 0 for a dump written by a build that predates this
@@ -955,7 +998,7 @@ object DuoPrefs {
      * that the module answered; without it the app could only sleep and hope.
      */
     fun dumpAt(context: Context): Long =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_DUMP_AT, 0L)
+        prefs(context).getLong(KEY_DUMP_AT, 0L)
 
     /** Maximum number of UTF-16 code units kept for [KEY_DUMP] before truncation. */
     const val DUMP_MAX_CHARS = 2 * 1024 * 1024
@@ -983,7 +1026,7 @@ object DuoPrefs {
     }
 
     fun writeDump(context: Context, dump: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs(context)
             .edit()
             .putString(KEY_DUMP, truncateDump(dump))
             .putLong(KEY_DUMP_AT, System.currentTimeMillis())

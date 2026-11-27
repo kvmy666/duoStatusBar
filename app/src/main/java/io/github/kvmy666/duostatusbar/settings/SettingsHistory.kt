@@ -13,9 +13,6 @@ internal object SettingsHistory {
     const val KEY_LAST_CHANGE_KEYS = "last_change_keys"
     const val ABSENT = "not recorded (build predates history)"
 
-    /** Same preferences file as [DuoPrefs] (the settings store). */
-    private const val PREFS = "duo_settings"
-
     data class Record(val at: Long, val keys: List<String>)
 
     /**
@@ -135,7 +132,7 @@ internal object SettingsHistory {
     }
 
     fun write(context: Context, record: Record) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        DuoPrefs.prefs(context)
             .edit()
             .putLong(KEY_LAST_CHANGE_AT, record.at)
             .putString(KEY_LAST_CHANGE_KEYS, record.keys.joinToString(","))
@@ -144,7 +141,7 @@ internal object SettingsHistory {
 
     /** The last recorded change, or null when this build has never recorded one. */
     fun read(context: Context): Record? {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = DuoPrefs.prefs(context)
         val at = prefs.getLong(KEY_LAST_CHANGE_AT, 0L)
         val keys = prefs.getString(KEY_LAST_CHANGE_KEYS, "").orEmpty()
             .split(',')
