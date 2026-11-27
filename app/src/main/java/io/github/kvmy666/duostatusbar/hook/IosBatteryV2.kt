@@ -412,11 +412,11 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 
     /**
      * R4: the Samsung configuration listener replaced the icon drawable. Repair every live controller
-     * in place; a controller that is not installed is ignored by [Controller.reassert]. Guarded
-     * because this runs from a SystemUI configuration callback.
+     * in place; a controller that is not installed is ignored by [Controller.reapplyAfterConfig].
+     * Guarded because this runs from a SystemUI configuration callback.
      *
-     * Restore caveat: [Controller.restore] returns the drawable captured at install, not the
-     * Samsung drawable this listener minted later.
+     * R17C: [Controller.reapplyAfterConfig] adopts the freshly minted Samsung drawable as the new
+     * stock, so [Controller.restore] returns the post-configuration drawable, not the install one.
      */
     private fun reassertAllOwned() {
         val live = try {
@@ -428,7 +428,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         var repaired = 0
         for (controller in live) {
             try {
-                if (controller.reassert()) repaired++
+                if (controller.reapplyAfterConfig()) repaired++
             } catch (t: Throwable) {
                 countFailure(t)
                 IosV2Log.failureOnce("battery.reassertAll", t)
@@ -812,7 +812,42 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             IosV2Log.failureOnce("battery.iconField", t)
             null
         }
-        return field ?: firstImageView(view)
+        return field ?: iconFieldByType(view) ?: firstImageView(view)
+    }
+
+    /**
+     * R17C: the icon leaf by declared field type, when the measured `mBatteryIconView` name is gone.
+     *
+     * Samsung creates the `ImageView` programmatically and gives it no resource id
+     * (`BatteryMeterView.smali:281-291`), so a renamed field would otherwise fall through to
+     * [firstImageView]. Every reflection step is guarded; an unreadable field keeps the stock battery.
+     */
+    internal fun iconFieldByType(view: View): ImageView? {
+        var cls: Class<*>? = view.javaClass
+        while (cls != null) {
+            val fields = try {
+                cls.declaredFields
+            } catch (t: Throwable) {
+                null
+            }
+            if (fields != null) {
+                for (field in fields) {
+                    try {
+                        if (!ImageView::class.java.isAssignableFrom(field.type)) continue
+                        field.isAccessible = true
+                        (field.get(view) as? ImageView)?.let { return it }
+                    } catch (t: Throwable) {
+                        // Per-field failure: skip it and keep looking.
+                    }
+                }
+            }
+            cls = try {
+                cls.superclass
+            } catch (t: Throwable) {
+                null
+            }
+        }
+        return null
     }
 
     private fun oplusIconId(context: Context, rom: RomAdapter): Int {
@@ -1094,6 +1129,45 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             // The OEM can rebuild the container params on its own bind; re-assert the R9 slot too.
             IosSlotLayout.registerBattery(view, image)
             return repaired
+        }
+
+        /**
+         * R17C: Samsung's `BatteryMeterViewController$1.onDensityOrFontScaleChanged` removes the icon,
+         * mints a new `SamsungBatteryMeterDrawable` and sets it on the same `ImageView`
+         * (`BatteryMeterViewController$1.smali:116-120,265-273`), so the stock glyph and its size
+         * changed. Adopt the freshly minted drawable as the new stock and rebuild our glyph at its new
+         * size; [restore] then returns the post-configuration stock, not the install-time one.
+         *
+         * Returns true only when a real rebuild happened. A drawable that is still ours (or absent, or
+         * with no usable size) is just re-asserted, exactly as before.
+         */
+        fun reapplyAfterConfig(): Boolean {
+            if (!installedFlag) return false
+            val current = image.drawable
+            if (current == null || current === ours) return reassert()
+            val width = current.intrinsicWidth.takeIf { it > 0 } ?: image.width
+            val height = current.intrinsicHeight.takeIf { it > 0 } ?: image.height
+            if (width <= 0 || height <= 0) return reassert()
+
+            original = current
+            stockWidth = width
+            stockHeight = height
+            userTransform = resolveTransform()
+            val next = visualFor()
+            val drawable = IosDrawables.create(
+                IosIconKind.BATTERY,
+                next,
+                width,
+                height,
+                relativeSize = false,
+                captureColorFilter = true
+            )
+            ours = drawable
+            visual = next
+            image.setImageDrawable(drawable)
+            hideBolts()
+            IosSlotLayout.registerBattery(view, image)
+            return true
         }
 
         /** Returns the exact original drawable/visibility and every bolt visibility; the other half of P4's path. */
