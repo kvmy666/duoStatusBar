@@ -24,6 +24,7 @@ import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.Breadcrumb
 import io.github.kvmy666.duostatusbar.hook.events.flashlightStateFromDispatch
+import io.github.kvmy666.duostatusbar.hook.rom.OplusMarker
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomMarkers
@@ -173,6 +174,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * a lazy initializer that happened to run before `app` existed would freeze the UNKNOWN result for
      * the whole process. It starts as the UNKNOWN resolution (old brand behaviour) and [start] reassigns
      * it as soon as a context exists. The first use happens inside hooks, after [start].
+     *
+     * R17D: [install] also re-resolves it from the host classloader ([OplusMarker]) before the
+     * family-gated iOS battery install, so a realme/ColorOS SystemUI is already `coloros` there. That
+     * resolution needs no context and is oxygenOS-neutral: OxygenOS ignores markers, so CPH2747's
+     * adapter is byte-identical with and without one.
      */
     private var rom: RomAdapter = RomDetection.forThisRom(
         Build.MANUFACTURER.orEmpty(),
@@ -449,6 +455,20 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             IosResourceEngine.install(lp.classLoader)
             Breadcrumb.step("install:ios-engine-ok")
             Breadcrumb.step("install:battery")
+            // R17D: the host classloader is the only place the Oplus SystemUI classes are visible before
+            // a context exists. Re-resolving the marker here makes a realme/OPPO ColorOS SystemUI select
+            // the marker adapter *before* the family-gated iOS battery install, so the iOS route sees the
+            // same family the rest of install uses. OxygenOS ignores markers (its adapter stays
+            // byte-identical), and the existing no-context UNKNOWN fallback above still covers a loader
+            // that resolves nothing.
+            rom = RomDetection.forThisRom(
+                Build.MANUFACTURER.orEmpty(),
+                Build.BRAND.orEmpty(),
+                Build.PRODUCT.orEmpty(),
+                Build.DISPLAY.orEmpty(),
+                Build.VERSION.SDK_INT,
+                RomMarkers.of(oplusMarker = OplusMarker.detectInClassLoader(lp.classLoader))
+            )
             // R4: the battery owner and the Oplus placement binder are per-family pieces. A skipped
             // family logs one `unsupported` line (never on OxygenOS, whose log is frozen) and keeps
             // the stock piece; the resource engine stays process-wide as before.

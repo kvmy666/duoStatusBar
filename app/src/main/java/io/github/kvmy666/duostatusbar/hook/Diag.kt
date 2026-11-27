@@ -152,7 +152,10 @@ internal object Diag {
             appendLine("  SELINUX=${DeviceFacts.selinux()} ABI=${DeviceFacts.abi()}")
 
             appendLine("rom adapter:")
-            appendLine("  id=${rom.id} label=${rom.label}")
+            appendLine(
+                "  id=${rom.id} label=${rom.label}" +
+                    if (rom.marker.isBlank()) "" else " marker=${rom.marker}"
+            )
             appendLine("  systemUiPackage=${rom.systemUiPackage}")
             appendLine("  containerIds=${rom.containerIds}")
             appendLine("  batteryId=${rom.batteryId} clockId=${rom.clockId}")

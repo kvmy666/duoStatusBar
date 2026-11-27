@@ -98,7 +98,12 @@ internal data class RomAdapter(
      * Ordered probes for the shade/QS battery view. Vendor rows such as vivo's QS status container use
      * their own battery ids, tried before the generic [shadeBatteryId].
      */
-    val shadeBatteryIds: List<String> = emptyList()
+    val shadeBatteryIds: List<String> = emptyList(),
+    /**
+     * The runtime marker that selected this adapter (`class:<fqcn>` or `id:<name>`), or "" for a
+     * brand/measured/AOSP adapter. Report-visible only: it never changes drawing or id resolution.
+     */
+    val marker: String = ""
 )
 
 /**
@@ -112,6 +117,13 @@ internal object RomDetection {
     /** The exact phrase the runtime log and diagnostic dump carry for an unproven brand match (R18). */
     private const val BRAND_MATCH_PREFIX = "brand-match (unverified): "
 
+    /**
+     * R17D: the exact prefix a marker-proven ColorOS note carries. It is kept beside the brand prefix so
+     * the "unverified" rule never prepends `brand-match` to a marker proof: a runtime marker is positive
+     * family evidence, not a brand guess.
+     */
+    private const val OPLUS_MARKER_PREFIX = "family=oplus via marker "
+
     /** The canonical family ids, exposed so tests can prove the shipped asset never drifts. */
     internal val FAMILY_IDS = RomFamilies.CANONICAL_IDS
 
@@ -124,8 +136,21 @@ internal object RomDetection {
         markers: RomMarkers = RomMarkers.UNKNOWN
     ): RomAdapter {
         val haystack = haystack(manufacturer, brand, product, display)
+        val oplusFamily = haystack.contains("oneplus") || haystack.contains("oxygen") ||
+            haystack.contains("oppo") || haystack.contains("oplus") ||
+            haystack.contains("coloros") || haystack.contains("realme")
         val selected = when {
             haystack.contains("samsung") -> samsung()
+            // R17D: the Oplus classes/ids are the only positive proof that a SystemUI whose APK path and
+            // application class look like AOSP is the Oplus family (realme RMX5011, OnePlus PLK110). A
+            // OnePlus/Oxygen token keeps the unchanged OxygenOS adapter; every other Oplus-family token
+            // gets the marker ColorOS data. A realme token *without* a marker falls through to AOSP.
+            oplusFamily && markers.hasOplusMarker ->
+                if (haystack.contains("oneplus") || haystack.contains("oxygen")) {
+                    oxygenOs(api, haystack)
+                } else {
+                    colorOsMarker(markers.oplusMarker)
+                }
             haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs(api, haystack)
             haystack.contains("oppo") || haystack.contains("oplus") || haystack.contains("coloros") ->
                 colorOs()
@@ -146,9 +171,10 @@ internal object RomDetection {
         }
         // A brand-selected vendor adapter that no marker proved must say so, once, in the notes that
         // reach the runtime log and the diagnostic dump. The AOSP default is not a brand match, and an
-        // adapter that already carries the prefix (OxygenOS/HyperOS) is not prefixed twice.
+        // adapter that already carries either proof prefix (brand or Oplus marker) is not prefixed twice.
         return if (selected.id != "aosp" && !selected.measured &&
-            !selected.notes.startsWith(BRAND_MATCH_PREFIX)
+            !selected.notes.startsWith(BRAND_MATCH_PREFIX) &&
+            !selected.notes.startsWith(OPLUS_MARKER_PREFIX)
         ) {
             selected.copy(notes = BRAND_MATCH_PREFIX + selected.notes)
         } else {
@@ -164,8 +190,9 @@ internal object RomDetection {
      *
      * R18: a measured profile is accepted only when a proven family marker exists
      * ([RomMarkers.provesFamily]). The shipped measured OxygenOS profile is therefore **not** selected —
-     * OxygenOS has no proven marker (its SystemUI is the AOSP one) — and the code OxygenOS adapter (same
-     * ids) is used, so `source` stays `code-default`. The code adapter itself reports `measured=true`
+     * OxygenOS is deliberately not marker-proven (the Oplus marker does not claim it) — and the code
+     * OxygenOS adapter (same ids) is used, so `source` stays `code-default`. The code adapter itself
+     * reports `measured=true`
      * only on the measured CPH2747 identity within the SDK 36 window; the family proof there is the
      * identity plus the SDK window, not a marker. [RomAdapter.measured], [RomAdapter.shadeMeasured] and
      * the `panel*` flags are report/profile-selection metadata only; they do not change drawing.
@@ -220,8 +247,10 @@ internal object RomDetection {
      * CPH2747 has `sourceDir=/system_ext/priv-app/SystemUI/SystemUI.apk` and application class
      * `com.android.systemui.SystemUIApplication` (evidence:
      * `.pm/evidence/duo-report-20261119-200742/diagnostics.txt:56-57`, `diagnostics-dump.txt:2197`),
-     * which is identical to AOSP. There is no distinguishing Oplus marker today, so the family proof
-     * here is the identity (`MODEL`/`PRODUCT`/`DISPLAY` = `CPH2747`, evidence:
+     * which is identical to AOSP. The Oplus class/resource marker now exists (see [OplusMarker]) but it
+     * is deliberately **not** used to claim or measure OxygenOS, because the same classes ship on
+     * realme/OnePlus Oplus builds; the family proof here is the CPH2747 identity
+     * (`MODEL`/`PRODUCT`/`DISPLAY` = `CPH2747`, evidence:
      * `.pm/evidence/duo-report-20261119-200742/diagnostics-dump.txt:4-6`) plus the SDK 36 window — never
      * the brand alone. The ids below are the measured ones, and [measured]/[shadeMeasured] are true only
      * on that identity.
@@ -245,7 +274,8 @@ internal object RomDetection {
             "window, not a marker" else
             BRAND_MATCH_PREFIX + "CPH2747 SystemUI is " +
             "/system_ext/priv-app/SystemUI/SystemUI.apk with com.android.systemui.SystemUIApplication, " +
-            "identical to AOSP; brand/SDK cannot prove OxygenOS and no distinguishing marker is known",
+            "identical to AOSP; brand/SDK cannot prove OxygenOS and the Oplus marker is deliberately " +
+            "not used for OxygenOS",
         match = listOf("oneplus", "oxygen"),
         measured = cph2747,
         shadeContainerIds = listOf("quick_qs_status_icons", "shade_header_system_icons"),
@@ -292,6 +322,46 @@ internal object RomDetection {
         panelExpansionKind = "none",
         panelHookMeasured = false,
         hideContainerIds = listOf("signal_cluster")
+    )
+
+    /**
+     * R17D: the Oplus family proven by the runtime marker ([OplusMarker]), but not measured on a device.
+     *
+     * Evidence: the realme RMX5011 reports `battery -> ...StatBatteryMeterView` and
+     * `clock -> ...StatClock` with `EndSideContentLayout` as the strip parent, plus the Oplus ids
+     * `oplus_qs_tile_icon_bg` / `oplus_background_mask` / `oplus_fake_clock_container`
+     * (`.pm/evidence/u1127/new-duo-report-20261127-175643/diagnostics.txt:91,92,734`). The OnePlus
+     * PLK110 reports the same classes
+     * (`.pm/evidence/u1127/duo-report-20261127-150754/diagnostics.txt:108,109`) and installs
+     * `OplusQSSimpleHeader` / `OplusSplitShade` hooks (its module log lines
+     * 31-32). The container/battery/clock ids are the CPH2747 Oplus spellings already used by this
+     * project, not new guesses.
+     *
+     * The family is proven, the **device** is not: [measured] and [shadeMeasured] stay false, and the
+     * note keeps the "unverified" promise. The modern Oplus tree has no `signal_cluster`, so
+     * [hideContainerIds] stays empty rather than inheriting the static ColorOS list.
+     */
+    private fun colorOsMarker(marker: String): RomAdapter = RomAdapter(
+        id = "coloros",
+        label = "ColorOS / realme / OPPO (unverified)",
+        systemUiPackage = AOSP,
+        containerIds = listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
+        batteryId = "battery",
+        clockId = "clock",
+        notes = OPLUS_MARKER_PREFIX + "$marker (unverified): Oplus family proven by the runtime marker " +
+            "(StatBatteryMeterView/StatClock classes, EndSideContentLayout strip, oplus_* resource ids) " +
+            "on the realme RMX5011 and OnePlus PLK110 reports; no ColorOS/realme device is measured, " +
+            "and the CPH2747 Oplus ids are reused",
+        match = listOf("oppo", "oplus", "coloros", "realme"),
+        shadeContainerIds = listOf("quick_qs_status_icons", "shade_header_system_icons"),
+        shadeBatteryId = "batteryRemainingIcon",
+        shadeMeasured = false,
+        coverHook = true,
+        panelExpansionKind = "panel_type_5arg",
+        panelHookMeasured = false,
+        panelOwnerAvailable = false,
+        marker = marker,
+        measured = false
     )
 
     /**
@@ -499,8 +569,18 @@ internal data class RomMarkers(
     /** True only when the SystemUI package was read *and* returned a usable field. False = UNKNOWN. */
     val read: Boolean = false,
     val systemUiApplicationClass: String = "",
-    val systemUiSourceDir: String = ""
+    val systemUiSourceDir: String = "",
+    /**
+     * R17D: the Oplus runtime marker (`class:<fqcn>` or `id:<name>`). Empty means no Oplus evidence was
+     * found; non-blank proves the Oplus family, but never OxygenOS and never a non-MIUI verdict by
+     * itself.
+     */
+    val oplusMarker: String = ""
 ) {
+    /** R17D: true when a class/resource marker proved the Oplus family on this UI. */
+    val hasOplusMarker: Boolean
+        get() = oplusMarker.isNotBlank()
+
     /**
      * True when either marker proves a HyperOS/MIUI SystemUI. The path check ignores case because the
      * APK file name is not guaranteed to keep its case across builds; the class check compares the exact
@@ -517,7 +597,10 @@ internal data class RomMarkers(
      * `sourceDir=/system_ext/priv-app/SystemUI/SystemUI.apk` and application class
      * `com.android.systemui.SystemUIApplication` (`.pm/evidence/duo-report-20261119-200742/
      * diagnostics.txt:56-57`, `diagnostics-dump.txt:2197`) — identical to AOSP, so brand/SDK cannot
-     * prove OxygenOS and no distinguishing Oplus marker is known today. HyperOS has a positive marker:
+     * prove OxygenOS. The Oplus class/resource marker exists (see [OplusMarker]) but it is deliberately
+     * **not** used to claim or measure OxygenOS, because the same classes ship on realme/OnePlus Oplus
+     * builds; CPH2747 remains proven by its identity plus the SDK 36 window. HyperOS has a positive
+     * marker:
      * the APK path contains `MiuiSystemUI` (`.pm/evidence/duo-report-20261113-202904/diagnostics.txt:55`)
      * or the class is `MiuiSystemUIApplication` (`docs/rom-contract.md:24`).
      *
@@ -532,6 +615,10 @@ internal data class RomMarkers(
      */
     fun provesFamily(family: String): Boolean = when (family) {
         "hyperos" -> hasHyperOsMarker
+        // R17D: the Oplus marker proves the ColorOS/realme/OPPO family only. It must never make
+        // OxygenOS marker-proven: the CPH2747 code default stays measured by identity + SDK 36 window,
+        // so `provesFamily("oxygenos")` stays false and the shipped OxygenOS asset profile is not used.
+        "coloros" -> hasOplusMarker
         else -> false
     }
 
@@ -548,14 +635,21 @@ internal data class RomMarkers(
         val UNKNOWN = RomMarkers()
 
         /**
-         * A package record read from the PackageManager. If neither field is present the record proves
-         * nothing, so the result is UNKNOWN ([read] stays false) rather than a non-MIUI verdict.
+         * A package record read from the PackageManager. If no field is present the record proves
+         * nothing, so the result is UNKNOWN ([read] stays false) rather than a non-MIUI verdict. R17D:
+         * an Oplus marker alone is a read field, but it still proves nothing about MIUI either way.
          */
-        fun of(systemUiApplicationClass: String = "", systemUiSourceDir: String = ""): RomMarkers =
+        fun of(
+            systemUiApplicationClass: String = "",
+            systemUiSourceDir: String = "",
+            oplusMarker: String = ""
+        ): RomMarkers =
             RomMarkers(
-                read = systemUiSourceDir.isNotBlank() || systemUiApplicationClass.isNotBlank(),
+                read = systemUiSourceDir.isNotBlank() || systemUiApplicationClass.isNotBlank() ||
+                    oplusMarker.isNotBlank(),
                 systemUiApplicationClass = systemUiApplicationClass,
-                systemUiSourceDir = systemUiSourceDir
+                systemUiSourceDir = systemUiSourceDir,
+                oplusMarker = oplusMarker
             )
     }
 }
@@ -574,7 +668,10 @@ internal object RomMarkerSource {
         val info = context.packageManager.getApplicationInfo(RomDetection.AOSP, 0)
         RomMarkers.of(
             systemUiApplicationClass = info.className.orEmpty(),
-            systemUiSourceDir = info.sourceDir.orEmpty()
+            systemUiSourceDir = info.sourceDir.orEmpty(),
+            // R17D: resolved only after the package read succeeded, so a PackageManager failure still
+            // returns UNKNOWN with no marker (the failure boundary pinned by RomMarkerSourceTest).
+            oplusMarker = OplusMarker.detect(context)
         )
     } catch (t: Throwable) {
         logOnce.once("marker-read") {

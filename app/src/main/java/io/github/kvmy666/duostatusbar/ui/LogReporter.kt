@@ -376,6 +376,16 @@ internal fun reportRom(
     )
 
 /**
+ * The one-line adapter summary shared by the app environment and the report. `unknown` stays the null
+ * spelling; the runtime marker is appended only when a marker actually selected the adapter (R17D).
+ */
+internal fun adapterSummary(rom: RomAdapter?): String {
+    val marker = rom?.marker.orEmpty()
+    return "rom adapter: ${rom?.id ?: "unknown"} (measured=${rom?.measured ?: false}" +
+        if (marker.isBlank()) ")" else ", marker=$marker)"
+}
+
+/**
  * Facts the app can always read, even when the module never loaded and there is no root. This is what
  * turns a ~1 KB "module load: never" report into something actionable: the app build, the device identity,
  * the ROM adapter and, above all, whether LSPosed actually has the module enabled and scoped.
@@ -398,7 +408,7 @@ internal fun appEnvironment(context: Context): String = buildString {
             RomMarkerSource.read(context)
         )
     }.getOrNull()
-    appendLine("rom adapter: ${rom?.id ?: "unknown"} (measured=${rom?.measured ?: false})")
+    appendLine(adapterSummary(rom))
     val lsposed = hasPackage(context, "org.lsposed.manager")
     appendLine("lsposed manager installed: $lsposed")
     val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
@@ -558,6 +568,7 @@ internal fun writeReportZip(
     val adapter = mapOf(
         "id" to (rom?.id ?: "unknown"),
         "measured" to (rom?.measured ?: false).toString(),
+        "marker" to (rom?.marker ?: ""),
         "shadeMeasured" to (rom?.shadeMeasured ?: false).toString(),
         "coverHook" to (rom?.coverHook ?: false).toString(),
         "panelExpansionKind" to (rom?.panelExpansionKind ?: "unknown"),
