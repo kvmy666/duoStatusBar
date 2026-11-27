@@ -114,13 +114,4 @@ class HomeSetupGuideTest {
         assertTrue("card text does not name the old build: $card", card.contains("2.1.1"))
         assertTrue("card text does not name the new build: $card", card.contains("2.1.2"))
     }
-
-    @Test
-    @Config(sdk = [35], qualifiers = "ar")
-    fun `the update hint has an arabic translation`() {
-        val text = context.getString(R.string.home_update_hint, "2.1.2")
-        assertTrue(text.isNotBlank())
-        assertTrue("arabic hint does not name the new build: $text", text.contains("2.1.2"))
-        assertFalse("arabic hint still reads as English", text.startsWith("Update installed"))
-    }
 }

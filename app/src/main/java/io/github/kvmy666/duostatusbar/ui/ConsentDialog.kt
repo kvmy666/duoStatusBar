@@ -1,7 +1,5 @@
 package io.github.kvmy666.duostatusbar.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -46,17 +44,7 @@ internal fun ConsentDialog(onAnswer: (Boolean) -> Unit) {
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
         title = { Text(stringResource(R.string.consent_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(R.string.consent_question))
-                if (remaining > 0) {
-                    Text(
-                        stringResource(R.string.consent_countdown, remaining),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
-            }
-        },
+        text = { Text(stringResource(R.string.consent_question)) },
         confirmButton = {
             Button(
                 onClick = { onAnswer(true) },
@@ -75,7 +63,13 @@ internal fun ConsentDialog(onAnswer: (Boolean) -> Unit) {
                 ),
                 modifier = Modifier.testTag("consent_no")
             ) {
-                Text(stringResource(R.string.consent_no))
+                Text(
+                    if (remaining > 0) {
+                        stringResource(R.string.consent_no_countdown, remaining)
+                    } else {
+                        stringResource(R.string.consent_no)
+                    }
+                )
             }
         },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)

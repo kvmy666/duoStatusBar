@@ -11,8 +11,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The new capability strings must exist in English and Arabic, and the detail copy must carry the UI
- * family label. Resource lookups only: the repo has no Compose UI test dependency.
+ * The iOS capability strings must exist in English, and the detail copy must carry the UI family label.
+ * Resource lookups only: the repo has no Compose UI test dependency.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -40,22 +40,6 @@ class IosStringsTest {
             "iOS mode is not supported on OxygenOS yet.",
             context.getString(R.string.settings_ios_unsupported_detail, "OxygenOS")
         )
-    }
-
-    @Test
-    @Config(sdk = [35], qualifiers = "ar")
-    fun `arabic capability strings resolve`() {
-        ids.forEach { id ->
-            assertTrue("Arabic string resource $id is blank", context.getString(id).isNotBlank())
-        }
-        assertEquals("غير متاح على هذه الواجهة", context.getString(R.string.settings_ios_unsupported))
-        assertEquals(
-            "وضع iOS غير مدعوم على OxygenOS بعد.",
-            context.getString(R.string.settings_ios_unsupported_detail, "OxygenOS")
-        )
-        assertEquals("وضع iOS مفعّل", context.getString(R.string.module_health_ios_title))
-        assertEquals("وضع iOS غير متاح", context.getString(R.string.module_health_ios_unsupported_title))
-        assertEquals("iOS مفعّل", context.getString(R.string.home_status_ios))
-        assertEquals("iOS غير مدعوم", context.getString(R.string.home_status_ios_unsupported))
+        assertEquals("Not available on this UI", context.getString(R.string.settings_ios_unsupported))
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -45,13 +46,24 @@ class ConsentDialogTest {
     private val wine = Color(0xFF7B1E3A)
 
     private fun openDialog(onAnswer: (Boolean) -> Unit) {
-        compose.setContent { DuoTheme { ConsentDialog(onAnswer = onAnswer) } }
+        // Stop the clock before the first composition so the countdown still reads 5 at the first assert.
         compose.mainClock.autoAdvance = false
+        compose.setContent { DuoTheme { ConsentDialog(onAnswer = onAnswer) } }
         compose.waitForIdle()
     }
 
     private fun passCountdown() {
         compose.mainClock.advanceTimeBy(5_500)
+        compose.waitForIdle()
+    }
+
+    /**
+     * Advances the paused clock by exactly one second and pumps the frame that composes the second's
+     * delay resumption; the clock stays paused, so without the frame the label would not update.
+     */
+    private fun advanceOneSecond() {
+        compose.mainClock.advanceTimeBy(1_000, ignoreFrameDuration = true)
+        compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()
     }
 
@@ -156,6 +168,29 @@ class ConsentDialogTest {
         }
         assertTrue("the captured region contains no opaque coloured pixels", bestCount > 0)
         return PixelStats(Color(0xFF000000L or best.toLong()), bestCount, opaque, all.size)
+    }
+
+    @Test
+    fun `the no button counts down beside its label and opens at five seconds`() {
+        openDialog {}
+
+        // At zero seconds the No button itself says how long it stays locked.
+        compose.onNodeWithTag("consent_no").assertTextEquals("No (5)")
+        compose.onNodeWithTag("consent_yes").assertIsNotEnabled()
+        compose.onNodeWithTag("consent_no").assertIsNotEnabled()
+
+        listOf(4, 3, 2, 1).forEach { remaining ->
+            advanceOneSecond()
+            compose.onNodeWithTag("consent_no").assertTextEquals("No ($remaining)")
+            compose.onNodeWithTag("consent_yes").assertIsNotEnabled()
+            compose.onNodeWithTag("consent_no").assertIsNotEnabled()
+        }
+
+        // The fifth second ends the countdown: the label drops the number and both answers unlock.
+        advanceOneSecond()
+        compose.onNodeWithTag("consent_no").assertTextEquals("No")
+        compose.onNodeWithTag("consent_yes").assertIsEnabled()
+        compose.onNodeWithTag("consent_no").assertIsEnabled()
     }
 
     @Test

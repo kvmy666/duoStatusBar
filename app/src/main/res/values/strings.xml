@@ -337,8 +337,8 @@
     <string name="consent_question">Help fix bugs: allow Duo Status Bar to collect diagnostic logs and send them automatically when a problem is detected?</string>
     <string name="consent_yes">Yes (Recommended)</string>
     <string name="consent_no">No</string>
-    <!-- Whole seconds left before either consent button can be pressed. -->
-    <string name="consent_countdown">%1$d…</string>
+    <!-- Whole seconds left before the No button unlocks, shown inside the button. -->
+    <string name="consent_no_countdown">No (%1$d)</string>
     <string name="settings_auto_report">Automatic problem reports</string>
     <string name="settings_auto_report_detail">Collect logs and send them automatically when a problem is detected.</string>
 
