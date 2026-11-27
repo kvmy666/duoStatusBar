@@ -931,7 +931,25 @@ internal object IosSlotLayout {
     private fun fitRow(container: ViewGroup) {
         val row = container.parent as? ViewGroup ?: return
         if (row.childCount <= 0) return
+        // A 0dp (`match_constraint`) row inside a ConstraintLayout is sized by the constraint solver.
+        // Writing our summed px makes both chain children fixed and the default spread style distributes
+        // the leftover into three gaps: owner CPH2747 279 = 128 + 89 + 3x20, so the shade 5G->battery
+        // ink gap read 36 px instead of 16.74 while the main bar (LinearLayout) stayed packed.
+        if (isMatchConstraintRow(row)) return
         fitContainer(row)
+    }
+
+    /**
+     * True when [row]'s stock width is the ConstraintLayout `0dp` match-constraint value and its parent
+     * is a ConstraintLayout. The parent is detected by class name (like [ContainerFinder]'s
+     * `ComposeView` check): the module does not link androidx.constraintlayout at runtime. [originals]
+     * holds the captured stock width once a slot has applied; before that the params are still stock.
+     */
+    private fun isMatchConstraintRow(row: ViewGroup): Boolean {
+        val stockWidth = originals[row]?.width ?: row.layoutParams?.width ?: return false
+        if (stockWidth != 0) return false
+        val parent = row.parent as? ViewGroup ?: return false
+        return parent.javaClass.name.endsWith("ConstraintLayout")
     }
 
     private fun begin(): Boolean {
