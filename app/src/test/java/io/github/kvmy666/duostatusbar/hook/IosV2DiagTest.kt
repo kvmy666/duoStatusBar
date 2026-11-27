@@ -348,6 +348,68 @@ class IosV2DiagTest {
     }
 
     @Test
+    fun `optional stacked candidates alone never print a stacked miss`() {
+        ShadowBuild.setManufacturer("OnePlus")
+        ShadowBuild.setBrand("OnePlus")
+        ShadowBuild.setProduct("CPH2747")
+        // Force the report to resolve the family from the ROM instead of a stale active engine.
+        IosResourceEngine.deactivate()
+        // No test seam exists on IosStackedSim and this task may not edit it; mutate its diagnostic
+        // fact set through reflection, then restore it exactly.
+        val facts = stackedClassFacts()
+        val saved = synchronized(facts) { facts.toList() }
+        try {
+            synchronized(facts) {
+                facts.clear()
+                facts.add("missing:TMOStatusBarMobileViewBinder")
+                facts.add("missing:SprintStatusBarMobileViewBinder")
+                facts.add("missing:BigTypeStatusBarMobileViewBinder")
+            }
+            val optionalOnly = IosV2Report.lines(
+                context,
+                iosSettings(),
+                FrameLayout(context),
+                emptyList()
+            )
+            assertFalse(
+                "optional-only candidates must not print a stacked miss: $optionalOnly",
+                optionalOnly.any { it.contains("piece=stacked") }
+            )
+
+            synchronized(facts) {
+                facts.clear()
+                facts.add("missing:OplusStatusBarMobileViewBinder")
+            }
+            val realMiss = IosV2Report.lines(
+                context,
+                iosSettings(),
+                FrameLayout(context),
+                emptyList()
+            )
+            assertTrue(
+                "a missing Oplus binder is the real stacked miss: $realMiss",
+                realMiss.contains(
+                    "ios v2 miss family=oxygenos piece=stacked " +
+                        "tried=OplusStatusBarMobileViewBinder"
+                )
+            )
+        } finally {
+            synchronized(facts) {
+                facts.clear()
+                facts.addAll(saved)
+            }
+            ShadowBuild.reset()
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun stackedClassFacts(): MutableSet<String> {
+        val field = IosStackedSim::class.java.getDeclaredField("classFacts")
+        field.isAccessible = true
+        return field.get(IosStackedSim) as MutableSet<String>
+    }
+
+    @Test
     fun `a keyguard root is named keyguard`() {
         val tree = Tree(context)
         registerAll(tree)

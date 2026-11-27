@@ -133,9 +133,11 @@ internal object IosV2Report {
         if (shouldReportBatteryMiss(family, IosBatteryV2.installedFor(family))) {
             out.add(batteryMissLine(family))
         }
-        if (shouldReportStackedMiss(family, IosStackedSim.installed)) {
-            val stacked = IosStackedSim.missingBindersForDiagnostics
-            if (stacked.isNotEmpty()) out.add(stackedMissLine(family, stacked))
+        val stacked = IosStackedSim.missingBindersForDiagnostics
+        // R18: a missing optional TMO/Sprint/BigType candidate is not a miss while the measured
+        // OplusStatusBarMobileViewBinder owns the cluster (the owner dump case).
+        if (stacked.isNotEmpty() && shouldReportStackedMiss(family, stacked)) {
+            out.add(stackedMissLine(family, stacked))
         }
         if (IosV2Profile.extrasFamily(family)) {
             val extras = IosExtras.missingBindersForDiagnostics
@@ -278,12 +280,17 @@ internal fun batteryMissLine(family: String): String =
 internal fun shouldReportBatteryMiss(family: String, installed: Boolean): Boolean =
     family.isNotEmpty() && IosV2Profile.batteryFamily(family) && !installed
 
+/** The measured stacked owner; only its absence is a real `piece=stacked` miss. */
+private const val OPLUS_STACKED_BINDER = "OplusStatusBarMobileViewBinder"
+
 /**
  * (b) A stacked miss means "no measured binder owns the cluster". The TMO/Sprint/BigType candidates
  * are optional and absent on OxygenOS while the required Oplus binder works; that is not a miss.
+ * The decision is made from the missing-class evidence, so an optional-only absence stays silent.
  */
-internal fun shouldReportStackedMiss(family: String, installed: Boolean): Boolean =
-    IosV2Profile.stackedFamily(family) && !installed
+internal fun shouldReportStackedMiss(family: String, missing: String): Boolean =
+    IosV2Profile.stackedFamily(family) &&
+        missing.split(',').map { it.trim() }.contains(OPLUS_STACKED_BINDER)
 
 internal fun stackedMissLine(family: String, tried: String): String =
     missLine(family, "stacked", tried.split(',').map { it.trim() }.filter { it.isNotEmpty() })

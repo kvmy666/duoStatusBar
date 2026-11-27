@@ -169,12 +169,23 @@ class IosV2CoverageTest {
     }
 
     @Test
-    fun `a stacked miss is reported only when the required binder did not install`() {
-        // TMO/Sprint/BigType are optional candidates; the Oplus binder is the owner.
-        assertFalse(shouldReportStackedMiss("oxygenos", installed = true))
-        assertTrue(shouldReportStackedMiss("oxygenos", installed = false))
+    fun `a stacked miss is reported only when the required Oplus binder is missing`() {
+        // The owner dump: only the optional TMO/Sprint/BigType candidates are absent while the
+        // measured OplusStatusBarMobileViewBinder owns the cluster. That is not a miss.
+        val optionalOnly = "TMOStatusBarMobileViewBinder,SprintStatusBarMobileViewBinder," +
+            "BigTypeStatusBarMobileViewBinder"
+        assertFalse(shouldReportStackedMiss("oxygenos", optionalOnly))
+        // The required binder is the owner: its absence is the real miss.
+        assertTrue(shouldReportStackedMiss("oxygenos", "OplusStatusBarMobileViewBinder"))
+        // A mixed absence string still carries the owner name.
+        assertTrue(
+            shouldReportStackedMiss(
+                "oxygenos",
+                "OplusStatusBarMobileViewBinder,TMOStatusBarMobileViewBinder"
+            )
+        )
         // Stacked is not an OxygenOS/ColorOS piece elsewhere.
-        assertFalse(shouldReportStackedMiss("samsung", installed = false))
-        assertFalse(shouldReportStackedMiss("", installed = false))
+        assertFalse(shouldReportStackedMiss("samsung", "OplusStatusBarMobileViewBinder"))
+        assertFalse(shouldReportStackedMiss("", "OplusStatusBarMobileViewBinder"))
     }
 }
