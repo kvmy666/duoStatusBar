@@ -176,9 +176,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * it as soon as a context exists. The first use happens inside hooks, after [start].
      *
      * R17D: [install] also re-resolves it from the host classloader ([OplusMarker]) before the
-     * family-gated iOS battery install, so a realme/ColorOS SystemUI is already `coloros` there. That
-     * resolution needs no context and is oxygenOS-neutral: OxygenOS ignores markers, so CPH2747's
-     * adapter is byte-identical with and without one.
+     * family-gated iOS battery install, so a realme/ColorOS SystemUI is already `coloros` there. The
+     * same record is passed to [RomResolver.noteInstallMarkers], so [start] and every later context
+     * caller merge it. That resolution needs no context and is oxygenOS-neutral: OxygenOS ignores
+     * markers, so CPH2747's adapter is byte-identical with and without one.
      */
     private var rom: RomAdapter = RomDetection.forThisRom(
         Build.MANUFACTURER.orEmpty(),
@@ -456,18 +457,23 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             Breadcrumb.step("install:ios-engine-ok")
             Breadcrumb.step("install:battery")
             // R17D: the host classloader is the only place the Oplus SystemUI classes are visible before
-            // a context exists. Re-resolving the marker here makes a realme/OPPO ColorOS SystemUI select
+            // a context exists. Resolving the marker here makes a realme/OPPO ColorOS SystemUI select
             // the marker adapter *before* the family-gated iOS battery install, so the iOS route sees the
-            // same family the rest of install uses. OxygenOS ignores markers (its adapter stays
-            // byte-identical), and the existing no-context UNKNOWN fallback above still covers a loader
-            // that resolves nothing.
+            // same family the rest of install uses. The same record is handed to [RomResolver] so every
+            // later context read (hook start, icon host, Diag, iOS report) merges it instead of
+            // contradicting it. OxygenOS ignores markers (its adapter stays byte-identical), and the
+            // existing no-context UNKNOWN fallback above still covers a loader that resolves nothing.
+            val installMarkers = RomMarkers.of(
+                oplusMarker = OplusMarker.detectInClassLoader(lp.classLoader)
+            )
+            RomResolver.noteInstallMarkers(installMarkers)
             rom = RomDetection.forThisRom(
                 Build.MANUFACTURER.orEmpty(),
                 Build.BRAND.orEmpty(),
                 Build.PRODUCT.orEmpty(),
                 Build.DISPLAY.orEmpty(),
                 Build.VERSION.SDK_INT,
-                RomMarkers.of(oplusMarker = OplusMarker.detectInClassLoader(lp.classLoader))
+                installMarkers
             )
             // R4: the battery owner and the Oplus placement binder are per-family pieces. A skipped
             // family logs one `unsupported` line (never on OxygenOS, whose log is frozen) and keeps
@@ -1000,11 +1006,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         // proves a non-MIUI SystemUI may switch a Xiaomi-brand device to AOSP; an unreadable one keeps
         // the old HyperOS/brand behaviour (see [RomMarkers]). One resolver so this cannot drift from the
         // icon host and the diagnostic dump (R15).
-        val resolved = RomResolver.resolve(ctx)
         // R17D: the install-time marker came from the host SystemUI classloader, the same loader that
         // owns the Oplus classes. A context read that cannot repeat the marker (e.g. package resources
-        // not visible) must not downgrade the family the one-shot iOS hooks were installed for.
-        rom = if (resolved.marker.isBlank() && rom.marker.isNotBlank()) rom else resolved
+        // not visible) must not downgrade the family the one-shot iOS hooks were installed for; the
+        // resolver merges that install record, so every context caller sees the same family.
+        rom = RomResolver.resolve(ctx)
         // R6/D13/D14: the family is known now, so the iOS owner decision can stop trusting a saved ON.
         // A new process has not attempted a route yet, so it starts from "not failed".
         IosAvailability.routeFailed = false

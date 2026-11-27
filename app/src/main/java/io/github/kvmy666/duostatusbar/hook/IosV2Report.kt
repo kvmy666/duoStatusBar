@@ -1,11 +1,8 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
-import android.os.Build
 import android.view.View
-import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
-import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
-import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
+import io.github.kvmy666.duostatusbar.hook.rom.RomResolver
 
 /**
  * REL210: the one additive iOS diagnostic block.
@@ -155,21 +152,15 @@ internal object IosV2Report {
         out.add(deliveryLine(hookCalls, Diag.iconInventory(home)))
     }
 
-    /** The real family id: the activated engine's family, else the same detection the dump uses. */
+    /** The real family id: the activated engine's family, else the same resolver the dump uses. */
     private fun familyId(context: Context?): String {
         val active = IosResourceEngine.activeFamilyForDiagnostics
         if (active.isNotEmpty()) return active
         if (context == null) return ""
         return try {
-            RomDetection.forThisRom(
-                Build.MANUFACTURER.orEmpty(),
-                Build.BRAND.orEmpty(),
-                Build.PRODUCT.orEmpty(),
-                Build.DISPLAY.orEmpty(),
-                RomProfiles.load(context),
-                Build.VERSION.SDK_INT,
-                RomMarkerSource.read(context)
-            ).id
+            // R17D: the shared resolver merges the install-time Oplus marker, so the iOS report cannot
+            // contradict the runtime family the hooks were installed for.
+            RomResolver.resolve(context).id
         } catch (_: Throwable) {
             ""
         }
