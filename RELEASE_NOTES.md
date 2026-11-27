@@ -1,6 +1,6 @@
-# Duo Status Bar 2.1.4
+# Duo Status Bar 2.1.5
 
-Version 2.1.4 (114) makes automatic problem reports accurate, explains an unloaded module more clearly, and fixes Rive binding and iOS mode on Samsung One UI. It also recognises realme and OPPO ColorOS as part of the Oplus family.
+Version 2.1.5 (115) makes automatic problem reports accurate, explains an unloaded module more clearly, and fixes Rive binding and iOS mode on Samsung One UI. It also recognises realme and OPPO ColorOS as part of the Oplus family, and corrects iOS icon spacing in the shade and a misleading missing-piece report.
 
 ## Changes
 
@@ -9,6 +9,8 @@ Version 2.1.4 (114) makes automatic problem reports accurate, explains an unload
 - A temporarily hidden status bar (quick settings or keyguard) no longer replaces a bound Rive scene with the Canvas fallback. A real binding failure records the box state and reason, and one bounded late retry is attempted.
 - iOS mode on Samsung One UI: Wi-Fi, cellular and data-type glyphs refresh even when Samsung loaded them before Duo's map, turning iOS off restores the stock icons, unknown names stay stock so the bar is never half-drawn, and the battery rebuilds at the new stock size after a density or font change. Samsung icon spacing and slot geometry, and unknown icon names, stay stock until a report names them.
 - realme and OPPO ColorOS are recognised as the Oplus family, so Duo and iOS use the OnePlus path. The adapter is marked unverified until device reports confirm it.
+- The iOS icons keep the same spacing in the shade and Quick Settings as in the main status bar: the 5G-to-battery gap is no longer widened by the Quick Settings layout.
+- Problem reports no longer name a battery or stacked-SIM piece as missing when its owner is installed and working, and a battery view that stays hidden at 0x0 no longer retries indefinitely.
 - Restart the phone once after updating so System UI loads the new version.
 
 # Duo Status Bar 2.1.3
