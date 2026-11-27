@@ -436,30 +436,38 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 L.i("install already ran on this host - skipping duplicate call")
                 return@guard
             }
+            Breadcrumb.step("install:begin")
             // Earliest point the app can see: before any hook, Rive or ROM work below.
             val loadContext = AppContextResolver.resolveAppContext()
             if (loadContext != null) {
                 Breadcrumb.bind(loadContext)
+                Breadcrumb.step("install:context")
                 noteLoadStamp(loadContext)
             }
             L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
             Breadcrumb.step("install:ios-engine")
             IosResourceEngine.install(lp.classLoader)
+            Breadcrumb.step("install:ios-engine-ok")
             Breadcrumb.step("install:battery")
             // R4: the battery owner and the Oplus placement binder are per-family pieces. A skipped
             // family logs one `unsupported` line (never on OxygenOS, whose log is frozen) and keeps
             // the stock piece; the resource engine stays process-wide as before.
             if (IosV2Profile.batteryFamily(rom.id)) {
                 IosBatteryV2.install(lp.classLoader, rom.id)
+                Breadcrumb.step("install:ios-battery-ok")
             } else {
                 logIosPieceUnsupported("battery")
+                Breadcrumb.step("install:ios-battery-skip")
             }
             if (IosV2Profile.typePlacementFamily(rom.id)) {
                 IosMobileTypePlacement.install(lp.classLoader)
+                Breadcrumb.step("install:ios-placement-ok")
             } else {
                 logIosPieceUnsupported("placement")
+                Breadcrumb.step("install:ios-placement-skip")
             }
             IosDiagnostics.register(IosRouteDiagnostics)
+            Breadcrumb.step("install:ios-diag-ok")
             // The window hook goes in *now*, not from Application.onCreate. On HyperOS 16 and One UI the
             // Application is created before LSPosed injects the module, so an Application.onCreate hook
             // fires too late (or never) and the status-bar window - already added - was never seen. The
@@ -488,6 +496,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // it (it runs above when the Application exists); recomputing here covers the late case.
             IosAvailability.supported = iosDeliverable()
             AppContextResolver.resolveAppContext()?.let { reportIosCapability(it) }
+            Breadcrumb.step("ios:capability")
             L.i("install step: done")
         }
     }
@@ -720,6 +729,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             IosDiagnostics.register(IosR8Report)
             iosRoute = IosRoute.V2
+            Breadcrumb.step("ios:v2-active")
             // R6/D13/D14: a successful activation clears any earlier route refusal.
             IosAvailability.routeFailed = false
             IosRouteDiagnostics.update(iosRoute, rom.id)
@@ -979,6 +989,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // Report even when the module is gated off: the app must still learn the family and the
             // support verdict, otherwise an iOS request on an unsupported UI looks like DISABLED.
             reportIosCapability(ctx)
+            Breadcrumb.step("ios:capability")
             // The settings/restart receiver goes in *before* the gate. It is the app's only way to reach a
             // module that read itself as "off": "Restart System UI" and a live enable both arrive here.
             // Registering it after the gate (as before) left the button dead on every ROM where the stage

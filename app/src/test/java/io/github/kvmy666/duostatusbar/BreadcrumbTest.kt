@@ -7,24 +7,18 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The last-step breadcrumb: one write per step change, both sinks, and a bounded last-8 ring. The sink
- * is injected so the test needs no Android Settings or filesystem.
+ * The last-step breadcrumb: one write per step change and a bounded in-process last-8 ring. The sink is
+ * injected so the test needs no Android Settings and no filesystem (the file sink was measured
+ * undeliverable and removed).
  */
 class BreadcrumbTest {
 
     private class FakeSink : BreadcrumbSink {
         val globals = ArrayList<String>()
-        var file = ArrayList<String>()
 
         override fun putGlobal(value: String) {
             globals.add(value)
         }
-
-        override fun writeFile(lines: List<String>) {
-            file = ArrayList(lines)
-        }
-
-        override fun readFile(): List<String> = file.toList()
     }
 
     private lateinit var sink: FakeSink
@@ -66,12 +60,16 @@ class BreadcrumbTest {
     }
 
     @Test
-    fun `the file ring keeps only the last eight steps`() {
+    fun `the ring keeps only the last eight steps`() {
         for (i in 0 until 12) Breadcrumb.step("step-$i")
 
-        assertEquals(8, sink.file.size)
-        assertTrue("oldest step leaked: ${sink.file}", sink.file.none { it.contains("step-3|") })
-        assertTrue(sink.file.any { it.endsWith("step-4") })
-        assertTrue(sink.file.any { it.endsWith("step-11") })
+        val ring = Breadcrumb.linesForTest()
+        assertEquals(8, ring.size)
+        assertTrue(
+            "oldest step leaked: $ring",
+            ring.none { it.endsWith("|step=step-3") }
+        )
+        assertTrue(ring.any { it.endsWith("|step=step-4") })
+        assertTrue(ring.any { it.endsWith("|step=step-11") })
     }
 }

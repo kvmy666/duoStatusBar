@@ -571,15 +571,51 @@ class RootLogsTest {
     }
 
     @Test
-    fun `both SystemUI data-dir breadcrumb files are read`() {
+    fun `the breadcrumb script is app-only and never reads the dropped data-dir file`() {
+        val script = RootLogs.rootScript()
         assertTrue(
-            "user_de path missing",
-            RootLogs.BREADCRUMB_FILES.contains("/data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt")
+            "the app-only source line is missing: $script",
+            script.contains(
+                "source=app-only (Settings.Global; SystemUI data dir is not readable from root/Shizuku: SELinux)"
+            )
         )
         assertTrue(
-            "data path missing",
-            RootLogs.BREADCRUMB_FILES.contains("/data/data/com.android.systemui/files/duo-breadcrumb.txt")
+            "the settings read is missing",
+            script.contains("settings get global duo_statusbar_breadcrumb 2>&1")
         )
+        assertFalse("the undeliverable file must be gone", script.contains("duo-breadcrumb.txt"))
+        assertFalse(
+            "the SystemUI data dir must not be read",
+            script.contains("/data/user_de/0/com.android.systemui/files")
+        )
+    }
+
+    @Test
+    fun `the breadcrumb section is present with a value and empty when unset`() {
+        val value = "1795734715683|process=com.android.systemui|pid=25754|step=start"
+        val present = RootLogs.privilegedSections(
+            """
+                === breadcrumb ===
+                source=app-only (Settings.Global; SystemUI data dir is not readable from root/Shizuku: SELinux)
+                $value
+            """.trimIndent(),
+            "",
+            null
+        ).first { it.title == "breadcrumb" }
+        assertEquals(SectionState.PRESENT, present.state)
+        assertTrue("the value must be kept: ${present.text}", present.text.contains(value))
+        assertTrue(present.text.contains("source=app-only"))
+
+        for (unsetText in listOf("null", "")) {
+            val body = """
+                === breadcrumb ===
+                source=app-only (Settings.Global; SystemUI data dir is not readable from root/Shizuku: SELinux)
+                $unsetText
+            """.trimIndent()
+            val unset = RootLogs.privilegedSections(body, "", null).first { it.title == "breadcrumb" }
+            assertEquals("an unset breadcrumb is empty, not unreadable: $unset", SectionState.EMPTY, unset.state)
+            assertTrue("an empty breadcrumb needs a plain reason", unset.reason.isNotBlank())
+        }
     }
 
     @Test
@@ -908,7 +944,11 @@ class RootLogsTest {
         assertTrue(script.contains("org.lsposed.manager"))
         assertTrue(script.contains("module.prop"))
         assertTrue(script.contains("settings get global duo_statusbar_breadcrumb"))
-        assertTrue(script.contains("/data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt"))
+        assertTrue(script.contains("source=app-only"))
+        assertFalse(
+            "the dropped SystemUI data-dir file must never be read",
+            script.contains("/data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt")
+        )
     }
 
     @Test

@@ -2,36 +2,38 @@ package io.github.kvmy666.duostatusbar
 
 import android.content.Context
 import android.provider.Settings
-import java.io.File
 
 /**
  * A breadcrumb sink. Injectable so the once-per-step rule and the eight-line ring can be tested in a
- * plain JVM, with no Android Settings and no SystemUI data directory.
+ * plain JVM, with no Android Settings.
  */
 internal interface BreadcrumbSink {
     fun putGlobal(value: String)
-    fun writeFile(lines: List<String>)
-    fun readFile(): List<String>
 }
 
 /**
  * The persisted "last step the module completed".
  *
  * After a native death no in-process reporter survives, so the next report has to read the last step
- * from storage. Two sinks are written on every step **change** (never on a hot path):
- *  - `Settings.Global` key `duo_statusbar_breadcrumb`, readable by the app without root;
- *  - a file in SystemUI's data dir, which the reporter reads with root/Shizuku and keeps as the last
- *    eight lines (a ring), so one report shows the final sequence, not only the last value.
+ * from storage. One readable sink is written on every step **change** (never on a hot path):
+ * `Settings.Global` key `duo_statusbar_breadcrumb`, readable by the app and by a shell without root.
+ * The in-process ring keeps the last eight values, so a report assembled before the process dies can
+ * show the final sequence, not only the last step.
  *
- * The value is `ts|process=<p>|pid=<pid>|step=<name>`. A failed sink never stops the other one, and
+ * The second sink was a file in SystemUI's data dir, and it was measured undeliverable: the module
+ * (running as SystemUI's uid) can write it, but neither root nor Shizuku can read it back. Root runs
+ * as `u:r:ksu:s0` with SELinux enforcing and `ls /data/user_de/0/com.android.systemui` is denied
+ * outright (see `hook/DuoGuard.kt`), so the reporter's `cat` never saw a ring. A file ring nobody can
+ * read is not a breadcrumb, so it was dropped; `Settings.Global` is the only readable sink.
+ *
+ * The value is `ts|process=<p>|pid=<pid>|step=<name>`. A failed write never stops the next step and
  * nothing here ever throws: a breadcrumb that kills the process it is meant to diagnose is useless.
  */
 internal object Breadcrumb {
 
     const val KEY = "duo_statusbar_breadcrumb"
-    const val FILE_NAME = "duo-breadcrumb.txt"
 
-    /** How many steps the file keeps. Small on purpose: it is a crash sequence, not a log. */
+    /** How many steps the in-process ring keeps. Small on purpose: it is a crash sequence, not a log. */
     private const val MAX_LINES = 8
 
     private val lock = Any()
@@ -42,20 +44,13 @@ internal object Breadcrumb {
     @Volatile
     private var sink: BreadcrumbSink? = null
 
-    /** Binds the real sinks. Safe to call more than once; the first real sink wins. */
+    /** Binds the real sink. Safe to call more than once; the first real sink wins. */
     fun bind(context: Context) {
         try {
             if (sink != null) return
             val real = RealSink(context.applicationContext ?: context)
             synchronized(lock) {
                 if (sink != null) return
-                // Keep the previous run's tail when this process has not written a step yet.
-                if (ring.isEmpty()) {
-                    try {
-                        real.readFile().takeLast(MAX_LINES).forEach { ring.addLast(it) }
-                    } catch (_: Throwable) {
-                    }
-                }
                 sink = real
             }
             flush()
@@ -91,25 +86,22 @@ internal object Breadcrumb {
         try {
             val target: BreadcrumbSink
             val latest: String
-            val lines: List<String>
             synchronized(lock) {
                 target = sink ?: return
                 if (!pending) return
                 latest = ring.lastOrNull() ?: return
-                lines = ring.toList()
             }
             try {
                 target.putGlobal(latest)
-            } catch (_: Throwable) {
-            }
-            try {
-                target.writeFile(lines)
             } catch (_: Throwable) {
             }
             synchronized(lock) { pending = false }
         } catch (_: Throwable) {
         }
     }
+
+    /** The in-process ring, for the JVM tests. The ring is otherwise private to this object. */
+    internal fun linesForTest(): List<String> = synchronized(lock) { ring.toList() }
 
     internal fun installSinkForTest(sink: BreadcrumbSink?) {
         synchronized(lock) {
@@ -136,21 +128,6 @@ internal object Breadcrumb {
                 Settings.Global.putString(context.contentResolver, KEY, value)
             } catch (_: Throwable) {
             }
-        }
-
-        override fun writeFile(lines: List<String>) {
-            try {
-                val file = File(context.filesDir, FILE_NAME)
-                file.writeText(lines.joinToString("\n", postfix = if (lines.isEmpty()) "" else "\n"))
-            } catch (_: Throwable) {
-            }
-        }
-
-        override fun readFile(): List<String> = try {
-            val file = File(context.filesDir, FILE_NAME)
-            if (!file.exists()) emptyList() else file.readLines().filter { it.isNotBlank() }
-        } catch (_: Throwable) {
-            emptyList()
         }
     }
 }

@@ -3139,6 +3139,7 @@ internal class DuoIconHost(private val context: Context) {
      * than empty (FR-21).
      */
     fun attach(statusBarRoot: View): Boolean {
+        Breadcrumb.step("attach:begin")
         if (element != null) return true
         return try {
             val stage = guard.stage()
@@ -3173,6 +3174,7 @@ internal class DuoIconHost(private val context: Context) {
                 Breadcrumb.step("attach:failed")
                 return false
             }
+            Breadcrumb.step("attach:host")
             root = statusBarRoot
             hideStrip = target
             // Pin the slot width now, while the battery view still has its real width: once the stock
@@ -3185,6 +3187,7 @@ internal class DuoIconHost(private val context: Context) {
             appliedDesignStyle = DuoPrefs.normalizeDesignStyle(settings.designStyle)
             appliedEngineMode = DuoPrefs.normalizeEngine(settings.engineMode)
             val candidate = createElement(statusBarRoot, stage, ringPart())
+            Breadcrumb.step("attach:create")
             // Capture the size for this element. A live size change rebuilds through the host instead
             // (see LiveApply); resizing the Rive view live used to take System UI down.
             geometry.capture(settings.sizePercent, basePx)
@@ -3241,6 +3244,7 @@ internal class DuoIconHost(private val context: Context) {
             // live. A Rive state machine binds *after* this method returns (it needs the view attached to a
             // window), so hiding here would cover an empty slot; Canvas reports ready immediately.
             candidate.onReady {
+                Breadcrumb.step("attach:ready")
                 if (candidate is DuoRiveView) Breadcrumb.step("rive:bind")
                 if (hasBox(candidate.ui) && (candidate.ui.parent === container || candidate.ui.parent === target)) {
                     onElementReady(candidate, target)
@@ -3390,6 +3394,7 @@ internal class DuoIconHost(private val context: Context) {
             L.e("Canvas fallback failed: ${t.javaClass.simpleName}: ${t.message}")
             return
         }
+        Breadcrumb.step("render:canvas")
         val container = host ?: target
         try {
             candidate.teardown()
@@ -3482,6 +3487,7 @@ internal class DuoIconHost(private val context: Context) {
         }
         val canvas = DuoCanvasView(context, part, appliedDesignStyle)
         canvas.start()
+        Breadcrumb.step("render:canvas")
         L.i("element: Canvas (stage $stage, $part)")
         return canvas
     }
@@ -3511,9 +3517,11 @@ internal class DuoIconHost(private val context: Context) {
             // A clean failure, not a death: hand the attempt back so the breaker only counts crashes.
             guard.clearRiveAttempts()
             rive.teardown()
+            Breadcrumb.step("rive:failed")
             DuoSettingsClient.reportFallback(context, "Rive could not start on ${android.os.Build.MODEL}; using the simple drawing")
             return null
         }
+        Breadcrumb.step("rive:created")
         return rive
     }
 

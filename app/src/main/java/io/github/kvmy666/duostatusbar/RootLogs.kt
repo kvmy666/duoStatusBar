@@ -690,11 +690,8 @@ internal object RootLogs {
         echo '=== logcat crash buffer ==='
         logcat -d -b crash -t 500 2>&1 | grep -a -i -B2 -A4 'com.android.systemui' | tail -n 200
         echo '=== breadcrumb ==='
+        echo 'source=app-only (Settings.Global; SystemUI data dir is not readable from root/Shizuku: SELinux)'
         settings get global duo_statusbar_breadcrumb 2>&1
-        for f in /data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt /data/data/com.android.systemui/files/duo-breadcrumb.txt; do
-          echo "file=${'$'}f"
-          cat "${'$'}f" 2>&1 | tail -n 12
-        done
         echo '=== build props ==='
         getprop ro.product.manufacturer
         getprop ro.product.brand
@@ -734,15 +731,6 @@ internal object RootLogs {
 
     /** Per-section budget; anything longer is cut with a visible marker, never silently dropped. */
     internal const val MAX_SECTION_CHARS = 12_000
-
-    /**
-     * Both places SystemUI may keep the breadcrumb file. `/data/user_de/0` is the normal (device-encrypted)
-     * location; `/data/data` is kept as the fallback for ROMs that do not use the user partition layout.
-     */
-    internal val BREADCRUMB_FILES: List<String> = listOf(
-        "/data/user_de/0/com.android.systemui/files/duo-breadcrumb.txt",
-        "/data/data/com.android.systemui/files/duo-breadcrumb.txt"
-    )
 
     private const val BREADCRUMB_APP_TITLE = "breadcrumb (app fallback)"
 
@@ -1265,6 +1253,28 @@ internal object RootLogs {
         "safe mode" -> withSafeMode(section, bootEpochMillis)
         "framework manager" -> withFrameworkManager(section)
         "LSPosed config (enabled / scope)" -> withModuleScope(section)
+        "breadcrumb" -> withBreadcrumb(section)
+        else -> section
+    }
+
+    /**
+     * The privileged breadcrumb section only reads `Settings.Global`. The SystemUI data-dir file the
+     * module used to write is gone: root/Shizuku cannot read that directory at all (see the script's
+     * `source=` line), so its absence is not an unreadable report. A `settings get` miss prints
+     * `null`; that is an unset breadcrumb ([SectionState.EMPTY]), never [SectionState.UNREADABLE].
+     * A failed capture still stays unreadable, and a skipped route stays skipped.
+     */
+    private fun withBreadcrumb(section: CaptureSection): CaptureSection = when (section.state) {
+        SectionState.PRESENT, SectionState.EMPTY -> {
+            val value = section.text.lineSequence()
+                .map { it.trim() }
+                .firstOrNull { it.isNotEmpty() && !it.startsWith("source=") }
+            if (value == null || value == "null") {
+                section.copy(state = SectionState.EMPTY, reason = "unset")
+            } else {
+                section
+            }
+        }
         else -> section
     }
 
