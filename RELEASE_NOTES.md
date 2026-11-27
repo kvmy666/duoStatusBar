@@ -12,6 +12,8 @@ Version 2.1.6 (116) makes automatic problem reports accurate, explains an unload
 - The iOS icons keep the same spacing in the shade and Quick Settings as in the main status bar: the 5G-to-battery gap is no longer widened by the Quick Settings layout.
 - Problem reports no longer name a battery or stacked-SIM piece as missing when its owner is installed and working, and a battery view that stays hidden at 0x0 no longer retries indefinitely.
 - The iOS icons in the shade header now sit on the same centre line as the battery, matching Quick Settings and the main status bar.
+- The automatic problem reports switch is now at the top of the Report screen as well as in Settings > About; both control the same setting.
+- A new install starts in Duo mode with the single-SIM design. Existing settings are not changed by the update.
 - Restart the phone once after updating so System UI loads the new version.
 
 # Duo Status Bar 2.1.3
