@@ -10,7 +10,10 @@ expect:
 --- moduleLog
 --- capture
 === capture route ===
-state=skipped reason=no root: root access was not granted; Shizuku is not running
+state=present reason=-
+rootKind=none · route=module_log · su=su · suAbs=false · shizuku=off · sui=false · rootGranted=false
+rootAttempted=false shizukuAttempted=false
+captureSkipped=no root: root access was not granted; Shizuku is not running
 === safe mode ===
 state=skipped reason=no root: root access was not granted; Shizuku is not running
 === LSPosed config (enabled / scope) ===
@@ -22,8 +25,8 @@ state=present reason=-
 deaths=unknown
 safeMode=unknown
 safeModeCounter=unknown
+uptime=233s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=34 RELEASE=14
+MANUFACTURER=samsung BRAND=samsung MODEL=redacted

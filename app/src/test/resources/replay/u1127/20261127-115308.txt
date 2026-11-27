@@ -6,18 +6,16 @@ iosActive: true
 updatePending: false
 expect:
 --- status
-process=com.android.systemui pid=1 · owner=ios · stage=0 · renderer=none · attached=false · riveAttempts=0
+process=com.android.systemui pid=10643 · owner=ios · stage=0 · renderer=none · attached=false · size=220% · offset=0dp · split=true · lock=false · icons=-55dp · edge=59% · percent=true · rev=776 · riveAttempts=0
 --- dump
-history:
-  1795732608704 process=com.android.systemui pid=1 · owner=ios · stage=0 · attached=false
-shade panel expansion lookup failed at phase=panelType sdk=36 panelFallback=attach-order
-rive bind: missing:no Rive bind failure recorded
+  1795732608704 process=com.android.systemui pid=3844 · owner=ios · stage=0 · renderer=none · attached=false · size=220% · offset=0dp · split=true · lock=false · icons=-55dp · edge=59% · percent=true · rev=751 · riveAttempts=1
 --- moduleLog
-shade panel expansion lookup failed at phase=panelType sdk=36 panelFallback=attach-order
+1795767735609 process=com.android.systemui pid=10643 shade panel expansion lookup failed at phase=panelType sdk=36 panelFallback=attach-order - panel owner falls back to attach order: XposedHelpers$ClassNotFoundError: java.lang.ClassNotFoundException: com.android.systemui.shade.PanelType
 --- capture
 === capture route ===
 state=present reason=-
-rootKind=shizuku · route=shizuku
+rootKind=shizuku · route=shizuku · su=su · suAbs=false · shizuku=running(uid=0) · sui=false · rootGranted=false
+rootAttempted=false shizukuAttempted=true
 captureFailure=(shizuku timed out after 20s)
 === safe mode ===
 state=unreadable reason=(shizuku timed out after 20s)
@@ -30,7 +28,7 @@ state=present reason=-
 deaths=unreadable:(shizuku timed out after 20s)
 safeMode=no
 safeModeCounter=not found
+uptime=unreadable
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=36 RELEASE=16
+MANUFACTURER=samsung BRAND=samsung MODEL=redacted

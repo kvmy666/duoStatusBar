@@ -6,20 +6,21 @@ iosActive: true
 updatePending: false
 expect:
 --- status
-process=com.android.systemui pid=1 · owner=ios · stage=0 · renderer=none · attached=false · riveAttempts=0
+process=com.android.systemui pid=25754 · owner=ios · loaded · features: owner=ios renderer=none stage=0 override=none rev=23860 active= shared=app,bar_tint,icon_add,orientation,settings,shade_header,shade_layout,vendor_shade,window
 --- dump
-stage=0 · renderer=none · attached=false
-ios v2 miss family=x piece=hook tried=none
-rive bind: missing:no Rive bind failure recorded
+  1795646829046 stage=0 · renderer=none · attached=false · size=130% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=23860 · riveAttempts=0
 --- moduleLog
 --- capture
 === capture route ===
 state=present reason=-
-route=root
+rootKind=kernelsu · route=root · su=/system/bin/su · suAbs=true · shizuku=running(uid=0) · sui=false · rootGranted=true · adb=AppleFonts,backups_s8,bindhosts,boot-completed.d,boot_hash,brene,hybrid-mount,keybox_alt_kow10real.xml,keybox_strong.xml,keybox_strong_alt.xml,ksu,ksud,lspd,metamodule,modules,modules_update,omk,pif.prop.bak.beforefix,pif.prop.old,removed_modules_s8,service.d,specter,susfs4ksu,teesim,tricky_store,zygisksu
+rootAttempted=true shizukuAttempted=true
 === safe mode ===
 state=present reason=-
 counter=not found
 safeMode=no
+/data/adb/ksu/log/logcat.log:11-27 00:01:02.225  4956  4956 I WindowManager: SAFE MODE not enabled
+/data/adb/ksu/log/logcat.log:11-27 00:01:07.219  7606  7606 I SystemUi--Notification: OplusLiveAlertNotificationsRepository-->onNotificationChannelModified: android 0 Safe Mode 2
 === LSPosed config (enabled / scope) ===
 state=present reason=-
 module=io.github.kvmy666.duostatusbar not found in modules_config.db
@@ -30,19 +31,17 @@ db=/data/adb/lspd/config/modules_config.db
 state=present reason=-
 -- dropbox system_app_crash --
 2026-11-24 16:50:39 system_app_crash (text, 5068 bytes)
-Process: com.android.systemui
-PID: 10350
+SystemUptimeMs: 144738746
 === tombstones ===
 state=present reason=-
 tombstone=/data/tombstones/tombstone_11
-Process name is com.android.systemui, uid is 10266
+Process name is com.android.systemui, uid is 10266, not key_process
 === systemui deaths ===
 state=present reason=-
 deaths=records
 safeMode=no
 safeModeCounter=not found
-crashRecords=0
+uptime=unreadable
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=36 RELEASE=16
+MANUFACTURER=OnePlus BRAND=OnePlus MODEL=redacted

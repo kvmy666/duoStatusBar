@@ -6,20 +6,17 @@ iosActive: true
 updatePending: false
 expect:
 --- status
-process=com.android.systemui pid=1 · owner=ios · stage=0 · renderer=none · attached=false · riveAttempts=0
+process=com.android.systemui pid=5912 · owner=ios · stage=0 · renderer=none · attached=false · size=100% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=2 · riveAttempts=0
 --- dump
-status bar window: attached=false
-stage=0 · renderer=none · attached=false
-ios v2 runtimeMisses: family=0 wifi=0 cell=0 hook=1
-ios v2 miss family=x piece=hook tried=none
-panelFallback=attach-order
-rive bind: missing:no Rive bind failure recorded
+duo attach: attached=false stage=0 renderer=none owner=ios root=app-settings provider=ok
+ios engine: calls=5907 hits=8 misses=5899 callsBeforeMap=94 activatedAt=1795754782319 mapReadyAt=1795754782468 buildMs=136
 --- moduleLog
-panel hook unavailable sdk=37 panelFallback=attach-order
+1795754782498 process=com.android.systemui pid=5912 shade panel expansion lookup failed at phase=panelType sdk=37 panelFallback=attach-order - panel owner falls back to attach order: XposedHelpers$ClassNotFoundError: java.lang.ClassNotFoundException: com.android.systemui.shade.PanelType
 --- capture
 === capture route ===
 state=present reason=-
-route=root
+rootKind=kernelsu_lkm · route=root · su=/system/bin/su · suAbs=true · shizuku=running(uid=2000) · sui=false · rootGranted=true · adb=HyperUnlocked,ksu,ksud,lspd,metamodule,modules,modules_update,service.d,zygisk-detach,zygisksu
+rootAttempted=true shizukuAttempted=true
 === safe mode ===
 state=present reason=-
 safeLogFiles=1
@@ -32,14 +29,14 @@ enabled=unknown scope=unknown (modules_config.db not queried)
 db=/data/adb/lspd/config/modules_config.db
 sqlite3=absent
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-26 22:41:45
 === systemui deaths ===
 state=present reason=-
 deaths=0
 safeMode=no
 safeModeCounter=0
+uptime=167742s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=37 RELEASE=17
+MANUFACTURER=samsung BRAND=samsung MODEL=redacted

@@ -11,7 +11,8 @@ expect:
 --- capture
 === capture route ===
 state=present reason=-
-route=shizuku
+rootKind=shizuku · route=shizuku · su=su · suAbs=false · shizuku=running(uid=2000) · sui=false · rootGranted=false
+rootAttempted=false shizukuAttempted=true
 === safe mode ===
 state=present reason=-
 safeLogFiles=0
@@ -24,14 +25,14 @@ enabled=unknown scope=unknown (modules_config.db not queried)
 db=unknown
 sqlite3=absent
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-27 11:47:20
 === systemui deaths ===
 state=present reason=-
 deaths=unknown
 safeMode=unknown
 safeModeCounter=unknown
+uptime=46968s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=37 RELEASE=17
+MANUFACTURER=Google BRAND=google MODEL=redacted 7a

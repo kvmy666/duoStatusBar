@@ -6,17 +6,16 @@ iosActive: true
 updatePending: false
 expect:
 --- status
-process=com.android.systemui pid=1 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+stage=0 · renderer=none · attached=false · size=101% · offset=0dp · split=false · lock=false · icons=0dp · edge=50% · percent=true · rev=6949 · riveAttempts=0
 --- dump
-history:
-  1795758939504 stage=2 · renderer=none · attached=false
-  1795758940233 loaded · features: owner=duo renderer=rive stage=2 override=none rev=6946
-rive bind: missing:no Rive bind failure recorded
+  1795758939502 loaded · features: owner=duo renderer=rive stage=2 override=none rev=6946 active=airplane,arrival,burn_in,charging_motion,clock_font,departure,dnd,event_call,hidden_keys,hide_other,percent,qs_surface,ring,wifi_glyph shared=app,bar_tint,icon_add,orientation,settings,shade_header,shade_layout,vendor_shade,window
+  1795758939504 stage=2 · renderer=none · attached=false · size=101% · offset=0dp · split=false · lock=false · icons=0dp · edge=50% · percent=true · rev=6946 · riveAttempts=0
 --- moduleLog
 --- capture
 === capture route ===
 state=present reason=-
-route=root
+rootKind=kernelsu_lkm · route=root · su=/system/bin/su · suAbs=true · shizuku=running(uid=0) · sui=false · rootGranted=true · adb=ksu,ksud,lspd,modules,modules_update,service.d,zygisksu
+rootAttempted=true shizukuAttempted=true
 === safe mode ===
 state=present reason=-
 safeLogFiles=7
@@ -26,16 +25,17 @@ safeMode=no
 === LSPosed config (enabled / scope) ===
 state=present reason=-
 enabled=unknown scope=unknown (modules_config.db not queried)
+db=/data/adb/lspd/config/modules_config.db
 sqlite3=absent
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-27 06:48:20
 === systemui deaths ===
 state=present reason=-
 deaths=0
 safeMode=no
 safeModeCounter=0
+uptime=315316s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=37 RELEASE=17
+MANUFACTURER=samsung BRAND=samsung MODEL=redacted

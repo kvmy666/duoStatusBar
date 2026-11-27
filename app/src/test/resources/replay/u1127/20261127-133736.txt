@@ -6,16 +6,15 @@ iosActive: false
 updatePending: false
 expect:
 --- status
-process=com.android.systemui pid=1 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+process=com.android.systemui pid=24689 · owner=none · stage=0 · renderer=none · attached=false · size=127% · offset=-16dp · split=false · lock=false · icons=0dp · edge=0% · percent=true · rev=347 · riveAttempts=0
 --- dump
-history:
-  1795763025544 stage=2 · renderer=none · attached=false
-rive bind: missing:no Rive bind failure recorded
+  1795763025001 stage=2 · renderer=none · attached=false · size=127% · offset=-16dp · split=false · lock=false · icons=0dp · edge=0% · percent=true · rev=339 · riveAttempts=0
 --- moduleLog
 --- capture
 === capture route ===
 state=present reason=-
-route=root
+rootKind=kernelsu_lkm · route=root · su=/system/bin/su · suAbs=true · shizuku=off · sui=false · rootGranted=true · adb=boot-completed.d,ksu,ksud,lspd,modules,modules_update,service.d,zygisksu
+rootAttempted=true shizukuAttempted=false
 === safe mode ===
 state=present reason=-
 safeLogFiles=3
@@ -25,16 +24,17 @@ safeMode=no
 === LSPosed config (enabled / scope) ===
 state=present reason=-
 enabled=unknown scope=unknown (modules_config.db not queried)
+db=/data/adb/lspd/config/modules_config.db
 sqlite3=absent
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-27 13:32:58
 === systemui deaths ===
 state=present reason=-
 deaths=0
 safeMode=no
 safeModeCounter=0
+uptime=422803s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=37 RELEASE=17
+MANUFACTURER=samsung BRAND=samsung MODEL=redacted

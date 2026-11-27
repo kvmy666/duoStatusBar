@@ -6,14 +6,15 @@ iosActive: false
 updatePending: false
 expect:
 --- status
-process=com.android.systemui pid=1 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+process=com.android.systemui pid=23847 · owner=none · stage=0 · renderer=none · attached=false · size=100% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=0 · riveAttempts=0
 --- dump
-stage=0 · renderer=none · attached=false
-rive bind: missing:no Rive bind failure recorded
 --- moduleLog
 --- capture
 === capture route ===
-state=skipped reason=no root: root access was not granted; Shizuku is not running
+state=present reason=-
+rootKind=unknown · route=module_log · su=/system/bin/su · suAbs=true · shizuku=off · sui=false · rootGranted=false
+rootAttempted=false shizukuAttempted=false
+captureSkipped=no root: root access was not granted; Shizuku is not running
 === safe mode ===
 state=skipped reason=no root: root access was not granted; Shizuku is not running
 === LSPosed config (enabled / scope) ===
@@ -25,8 +26,8 @@ state=present reason=-
 deaths=unknown
 safeMode=unknown
 safeModeCounter=unknown
+uptime=73385s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=36 RELEASE=16
+MANUFACTURER=motorola BRAND=motorola MODEL=redacted g - 2026

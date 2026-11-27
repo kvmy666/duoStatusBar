@@ -8,20 +8,16 @@ expect:
 --- status
 process=com.android.systemui pid=21462 · owner=duo · stage=2 · renderer=Rive · attached=true · size=135% · offset=0dp · split=false · lock=true · icons=0dp · edge=100% · percent=true · rev=1405 · riveAttempts=1
 --- dump
-history:
-  1795698344536 stage=0 · renderer=none · attached=false
-  1795698346608 stage=2 · renderer=none · attached=false
-  1795760485610 process=com.android.systemui pid=21462 · owner=duo · stage=2 · renderer=none · attached=false
-  1795760488251 process=com.android.systemui pid=21462 Duo attached on attempt 0
-shade panel expansion lookup failed at phase=panelType sdk=37 panelFallback=attach-order
-rive bind: missing:no Rive bind failure recorded
+  1795698344536 stage=0 · renderer=none · attached=false · size=135% · offset=0dp · split=false · lock=true · icons=0dp · edge=100% · percent=true · rev=1402 · riveAttempts=0
+  1795698346608 stage=2 · renderer=none · attached=false · size=135% · offset=0dp · split=false · lock=true · icons=0dp · edge=100% · percent=true · rev=1403 · riveAttempts=0
 --- moduleLog
-1795760393603 process=com.android.systemui pid=21462 shade panel expansion lookup failed at phase=panelType sdk=37 panelFallback=attach-order
-1795760488251 process=com.android.systemui pid=21462 Duo attached on attempt 0
+1795760393603 process=com.android.systemui pid=21462 shade panel expansion lookup failed at phase=panelType sdk=37 panelFallback=attach-order - panel owner falls back to attach order: ClassNotFoundError: java.lang.ClassNotFoundException: com.android.systemui.shade.PanelType
+1795760399233 process=com.android.systemui pid=21462 Duo attached on attempt 0
 --- capture
 === capture route ===
 state=present reason=-
-route=root
+rootKind=kernelsu_lkm · route=root · su=/system/bin/su · suAbs=true · shizuku=running(uid=0) · sui=false · rootGranted=true · adb=bindhosts,ksu,ksud,lspd,metamodule,modules,modules_update,service.d,sui,susfs4ksu,tricky_store,zygisksu
+rootAttempted=true shizukuAttempted=true
 === safe mode ===
 state=present reason=-
 safeLogFiles=1
@@ -34,14 +30,14 @@ enabled=unknown scope=unknown (modules_config.db not queried)
 db=/data/adb/lspd/config/modules_config.db
 sqlite3=absent
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-27 01:13:23
 === systemui deaths ===
 state=present reason=-
 deaths=0
 safeMode=no
 safeModeCounter=0
+uptime=487s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=37 RELEASE=17
+MANUFACTURER=samsung BRAND=samsung MODEL=redacted

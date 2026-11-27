@@ -6,16 +6,15 @@ iosActive: false
 updatePending: false
 expect: fallback|rive
 --- status
-process=com.android.systemui pid=24500 · owner=duo · stage=2 · renderer=none · attached=false · size=108% · riveAttempts=1 · riveBind=bind
+process=com.android.systemui pid=24500 · owner=duo · stage=2 · renderer=none · attached=false · size=108% · offset=0dp · split=false · lock=false · icons=3dp · edge=5% · percent=true · rev=17594 · riveAttempts=1 · riveBind=bind
 --- dump
-history:
-  1795621073191 stage=2 · renderer=Rive · attached=true · riveAttempts=0
-rive bind: reason=bind detail=element_not_bound
+rive bind: reason=bind
 --- moduleLog
 --- capture
 === capture route ===
 state=present reason=-
-route=shizuku
+rootKind=kernelsu_lkm · route=shizuku · su=su · suAbs=false · shizuku=running(uid=0) · sui=false · rootGranted=false · adb=PersistBackup,ksu,ksud,lspd,magic_v2ray,modules,modules_update,omk,ommega,pif.prop,service.d,susfs4ksu,tricky_store,zygisksu
+rootAttempted=false shizukuAttempted=true
 === safe mode ===
 state=present reason=-
 safeLogFiles=3
@@ -25,16 +24,17 @@ safeMode=no
 === LSPosed config (enabled / scope) ===
 state=present reason=-
 enabled=unknown scope=unknown (modules_config.db not queried)
+db=/data/adb/lspd/config/modules_config.db
 sqlite3=absent
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-27 15:07:24
 === systemui deaths ===
 state=present reason=-
 deaths=0
 safeMode=no
 safeModeCounter=0
+uptime=67935s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=37 RELEASE=17
+MANUFACTURER=OnePlus BRAND=OnePlus MODEL=redacted

@@ -6,16 +6,15 @@ iosActive: false
 updatePending: true
 expect:
 --- status
-process=com.android.systemui pid=1 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+stage=0 · renderer=none · attached=false · size=132% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=246 · riveAttempts=0
 --- dump
-history:
-  1795741987392 stage=2 · renderer=Rive · attached=true · riveAttempts=0
-rive bind: missing:no Rive bind failure recorded
+  1795741987392 stage=2 · renderer=Rive · attached=true · size=142% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=226 · riveAttempts=0
 --- moduleLog
 --- capture
 === capture route ===
 state=present reason=-
-route=root
+rootKind=kernelsu_lkm · route=root · su=/system/bin/su · suAbs=true · shizuku=off · sui=false · rootGranted=true · adb=KernelEnhancer,ksu,ksud,lspd,magisk.db,modules,modules_update,post-fs-data.d,power11,service.d,zygisksu
+rootAttempted=true shizukuAttempted=false
 === safe mode ===
 state=present reason=-
 safeLogFiles=1
@@ -26,9 +25,10 @@ safeMode=no
 === LSPosed config (enabled / scope) ===
 state=present reason=-
 enabled=unknown scope=unknown (modules_config.db not queried)
+db=/data/adb/lspd/config/modules_config.db
 sqlite3=absent
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-27 17:11:53
 === systemui deaths ===
 state=present reason=-
 deaths=1
@@ -38,5 +38,4 @@ uptime=39432s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=35 RELEASE=15
+MANUFACTURER=INFINIX BRAND=Infinix MODEL=redacted X6725

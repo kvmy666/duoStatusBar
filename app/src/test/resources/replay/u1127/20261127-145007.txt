@@ -6,19 +6,16 @@ iosActive: false
 updatePending: false
 expect: fallback|rive
 --- status
-process=com.android.systemui pid=15641 · owner=duo · stage=2 · renderer=none · attached=false · size=220% · riveAttempts=1 · riveBind=bind
+process=com.android.systemui pid=15641 · owner=duo · stage=2 · renderer=none · attached=false · size=220% · offset=0dp · split=false · lock=false · icons=0dp · edge=0% · percent=true · rev=5125 · riveAttempts=1 · riveBind=bind
 --- dump
-history:
-  1795765817544 stage=2 · renderer=none · attached=false · riveAttempts=0
-  1795765817664 stage=2 · renderer=Rive · attached=true · riveAttempts=0
-rive bind: reason=bind detail=element_not_bound
-shade panel expansion lookup failed at phase=panelType sdk=36 panelFallback=attach-order
+rive bind: reason=bind
 --- moduleLog
-shade panel expansion lookup failed at phase=panelType sdk=36 panelFallback=attach-order
+1795773002506 process=com.android.systemui pid=15641 shade panel expansion lookup failed at phase=panelType sdk=36 panelFallback=attach-order - panel owner falls back to attach order: XposedHelpers$ClassNotFoundError: java.lang.ClassNotFoundException: com.android.systemui.shade.PanelType
 --- capture
 === capture route ===
 state=present reason=-
-route=root
+rootKind=magisk · route=root · su=/debug_ramdisk/su · suAbs=true · shizuku=off · sui=false · rootGranted=true · adb=ashlooper,lspd,magisk,magisk.db,modules,pif.prop,post-fs-data.d,service.d,tricky_store,zygisksu
+rootAttempted=true shizukuAttempted=false
 === safe mode ===
 state=present reason=-
 safeLogFiles=8
@@ -29,16 +26,19 @@ safeMode=no
 state=present reason=-
 enabled=unknown scope=unknown (modules_config.db not queried)
 db=/data/adb/lspd/config/modules_config.db
-sqlite3=absent
+sqlite=/system/bin/sqlite3
+Error: in prepare, no such column: module
+  SELECT * FROM modules WHERE module LIKE '%duostatusbar%';
+                error here ---^
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-27 14:48:40
 === systemui deaths ===
 state=present reason=-
 deaths=0
 safeMode=no
 safeModeCounter=0
+uptime=93288s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=36 RELEASE=16
+MANUFACTURER=LGE BRAND=lge MODEL=redacted

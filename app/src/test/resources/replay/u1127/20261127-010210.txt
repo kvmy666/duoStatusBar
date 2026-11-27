@@ -6,15 +6,14 @@ iosActive: false
 updatePending: false
 expect:
 --- status
-process=com.android.systemui pid=1 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+process=com.android.systemui pid=30726 · owner=none · stage=0 · renderer=none · attached=false · size=100% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=3 · riveAttempts=0
 --- dump
-stage=0 · renderer=none · attached=false
-rive bind: missing:no Rive bind failure recorded
 --- moduleLog
 --- capture
 === capture route ===
 state=present reason=-
-route=shizuku
+rootKind=shizuku · route=shizuku · su=su · suAbs=false · shizuku=running(uid=2000) · sui=false · rootGranted=false
+rootAttempted=false shizukuAttempted=true
 === safe mode ===
 state=present reason=-
 safeLogFiles=0
@@ -27,14 +26,14 @@ enabled=unknown scope=unknown (modules_config.db not queried)
 db=unknown
 sqlite3=absent
 === crash records ===
-state=empty reason=no entries since boot
+state=empty reason=no entries since 2026-11-27 00:51:39
 === systemui deaths ===
 state=present reason=-
 deaths=unknown
 safeMode=unknown
 safeModeCounter=unknown
+uptime=631s
 crashRecords=0
 === app-side facts (no privilege) ===
 state=present reason=-
-MANUFACTURER=example BRAND=example MODEL=redacted
-SDK=36 RELEASE=16
+MANUFACTURER=Xiaomi BRAND=Xiaomi MODEL=redacted
