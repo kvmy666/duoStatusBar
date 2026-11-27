@@ -75,6 +75,11 @@ class SettingsHistoryTest {
 
     @Test
     fun `duo prefs write records exactly the changed keys`() {
+        // A first install is already enabled (owner decision), so start from an existing store whose
+        // stored value is false; the write then genuinely changes `enabled` and the history says so.
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit()
+            .putBoolean(DuoPrefs.COL_ENABLED, false)
+            .commit()
         DuoPrefs.write(context, DuoSettings(enabled = true), DuoOrientation.PORTRAIT)
         val record = SettingsHistory.read(context)
         assertNotNull(record)

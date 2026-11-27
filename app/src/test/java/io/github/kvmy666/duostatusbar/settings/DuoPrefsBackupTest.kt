@@ -11,12 +11,24 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowContextImpl
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class DuoPrefsBackupTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    private fun storeFile(): File =
+        File(context.applicationInfo.dataDir, "shared_prefs/duo_settings.xml")
+
+    /** @Before [clear] leaves an existing empty file; resetting and deleting makes this a first install. */
+    private fun deleteStoreForAFreshInstall() {
+        // DuoApp.onCreate opens the store before the test runs, so drop its in-memory copy first.
+        ShadowContextImpl.reset()
+        storeFile().delete()
+    }
 
     @Before
     fun clear() {
@@ -108,6 +120,52 @@ class DuoPrefsBackupTest {
         val p = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
         assertEquals(DuoPrefs.MAX_SIZE, p.sizePercent)
         assertEquals(220, p.sizePercent)
+    }
+
+    @Test
+    fun `backup of a fresh store carries the first-install defaults`() {
+        deleteStoreForAFreshInstall()
+
+        val json = DuoPrefs.backupJson(context)
+
+        assertTrue("a fresh store backs up enabled=true", json.contains("\"enabled\":true"))
+        assertTrue("a fresh store backs up the classic design", json.contains("\"design_style\":\"old\""))
+    }
+
+    @Test
+    fun `restoring enabled false over a fresh store keeps it off`() {
+        deleteStoreForAFreshInstall()
+        val json = """{"schema":"duo-settings/1","version":1,"exportedAt":1,"values":{"enabled":false}}"""
+
+        val result = DuoPrefs.restoreJson(context, json)
+
+        assertTrue(result.success)
+        assertFalse(DuoPrefs.read(context, DuoOrientation.PORTRAIT).enabled)
+    }
+
+    @Test
+    fun `restoring without enabled over a fresh store leaves the seeded on`() {
+        deleteStoreForAFreshInstall()
+        val json = """{"schema":"duo-settings/1","version":1,"exportedAt":1,"values":{"size_percent":200}}"""
+
+        val result = DuoPrefs.restoreJson(context, json)
+
+        assertTrue(result.success)
+        assertTrue(DuoPrefs.read(context, DuoOrientation.PORTRAIT).enabled)
+    }
+
+    @Test
+    fun `restoring without enabled over an existing store missing it stays off`() {
+        deleteStoreForAFreshInstall()
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit()
+            .putString("last_status", "x")
+            .commit()
+        val json = """{"schema":"duo-settings/1","version":1,"exportedAt":1,"values":{"size_percent":200}}"""
+
+        val result = DuoPrefs.restoreJson(context, json)
+
+        assertTrue(result.success)
+        assertFalse(DuoPrefs.read(context, DuoOrientation.PORTRAIT).enabled)
     }
 
 }

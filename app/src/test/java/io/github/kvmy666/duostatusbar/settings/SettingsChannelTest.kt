@@ -18,6 +18,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
+import org.robolectric.shadows.ShadowContextImpl
+import java.io.File
 
 /**
  * The app ↔ module channel is the newest surface and the one with the least device coverage, so its contract
@@ -1145,6 +1147,43 @@ class SettingsChannelTest {
         val fromRow = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
         assertEquals(false, fromRow.showWifiGlyph)
         assertEquals(true, fromRow.showCellDots)
+    }
+
+    private fun deleteStoreFile() {
+        // DuoApp.onCreate opens the store before the test runs, so drop its in-memory copy first.
+        ShadowContextImpl.reset()
+        File(context.applicationInfo.dataDir, "shared_prefs/duo_settings.xml").delete()
+    }
+
+    @Test
+    fun `a fresh store publishes enabled and the module reads the first-install mode`() {
+        deleteStoreFile()
+
+        val row = DuoSettingsProvider.rowFor(DuoPrefs.read(context, DuoOrientation.PORTRAIT), revision = 1L)
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_ENABLED)])
+
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row.toList()) }
+        cursor.moveToFirst()
+        val read = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        assertTrue("the module must read a fresh store as on", read.enabled)
+        assertFalse("the first-install mode is Duo, not iOS", read.iosMode)
+        assertEquals(DuoPrefs.DESIGN_OLD, read.designStyle)
+    }
+
+    @Test
+    fun `an existing store without enabled still publishes off`() {
+        deleteStoreFile()
+        // The legacy case: the file exists but this build never stored the master switch.
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit()
+            .putString("last_status", "x")
+            .commit()
+
+        val row = DuoSettingsProvider.rowFor(DuoPrefs.read(context, DuoOrientation.PORTRAIT), revision = 1L)
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_ENABLED)])
+
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row.toList()) }
+        cursor.moveToFirst()
+        assertFalse(DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT).enabled)
     }
 
 }
