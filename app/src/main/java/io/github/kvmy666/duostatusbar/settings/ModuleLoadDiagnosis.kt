@@ -59,7 +59,9 @@ internal data class LoadDiagnosis(
     /** The `next step:` wording for the report, or null when there is nothing to fix. */
     fun reportStep(): String? = when (cause) {
         LoadCause.NOT_NEEDED -> null
-        LoadCause.LSPOSED_MISSING -> "Install LSPosed (Zygisk) and reboot your phone."
+        LoadCause.LSPOSED_MISSING ->
+            "Install LSPosed (Zygisk) and reboot. If it is already installed, make its manager app " +
+                "visible to Duo."
         LoadCause.NOT_ENABLED -> "Enable Duo Status Bar in LSPosed, then restart System UI."
         LoadCause.NOT_SCOPED ->
             "Add System UI to Duo Status Bar's scope in LSPosed, then restart System UI."
@@ -160,16 +162,17 @@ internal object ModuleLoadDiagnosis {
     }
 
     /**
-     * Pure rule: the report cannot show LSPosed/framework logs when the capture route failed/was
-     * skipped, or when a framework-evidence section (not a breadcrumb/crash/tombstone) is missing.
-     * Unrelated unreadable sections must not claim the privileged framework logs were unreadable.
+     * Pure rule: with no capture, a recorded failure means the privileged route could not run. With a
+     * capture, the capture object itself proves the attempt succeeded, so [captureFailure] is ignored:
+     * it also carries unrelated collector failures (snapshot/health/module-log) that say nothing about
+     * the framework logs. Only the capture's own route and framework-evidence sections decide then.
+     * Breadcrumbs, crash records, tombstones and the crash buffer never count.
      */
     internal fun reportCannotReadFrameworkLogs(
         capture: RootCapture?,
         captureFailure: String?
     ): Boolean {
-        if (!captureFailure.isNullOrBlank()) return true
-        if (capture == null) return false
+        if (capture == null) return !captureFailure.isNullOrBlank()
         // The capture's own `capture route` section carries the failure/skip reason in its text;
         // RootCapture.route is only the probe detail. Check the section state, both texts, then the
         // framework sections themselves.

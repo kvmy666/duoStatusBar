@@ -48,6 +48,8 @@ class ModuleLoadDiagnosisTest {
         assertEquals(false, diagnosis.lsposedInstalled)
         assertTrue(diagnosis.reportCause()!!.contains("LSPosed"))
         assertTrue(diagnosis.reportStep()!!.contains("Install"))
+        // The cause hedges "not installed or not visible", so the step must hedge too.
+        assertTrue(diagnosis.reportStep()!!.contains("visible"))
     }
 
     @Test
@@ -161,6 +163,26 @@ class ModuleLoadDiagnosisTest {
             )
         )
         assertFalse(ModuleLoadDiagnosis.reportCannotReadFrameworkLogs(capture, null))
+    }
+
+    @Test
+    fun `an unrelated collector failure does not override a readable capture`() {
+        val capture = RootCapture(
+            "route=root",
+            listOf(
+                CaptureSection("capture route", SectionState.PRESENT, "", "rootAttempted=true"),
+                CaptureSection("LSPosed newest modules log", SectionState.PRESENT, "", "log"),
+                CaptureSection("breadcrumb", SectionState.UNREADABLE, "unset")
+            )
+        )
+        // AutoReportManager joins snapshot/health/module-log failures into the same string; those do
+        // not mean the privileged framework logs were unreadable.
+        assertFalse(
+            ModuleLoadDiagnosis.reportCannotReadFrameworkLogs(
+                capture,
+                "health:IllegalStateException"
+            )
+        )
     }
 
     @Test

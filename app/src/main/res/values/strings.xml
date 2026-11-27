@@ -181,7 +181,7 @@
     <string name="module_health_open_lsposed">Open LSPosed</string>
     <string name="module_health_scope_hint">Turn on Duo and choose the status bar.</string>
     <string name="module_health_cause_lsposed_missing">LSPosed not detected</string>
-    <string name="module_health_fix_lsposed_missing">Install LSPosed (Zygisk) and reboot your phone.</string>
+    <string name="module_health_fix_lsposed_missing">Install LSPosed (Zygisk) and reboot. If it is already installed, make its manager app visible to Duo.</string>
     <string name="module_health_cause_not_enabled">Duo is not enabled in LSPosed</string>
     <string name="module_health_fix_not_enabled">Enable Duo Status Bar in LSPosed, then restart System UI.</string>
     <string name="module_health_cause_not_scoped">System UI is not in Duo\'s scope</string>
