@@ -1,0 +1,45 @@
+name: 20261127-175643
+moduleState: DISABLED
+moduleEnabled: false
+duoEnabled: false
+iosActive: false
+updatePending: false
+expect:
+--- status
+process=com.android.systemui pid=5640 · owner=none · stage=0 · renderer=none · attached=false · size=100% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=3 · riveAttempts=0
+--- dump
+  1795791236468 process=com.android.systemui pid=5640 · owner=none · stage=0 · renderer=none · attached=false · size=100% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=1 · riveAttempts=0
+  1795791237356 process=com.android.systemui pid=5640 · owner=none · stage=0 · renderer=none · attached=false · size=100% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=2 · riveAttempts=0
+  1795791336431 process=com.android.systemui pid=5640 · owner=none · stage=0 · renderer=none · attached=false · size=100% · offset=0dp · split=false · lock=false · icons=0dp · edge=100% · percent=true · rev=3 · riveAttempts=0
+--- moduleLog
+1795791236462 process=com.android.systemui pid=5640 stage 0 (app settings rev 1, enabled=false, engine=auto)
+1795791236464 process=com.android.systemui pid=5640 features: owner=none renderer=none stage=0 override=none rev=1 active= shared=app,bar_tint,icon_add,orientation,settings,shade_header,shade_layout,vendor_shade,window
+--- capture
+=== capture route ===
+state=present reason=-
+rootKind=kernelsu_lkm · route=root · su=/system/bin/su · suAbs=true · shizuku=off · sui=false · rootGranted=true · adb=HideNavBar_config.sh,ksu,ksud,lspd,metamodule,modules,modules_update,mountify,pif.prop,tricky_store
+rootAttempted=true shizukuAttempted=false
+=== safe mode ===
+state=present reason=-
+safeLogFiles=1
+safeReadableFiles=1
+counter=1
+safeMode=no
+[ 2026-11-27T17:53:09.992        0:  4164:  4386 W/LSPosedService-SafeMode ] System UI crashed 1 time(s), still below the threshold
+=== LSPosed config (enabled / scope) ===
+state=present reason=-
+enabled=unknown scope=unknown (modules_config.db not queried)
+db=/data/adb/lspd/config/modules_config.db
+sqlite3=absent
+=== crash records ===
+state=empty reason=no entries since 2026-11-27 17:52:56
+=== systemui deaths ===
+state=present reason=-
+deaths=1
+safeMode=no
+safeModeCounter=1
+uptime=227s
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=realme BRAND=realme MODEL=redacted

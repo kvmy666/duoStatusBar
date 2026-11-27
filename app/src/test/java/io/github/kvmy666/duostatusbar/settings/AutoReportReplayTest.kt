@@ -20,9 +20,9 @@ class AutoReportReplayTest {
     private val dir = "replay/u1127"
 
     @Test
-    fun `all 18 field reports replay to their exact trigger sets`() {
+    fun `all 19 field reports replay to their exact trigger sets`() {
         val ids = read("$dir/index.txt").lines().map { it.trim() }.filter { it.isNotEmpty() }
-        assertEquals("the evidence index must list every report once", 18, ids.size)
+        assertEquals("the evidence index must list every report once", 19, ids.size)
 
         ids.forEach { id ->
             val text = read("$dir/$id.txt")
