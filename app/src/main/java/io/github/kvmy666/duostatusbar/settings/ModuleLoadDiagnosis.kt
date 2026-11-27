@@ -76,6 +76,21 @@ internal object ModuleLoadDiagnosis {
     /** The capture's own section title; the report parser writes the same string. */
     const val SCOPE_SECTION = "LSPosed config (enabled / scope)"
 
+    private const val ROUTE_SECTION = "capture route"
+
+    /**
+     * The privileged evidence a "root/Shizuku is missing" note is about. Breadcrumbs, crash records,
+     * tombstones and the crash buffer are deliberately absent: they can be unreadable on a healthy
+     * capture and must not claim the framework logs were unreadable.
+     */
+    private val FRAMEWORK_SECTIONS = setOf(
+        "LSPosed/framework logs",
+        "LSPosed log files",
+        "LSPosed newest modules log",
+        "framework manager",
+        SCOPE_SECTION
+    )
+
     private const val SYSTEM_UI = "com.android.systemui"
 
     /**
@@ -145,32 +160,52 @@ internal object ModuleLoadDiagnosis {
     }
 
     /**
-     * The report cannot show LSPosed/framework logs when the capture failed, when its route was
-     * skipped/unreadable, or, for the health card with no capture yet, when neither root nor Shizuku
-     * is granted. The module's own log needs no privilege and is not covered by this flag.
+     * Pure rule: the report cannot show LSPosed/framework logs when the capture route failed/was
+     * skipped, or when a framework-evidence section (not a breadcrumb/crash/tombstone) is missing.
+     * Unrelated unreadable sections must not claim the privileged framework logs were unreadable.
+     */
+    internal fun reportCannotReadFrameworkLogs(
+        capture: RootCapture?,
+        captureFailure: String?
+    ): Boolean {
+        if (!captureFailure.isNullOrBlank()) return true
+        if (capture == null) return false
+        // The capture's own `capture route` section carries the failure/skip reason in its text;
+        // RootCapture.route is only the probe detail. Check the section state, both texts, then the
+        // framework sections themselves.
+        val route = capture.sections.firstOrNull { it.title == ROUTE_SECTION }
+        if (route != null &&
+            (route.state == SectionState.SKIPPED || route.state == SectionState.UNREADABLE)
+        ) {
+            return true
+        }
+        val routeText = route?.text ?: ""
+        if (routeText.contains("captureFailure=") || routeText.contains("captureSkipped=")) {
+            return true
+        }
+        if (capture.route.contains("captureFailure=") ||
+            capture.route.contains("captureSkipped=")
+        ) {
+            return true
+        }
+        return capture.sections.any {
+            it.title in FRAMEWORK_SECTIONS &&
+                (it.state == SectionState.SKIPPED || it.state == SectionState.UNREADABLE)
+        }
+    }
+
+    /**
+     * The capability flag for [of]. A structured capture (or a recorded failure) uses the pure rule;
+     * the health card, which has no capture yet, falls back to whether root/Shizuku is even granted.
+     * The module's own log needs no privilege and is not covered by this flag.
      */
     private fun reportCannotReadFrameworkLogs(
         context: Context,
         capture: RootCapture?,
         captureFailure: String?
     ): Boolean {
-        if (!captureFailure.isNullOrBlank()) return true
-        if (capture != null) {
-            // The capture's own `capture route` section records the failure/skip reason in its text;
-            // RootCapture.route is only the probe detail. Check both, then any skipped section.
-            val route = capture.sections.firstOrNull { it.title == "capture route" }
-            val routeText = route?.text ?: ""
-            if (routeText.contains("captureFailure=") || routeText.contains("captureSkipped=")) {
-                return true
-            }
-            if (capture.route.contains("captureFailure=") ||
-                capture.route.contains("captureSkipped=")
-            ) {
-                return true
-            }
-            return capture.sections.any {
-                it.state == SectionState.SKIPPED || it.state == SectionState.UNREADABLE
-            }
+        if (capture != null || !captureFailure.isNullOrBlank()) {
+            return reportCannotReadFrameworkLogs(capture, captureFailure)
         }
         val root = runCatching { DuoPrefs.rootAllowed(context) }.getOrDefault(false)
         if (root) return false

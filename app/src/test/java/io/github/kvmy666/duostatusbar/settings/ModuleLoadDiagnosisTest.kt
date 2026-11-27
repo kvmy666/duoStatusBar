@@ -1,6 +1,9 @@
 package io.github.kvmy666.duostatusbar.settings
 
 import io.github.kvmy666.duostatusbar.RootLogs
+import io.github.kvmy666.duostatusbar.diagnostics.CaptureSection
+import io.github.kvmy666.duostatusbar.diagnostics.RootCapture
+import io.github.kvmy666.duostatusbar.diagnostics.SectionState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -144,5 +147,51 @@ class ModuleLoadDiagnosisTest {
             assertTrue("$cause step is not a fix: $step", step!!.length > 10)
             assertFalse("$cause cause leaks a format placeholder", text!!.contains("%"))
         }
+    }
+
+    @Test
+    fun `unrelated unreadable sections do not claim the framework logs were unreadable`() {
+        val capture = RootCapture(
+            "route=root",
+            listOf(
+                CaptureSection("capture route", SectionState.PRESENT, "", "rootAttempted=true"),
+                CaptureSection("LSPosed newest modules log", SectionState.PRESENT, "", "log"),
+                CaptureSection("breadcrumb", SectionState.UNREADABLE, "unset"),
+                CaptureSection("crash records", SectionState.PRESENT, "", "none")
+            )
+        )
+        assertFalse(ModuleLoadDiagnosis.reportCannotReadFrameworkLogs(capture, null))
+    }
+
+    @Test
+    fun `a skipped capture route means no framework logs`() {
+        val capture = RootCapture(
+            "route=skipped",
+            listOf(CaptureSection("capture route", SectionState.SKIPPED, "no root or Shizuku"))
+        )
+        assertTrue(ModuleLoadDiagnosis.reportCannotReadFrameworkLogs(capture, null))
+    }
+
+    @Test
+    fun `an unreadable LSPosed config means no framework logs`() {
+        val capture = RootCapture(
+            "route=root",
+            listOf(
+                CaptureSection("capture route", SectionState.PRESENT, "", "rootAttempted=true"),
+                CaptureSection(
+                    ModuleLoadDiagnosis.SCOPE_SECTION,
+                    SectionState.UNREADABLE,
+                    "permission denied"
+                )
+            )
+        )
+        assertTrue(ModuleLoadDiagnosis.reportCannotReadFrameworkLogs(capture, null))
+    }
+
+    @Test
+    fun `a recorded capture failure means no framework logs`() {
+        assertTrue(
+            ModuleLoadDiagnosis.reportCannotReadFrameworkLogs(null, "no root or Shizuku")
+        )
     }
 }
