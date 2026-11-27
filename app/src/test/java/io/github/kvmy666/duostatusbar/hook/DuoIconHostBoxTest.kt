@@ -117,6 +117,20 @@ class DuoIconHostBoxTest {
         assertTrue(DuoIconHost.hasDrawableBox(child))
     }
 
+    /**
+     * The fallback decision is wider than [DuoIconHost.hasBox], which stays strict: a not-shown bar is
+     * deferred instead of treated as a bind failure. Evidence: the 2026-11-27 LG LM-V600, OnePlus
+     * PLK110 and Samsung SM-S948Q reports, where Rive bound before the main bar was shown.
+     */
+    @Test
+    fun `a not-shown bar defers the box judgement instead of failing the bind`() {
+        assertTrue(DuoIconHost.attachBoxAcceptable(parentOk = true, hasBox = false, shown = false))
+        assertTrue(DuoIconHost.attachBoxAcceptable(parentOk = true, hasBox = true, shown = false))
+        assertTrue(DuoIconHost.attachBoxAcceptable(parentOk = true, hasBox = true, shown = true))
+        assertFalse(DuoIconHost.attachBoxAcceptable(parentOk = true, hasBox = false, shown = true))
+        assertFalse(DuoIconHost.attachBoxAcceptable(parentOk = false, hasBox = true, shown = false))
+    }
+
     @Test
     fun `the unready guard removes only a never-bound element with no box`() {
         assertFalse(

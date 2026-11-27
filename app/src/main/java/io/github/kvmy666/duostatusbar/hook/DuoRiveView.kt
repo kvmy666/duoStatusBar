@@ -59,6 +59,7 @@ internal class DuoRiveView(
     private var binding: DuoBinding? = null
     private var started = false
     private var polls = 0
+    private var lateRetryTried = false
     private var pendingVisual: DuoVisual? = null
     private var assetLogged = false
 
@@ -191,7 +192,7 @@ internal class DuoRiveView(
      * than assumed. On success every waiter runs once; on exhaustion the host is told, so it can fall back
      * to Canvas instead of leaving an empty slot.
      */
-    private fun pollForInstance() {
+    private fun pollForInstance(delayMs: Long = POLL_MS) {
         postDelayed({
             // teardown() clears both fields; a disposed view must not keep polling (or bind late).
             if (!started || rive == null) return@postDelayed
@@ -213,7 +214,8 @@ internal class DuoRiveView(
                     renderActive = true
                     scheduleIdleStop()
                     L.i("Duo view ready (machines=${rive?.stateMachines?.size}, " +
-                            "playing=${rive?.playingStateMachines?.size}, inputs=${machine.inputNames})")
+                            "playing=${rive?.playingStateMachines?.size}, inputs=${machine.inputNames}" +
+                            (if (lateRetryTried) ", lateRetry=true" else "") + ")")
                     pendingVisual?.let { render(it) }
                     pendingVisual = null
                     readyActions.toList().forEach { it() }
@@ -221,6 +223,10 @@ internal class DuoRiveView(
                     failedActions.clear()
                 } else if (++polls < MAX_POLLS) {
                     pollForInstance()
+                } else if (lateRetryDue(polls, MAX_POLLS, lateRetryTried)) {
+                    lateRetryTried = true
+                    L.w("no view model instance after $MAX_POLLS polls - one late retry in ${LATE_RETRY_MS}ms")
+                    pollForInstance(LATE_RETRY_MS)
                 } else {
                     L.w("no view model instance after $MAX_POLLS polls - Rive element did not bind")
                     noteFailure("poll", "no view model instance after $MAX_POLLS polls")
@@ -232,12 +238,16 @@ internal class DuoRiveView(
                 L.w("instance poll: ${t.javaClass.simpleName}: ${t.message}")
                 if (++polls < MAX_POLLS) {
                     pollForInstance()
+                } else if (lateRetryDue(polls, MAX_POLLS, lateRetryTried)) {
+                    lateRetryTried = true
+                    L.w("instance poll: ${t.javaClass.simpleName}: ${t.message} - one late retry in ${LATE_RETRY_MS}ms")
+                    pollForInstance(LATE_RETRY_MS)
                 } else {
                     noteFailure("poll", "instance poll: ${t.javaClass.simpleName}: ${t.message.orEmpty()}")
                     failedActions.toList().forEach { it() }
                 }
             }
-        }, POLL_MS)
+        }, delayMs)
     }
 
     /** Pushes a full state snapshot into the drawing. Never throws. */
@@ -400,6 +410,9 @@ internal class DuoRiveView(
         failedActions.clear()
         renderActive = false
         started = false
+        polls = 0
+        lateRetryTried = false
+        failureLogged.set(false)
     }
 
     // ------------------------------------------------------------------------------------ binding
@@ -441,6 +454,13 @@ internal class DuoRiveView(
         // which is where this timing was first measured.
         private const val POLL_MS = 100L
         private const val MAX_POLLS = 25
+
+        /** One late poll after the normal budget, for a cold SystemUI that binds just past it. */
+        private const val LATE_RETRY_MS = 1_000L
+
+        /** Whether the single late poll is still available: normal budget spent and not yet tried. */
+        internal fun lateRetryDue(polls: Int, maxPolls: Int, lateTried: Boolean): Boolean =
+            polls >= maxPolls && !lateTried
 
         /** Idle time after the last change before the renderer is paused (see [idleStop]). */
         private const val IDLE_MS = 3_000L

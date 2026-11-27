@@ -3246,7 +3246,7 @@ internal class DuoIconHost(private val context: Context) {
             candidate.onReady {
                 Breadcrumb.step("attach:ready")
                 if (candidate is DuoRiveView) Breadcrumb.step("rive:bind")
-                if (hasBox(candidate.ui) && (candidate.ui.parent === container || candidate.ui.parent === target)) {
+                if (boxAcceptable(candidate, target, container)) {
                     onElementReady(candidate, target)
                 } else {
                     verifyAttachedBox(candidate, target, 0)
@@ -3338,10 +3338,12 @@ internal class DuoIconHost(private val context: Context) {
             rebuiltAwaitingHideReset = false
             L.i("live rebuild: hide state reset before the fresh element hides")
         }
-        if (!hasBox(candidate.ui) || !(candidate.ui.parent === target || candidate.ui.parent === host)) {
+        if (!boxAcceptable(candidate, target)) {
             L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} - not ready; scheduling fallback")
-            L.w("Duo box detail: target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"} ready=${candidate.isReady}")
-            onElementFailed(candidate, target)
+            L.w("Duo box detail: target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"} " +
+                    "shown=${candidate.ui.isShown} vis=${candidate.ui.visibility} " +
+                    "attached=${candidate.ui.isAttachedToWindow} ready=${candidate.isReady}")
+            onElementFailed(candidate, target, boxFailure = true)
             return
         }
         try {
@@ -3379,15 +3381,28 @@ internal class DuoIconHost(private val context: Context) {
      * The Rive element never bound its view model. Rather than leave an empty slot, it is replaced by the
      * no-native Canvas element, which draws the ring and the percentage from the same mapping (FR-21).
      */
-    private fun onElementFailed(candidate: DuoElement, target: ViewGroup) {
+    private fun onElementFailed(candidate: DuoElement, target: ViewGroup, boxFailure: Boolean = false) {
         if (element !== candidate) return
         // B3: name the stage. The view recorded the first real reason; a box/host failure that did not
         // come through DuoRiveView still gets a stable code instead of an empty parenthesis.
-        RiveBindReport.recordIfAbsent("bind", "element not bound")
-        val reason = RiveBindReport.reason() ?: "bind"
-        L.w("Rive element did not bind - falling back to Canvas (reason=$reason)")
+        if (boxFailure) {
+            RiveBindReport.recordIfAbsent("box", "shown box ${candidate.ui.width}x${candidate.ui.height}")
+        } else {
+            RiveBindReport.recordIfAbsent("bind", "element not bound")
+        }
+        val reason = RiveBindReport.reason() ?: (if (boxFailure) "box" else "bind")
+        if (boxFailure) {
+            L.w("Rive element not drawable - falling back to Canvas (reason=$reason)")
+        } else {
+            L.w("Rive element did not bind - falling back to Canvas (reason=$reason)")
+        }
         // Tell the app so it can ask the user to send the log; this is the failure we most need evidence for.
-        DuoSettingsClient.reportFallback(context, "Rive did not bind on ${android.os.Build.MODEL} (reason=$reason); using the simple drawing")
+        val report = if (boxFailure) {
+            "Rive did not draw on ${android.os.Build.MODEL} (reason=$reason); using the simple drawing"
+        } else {
+            "Rive did not bind on ${android.os.Build.MODEL} (reason=$reason); using the simple drawing"
+        }
+        DuoSettingsClient.reportFallback(context, report)
         val canvas = try {
             DuoCanvasView(context, ringPart(), appliedDesignStyle).also { it.start() }
         } catch (t: Throwable) {
@@ -3429,19 +3444,37 @@ internal class DuoIconHost(private val context: Context) {
         L.i("element: Canvas (fallback after Rive did not bind)")
     }
 
+    /**
+     * Whether this candidate's current box is good enough to keep. Unlike [hasBox] it does not reject a
+     * not-shown bar: the main bar behind QS/keyguard has no box, but Rive still binds independently of
+     * layout, so the candidate is kept until the bar actually appears (see [attachBoxAcceptable]).
+     */
+    private fun boxAcceptable(
+        candidate: DuoElement,
+        target: ViewGroup,
+        container: ViewGroup? = host
+    ): Boolean =
+        attachBoxAcceptable(
+            parentOk = candidate.ui.parent === container || candidate.ui.parent === target,
+            hasBox = hasBox(candidate.ui),
+            shown = candidate.ui.isShown
+        )
+
     /** Bounded post-layout validation for an attached element. Falls back to Canvas on a 0x0 box. */
     private fun verifyAttachedBox(candidate: DuoElement, target: ViewGroup, frame: Int) {
         if (element !== candidate) return
         val parentOk = candidate.ui.parent === host || candidate.ui.parent === target
-        if (parentOk && hasBox(candidate.ui)) return
+        if (attachBoxAcceptable(parentOk, hasBox(candidate.ui), candidate.ui.isShown)) return
         if (frame < 6) {
             (host ?: target).requestLayout()
             candidate.ui.requestLayout()
             candidate.ui.postOnAnimation { verifyAttachedBox(candidate, target, frame + 1) }
         } else {
             L.w("Duo box: ${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"}")
-            L.w("Duo box detail: size=${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"} ready=${candidate.isReady}")
-            onElementFailed(candidate, target)
+            L.w("Duo box detail: size=${candidate.ui.width}x${candidate.ui.height} parent=${candidate.ui.parent?.javaClass?.simpleName ?: "none"} target=${target.javaClass.simpleName} host=${host?.javaClass?.simpleName ?: "none"} " +
+                    "shown=${candidate.ui.isShown} vis=${candidate.ui.visibility} " +
+                    "attached=${candidate.ui.isAttachedToWindow} ready=${candidate.isReady}")
+            onElementFailed(candidate, target, boxFailure = true)
         }
     }
 
@@ -3475,7 +3508,7 @@ internal class DuoIconHost(private val context: Context) {
     private fun ensureMainFallback() {
         val candidate = element ?: return
         val target = hideStrip ?: (host as? ViewGroup) ?: return
-        onElementFailed(candidate, target)
+        onElementFailed(candidate, target, boxFailure = true)
     }
 
     private fun createElement(root: View, stage: Int, part: DuoPart = DuoPart.ALL): DuoElement {
@@ -3625,6 +3658,10 @@ internal class DuoIconHost(private val context: Context) {
         // Never hide the stock icons over an element that is not drawing yet: a layout pass can arrive
         // before Rive has bound its view model, and hiding then would leave a blank stretch of status bar.
         if (!(element?.isReady ?: false)) return
+        // A ready Rive on a not-shown bar (main bar behind QS/keyguard) has no box, but that is not a
+        // failure: keep the element and let it draw when the bar appears. Only a shown 0x0 is restored.
+        val live = element
+        if (live != null && !hasBox(live.ui) && !live.ui.isShown) return
         if (element?.ui?.let { !hasBox(it) } == true) {
             if (!thrashTripped) L.w("Duo box: 0x0 on reapply - restoring stock icons")
             restoreStockGuarded("Duo box stayed 0x0 on reapply")
@@ -4271,6 +4308,15 @@ internal class DuoIconHost(private val context: Context) {
             width: Int,
             height: Int
         ): Boolean = !isReady && (!attached || (width <= 0 && height <= 0))
+
+        /**
+         * A not-shown bar (main bar behind the keyguard/QS, a keyguard bar not laid out yet) has no
+         * usable box, but that is not evidence that Rive failed to bind: the view model binds
+         * independently of layout. Keep the candidate and let it draw when the bar appears; the
+         * shown-bar 0x0 case still falls back. [hasBox] itself stays strict (L11).
+         */
+        internal fun attachBoxAcceptable(parentOk: Boolean, hasBox: Boolean, shown: Boolean): Boolean =
+            parentOk && (hasBox || !shown)
 
         /** True only when the view is attached, shown, visible and laid out (structural validity, no alpha). */
         internal fun hasBox(view: View): Boolean = try {
