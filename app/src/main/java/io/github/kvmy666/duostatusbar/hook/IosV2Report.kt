@@ -267,8 +267,18 @@ internal fun deliveryLine(calls: Long, viewIcons: String): String {
     }
 }
 
+/**
+ * The battery hook classes that [family]'s probe actually tries. Samsung's `batteryProbePlan` is
+ * AOSP-only ([IosBatteryV2]), so a Samsung miss line must not name the OxygenOS classes.
+ *
+ * Measured 2.1.1 Fold evidence was stale and reported the OxygenOS probe as Samsung's `firstFailure`;
+ * 2.1.3 probes only the AOSP owner, so the report says exactly that.
+ */
+internal fun batteryTried(family: String): String =
+    if (family == "samsung") "BatteryMeterView" else BATTERY_TRIED
+
 internal fun batteryMissLine(family: String): String =
-    missLine(family, "battery", BATTERY_TRIED.split(','))
+    missLine(family, "battery", batteryTried(family).split(','))
 
 internal fun stackedMissLine(family: String, tried: String): String =
     missLine(family, "stacked", tried.split(',').map { it.trim() }.filter { it.isNotEmpty() })

@@ -276,12 +276,25 @@ internal object IosResourceNames {
         // R7 P5: `stat_sys_wifi_captive_0..4` stays stock. Replacing it would remove Samsung's own
         // captive-portal indication instead of merely restyling the bars.
 
+        // R17C: measured from the decoded One UI APK (16-11, SDK 36); runtime SDK 37 presence is
+        // UNVERIFIED. reverse/decoded/samsung/res/values/public.xml:18664-18709, all 0..4 dot tables.
+        addAll(wifiLevels("stat_sys_wifi5_signal_", 0, 4, top = 4)) // 18664-18668
+        addAll(wifiLevels("stat_sys_wifi6_signal_", 0, 4, top = 4)) // 18669-18673
+        addAll(wifiLevels("stat_sys_wifi7_signal_", 0, 4, top = 4)) // 18674-18678
+        addAll(wifiLevels("stat_sys_wifi_signal_wifi_calling_", 0, 4, top = 4)) // 18705-18709
+        addAll(wifiLevels("stat_sys_wifi_signal_lgt_", 0, 4, top = 4)) // 18694-18698
+
         addAll(cellLevels("stat_sys_signal_", 0, 4, top = 4))
         addAll(cellLevels("stat_sys_signal_5level_", 0, 5, top = 5))
         addAll(cellLevels("stat_sys_signal_chn_", 0, 5, top = 5))
         addAll(cellLevels("stat_sys_signal_sprint_", 0, 5, top = 5))
         addAll(cellLevels("stat_sys_signal_w16_chn_", 0, 5, top = 5))
         add(cellZero("stat_sys_signal_null"))
+        // R17C measured no-service glyphs (public.xml:18622-18635).
+        add(cellZero("stat_sys_signal_null_tmobile")) // 18622
+        add(cellZero("stat_sys_signal_null_vzw")) // 18623
+        add(cellZero("stat_sys_signal_sprint_null")) // 18634
+        add(cellZero("stat_sys_signal_voice_no_service_jp")) // 18635
 
         addAll(
             labels(
@@ -415,6 +428,92 @@ internal object IosResourceNames {
                     "stat_sys_data_connected_1x",
                     "stat_sys_data_connected_1x_chn",
                     "stat_sys_data_connected_1x_vzw"
+                ),
+                "G"
+            )
+        )
+
+        // R17C: measured data-type labels from the same One UI 16-11 APK
+        // (public.xml:15370-15843 and 18446-18570). Runtime SDK 37 presence is UNVERIFIED.
+        addAll(
+            labels(
+                listOf(
+                    "stat_sys_data_connected_4g_lte_plus_ltn", // 18446
+                    "stat_sys_data_type_at_signal_area_4g", // 18563
+                    "stat_sys_data_type_at_signal_area_4g_plus", // 18564
+                    "ic_4g_mobiledata", // 15380
+                    "ic_4g_mobiledata_updated", // 15381
+                    "ic_4g_plus_mobiledata", // 15382
+                    "ic_4g_plus_mobiledata_updated" // 15383
+                ),
+                "4G"
+            )
+        )
+        addAll(
+            labels(
+                listOf(
+                    "stat_sys_data_connected_5g_uc_tmo", // 18465
+                    "stat_sys_data_type_at_signal_area_5g_one_shaped", // 18565
+                    "stat_sys_data_type_at_signal_area_5ga", // 18566
+                    "ic_5g_mobiledata", // 15386
+                    "ic_5g_mobiledata_updated", // 15387
+                    "ic_5g_plus_mobiledata", // 15388
+                    "ic_5g_plus_mobiledata_default", // 15389
+                    "ic_5g_plus_mobiledata_default_updated", // 15390
+                    "ic_5g_plus_mobiledata_updated" // 15391
+                ),
+                "5G"
+            )
+        )
+        addAll(
+            labels(
+                listOf(
+                    "stat_sys_data_type_at_signal_area_3g", // 18561
+                    "stat_sys_data_type_at_signal_area_3g_plus", // 18562
+                    "stat_sys_data_type_at_signal_area_h", // 18569
+                    "stat_sys_data_type_at_signal_area_h_plus", // 18570
+                    "ic_3g_mobiledata", // 15372
+                    "ic_3g_mobiledata_updated", // 15373
+                    "ic_h_mobiledata", // 15789
+                    "ic_h_mobiledata_updated", // 15790
+                    "ic_h_plus_mobiledata", // 15791
+                    "ic_h_plus_mobiledata_updated" // 15792
+                ),
+                "3G"
+            )
+        )
+        addAll(
+            labels(
+                listOf(
+                    "stat_sys_data_connected_lte_tmo", // 18488
+                    "ic_lte_mobiledata", // 15840
+                    "ic_lte_mobiledata_updated", // 15841
+                    "ic_lte_plus_mobiledata", // 15842
+                    "ic_lte_plus_mobiledata_updated" // 15843
+                ),
+                "LTE"
+            )
+        )
+        addAll(
+            labels(
+                listOf(
+                    "stat_sys_data_type_at_signal_area_e", // 18567
+                    "ic_e_mobiledata", // 15720
+                    "ic_e_mobiledata_updated" // 15721
+                ),
+                "E"
+            )
+        )
+        addAll(
+            labels(
+                listOf(
+                    "stat_sys_data_type_at_signal_area_1x", // 18559
+                    "stat_sys_data_type_at_signal_area_2g", // 18560
+                    "stat_sys_data_type_at_signal_area_g", // 18568
+                    "ic_1x_mobiledata", // 15370
+                    "ic_1x_mobiledata_updated", // 15371
+                    "ic_g_mobiledata", // 15745
+                    "ic_g_mobiledata_updated" // 15746
                 ),
                 "G"
             )
