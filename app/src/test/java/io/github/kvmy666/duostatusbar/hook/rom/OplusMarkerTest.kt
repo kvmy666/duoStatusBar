@@ -56,11 +56,31 @@ class OplusMarkerTest {
     }
 
     @Test
-    fun `detectClassMarkers returns empty for a real loader without the markers`() {
+    fun `detectIdMarkers returns the first present id marker`() {
+        val markers = OplusMarker.ID_MARKERS
+        assertEquals("id:${markers[0]}", OplusMarker.detectIdMarkers { if (it == markers[0]) 1 else 0 })
+        // Every marker alone proves the family and is reported verbatim.
+        assertEquals("id:${markers[1]}", OplusMarker.detectIdMarkers { if (it == markers[1]) 1 else 0 })
+        assertEquals("id:${markers[2]}", OplusMarker.detectIdMarkers { if (it == markers[2]) 1 else 0 })
+        // When more than one resolves, the list order decides which marker is reported.
         assertEquals(
-            "",
-            OplusMarker.detectInClassLoader(ClassLoader.getSystemClassLoader())
+            "id:${markers[0]}",
+            OplusMarker.detectIdMarkers { if (it == markers[2] || it == markers[0]) 1 else 0 }
         )
+    }
+
+    @Test
+    fun `detectIdMarkers picks a later id when the earlier ones are absent`() {
+        val markers = OplusMarker.ID_MARKERS
+        assertEquals(
+            "id:${markers[2]}",
+            OplusMarker.detectIdMarkers { if (it == markers[2]) 7 else 0 }
+        )
+    }
+
+    @Test
+    fun `detectIdMarkers returns empty for absent markers`() {
+        assertEquals("", OplusMarker.detectIdMarkers { 0 })
     }
 
     @Test

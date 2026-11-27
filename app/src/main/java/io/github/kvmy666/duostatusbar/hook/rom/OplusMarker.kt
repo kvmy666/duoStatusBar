@@ -95,13 +95,23 @@ internal object OplusMarker {
      * [packageName], or "" when none does. Each probe is isolated so one broken lookup cannot hide the
      * rest.
      */
-    fun detectResourceIds(resources: Resources, packageName: String): String {
-        for (name in ID_MARKERS) {
+    fun detectResourceIds(resources: Resources, packageName: String): String =
+        detectIdMarkers { name ->
             try {
-                if (resources.getIdentifier(name, "id", packageName) != 0) return "id:$name"
+                resources.getIdentifier(name, "id", packageName)
             } catch (_: Throwable) {
-                // This probe proved nothing; try the next id.
+                // This probe proved nothing; treat it as absent and try the next id.
+                0
             }
+        }
+
+    /**
+     * Pure seam behind [detectResourceIds]: returns `id:<name>` for the first marker in [ID_MARKERS]
+     * order for which [idOf] is non-zero, else "". No logging.
+     */
+    internal fun detectIdMarkers(idOf: (String) -> Int): String {
+        for (name in ID_MARKERS) {
+            if (idOf(name) != 0) return "id:$name"
         }
         return ""
     }

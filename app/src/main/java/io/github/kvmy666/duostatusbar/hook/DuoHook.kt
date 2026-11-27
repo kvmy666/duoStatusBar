@@ -1000,7 +1000,11 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         // proves a non-MIUI SystemUI may switch a Xiaomi-brand device to AOSP; an unreadable one keeps
         // the old HyperOS/brand behaviour (see [RomMarkers]). One resolver so this cannot drift from the
         // icon host and the diagnostic dump (R15).
-        rom = RomResolver.resolve(ctx)
+        val resolved = RomResolver.resolve(ctx)
+        // R17D: the install-time marker came from the host SystemUI classloader, the same loader that
+        // owns the Oplus classes. A context read that cannot repeat the marker (e.g. package resources
+        // not visible) must not downgrade the family the one-shot iOS hooks were installed for.
+        rom = if (resolved.marker.isBlank() && rom.marker.isNotBlank()) rom else resolved
         // R6/D13/D14: the family is known now, so the iOS owner decision can stop trusting a saved ON.
         // A new process has not attempted a route yet, so it starts from "not failed".
         IosAvailability.routeFailed = false
