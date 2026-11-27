@@ -1,0 +1,34 @@
+name: 20261127-132747
+moduleState: DISABLED
+moduleEnabled: false
+duoEnabled: false
+iosActive: false
+updatePending: false
+expect: hook|hook
+--- status
+process=com.android.systemui pid=3896 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+--- dump
+stage=0 · renderer=none · attached=false
+rive bind: missing:no Rive bind failure recorded
+--- moduleLog
+1795782388449 process=com.android.systemui pid=3896 shade/QS coverage hook install failed: NoSuchMethodError: com.android.systemui.shade.NotificationShadeWindowControllerImpl#onShadeOrQsExpanded(java.lang.Boolean)#exact
+1795782388457 process=com.android.systemui pid=3896 shade panel expansion lookup failed at phase=panelType sdk=35 panelFallback=attach-order
+--- capture
+=== capture route ===
+state=skipped reason=no root: root access was not granted; Shizuku is not running
+=== safe mode ===
+state=skipped reason=no root: root access was not granted; Shizuku is not running
+=== LSPosed config (enabled / scope) ===
+state=skipped reason=no root: root access was not granted; Shizuku is not running
+=== crash records ===
+state=skipped reason=no root: root access was not granted; Shizuku is not running
+=== systemui deaths ===
+state=present reason=-
+deaths=unknown
+safeMode=unknown
+safeModeCounter=unknown
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=35 RELEASE=15

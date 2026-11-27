@@ -242,8 +242,10 @@ class AutoReportPulseTest {
         assertEquals(
             "=== why sent ===\n" +
                 "fingerprints that triggered this report:\n" +
-                "- attach|attach|2.1.2|CPH2747 (count=1)\n" +
-                "- fallback|rive|2.1.2|CPH2747 (count=3)",
+                "- attach|attach|2.1.2|CPH2747 (count=1): " +
+                "Duo owns the bar but did not attach after its retries\n" +
+                "- fallback|rive|2.1.2|CPH2747 (count=3): " +
+                "Rive did not bind; the bar fell back to Canvas",
             section
         )
     }

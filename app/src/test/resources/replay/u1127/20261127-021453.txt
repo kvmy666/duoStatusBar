@@ -1,0 +1,48 @@
+name: 20261127-021453
+moduleState: NEVER_LOADED
+moduleEnabled: true
+duoEnabled: false
+iosActive: true
+updatePending: false
+expect:
+--- status
+process=com.android.systemui pid=1 · owner=ios · stage=0 · renderer=none · attached=false · riveAttempts=0
+--- dump
+stage=0 · renderer=none · attached=false
+ios v2 miss family=x piece=hook tried=none
+rive bind: missing:no Rive bind failure recorded
+--- moduleLog
+--- capture
+=== capture route ===
+state=present reason=-
+route=root
+=== safe mode ===
+state=present reason=-
+counter=not found
+safeMode=no
+=== LSPosed config (enabled / scope) ===
+state=present reason=-
+module=io.github.kvmy666.duostatusbar not found in modules_config.db
+enabled=not parsed (modules_config.db is binary; no schema queried)
+scope=see db excerpt
+db=/data/adb/lspd/config/modules_config.db
+=== crash records ===
+state=present reason=-
+-- dropbox system_app_crash --
+2026-11-24 16:50:39 system_app_crash (text, 5068 bytes)
+Process: com.android.systemui
+PID: 10350
+=== tombstones ===
+state=present reason=-
+tombstone=/data/tombstones/tombstone_11
+Process name is com.android.systemui, uid is 10266
+=== systemui deaths ===
+state=present reason=-
+deaths=records
+safeMode=no
+safeModeCounter=not found
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=36 RELEASE=16

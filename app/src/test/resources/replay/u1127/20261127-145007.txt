@@ -1,0 +1,44 @@
+name: 20261127-145007
+moduleState: OK
+moduleEnabled: true
+duoEnabled: true
+iosActive: false
+updatePending: false
+expect: fallback|rive
+--- status
+process=com.android.systemui pid=15641 · owner=duo · stage=2 · renderer=none · attached=false · size=220% · riveAttempts=1 · riveBind=bind
+--- dump
+history:
+  1795765817544 stage=2 · renderer=none · attached=false · riveAttempts=0
+  1795765817664 stage=2 · renderer=Rive · attached=true · riveAttempts=0
+rive bind: reason=bind detail=element_not_bound
+shade panel expansion lookup failed at phase=panelType sdk=36 panelFallback=attach-order
+--- moduleLog
+shade panel expansion lookup failed at phase=panelType sdk=36 panelFallback=attach-order
+--- capture
+=== capture route ===
+state=present reason=-
+route=root
+=== safe mode ===
+state=present reason=-
+safeLogFiles=8
+safeReadableFiles=8
+counter=0
+safeMode=no
+=== LSPosed config (enabled / scope) ===
+state=present reason=-
+enabled=unknown scope=unknown (modules_config.db not queried)
+db=/data/adb/lspd/config/modules_config.db
+sqlite3=absent
+=== crash records ===
+state=empty reason=no entries since boot
+=== systemui deaths ===
+state=present reason=-
+deaths=0
+safeMode=no
+safeModeCounter=0
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=36 RELEASE=16

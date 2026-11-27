@@ -118,7 +118,12 @@ internal object AutoReportCaption {
 internal fun whySentSection(pending: List<PendingProblem>): String = buildString {
     appendLine("=== why sent ===")
     appendLine("fingerprints that triggered this report:")
-    pending.forEach { appendLine("- ${it.fingerprint} (count=${it.count})") }
+    pending.forEach {
+        appendLine(
+            "- ${it.fingerprint} (count=${it.count}): " +
+                ProblemDetector.humanReason(it.fingerprint)
+        )
+    }
 }.trimEnd()
 
 /**

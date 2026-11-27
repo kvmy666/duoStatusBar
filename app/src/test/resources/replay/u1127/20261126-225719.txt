@@ -1,0 +1,45 @@
+name: 20261126-225719
+moduleState: IOS_ACTIVE
+moduleEnabled: true
+duoEnabled: false
+iosActive: true
+updatePending: false
+expect:
+--- status
+process=com.android.systemui pid=1 · owner=ios · stage=0 · renderer=none · attached=false · riveAttempts=0
+--- dump
+status bar window: attached=false
+stage=0 · renderer=none · attached=false
+ios v2 runtimeMisses: family=0 wifi=0 cell=0 hook=1
+ios v2 miss family=x piece=hook tried=none
+panelFallback=attach-order
+rive bind: missing:no Rive bind failure recorded
+--- moduleLog
+panel hook unavailable sdk=37 panelFallback=attach-order
+--- capture
+=== capture route ===
+state=present reason=-
+route=root
+=== safe mode ===
+state=present reason=-
+safeLogFiles=1
+safeReadableFiles=1
+counter=0
+safeMode=no
+=== LSPosed config (enabled / scope) ===
+state=present reason=-
+enabled=unknown scope=unknown (modules_config.db not queried)
+db=/data/adb/lspd/config/modules_config.db
+sqlite3=absent
+=== crash records ===
+state=empty reason=no entries since boot
+=== systemui deaths ===
+state=present reason=-
+deaths=0
+safeMode=no
+safeModeCounter=0
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=37 RELEASE=17

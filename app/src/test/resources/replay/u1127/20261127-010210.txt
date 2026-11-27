@@ -1,0 +1,40 @@
+name: 20261127-010210
+moduleState: DISABLED
+moduleEnabled: false
+duoEnabled: false
+iosActive: false
+updatePending: false
+expect:
+--- status
+process=com.android.systemui pid=1 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+--- dump
+stage=0 · renderer=none · attached=false
+rive bind: missing:no Rive bind failure recorded
+--- moduleLog
+--- capture
+=== capture route ===
+state=present reason=-
+route=shizuku
+=== safe mode ===
+state=present reason=-
+safeLogFiles=0
+safeReadableFiles=0
+counter=unknown
+safeMode=unknown
+=== LSPosed config (enabled / scope) ===
+state=present reason=-
+enabled=unknown scope=unknown (modules_config.db not queried)
+db=unknown
+sqlite3=absent
+=== crash records ===
+state=empty reason=no entries since boot
+=== systemui deaths ===
+state=present reason=-
+deaths=unknown
+safeMode=unknown
+safeModeCounter=unknown
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=36 RELEASE=16

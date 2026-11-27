@@ -1,0 +1,37 @@
+name: 20261127-114731
+moduleState: NEVER_LOADED
+moduleEnabled: true
+duoEnabled: false
+iosActive: true
+updatePending: false
+expect:
+--- status
+--- dump
+--- moduleLog
+--- capture
+=== capture route ===
+state=present reason=-
+route=shizuku
+=== safe mode ===
+state=present reason=-
+safeLogFiles=0
+safeReadableFiles=0
+counter=unknown
+safeMode=unknown
+=== LSPosed config (enabled / scope) ===
+state=present reason=-
+enabled=unknown scope=unknown (modules_config.db not queried)
+db=unknown
+sqlite3=absent
+=== crash records ===
+state=empty reason=no entries since boot
+=== systemui deaths ===
+state=present reason=-
+deaths=unknown
+safeMode=unknown
+safeModeCounter=unknown
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=37 RELEASE=17

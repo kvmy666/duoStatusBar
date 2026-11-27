@@ -1,0 +1,29 @@
+name: 20261127-152222
+moduleState: NEVER_LOADED
+moduleEnabled: true
+duoEnabled: false
+iosActive: true
+updatePending: false
+expect:
+--- status
+--- dump
+--- moduleLog
+--- capture
+=== capture route ===
+state=skipped reason=no root: root access was not granted; Shizuku is not running
+=== safe mode ===
+state=skipped reason=no root: root access was not granted; Shizuku is not running
+=== LSPosed config (enabled / scope) ===
+state=skipped reason=no root: root access was not granted; Shizuku is not running
+=== crash records ===
+state=skipped reason=no root: root access was not granted; Shizuku is not running
+=== systemui deaths ===
+state=present reason=-
+deaths=unknown
+safeMode=unknown
+safeModeCounter=unknown
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=34 RELEASE=14

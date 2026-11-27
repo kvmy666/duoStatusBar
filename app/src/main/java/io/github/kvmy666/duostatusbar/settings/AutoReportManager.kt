@@ -226,8 +226,8 @@ internal object AutoReportManager {
         val current = DuoPrefs.read(context)
         val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
         val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
-        val moduleEnabled = portrait.enabled || landscape.enabled ||
-            portrait.iosMode || landscape.iosMode
+        val duoEnabled = portrait.enabled || landscape.enabled
+        val moduleEnabled = duoEnabled || portrait.iosMode || landscape.iosMode
         val updatePending = health?.state == ModuleState.NEEDS_RESTART
         // While an update is pending the stored dump/status belong to the previous build; after a
         // timeout on a dead run they belong to a process that is gone. iOS cannot be judged from either,
@@ -252,6 +252,7 @@ internal object AutoReportManager {
                 moduleLog = if (storedSuppressed) "" else moduleLog,
                 moduleState = health?.state,
                 moduleEnabled = moduleEnabled,
+                duoEnabled = duoEnabled,
                 iosActive = iosActive,
                 updatePending = updatePending,
                 capture = capture,

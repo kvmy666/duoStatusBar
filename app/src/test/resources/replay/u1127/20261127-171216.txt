@@ -1,0 +1,42 @@
+name: 20261127-171216
+moduleState: NEEDS_RESTART
+moduleEnabled: true
+duoEnabled: false
+iosActive: false
+updatePending: true
+expect:
+--- status
+process=com.android.systemui pid=1 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+--- dump
+history:
+  1795741987392 stage=2 · renderer=Rive · attached=true · riveAttempts=0
+rive bind: missing:no Rive bind failure recorded
+--- moduleLog
+--- capture
+=== capture route ===
+state=present reason=-
+route=root
+=== safe mode ===
+state=present reason=-
+safeLogFiles=1
+safeReadableFiles=1
+counter=1
+safeMode=no
+[ 2026-11-27T09:20:11.586        0: 24785: 27834 W/LSPosedService-SafeMode ] System UI crashed 1 time(s), still below the threshold
+=== LSPosed config (enabled / scope) ===
+state=present reason=-
+enabled=unknown scope=unknown (modules_config.db not queried)
+sqlite3=absent
+=== crash records ===
+state=empty reason=no entries since boot
+=== systemui deaths ===
+state=present reason=-
+deaths=1
+safeMode=no
+safeModeCounter=1
+uptime=39432s
+crashRecords=0
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=35 RELEASE=15

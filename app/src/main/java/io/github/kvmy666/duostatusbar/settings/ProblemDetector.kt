@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.settings
 
+import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.diagnostics.CaptureSection
 import io.github.kvmy666.duostatusbar.diagnostics.RootCapture
 import io.github.kvmy666.duostatusbar.diagnostics.SectionState
@@ -22,6 +23,8 @@ internal data class ProblemInputs(
     val moduleLog: String = "",
     val moduleState: ModuleState? = null,
     val moduleEnabled: Boolean = false,
+    /** True when Duo itself is switched on (portrait or landscape); iOS alone is not Duo. */
+    val duoEnabled: Boolean = false,
     val iosActive: Boolean = false,
     /**
      * True when the installed APK is newer than the module System UI runs. The stored status/dump/log
@@ -55,11 +58,9 @@ internal object ProblemDetector {
     const val LOCATION_SAFE_MODE = "safe-mode"
     const val LOCATION_SYSTEMUI = "systemui"
 
-    private val CRASH_SECTION_TITLES = setOf("crash records", "tombstones", "logcat crash buffer")
-    private val PIECE = Regex("""piece=([A-Za-z0-9_-]+)""")
-    private val RUNTIME_MISS = Regex("""([A-Za-z0-9_]+)=(\d+)""")
-    private val SAFE_COUNTER = Regex("""(?i)counter=(\d+)""")
-    private val DEATHS = Regex("""(?i)deaths=(\d+)""")
+    private val ATTACH_EXHAUSTED = Regex("""(?i)attach failed after \d+ attempts""")
+    private val OWNER_DUO = Regex("""(?i)owner=duo\b""")
+    private val SAFE_MODE_ON = Regex("""(?i)safeMode\s*=\s*(entered|yes|true)\b""")
 
     fun detect(inputs: ProblemInputs): List<DetectedProblem> {
         val found = ArrayList<DetectedProblem>()
@@ -77,8 +78,11 @@ internal object ProblemDetector {
 
         moduleProblems(inputs)?.let(found::add)
         crashProblems(inputs)?.let(found::add)
-        if (!inputs.updatePending &&
-            containsAny(records, "attached=false", "not attached", "step=attach:failed")
+        // DuoHook writes this marker as the current status only after every attach retry was spent. A
+        // stale attached=false line in the dump/history is a normal stage change, not this failure.
+        if (!inputs.updatePending && !inputs.iosActive &&
+            OWNER_DUO.containsMatchIn(inputs.status) &&
+            ATTACH_EXHAUSTED.containsMatchIn(inputs.status)
         ) {
             found += DetectedProblem("attach", LOCATION_ATTACH)
         }
@@ -88,7 +92,6 @@ internal object ProblemDetector {
         ) {
             found += DetectedProblem("fallback", LOCATION_RIVE)
         }
-        if (!inputs.updatePending && inputs.iosActive) found += iosMisses(records)
         if (!inputs.updatePending) found += hookProblems(records)
         collectorProblem(inputs)?.let(found::add)
 
@@ -107,6 +110,43 @@ internal object ProblemDetector {
         return DetectedProblem("reporter", "$safeStage:$safeClass")
     }
 
+    /**
+     * One short, factual line for a `type|location` fingerprint, so a "why sent" section says what the
+     * user-facing problem is. Pure and ASCII-only: it never reads a device and never loads a resource.
+     */
+    fun humanReason(fingerprint: String): String {
+        val parts = fingerprint.split('|')
+        val type = parts.getOrNull(0).orEmpty()
+        val location = parts.getOrNull(1).orEmpty()
+        return when {
+            type == "attach" -> "Duo owns the bar but did not attach after its retries"
+            type == "fallback" -> "Rive did not bind; the bar fell back to Canvas"
+            type == "hook" && location == LOCATION_HOOK -> "A required System UI hook failed to install"
+            type == "hook" && location == LOCATION_PANEL ->
+                "A panel hook missed; the panel fell back to attach order"
+            type == "hook" -> "A System UI hook failed to install"
+            type == "module" && location == LOCATION_MODULE_LOAD -> "The module never loaded in System UI"
+            type == "module" && location == LOCATION_REPORT ->
+                "The module is enabled but its state is unreadable"
+            type == "module" -> "The module reported a problem"
+            type == "crash" && location == LOCATION_SAFE_MODE ->
+                "LSPosed entered safe mode after repeated System UI crashes"
+            type == "crash" && location == LOCATION_SYSTEMUI ->
+                "System UI crashed above the LSPosed threshold"
+            type == "crash" -> "System UI crashed"
+            type == "ios_miss" -> "An iOS-mode piece missed its runtime owner"
+            type == "collector" -> "The diagnostic collector could not read anything"
+            type == "reporter" -> reporterReason(location)
+            else -> "Reported problem: $type ($location)"
+        }
+    }
+
+    private fun reporterReason(location: String): String {
+        val stage = location.substringBefore(':').ifBlank { "report" }
+        val error = location.substringAfter(':', "").ifBlank { "unknown error" }
+        return "The report $stage step failed ($error)"
+    }
+
     private fun moduleProblems(inputs: ProblemInputs): DetectedProblem? {
         if (!inputs.moduleEnabled) return null
         // An enabled module whose state the app could not read is a reporting failure, not "healthy".
@@ -116,11 +156,13 @@ internal object ProblemDetector {
         return when (inputs.moduleState) {
             // A pending update is a normal, loaded module: the app is just newer than System UI.
             ModuleState.NEEDS_RESTART -> null
-            ModuleState.NEVER_LOADED -> DetectedProblem(
-                "module",
-                LOCATION_MODULE_LOAD,
-                "state=${inputs.moduleState}"
-            )
+            // Never loaded is only a Duo problem when Duo is wanted and LSPosed's own config proves the
+            // module is enabled and scoped to System UI. Without that proof the report guides the user.
+            ModuleState.NEVER_LOADED -> if (inputs.duoEnabled && lsposedProvesLoaded(inputs)) {
+                DetectedProblem("module", LOCATION_MODULE_LOAD, "state=${inputs.moduleState}")
+            } else {
+                null
+            }
             // Loaded but the settings channel is rejected: a real failure, not a turned-off module.
             ModuleState.NOT_REPORTING -> DetectedProblem(
                 "module",
@@ -135,56 +177,33 @@ internal object ProblemDetector {
         val sections = inputs.capture?.sections.orEmpty()
         val safe = section(sections, "safe mode")
         val safeText = safe?.text.orEmpty()
-        val safeCounter = SAFE_COUNTER.find(safeText)?.groupValues?.get(1)?.toIntOrNull()
-        if (safeText.contains("safeMode=entered") || (safeCounter ?: 0) > 0) {
-            return DetectedProblem("crash", LOCATION_SAFE_MODE, "safeMode=entered counter=${safeCounter ?: "?"}")
-        }
-        val crashPresent = sections.any {
-            it.title in CRASH_SECTION_TITLES && it.state == SectionState.PRESENT && it.text.isNotBlank()
-        }
-        val deaths = DEATHS.find(section(sections, "systemui deaths")?.text.orEmpty())
-            ?.groupValues?.get(1)?.toIntOrNull()
-        return if (crashPresent || (deaths ?: 0) > 0) {
-            DetectedProblem("crash", LOCATION_SYSTEMUI, "deaths=${deaths ?: "unknown"}")
+        // Safe mode is the only crash trigger. A counter below LSPosed's threshold, a death count or an
+        // old crash record is information for the report, never a reason to send an automatic report.
+        val entered = SAFE_MODE_ON.containsMatchIn(safeText) ||
+            containsAny(safeText, "enter safe mode", "too many times", "stop all modules")
+        return if (entered) {
+            DetectedProblem("crash", LOCATION_SAFE_MODE, "safeMode=entered")
         } else {
             null
         }
     }
 
-    private fun iosMisses(records: String): List<DetectedProblem> {
-        val found = ArrayList<DetectedProblem>()
-        records.lineSequence().forEach { line ->
-            if (!line.contains("ios v2", ignoreCase = true)) return@forEach
-            if (!line.contains("miss", ignoreCase = true) &&
-                !line.contains("runtimemisses", ignoreCase = true)
-            ) {
-                return@forEach
-            }
-            if (line.contains("runtimemisses", ignoreCase = true)) {
-                RUNTIME_MISS.findAll(line).forEach { match ->
-                    val piece = match.groupValues[1]
-                    if (piece.equals("family", ignoreCase = true)) return@forEach
-                    if ((match.groupValues[2].toIntOrNull() ?: 0) > 0) {
-                        found += DetectedProblem("ios_miss", piece.lowercase(), "runtimeMisses=$piece")
-                    }
-                }
-            } else {
-                val piece = PIECE.find(line)?.groupValues?.get(1)
-                found += DetectedProblem(
-                    "ios_miss",
-                    piece?.lowercase() ?: LOCATION_HOOK,
-                    line.trim().take(160)
-                )
-            }
-        }
-        return found
+    /** True only when LSPosed's config was actually queried and proves this module is enabled+scoped. */
+    private fun lsposedProvesLoaded(inputs: ProblemInputs): Boolean {
+        val text = section(
+            inputs.capture?.sections.orEmpty(),
+            "LSPosed config (enabled / scope)"
+        )?.text ?: return false
+        val parsed = RootLogs.parseModuleScope(text)
+        return parsed.queried &&
+            parsed.enabled == true &&
+            parsed.scope?.contains("com.android.systemui", ignoreCase = true) == true
     }
 
     private fun hookProblems(records: String): List<DetectedProblem> {
         val found = ArrayList<DetectedProblem>()
-        if (records.contains("panelfallback=", ignoreCase = true)) {
-            found += DetectedProblem("hook", LOCATION_PANEL)
-        }
+        // Only a genuine install failure is a hook problem. A missing optional panel hook is recorded
+        // in the report (panelFallback=attach-order); the panel simply falls back to attach order.
         if (containsAny(records, "hook failed", "install failed")) {
             found += DetectedProblem("hook", LOCATION_HOOK)
         }

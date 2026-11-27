@@ -1,0 +1,34 @@
+name: 20261127-115139
+moduleState: NEVER_LOADED
+moduleEnabled: false
+duoEnabled: false
+iosActive: false
+updatePending: false
+expect:
+--- status
+process=com.android.systemui pid=1 · owner=none · stage=0 · renderer=none · attached=false · riveAttempts=0
+--- dump
+history:
+  1795732550478 process=com.android.systemui pid=1 · owner=duo · stage=2 · renderer=none · attached=false
+rive bind: missing:no Rive bind failure recorded
+--- moduleLog
+--- capture
+=== capture route ===
+state=present reason=-
+rootKind=shizuku · route=shizuku
+captureFailure=(shizuku timed out after 20s)
+=== safe mode ===
+state=unreadable reason=(shizuku timed out after 20s)
+=== LSPosed config (enabled / scope) ===
+state=unreadable reason=(shizuku timed out after 20s)
+=== crash records ===
+state=unreadable reason=(shizuku timed out after 20s)
+=== systemui deaths ===
+state=present reason=-
+deaths=unreadable:(shizuku timed out after 20s)
+safeMode=no
+safeModeCounter=not found
+=== app-side facts (no privilege) ===
+state=present reason=-
+MANUFACTURER=example BRAND=example MODEL=redacted
+SDK=36 RELEASE=16
