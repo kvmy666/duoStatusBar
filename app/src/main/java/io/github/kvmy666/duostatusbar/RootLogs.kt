@@ -568,23 +568,28 @@ internal object RootLogs {
      * Log sources are allow-listed to the known framework log directories ([FRAMEWORK_LOG_DIRS]);
      * a generic per-package log sweep is deliberately absent, because it read KernelSU's own
      * logcat/su logs and unrelated data into the report. Each section is bounded with `head`/`tail`,
-     * so a noisy log cannot exceed the report budget. The existing commands are kept.
+     * so a noisy log cannot exceed the report budget. The newest-log section names its candidates and
+     * everything it scanned, so the next report can distinguish "no file matched" from "no file was
+     * read" instead of ending at a bare `-- matching DuoSB --`. The existing commands are kept.
      */
     internal fun rootScript(): String = """
         echo '=== logcat (DuoSB) ==='
         logcat -d -t 3000 -s DuoSB 2>&1 | tail -n 1000
         echo '=== LSPosed newest modules log ==='
+        CANDIDATES=${'$'}(ls -t ${frameworkLogGlob("modules_*.log")} 2>/dev/null | head -n 40)
+        CANDIDATE_COUNT=${'$'}(printf '%s\n' "${'$'}CANDIDATES" | awk 'NF{n++} END{print n+0}')
         SCANNED=''
         FOUND=''
-        for f in ${'$'}(ls -t ${frameworkLogGlob("modules_*.log")} 2>/dev/null | head -n 12); do
+        for f in ${'$'}CANDIDATES; do
           SCANNED="${'$'}SCANNED ${'$'}f"
           if grep -a -i -q -E 'DuoSB|duostatusbar' "${'$'}f" 2>/dev/null; then
             FOUND="${'$'}f"
             break
           fi
         done
+        echo "candidates=${'$'}CANDIDATE_COUNT"
+        echo "scanned=${'$'}{SCANNED# }"
         echo "file=${'$'}FOUND"
-        echo "scanned=${'$'}SCANNED"
         if [ -n "${'$'}FOUND" ]; then
           echo '-- matching DuoSB --'
           grep -a -i -E 'DuoSB|duostatusbar' "${'$'}FOUND" | tail -n 400
@@ -933,6 +938,29 @@ internal object RootLogs {
         }
         // Stable sort: equal keys keep the shell's own `ls -t` order.
         return files.distinct().sortedWith(compareByDescending { logSortKey(it) })
+    }
+
+    /**
+     * The first log in [filesNewestFirst] whose text names this module, or null when none does.
+     *
+     * LSPosed rotates `modules_<ISO>.log` and writes the module's own `DuoSB | …` lines wherever the
+     * module was loaded; the newest file can be a header-only rotate while an older file holds the load
+     * (owner layout: newest `modules_2026-11-27T00:00:49…log` had no DuoSB line, the module loaded at
+     * 02:11). So the scan must keep going past a file with no match instead of trusting the newest file.
+     * A file that cannot be read is skipped, not treated as a match: an unreadable log is not evidence.
+     * The shell loop in [rootScript] mirrors this rule (scan newest-first, record, break on first match).
+     */
+    internal fun newestLogWithDuoB(
+        filesNewestFirst: List<String>,
+        read: (String) -> String
+    ): String? = filesNewestFirst.firstOrNull { path ->
+        val text = try {
+            read(path)
+        } catch (_: Throwable) {
+            ""
+        }
+        text.contains("DuoSB", ignoreCase = true) ||
+            text.contains("duostatusbar", ignoreCase = true)
     }
 
     private fun isFrameworkLog(path: String): Boolean {

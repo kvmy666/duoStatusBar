@@ -117,12 +117,170 @@ class RootLogsTest {
     @Test
     fun `the newest modules log scan is newest first and stops at the first DuoSB file`() {
         val script = RootLogs.rootScript()
+        val newest = script.substringAfter("=== LSPosed newest modules log ===")
+            .substringBefore("=== LSPosed log files ===")
         assertTrue("the scan must list modules_*.log", script.contains("modules_*.log"))
+        assertTrue("the candidate count must be printed", script.contains("candidates="))
+        assertTrue(
+            "an empty candidate list must still print candidates=0",
+            newest.contains("awk 'NF{n++} END{print n+0}'")
+        )
+        assertFalse(
+            "grep -c exits 1 on zero matches and can abort a strict shell",
+            newest.contains("grep -c .")
+        )
         assertTrue("the scan must report what it listed", script.contains("scanned="))
         assertTrue("an empty scan must be explicit", script.contains("matchingDuoSB=0"))
         assertTrue("the scan must stop at the first matching file", script.contains("break"))
-        assertTrue("the scan is bounded", script.contains("head -n 12"))
+        assertTrue(
+            "the scan must loop over the candidate list, not a hard-coded slice",
+            script.contains("for f in ${'$'}CANDIDATES")
+        )
+        assertTrue("the candidate cap is 40, not the old 12", newest.contains("head -n 40"))
+        assertFalse("the old 12-file cap must be gone", newest.contains("head -n 12"))
         assertTrue("the newest file wins", script.contains("ls -t"))
+        assertTrue("matching output is bounded", script.contains("tail -n 400"))
+        assertTrue(
+            "toybox grep needs -E alternation",
+            script.contains("grep -a -i -E 'DuoSB|duostatusbar'")
+        )
+        assertFalse("GNU \\| alternation is inert on toybox", script.contains("\\|"))
+    }
+
+    @Test
+    fun `the newest modules log section is explicit when no file matches`() {
+        val script = RootLogs.rootScript()
+        val newest = script.substringAfter("=== LSPosed newest modules log ===")
+            .substringBefore("=== LSPosed log files ===")
+        val lines = newest.lines().map { it.trim() }
+        val candidates = lines.indexOfFirst { it.startsWith("echo \"candidates=") }
+        val scanned = lines.indexOfFirst { it.startsWith("echo \"scanned=") }
+        val file = lines.indexOfFirst { it == "echo \"file=${'$'}FOUND\"" }
+        val banner = lines.indexOfFirst { it == "echo '-- matching DuoSB --'" }
+        val elseLine = lines.indexOfFirst { it == "else" }
+        val noMatch = lines.indexOfFirst { it == "echo 'matchingDuoSB=0'" }
+        assertTrue("candidates=N must be printed unconditionally", candidates >= 0)
+        assertTrue("scanned=<files> must be printed unconditionally", scanned >= 0)
+        assertTrue("file= must print even when empty", file >= 0)
+        assertTrue("the banner must be guarded by a chosen file", banner > file)
+        assertTrue("the no-match branch must follow the banner guard", elseLine > banner)
+        assertTrue("the no-match case must be explicit", noMatch > elseLine)
+        assertEquals(
+            "only one banner may exist in the section",
+            1,
+            lines.count { it == "echo '-- matching DuoSB --'" }
+        )
+        assertTrue(
+            "the empty file= line is printed before the no-match marker",
+            file < noMatch
+        )
+
+        val body = """
+            candidates=1
+            scanned=/data/adb/lspd/log/modules_2026-11-27T00:00:49.760578.log
+            file=
+            matchingDuoSB=0
+        """.trimIndent()
+        val section = RootLogs.section(
+            "=== LSPosed newest modules log ===\n$body\n=== safe mode ===",
+            "LSPosed newest modules log"
+        )
+        assertTrue("candidates= must survive rendering: $section", section.contains("candidates=1"))
+        assertTrue("scanned= must survive rendering: $section", section.contains("scanned="))
+        assertTrue("matchingDuoSB=0 must be explicit: $section", section.contains("matchingDuoSB=0"))
+        assertTrue("file= must stay, empty: $section", section.lines().any { it.trim() == "file=" })
+        assertFalse(
+            "a no-match section must never carry a bare banner",
+            section.contains("-- matching DuoSB --")
+        )
+    }
+
+    @Test
+    fun `the newest log selector skips a newer file without the module line`() {
+        val newest = "/data/adb/lspd/log/modules_2026-11-27T00:00:49.760578.log"
+        val older = "/data/adb/lspd/log/modules_2026-11-24T21:46:27.000000.log"
+        val texts = mapOf(
+            newest to
+                "[ 2026-11-27T00:00:50.000  1: 2: 3 I/LSPosedFramework ] another module loaded",
+            older to
+                "[ 2026-11-24T21:46:27.855 10266: 7525: 7525 I/LSPosedFramework ] " +
+                "DuoSB | MainHook loaded into com.android.systemui"
+        )
+        assertEquals(
+            "the newest file without a DuoSB line must not win",
+            older,
+            RootLogs.newestLogWithDuoB(listOf(newest, older)) { texts.getValue(it) }
+        )
+    }
+
+    @Test
+    fun `the newest log selector matches either module name ignoring case`() {
+        val first = "/data/adb/lspd/log/modules_1.log"
+        val second = "/data/adb/lspd/log/modules_2.log"
+        assertEquals(
+            first,
+            RootLogs.newestLogWithDuoB(listOf(first, second)) {
+                "io.github.kvmy666.duostatusbar loaded"
+            }
+        )
+        assertEquals(
+            first,
+            RootLogs.newestLogWithDuoB(listOf(first, second)) { "duosb | lower case" }
+        )
+        assertEquals(
+            "all empty logs must not select a file",
+            null,
+            RootLogs.newestLogWithDuoB(listOf(first, second)) { "another module" }
+        )
+    }
+
+    @Test
+    fun `an unreadable log is skipped by the newest log selector`() {
+        val newest = "/data/adb/lspd/log/modules_new.log"
+        val older = "/data/adb/lspd/log/modules_old.log"
+        val picked = RootLogs.newestLogWithDuoB(listOf(newest, older)) {
+            if (it == newest) throw IOException("permission denied") else "DuoSB | MainHook loaded"
+        }
+        assertEquals("an unreadable log is not evidence", older, picked)
+    }
+
+    @Test
+    fun `the after restart report cannot leak KernelSU logs or unrelated modules`() {
+        val script = RootLogs.rootScript()
+        assertFalse("KernelSU shell log directory leaked", script.contains("/data/adb/ksu/log"))
+        assertFalse("KernelSU sulog leaked", script.contains("sulog"))
+        assertFalse("KernelSU logcat.log leaked", script.contains("logcat.log"))
+        assertFalse("generic adb log sweep returned", script.contains("/data/adb/*/log"))
+        assertFalse("nested generic adb log sweep returned", script.contains("/data/adb/*/*/log"))
+
+        val moduleProp = script.substringAfter("echo '=== module.prop ==='")
+            .substringBefore("echo '=== /data/adb layout ==='")
+        assertTrue(
+            "the module.prop block must be in the script: $moduleProp",
+            moduleProp.contains("grep -a -m1 '^id='")
+        )
+        assertTrue("only framework ids may pass the case filter", moduleProp.contains("*) continue ;;"))
+        assertFalse("the whole module.prop must never be echoed", moduleProp.contains("cat \"\$f\""))
+
+        val afterRestart = """
+            dir=/data/adb/ksu/log
+            file=/data/adb/ksu/log/sulog-2026-11-27.log
+            file=/data/adb/ksu/log/logcat.log
+            dir=/data/adb/lspd/log
+            file=/data/adb/lspd/log/modules_2026-11-27T00:00:49.760578.log
+        """.trimIndent()
+        assertEquals(
+            "only the allow-listed LSPosed log survives",
+            listOf("/data/adb/lspd/log/modules_2026-11-27T00:00:49.760578.log"),
+            RootLogs.discoverLogFiles(afterRestart)
+        )
+        listOf("AppleFonts", "com.hevy-morphe", "hybrid_mount", "bindhosts", "tricky_store")
+            .forEach {
+                assertFalse(
+                    "$it is a user module, not framework evidence",
+                    RootLogs.isFrameworkModuleId(it)
+                )
+            }
     }
 
     @Test
@@ -231,6 +389,7 @@ class RootLogsTest {
         listOf(
             "logcat (DuoSB)",
             "LSPosed log files",
+            "LSPosed newest modules log",
             "safe mode",
             "LSPosed config (enabled / scope)",
             "framework manager",
