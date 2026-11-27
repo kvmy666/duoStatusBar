@@ -181,6 +181,27 @@ internal fun updatePendingLine(runningVersion: String?, appVersion: String): Str
         "restart System UI or reboot to load $appVersion"
 }
 
+/**
+ * The status/dump evidence a report may ship. A timed-out snapshot taken while the module is not live
+ * is the previous run's leftovers; it contributes no status, dump or dump time to a text or ZIP report.
+ */
+internal data class ReportEvidence(
+    val status: String,
+    val dump: String,
+    val dumpAt: Long
+)
+
+internal fun reportEvidence(
+    status: String,
+    dump: String,
+    dumpAt: Long,
+    evidenceLive: Boolean
+): ReportEvidence = if (evidenceLive) {
+    ReportEvidence(status, dump, dumpAt)
+} else {
+    ReportEvidence("", "", 0L)
+}
+
 /** The report the About buttons send — one text, shared or written to a file. */
 internal fun buildDiagnostics(
     context: Context,
@@ -209,11 +230,12 @@ internal fun buildDiagnostics(
     // One gate for every report path: after an unscope and a System UI restart the refresh times out,
     // but the stored same-build status/dump from the dead run survive and carry no stale version label.
     // Dropping them here keeps every fact below from describing a process that is gone.
-    val evidenceStatus = if (evidenceLive) status else ""
+    val evidence = reportEvidence(status, dump, dumpAt, evidenceLive)
+    val evidenceStatus = evidence.status
     val evidenceHistory = if (evidenceLive) history else emptyList()
-    val evidenceDump = if (evidenceLive) dump else ""
+    val evidenceDump = evidence.dump
     val evidenceDumpAt = if (evidenceLive) {
-        dumpAt.takeIf { it > 0L }
+        evidence.dumpAt.takeIf { it > 0L }
             ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
     } else {
         0L
@@ -481,10 +503,11 @@ internal fun writeReportZip(
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
     val destination = File(dir, "duo-report-$stamp.zip")
     // Same gate as buildDiagnostics: a dead-run status/dump must not be embedded in the ZIP either.
-    val evidenceStatus = if (evidenceLive) status else ""
-    val evidenceDump = if (evidenceLive) dump else ""
+    val evidence = reportEvidence(status, dump, dumpAt, evidenceLive)
+    val evidenceStatus = evidence.status
+    val evidenceDump = evidence.dump
     val evidenceDumpAt = if (evidenceLive) {
-        dumpAt.takeIf { it > 0L }
+        evidence.dumpAt.takeIf { it > 0L }
             ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
     } else {
         0L

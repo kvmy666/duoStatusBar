@@ -40,7 +40,16 @@ internal data class AutoReportCollected(
     val dumpAt: Long = 0L,
     /** False when the snapshot is a dead run's leftovers; the ZIP must not embed them. */
     val evidenceLive: Boolean = true
-)
+) {
+    /** The status the ZIP may ship: none when the snapshot is a dead run's leftovers. */
+    val evidenceStatus: String get() = if (evidenceLive) status else ""
+
+    /** The dump the ZIP may ship: none when the snapshot is a dead run's leftovers. */
+    val evidenceDump: String get() = if (evidenceLive) dump else ""
+
+    /** The dump time the ZIP may print: 0 when the snapshot is a dead run's leftovers. */
+    val evidenceDumpAt: Long get() = if (evidenceLive) dumpAt else 0L
+}
 
 internal data class ZipArtifact(val file: File?, val bytes: Long)
 

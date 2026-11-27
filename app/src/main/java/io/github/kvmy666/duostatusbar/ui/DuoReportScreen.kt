@@ -132,22 +132,25 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                             runCatching { ModuleHealthCheck.of(context) }.getOrNull()
                         }
                         val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, health?.state)
+                        val evidence = reportEvidence(
+                            snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
+                        )
                         val report = buildFullReport(
                             context,
                             problem,
                             settings,
-                            snapshot.status,
-                            if (snapshot.status.isNotBlank()) {
+                            evidence.status,
+                            if (evidence.status.isNotBlank()) {
                                 DuoPrefs.statusHistory(context)
                             } else {
                                 emptyList()
                             },
-                            snapshot.dump,
+                            evidence.dump,
                             0L,
                             logs,
                             capture = capture,
                             captureFailure = captureFailure,
-                            dumpAt = snapshot.dumpAt,
+                            dumpAt = evidence.dumpAt,
                             evidenceLive = evidenceLive
                         )
                         val zip = withContext(Dispatchers.IO) {
@@ -155,9 +158,9 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                                 context,
                                 report,
                                 logs,
-                                snapshot.status,
-                                snapshot.dump,
-                                snapshot.dumpAt,
+                                evidence.status,
+                                evidence.dump,
+                                evidence.dumpAt,
                                 evidenceLive = evidenceLive
                             )
                         }

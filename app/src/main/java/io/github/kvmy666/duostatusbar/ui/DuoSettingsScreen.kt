@@ -295,21 +295,24 @@ fun DuoSettingsScreen(
             // A timed-out snapshot on a NEVER_LOADED module is the previous run's leftovers; the
             // report and the ZIP must drop its status/dump instead of describing a dead process.
             val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, moduleHealth.state)
+            val evidence = reportEvidence(
+                snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
+            )
             val report = buildFullReport(
                 context, problem, settings,
-                snapshot.status,
-                if (snapshot.status.isNotBlank()) history else emptyList(),
-                snapshot.dump,
+                evidence.status,
+                if (evidence.status.isNotBlank()) history else emptyList(),
+                evidence.dump,
                 moduleLoadAt,
                 logs,
-                dumpAt = snapshot.dumpAt,
+                dumpAt = evidence.dumpAt,
                 evidenceLive = evidenceLive
             )
             // Prefer the self-contained report ZIP; fall back to the legacy text path when it cannot be
             // built (no diagnostics dir, IO failure, ...).
             val zip = withContext(Dispatchers.IO) {
                 writeReportZip(
-                    context, report, logs, snapshot.status, snapshot.dump, snapshot.dumpAt,
+                    context, report, logs, evidence.status, evidence.dump, evidence.dumpAt,
                     evidenceLive = evidenceLive
                 )
             }
@@ -469,18 +472,22 @@ fun DuoSettingsScreen(
                             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
                             val snapshot = refreshedDump()
+                            val evidenceLive = SnapshotRefresh.evidenceUsable(
+                                snapshot, moduleHealth.state
+                            )
+                            val evidence = reportEvidence(
+                                snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
+                            )
                             pendingExport =
                                 buildFullReport(
                                     context, "", settings,
-                                    snapshot.status,
-                                    if (snapshot.status.isNotBlank()) history else emptyList(),
-                                    snapshot.dump,
+                                    evidence.status,
+                                    if (evidence.status.isNotBlank()) history else emptyList(),
+                                    evidence.dump,
                                     moduleLoadAt,
                                     logs,
-                                    dumpAt = snapshot.dumpAt,
-                                    evidenceLive = SnapshotRefresh.evidenceUsable(
-                                        snapshot, moduleHealth.state
-                                    )
+                                    dumpAt = evidence.dumpAt,
+                                    evidenceLive = evidenceLive
                                 )
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                             exportLog.launch("duo-log-$stamp.txt")
@@ -505,25 +512,33 @@ fun DuoSettingsScreen(
                             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
                             val snapshot = refreshedDump()
+                            val evidenceLive = SnapshotRefresh.evidenceUsable(
+                                snapshot, moduleHealth.state
+                            )
+                            val evidence = reportEvidence(
+                                snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
+                            )
                             sendLogOnTelegram(
                                 context,
                                 buildDiagnostics(
                                     context, settings,
-                                    snapshot.status,
-                                    if (snapshot.status.isNotBlank()) history else emptyList(),
-                                    snapshot.dump,
+                                    evidence.status,
+                                    if (evidence.status.isNotBlank()) history else emptyList(),
+                                    evidence.dump,
                                     moduleLoadAt,
-                                    dumpAt = snapshot.dumpAt,
-                                    evidenceLive = SnapshotRefresh.evidenceUsable(
-                                        snapshot, moduleHealth.state
-                                    )
+                                    dumpAt = evidence.dumpAt,
+                                    evidenceLive = evidenceLive
                                 ) +
                                     "\n\n===== device capture =====\n" + logs
                             )
                         }
                     }
                 },
-                onGitHub = { openGitHubIssue(context, fallback, status) },
+                onGitHub = {
+                    val stored = SnapshotRefresh.stored(context)
+                    val evidenceLive = SnapshotRefresh.evidenceUsable(stored, moduleHealth.state)
+                    openGitHubIssue(context, fallback, if (evidenceLive) stored.status else "")
+                },
                 onDismiss = {
                     DuoPrefs.writeFallback(context, "")
                     fallback = ""
@@ -660,15 +675,19 @@ fun DuoSettingsScreen(
                     val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                     exporting = false
                     val snapshot = refreshedDump()
+                    val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, moduleHealth.state)
+                    val evidence = reportEvidence(
+                        snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
+                    )
                     pendingExport = buildFullReport(
                         context, "", settings,
-                        snapshot.status,
-                        if (snapshot.status.isNotBlank()) history else emptyList(),
-                        snapshot.dump,
+                        evidence.status,
+                        if (evidence.status.isNotBlank()) history else emptyList(),
+                        evidence.dump,
                         moduleLoadAt,
                         logs,
-                        dumpAt = snapshot.dumpAt,
-                        evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, moduleHealth.state)
+                        dumpAt = evidence.dumpAt,
+                        evidenceLive = evidenceLive
                     )
                     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                     exportLog.launch("duo-log-$stamp.txt")

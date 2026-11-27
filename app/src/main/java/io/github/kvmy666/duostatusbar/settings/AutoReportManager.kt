@@ -16,6 +16,7 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomMarkerSource
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.ui.buildDiagnostics
 import io.github.kvmy666.duostatusbar.ui.moduleLogFromDump
+import io.github.kvmy666.duostatusbar.ui.reportEvidence
 import io.github.kvmy666.duostatusbar.ui.reportRom
 import io.github.kvmy666.duostatusbar.ui.writeReportZip
 import java.io.File
@@ -221,6 +222,7 @@ internal object AutoReportManager {
         // timed-out snapshot is a dead run's leftovers (NEVER_LOADED) or still this module's evidence.
         val health = collectorRead("health", failures) { ModuleHealthCheck.of(context) }
         val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, health?.state)
+        val evidence = reportEvidence(status, dump, snapshot.dumpAt, evidenceLive)
         val current = DuoPrefs.read(context)
         val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
         val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
@@ -260,11 +262,11 @@ internal object AutoReportManager {
         val report = buildDiagnostics(
             context = context,
             settings = current,
-            status = status,
+            status = evidence.status,
             history = DuoPrefs.statusHistory(context),
-            dump = dump,
+            dump = evidence.dump,
             moduleLoadAt = 0L,
-            dumpAt = snapshot.dumpAt,
+            dumpAt = evidence.dumpAt,
             capture = capture,
             captureText = logs,
             captureFailure = captureFailure,
@@ -273,9 +275,9 @@ internal object AutoReportManager {
         return AutoReportCollected(
             report = report,
             logs = logs,
-            status = status,
-            dump = dump,
-            dumpAt = snapshot.dumpAt,
+            status = evidence.status,
+            dump = evidence.dump,
+            dumpAt = evidence.dumpAt,
             sections = capture?.sections?.size ?: 0,
             problems = problems,
             evidenceLive = evidenceLive
@@ -287,9 +289,9 @@ internal object AutoReportManager {
             context,
             collected.report,
             collected.logs,
-            collected.status,
-            collected.dump,
-            collected.dumpAt,
+            collected.evidenceStatus,
+            collected.evidenceDump,
+            collected.evidenceDumpAt,
             evidenceLive = collected.evidenceLive
         ) ?: throw IllegalStateException("zip unavailable")
         return ZipArtifact(file, file.length())

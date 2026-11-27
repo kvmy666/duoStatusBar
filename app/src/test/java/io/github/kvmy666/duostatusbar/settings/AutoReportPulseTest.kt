@@ -490,6 +490,23 @@ class AutoReportPulseTest {
     }
 
     @Test
+    fun `a dead collection exposes no status or dump to the zip`() {
+        val collected = AutoReportCollected(
+            report = "diag",
+            logs = "logs",
+            status = "STATUS-MARKER",
+            dump = "DUMP-MARKER",
+            sections = 0,
+            problems = emptyList(),
+            dumpAt = 123L,
+            evidenceLive = false
+        )
+        assertEquals("", collected.evidenceStatus)
+        assertEquals("", collected.evidenceDump)
+        assertEquals(0L, collected.evidenceDumpAt)
+    }
+
+    @Test
     fun `planted private values never reach the automatic zip`() {
         // The automatic path writes through the same DuoReport writer (and C2's redaction choke point).
         val destination = File(tmp.root, "auto.zip")

@@ -127,6 +127,41 @@ class LogReporterZipTest {
     }
 
     @Test
+    fun `the shared evidence gate keeps same-build status and dump out of the zip`() {
+        val context = RuntimeEnvironment.getApplication()
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: ${BuildConfig.VERSION_NAME} (code 1, debug=false)\n" +
+            "DUMP-MARKER\n"
+        val evidence = reportEvidence(
+            status = "STATUS-MARKER",
+            dump = dump,
+            dumpAt = 123L,
+            evidenceLive = false
+        )
+        assertEquals("", evidence.status)
+        assertEquals("", evidence.dump)
+        assertEquals(0L, evidence.dumpAt)
+
+        val file = writeReportZip(
+            context,
+            report = "diag",
+            logs = "logs",
+            status = evidence.status,
+            dump = evidence.dump,
+            dumpAt = evidence.dumpAt,
+            evidenceLive = false
+        )
+        assertNotNull(file)
+        ZipFile(file!!).use { zf ->
+            assertNull("a dead dump must not be embedded", zf.getEntry("diagnostics-dump.txt"))
+            val moduleLog = zf.getInputStream(zf.getEntry("module-log.txt"))
+                .bufferedReader().readText()
+            assertFalse("stored dump must be gone: $moduleLog", moduleLog.contains("DUMP-MARKER"))
+            assertFalse("stored status must be gone: $moduleLog", moduleLog.contains("STATUS-MARKER"))
+        }
+    }
+
+    @Test
     fun `current diagnostic dump is unchanged in the zip`() {
         val context = RuntimeEnvironment.getApplication()
         val dump = "Duo Status Bar diagnostic dump\n" +

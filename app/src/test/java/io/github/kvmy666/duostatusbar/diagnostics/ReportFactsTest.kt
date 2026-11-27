@@ -218,6 +218,33 @@ class ReportFactsTest {
         assertTrue(out.contains("mode: OK (Duo active)"))
     }
 
+    // A live status is proof the module runs; a NEVER_LOADED heartbeat must not contradict it in the
+    // mode line, even when the dump is the same build (so the stale-dump branch does not apply).
+    @Test
+    fun `a live status overrides a never loaded heartbeat in the mode line`() {
+        val sameBuildDump = dump.replace(
+            "Duo Status Bar diagnostic dump",
+            "Duo Status Bar diagnostic dump\nversion: 2.1.3 (code 113, debug=false)"
+        )
+        val out = facts(
+            status = "process=com.android.systemui pid=1 · owner=ios · loaded",
+            dump = sameBuildDump,
+            health = ModuleHealth(
+                ModuleState.NEVER_LOADED,
+                1L,
+                0L,
+                ModuleMode.IOS,
+                runningVersion = "2.1.3"
+            ),
+            appVersion = "2.1.3"
+        )
+        assertTrue("the live owner decides the mode: $out", out.contains("mode: OK (iOS active)"))
+        assertFalse(
+            "a never-loaded heartbeat must not appear on the mode line: $out",
+            out.lineSequence().first { it.startsWith("mode:") }.contains("NEVER_LOADED")
+        )
+    }
+
     @Test
     fun `mode design last change process uptime and deaths are stated`() {
         val out = facts()

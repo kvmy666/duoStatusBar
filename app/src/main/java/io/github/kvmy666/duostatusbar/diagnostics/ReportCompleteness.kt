@@ -472,19 +472,7 @@ internal object ReportFacts {
             appendLine(
                 "dump: STALE diagnostic dump from $dumpBuild$written; per-piece facts unavailable"
             )
-            val liveMode = liveMode(status, health)
-            // A live status proves the module is running; NEVER_LOADED/NOT_REPORTING describe the
-            // heartbeat channel, not this status line, and must not contradict it in the same report.
-            val liveState = if (status.isNotBlank() &&
-                (health?.state == null ||
-                    health.state == ModuleState.NEVER_LOADED ||
-                    health.state == ModuleState.NOT_REPORTING)
-            ) {
-                ModuleState.OK
-            } else {
-                health?.state ?: ModuleState.OK
-            }
-            appendLine("mode: $liveState (${liveMode.label})")
+            appendLine("mode: ${reportedState(status, health)} (${liveMode(status, health).label})")
             return@buildString
         }
 
@@ -594,8 +582,8 @@ internal object ReportFacts {
         }
 
         appendLine(
-            "mode: " + if (health != null) {
-                "${health.state} (${liveMode(status, health).label})"
+            "mode: " + if (health != null || status.isNotBlank()) {
+                "${reportedState(status, health)} (${liveMode(status, health).label})"
             } else {
                 "missing:module health unavailable"
             }
@@ -662,6 +650,22 @@ private fun liveStatusBlock(status: String): String {
     return "process: process=$process pid=$pid\n" +
         "duo attach: attached=$attached stage=$stage renderer=$renderer owner=$owner"
 }
+
+/**
+ * The state printed next to the live owner. A non-blank status proves the module runs; the heartbeat
+ * states (NEVER_LOADED/NOT_REPORTING) and an unreadable health describe the channel, not that status,
+ * so they must not contradict it in the same report. Otherwise the health state stands.
+ */
+private fun reportedState(status: String, health: ModuleHealth?): ModuleState =
+    if (status.isNotBlank() &&
+        (health?.state == null ||
+            health.state == ModuleState.NEVER_LOADED ||
+            health.state == ModuleState.NOT_REPORTING)
+    ) {
+        ModuleState.OK
+    } else {
+        health?.state ?: ModuleState.OK
+    }
 
 /** The live owner from the status line, falling back to the configured mode when it is absent. */
 private fun liveMode(status: String, health: ModuleHealth?): ModuleMode =
