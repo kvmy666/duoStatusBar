@@ -69,9 +69,9 @@ class IosShadeSlotLayoutTest {
         IosSlotLayout.resetForTest()
     }
 
-    private fun layout(root: View) {
+    private fun layout(root: View, width: Int = 2000) {
         root.measure(
-            View.MeasureSpec.makeMeasureSpec(2000, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(ROW, View.MeasureSpec.EXACTLY)
         )
         root.layout(0, 0, root.measuredWidth, root.measuredHeight)
@@ -126,7 +126,8 @@ class IosShadeSlotLayoutTest {
         assertTrue(IosSlotLayout.registerBattery(qs.battery.container, qs.battery.leaf))
 
         layout(main.root)
-        layout(qs.root)
+        // The production `quick_qs_status_icons` is match_parent inside a 279 px constraint row.
+        layout(qs.root, CLUSTER_WIDTH)
 
         val mainGap = inkGap(main.row, main.chain, main.battery)
         val shadeGap = inkGap(qs.cluster, qs.chain, qs.battery)
@@ -142,32 +143,60 @@ class IosShadeSlotLayoutTest {
         assertEquals("icons->battery container gap", 0f, containerGap.toFloat(), 1f)
         assertEquals("shade label->battery ink gap must equal the main bar", mainGap, shadeGap, 1f)
         assertEquals("main bar label->battery ink gap is the R11 0.50 x ink rule", GAP, mainGap, 1.5f)
+        // R18: the production row is match_parent; before its first measure it must stay so, and
+        // nothing pins it to a pixel width (the constraint pass owns it).
         assertEquals(
-            "the battery slot's parent must not be resized to fill",
-            CLUSTER_WIDTH,
+            "an unmeasured match-parent row must stay match-parent",
+            ViewGroup.LayoutParams.MATCH_PARENT,
             qs.cluster.layoutParams.width
         )
     }
 
     @Test
+    fun `an unmeasured match-parent cluster is never pinned to the slot sum`() {
+        val qs = QsHeaderFixture(context)
+        // measuredWidth is 0 until the parent/constraint pass measures the row.
+        assertEquals(0, qs.cluster.measuredWidth)
+        assertTrue(IosSlotLayout.registerBattery(qs.battery.container, qs.battery.leaf))
+        assertEquals(
+            "the slot sum must not pin an unmeasured match-parent row",
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            qs.cluster.layoutParams.width
+        )
+
+        // After the real 279 px measure, the existing measured path may size the row.
+        layout(qs.root, CLUSTER_WIDTH)
+        IosSlotLayout.reapply(ModuleSettings.DEFAULT)
+        assertEquals(CLUSTER_WIDTH, qs.cluster.layoutParams.width)
+        // The battery slot keeps the R11 host metrics (IosR11LayoutTest pins 86 / 70x34).
+        assertEquals(86, qs.battery.container.layoutParams.width)
+        assertEquals(70, qs.battery.leaf.layoutParams.width)
+        assertEquals(34, qs.battery.leaf.layoutParams.height)
+    }
+
+    @Test
     fun `linear main bar row is still sized and keeps the ink gaps`() {
         val main = MainBarFixture(context)
-        assertTrue(IosSlotLayout.registerMobile(main.chain.signal, main.chain.label))
+        // The packed row has exactly two children. Register the battery first so the stock 89 px
+        // container is replaced before the row is sized; the row then measures exactly the sum.
         assertTrue(IosSlotLayout.registerBattery(main.battery.container, main.battery.leaf))
+        assertTrue(IosSlotLayout.registerMobile(main.chain.signal, main.chain.label))
         layout(main.root)
 
         val statusWidth = main.statusIcons.layoutParams.width
         val batteryWidth = main.battery.container.layoutParams.width
-        assertTrue("main row was sized: ${main.row.layoutParams.width}", main.row.layoutParams.width > 0)
-        // Mobile applies before the battery on this surface, so the row already includes the stock
-        // battery width and is never smaller than the two applied slots.
-        assertTrue(
-            "main row fits both slots: row=${main.row.layoutParams.width} " +
+        assertEquals(
+            "main row is exactly its two packed children: row=${main.row.layoutParams.width} " +
                 "status=$statusWidth battery=$batteryWidth",
-            main.row.layoutParams.width >= statusWidth + batteryWidth
+            statusWidth + batteryWidth,
+            main.row.layoutParams.width
         )
         assertEquals(ROW, main.row.layoutParams.height)
-        assertEquals(GAP, inkGap(main.row, main.chain, main.battery), 1.5f)
+        assertEquals(GAP, inkGap(main.row, main.chain, main.battery), 0.5f)
+        // R11 host metrics, not the fixture's stock 89 / 72x35.
+        assertEquals(86, batteryWidth)
+        assertEquals(70, main.battery.leaf.layoutParams.width)
+        assertEquals(34, main.battery.leaf.layoutParams.height)
     }
 
     private class MobileChain(context: Context) {
@@ -266,7 +295,8 @@ class IosShadeSlotLayoutTest {
             icons.addView(statusIcons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ROW))
             cluster.addView(icons, FrameLayout.LayoutParams(0, ROW))
             cluster.addView(battery.container, FrameLayout.LayoutParams(89, ROW))
-            root.addView(cluster, FrameLayout.LayoutParams(CLUSTER_WIDTH, ROW))
+            // Production XML: the QS status-icons row is match_parent inside the constraint row.
+            root.addView(cluster, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ROW))
         }
     }
 

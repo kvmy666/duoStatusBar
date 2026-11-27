@@ -878,6 +878,12 @@ internal object IosSlotLayout {
     private fun fitContainer(container: ViewGroup) {
         val stock = originals[container]
         val params = container.layoutParams
+        // R18: an unmeasured MATCH_PARENT row is owned by its parent/constraint pass. Writing the
+        // summed slot px here would pin it before the first measure (a 0dp QS cluster collapsed to
+        // the battery slot); after the first measure the existing rule below still applies.
+        if (params?.width == ViewGroup.LayoutParams.MATCH_PARENT && container.measuredWidth <= 0) {
+            return
+        }
         val currentWidth = params?.width ?: 0
         // A fixed px row is a dedicated parent; max(stock, width) keeps it and the existing path.
         val fixedWidth = max(stock?.width?.takeIf { it > 0 } ?: 0, currentWidth.takeIf { it > 0 } ?: 0)

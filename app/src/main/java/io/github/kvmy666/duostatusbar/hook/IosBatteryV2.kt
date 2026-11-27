@@ -178,6 +178,12 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     private var reasserts = 0
 
     /**
+     * R18 test seam: how many [Controller] instances [controllerFor] constructed. Production never
+     * reads it; a test proves the zero-size precheck stops construction after the per-view cap.
+     */
+    private var controllerCreations = 0
+
+    /**
      * R11: expected boot-time install retries (no reading yet, or a stock slot whose size is still
      * 0x0). `controllerFor` retries on every layout/binder event until the icon has a real box, so
      * counting these as failures made a healthy boot look broken (198 in the R11 dump).
@@ -801,6 +807,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 state.settings,
                 state.transform
             )
+            controllerCreations++
             // R7 P5: the first reading belongs to the install, exactly as the production path sees it;
             // installing an empty controller would refuse forever and the v2 battery would never draw.
             // R11: a refusal here is the expected boot retry (no reading / zero-size stock slot), so it
@@ -1007,11 +1014,59 @@ internal object IosBatteryV2 : IosDiagnosticSource {
     internal fun resetCountersForTest() {
         installs = 0
         reasserts = 0
+        controllerCreations = 0
         retries = 0
         failures = 0
         firstFailure = null
         synchronized(zeroSizeRefusals) { zeroSizeRefusals.clear() }
     }
+
+    /**
+     * Test seam (R18): put the object in the state [controllerFor] needs (active, context, ROM, a
+     * reading and the defaults) without the sticky read or the receiver. Production [activate] keeps
+     * its own semantics; call [deactivate] in a `finally` to restore the process state.
+     */
+    internal fun activateForTest(
+        context: Context,
+        rom: RomAdapter,
+        reading: IosBatteryReading,
+        percentInside: Boolean = false,
+        lowThreshold: Int = IosMapping.FALLBACK_LOW_THRESHOLD,
+        settings: ModuleSettings? = null,
+        transform: IosUserTransform = IosUserTransform.IDENTITY
+    ) {
+        this.contextRef = context.applicationContext ?: context
+        this.romRef = rom
+        this.percentInside = percentInside
+        this.lowThreshold = lowThreshold
+        this.settingsRef = settings
+        this.transformRef = transform
+        this.boltIds = IntArray(0)
+        this.batteryIconId = 0
+        this.batteryIconPackage = ""
+        this.lastTint = 0
+        this.lastReading = reading
+        this.lastSaver = false
+        this.lastLevel = reading.level
+        this.lastState = IosMapping.batteryState(
+            reading.level,
+            lowThreshold,
+            false,
+            reading.plugged,
+            reading.status
+        ).name
+        active = true
+    }
+
+    /** Test seam (R18): [controllerFor] through its private entry point, reporting install success. */
+    internal fun controllerForForTest(view: View): Boolean = controllerFor(view) != null
+
+    /** Test seam (R18): live controllers (one per installed icon). */
+    internal val controllerCountForTest: Int
+        get() = synchronized(controllers) { controllers.size }
+
+    /** Test seam (R18): [Controller] instances [controllerFor] constructed (the cap stops these). */
+    internal val controllerCreationsForTest: Int get() = controllerCreations
 
     /**
      * Test seam (R4): publish the constructor-hook results and, R17D, whether the Oplus binder hooked,

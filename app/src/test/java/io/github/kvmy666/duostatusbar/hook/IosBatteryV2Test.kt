@@ -245,6 +245,57 @@ class IosBatteryV2Test {
         }
     }
 
+    // ------------------------------------------------------------------ R18 production precheck
+
+    @Test
+    fun `the zero-size precheck stops controller creation after the per-view cap`() {
+        IosBatteryV2.resetCountersForTest()
+        IosBatteryV2.activateForTest(context, rom("oxygenos"), reading(level = 50))
+        try {
+            val root = FrameLayout(context)
+            val image = ImageView(context)
+            root.addView(image) // no drawable: the stock slot is 0x0
+
+            repeat(10) {
+                assertFalse(IosBatteryV2.controllerForForTest(root))
+            }
+
+            var line = IosBatteryV2.diagnosticLines().single()
+            assertEquals(0, IosBatteryV2.controllerCountForTest)
+            // The precheck is what stops the later calls: without it a Controller is built on every
+            // call (even though install still refuses), so this creation count is the mutant kill.
+            assertEquals(4, IosBatteryV2.controllerCreationsForTest)
+            assertTrue("retries must stop at the cap: $line", line.contains("retries=4"))
+            assertTrue("a bounded retry is not a failure: $line", line.contains("failures=0"))
+            assertTrue(
+                "the first reason must stay the zero-size retry: $line",
+                line.contains("firstFailure=retry_stock_size_0x0_<=_0")
+            )
+
+            // The budget is per view: a second 0x0 view still gets its own four attempts.
+            val secondRoot = FrameLayout(context)
+            val secondImage = ImageView(context)
+            secondRoot.addView(secondImage)
+            repeat(4) {
+                assertFalse(IosBatteryV2.controllerForForTest(secondRoot))
+            }
+            assertEquals(8, IosBatteryV2.controllerCreationsForTest)
+            line = IosBatteryV2.diagnosticLines().single()
+            assertTrue("the second view has its own budget: $line", line.contains("retries=8"))
+
+            // A view that gains a real 60x40 box still installs after the cap, and clears its budget.
+            image.setImageDrawable(stockDrawable())
+            assertTrue(IosBatteryV2.controllerForForTest(root))
+            assertEquals(1, IosBatteryV2.controllerCountForTest)
+            line = IosBatteryV2.diagnosticLines().single()
+            assertTrue("the positive-size install is counted: $line", line.contains("installs=1"))
+            assertTrue(image.drawable is IosBatteryDrawable)
+        } finally {
+            IosBatteryV2.deactivate()
+            IosBatteryV2.resetCountersForTest()
+        }
+    }
+
     // ------------------------------------------------------------------ user transform (R7 P4)
 
     @Test
