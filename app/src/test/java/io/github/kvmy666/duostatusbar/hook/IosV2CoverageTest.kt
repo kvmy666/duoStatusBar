@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -152,5 +153,28 @@ class IosV2CoverageTest {
             "ios v2 miss family=oxygenos piece=extras tried=OplusWifiSignalExImpl",
             extrasMissLine("oxygenos", "OplusWifiSignalExImpl")
         )
+    }
+
+    // ------------------------------------------------------------------ R18 miss gating
+
+    @Test
+    fun `a battery miss is reported only when the piece has no owner`() {
+        // An installed owner's boot retry (firstFailure was a retry token) is not a miss.
+        assertFalse(shouldReportBatteryMiss("oxygenos", installed = true))
+        assertTrue(shouldReportBatteryMiss("oxygenos", installed = false))
+        assertTrue(shouldReportBatteryMiss("samsung", installed = false))
+        // A family the battery owner does not cover is not a battery miss.
+        assertFalse(shouldReportBatteryMiss("aosp", installed = false))
+        assertFalse(shouldReportBatteryMiss("", installed = false))
+    }
+
+    @Test
+    fun `a stacked miss is reported only when the required binder did not install`() {
+        // TMO/Sprint/BigType are optional candidates; the Oplus binder is the owner.
+        assertFalse(shouldReportStackedMiss("oxygenos", installed = true))
+        assertTrue(shouldReportStackedMiss("oxygenos", installed = false))
+        // Stacked is not an OxygenOS/ColorOS piece elsewhere.
+        assertFalse(shouldReportStackedMiss("samsung", installed = false))
+        assertFalse(shouldReportStackedMiss("", installed = false))
     }
 }

@@ -130,12 +130,10 @@ internal object IosV2Report {
             out.add(runtimeMissLine(family, misses))
         }
 
-        if (family.isNotEmpty() && IosV2Profile.batteryFamily(family) &&
-            IosBatteryV2.firstFailureForDiagnostics != null
-        ) {
+        if (shouldReportBatteryMiss(family, IosBatteryV2.installedFor(family))) {
             out.add(batteryMissLine(family))
         }
-        if (IosV2Profile.stackedFamily(family)) {
+        if (shouldReportStackedMiss(family, IosStackedSim.installed)) {
             val stacked = IosStackedSim.missingBindersForDiagnostics
             if (stacked.isNotEmpty()) out.add(stackedMissLine(family, stacked))
         }
@@ -272,6 +270,20 @@ internal fun batteryTried(family: String): String =
 
 internal fun batteryMissLine(family: String): String =
     missLine(family, "battery", batteryTried(family).split(','))
+
+/**
+ * (a) A battery miss means "this piece has no owner", not "an install retried once". A zero-size boot
+ * retry (or any later refusal) on an installed owner must never print `piece=battery`.
+ */
+internal fun shouldReportBatteryMiss(family: String, installed: Boolean): Boolean =
+    family.isNotEmpty() && IosV2Profile.batteryFamily(family) && !installed
+
+/**
+ * (b) A stacked miss means "no measured binder owns the cluster". The TMO/Sprint/BigType candidates
+ * are optional and absent on OxygenOS while the required Oplus binder works; that is not a miss.
+ */
+internal fun shouldReportStackedMiss(family: String, installed: Boolean): Boolean =
+    IosV2Profile.stackedFamily(family) && !installed
 
 internal fun stackedMissLine(family: String, tried: String): String =
     missLine(family, "stacked", tried.split(',').map { it.trim() }.filter { it.isNotEmpty() })

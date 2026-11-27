@@ -83,6 +83,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
 
     private const val LOW_THRESHOLD_RESOURCE = "config_lowBatteryWarningLevel"
 
+    /** R18: how many zero-size install refusals one view may accumulate before it is left alone. */
+    private const val ZERO_SIZE_RETRY_CAP = 4
+
     private val logOnce = LogOnce()
 
     @Volatile
@@ -180,6 +183,14 @@ internal object IosBatteryV2 : IosDiagnosticSource {
      * counting these as failures made a healthy boot look broken (198 in the R11 dump).
      */
     private var retries = 0
+
+    /**
+     * R18: zero-size refusals per view. A hidden surface (0x0 stock box) is retried on every
+     * layout/binder event until it gets a real box; this bounds that work per view instead of
+     * counting the same refusal forever.
+     */
+    private val zeroSizeRefusals: MutableMap<View, Int> =
+        Collections.synchronizedMap(WeakHashMap<View, Int>())
 
     /** R11: unexpected failures only (a thrown hook, a missing class, a foreign binder push). */
     private var failures = 0
@@ -657,6 +668,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         batteryIconId = 0
         batteryIconPackage = ""
         boltIds = IntArray(0)
+        // R18: a fresh activation gets a fresh zero-size retry budget per view.
+        synchronized(zeroSizeRefusals) { zeroSizeRefusals.clear() }
         // A fresh activation must read the sticky state again; a stale reading from the previous
         // session could otherwise install a glyph before the bar has a level.
         lastReading = null
@@ -772,6 +785,12 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             }
 
             val image = imageFor(view, state.context, state.rom) ?: return@synchronized null
+            // R18: bound the zero-size boot retry. Once this view has burned its four refusals, stop
+            // before constructing a controller, so a permanently hidden surface is not retried at all.
+            val (stockWidth, stockHeight) = stockSize(image)
+            if ((stockWidth <= 0 || stockHeight <= 0) && zeroSizeCapReached(view)) {
+                return@synchronized null
+            }
             val controller = Controller(
                 view,
                 image,
@@ -810,6 +829,40 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         val settings: ModuleSettings?,
         val transform: IosUserTransform
     )
+
+    // ------------------------------------------------------------------ R18 zero-size retry bound
+
+    /**
+     * R18: the stock icon box read by both [Controller.install] and the bounded-retry precheck, so the
+     * install guard and the cap decision cannot diverge. An intrinsic size wins; a laid-out view size
+     * is the fallback, exactly as before.
+     */
+    private fun stockSize(image: ImageView): Pair<Int, Int> {
+        val stock = image.drawable
+        val width = stock?.intrinsicWidth?.takeIf { it > 0 } ?: image.width
+        val height = stock?.intrinsicHeight?.takeIf { it > 0 } ?: image.height
+        return width to height
+    }
+
+    private fun zeroSizeCapReached(view: View): Boolean =
+        synchronized(zeroSizeRefusals) { (zeroSizeRefusals[view] ?: 0) >= ZERO_SIZE_RETRY_CAP }
+
+    /**
+     * R18: record one zero-size refusal for [view].
+     *
+     * @return false when the view already reached the cap and the refusal must not be counted.
+     */
+    private fun recordZeroSizeRefusal(view: View): Boolean = synchronized(zeroSizeRefusals) {
+        val current = zeroSizeRefusals[view] ?: 0
+        if (current >= ZERO_SIZE_RETRY_CAP) return false
+        zeroSizeRefusals[view] = current + 1
+        true
+    }
+
+    /** R18: a real install (positive size) or a deactivation clears this view's retry budget. */
+    private fun resetZeroSizeRefusals(view: View) {
+        synchronized(zeroSizeRefusals) { zeroSizeRefusals.remove(view) }
+    }
 
     /**
      * The OEM binder pushed its own drawable: [controllerFor] repairs an existing controller in place
@@ -939,7 +992,15 @@ internal object IosBatteryV2 : IosDiagnosticSource {
      * retry and not a failure without the Xposed hooks.
      */
     internal fun noteInstallRefused(controller: Controller) {
-        countRetry(controller.installFailure ?: "install refused")
+        val reason = controller.installFailure ?: "install refused"
+        // R18: the zero-size boot retry is capped per view; the "no reading" refusal is not capped
+        // (it resolves itself as soon as the sticky broadcast arrives) and keeps its reason text.
+        if (reason.startsWith("stock size") &&
+            !recordZeroSizeRefusal(controller.ownerViewForTest)
+        ) {
+            return
+        }
+        countRetry(reason)
     }
 
     /** Test seam: zero the process-lifetime counters so a test can assert deltas (R11). */
@@ -949,6 +1010,7 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         retries = 0
         failures = 0
         firstFailure = null
+        synchronized(zeroSizeRefusals) { zeroSizeRefusals.clear() }
     }
 
     /**
@@ -1034,6 +1096,13 @@ internal object IosBatteryV2 : IosDiagnosticSource {
         val installedForTest: Boolean get() = installedFlag
 
         /**
+         * R18: the container view this controller owns. Minimal test seam: the per-view zero-size
+         * retry budget is keyed by this view, and the refusal accounting needs it without exposing
+         * the map itself.
+         */
+        internal val ownerViewForTest: View get() = view
+
+        /**
          * R11: why [install] last returned false ("no reading" / "stock size 0x0 <= 0"), read by the
          * object's retry accounting and the diagnostic; null after a successful install.
          */
@@ -1059,8 +1128,9 @@ internal object IosBatteryV2 : IosDiagnosticSource {
                 return false
             }
             val stock = image.drawable
-            val width = stock?.intrinsicWidth?.takeIf { it > 0 } ?: image.width
-            val height = stock?.intrinsicHeight?.takeIf { it > 0 } ?: image.height
+            // R18: the same helper the bounded-retry precheck reads, so the cap and the install guard
+            // can never disagree about what "zero size" means.
+            val (width, height) = IosBatteryV2.stockSize(image)
             if (width <= 0 || height <= 0) {
                 installFailure = "stock size ${width}x${height} <= 0"
                 return false
@@ -1093,6 +1163,8 @@ internal object IosBatteryV2 : IosDiagnosticSource {
             hideBolts()
             installedFlag = true
             installFailure = null
+            // R18: a positive-size install clears this view's zero-size retry budget.
+            IosBatteryV2.resetZeroSizeRefusals(view)
             IosSlotLayout.registerBattery(view, image)
             return true
         }
