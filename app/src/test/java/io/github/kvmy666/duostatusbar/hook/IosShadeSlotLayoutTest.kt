@@ -40,6 +40,7 @@ class IosShadeSlotLayoutTest {
         const val BASE_INK = 33.48f
         const val GAP = 16.74f
         const val ROW = 63
+        const val SHADE_HEIGHT = 101
         const val CLUSTER_WIDTH = 279
     }
 
@@ -69,10 +70,10 @@ class IosShadeSlotLayoutTest {
         IosSlotLayout.resetForTest()
     }
 
-    private fun layout(root: View, width: Int = 2000) {
+    private fun layout(root: View, width: Int = 2000, height: Int = ROW) {
         root.measure(
             View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(ROW, View.MeasureSpec.EXACTLY)
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
         )
         root.layout(0, 0, root.measuredWidth, root.measuredHeight)
     }
@@ -114,6 +115,24 @@ class IosShadeSlotLayoutTest {
         val batteryLeft = leftIn(parent, batterySlot.leaf) +
             IosGeometry.Battery.BODY_LEFT * pxPerUnit(IosIconKind.BATTERY, battery)
         return batteryLeft - labelRight
+    }
+
+    /** The drawn-ink centre Y of [view] relative to [parent], from the same ink box the applier uses. */
+    private fun inkCentreY(
+        parent: View,
+        view: View,
+        kind: IosIconKind,
+        visual: IosVisual
+    ): Float {
+        var top = view.top
+        var cursor: View = view
+        while (cursor !== parent) {
+            val next = cursor.parent as View
+            top += next.top
+            cursor = next
+        }
+        val ink = IosGeometry.inkBox(kind, visual)
+        return top + (ink.top + ink.height / 2f) * pxPerUnit(kind, visual)
     }
 
     @Test
@@ -193,10 +212,85 @@ class IosShadeSlotLayoutTest {
         )
         assertEquals(ROW, main.row.layoutParams.height)
         assertEquals(GAP, inkGap(main.row, main.chain, main.battery), 0.5f)
+        // R18 item 1: the main bar is a packed 63 px LinearLayout; signal, 5G and battery share its centre.
+        val signalY = inkCentreY(main.row, main.chain.signal, IosIconKind.CELL, cellBoth)
+        val labelY = inkCentreY(main.row, main.chain.label, IosIconKind.WIFI, label5g)
+        val batteryY = inkCentreY(main.row, main.battery.leaf, IosIconKind.BATTERY, battery)
+        val spread = maxOf(signalY, labelY, batteryY) - minOf(signalY, labelY, batteryY)
+        assertTrue(
+            "main bar ink centres must stay on one line: signal=$signalY label=$labelY battery=$batteryY",
+            spread <= 1f
+        )
         // R11 host metrics, not the fixture's stock 89 / 72x35.
         assertEquals(86, batteryWidth)
         assertEquals(70, main.battery.leaf.layoutParams.width)
         assertEquals(34, main.battery.leaf.layoutParams.height)
+    }
+
+    @Test
+    fun `shade 101 row centres signal, 5G and battery on one line`() {
+        val qs = QsHeaderFixture(context, SHADE_HEIGHT)
+        assertTrue(IosSlotLayout.registerMobile(qs.chain.signal, qs.chain.label))
+        assertTrue(IosSlotLayout.registerBattery(qs.battery.container, qs.battery.leaf))
+        layout(qs.root, CLUSTER_WIDTH, SHADE_HEIGHT)
+
+        val signalY = inkCentreY(qs.cluster, qs.chain.signal, IosIconKind.CELL, cellBoth)
+        val labelY = inkCentreY(qs.cluster, qs.chain.label, IosIconKind.WIFI, label5g)
+        val batteryY = inkCentreY(qs.cluster, qs.battery.leaf, IosIconKind.BATTERY, battery)
+        val spread = maxOf(signalY, labelY, batteryY) - minOf(signalY, labelY, batteryY)
+        val gap = inkGap(qs.cluster, qs.chain, qs.battery)
+
+        assertTrue(
+            "the 101 px shade row must put signal/label/battery on one line: " +
+                "signal=$signalY label=$labelY battery=$batteryY spread=$spread",
+            spread <= 1f
+        )
+        assertEquals("shade label->battery ink gap must stay the R11 rule", GAP, gap, 1f)
+    }
+
+    @Test
+    fun `QS 63 row stays unchanged`() {
+        val qs = QsHeaderFixture(context, ROW)
+        assertTrue(IosSlotLayout.registerMobile(qs.chain.signal, qs.chain.label))
+        assertTrue(IosSlotLayout.registerBattery(qs.battery.container, qs.battery.leaf))
+        layout(qs.root, CLUSTER_WIDTH, ROW)
+
+        val signalY = inkCentreY(qs.cluster, qs.chain.signal, IosIconKind.CELL, cellBoth)
+        val labelY = inkCentreY(qs.cluster, qs.chain.label, IosIconKind.WIFI, label5g)
+        val batteryY = inkCentreY(qs.cluster, qs.battery.leaf, IosIconKind.BATTERY, battery)
+        val spread = maxOf(signalY, labelY, batteryY) - minOf(signalY, labelY, batteryY)
+        val gap = inkGap(qs.cluster, qs.chain, qs.battery)
+
+        assertTrue(
+            "the 63 px QS row must stay on one line: " +
+                "signal=$signalY label=$labelY battery=$batteryY spread=$spread",
+            spread <= 1f
+        )
+        assertEquals("QS label->battery ink gap must stay the R11 rule", GAP, gap, 1f)
+    }
+
+    @Test
+    fun `restoreAll restores the stock statusIcons gravity`() {
+        val qs = QsHeaderFixture(context, SHADE_HEIGHT)
+        val params = qs.statusIcons.layoutParams as LinearLayout.LayoutParams
+        val stockGravity = params.gravity
+
+        assertTrue(IosSlotLayout.registerMobile(qs.chain.signal, qs.chain.label))
+        assertEquals(
+            "the fix must centre the icon container in the taller row",
+            Gravity.CENTER_VERTICAL,
+            params.gravity and Gravity.VERTICAL_GRAVITY_MASK
+        )
+
+        IosSlotLayout.restoreAll()
+        assertEquals(
+            "restoreAll must put the stock statusIcons gravity back",
+            stockGravity,
+            params.gravity
+        )
+        // tearDown calls restoreAll again; a second restore must stay a no-op.
+        IosSlotLayout.restoreAll()
+        assertEquals(stockGravity, params.gravity)
     }
 
     private class MobileChain(context: Context) {
@@ -279,7 +373,7 @@ class IosShadeSlotLayoutTest {
     }
 
     /** QS header: `quick_qs_status_icons` ConstraintLayout chain with a 0dp `icons` row. */
-    private class QsHeaderFixture(context: Context) {
+    private class QsHeaderFixture(context: Context, rowHeight: Int = ROW) {
         val root = FrameLayout(context)
         val cluster = FakeConstraintLayout(context)
         val icons = LinearLayout(context).apply {
@@ -293,18 +387,23 @@ class IosShadeSlotLayoutTest {
         init {
             statusIcons.addView(chain.outer, LinearLayout.LayoutParams(124, ROW))
             icons.addView(statusIcons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ROW))
-            cluster.addView(icons, FrameLayout.LayoutParams(0, ROW))
+            cluster.addView(icons, FrameLayout.LayoutParams(0, rowHeight))
             cluster.addView(battery.container, FrameLayout.LayoutParams(89, ROW))
             // Production XML: the QS status-icons row is match_parent inside the constraint row.
-            root.addView(cluster, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ROW))
+            root.addView(
+                cluster,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight)
+            )
         }
     }
 
     /**
      * A local stand-in for the stock `quick_qs_status_icons` ConstraintLayout: the class name ends in
      * `ConstraintLayout` (the production detector) and the layout reproduces the measured chain. A
-     * 0dp row fills `parent - batteryWidth` and packs against the battery; a fixed row spreads the
-     * leftover into the three equal gaps ConstraintLayout's default chain style produced.
+     * 0dp row fills `parent - batteryWidth` and is measured at the full cluster height (the real row
+     * is 63 QS / 101 shade); the fixed 63 px battery is centred vertically in the cluster, exactly as
+     * the stock ConstraintLayout centres it. A fixed row spreads the leftover into the three equal
+     * gaps the default chain style produced.
      */
     private class FakeConstraintLayout(context: Context) : FrameLayout(context) {
 
@@ -313,7 +412,8 @@ class IosShadeSlotLayoutTest {
             val height = MeasureSpec.getSize(heightMeasureSpec)
             val icons = getChildAt(0)
             val battery = getChildAt(1)
-            measureExact(battery, battery.layoutParams.width, height)
+            // The battery view keeps its stock 63 px height; the cluster centres it, never stretches it.
+            measureExact(battery, battery.layoutParams.width, battery.layoutParams.height)
             val iconsWidth = if (icons.layoutParams.width == 0) {
                 width - battery.measuredWidth
             } else {
@@ -330,14 +430,21 @@ class IosShadeSlotLayoutTest {
             val battery = getChildAt(1)
             val iconsWidth = icons.measuredWidth
             val batteryWidth = battery.measuredWidth
+            val batteryHeight = battery.measuredHeight
+            val batteryTop = (height - batteryHeight) / 2
             if (icons.layoutParams.width == 0) {
                 icons.layout(0, 0, iconsWidth, height)
-                battery.layout(width - batteryWidth, 0, width, height)
+                battery.layout(width - batteryWidth, batteryTop, width, batteryTop + batteryHeight)
             } else {
                 val gap = (width - iconsWidth - batteryWidth) / 3
                 icons.layout(gap, 0, gap + iconsWidth, height)
                 val batteryLeft = gap + iconsWidth + gap
-                battery.layout(batteryLeft, 0, batteryLeft + batteryWidth, height)
+                battery.layout(
+                    batteryLeft,
+                    batteryTop,
+                    batteryLeft + batteryWidth,
+                    batteryTop + batteryHeight
+                )
             }
         }
 
