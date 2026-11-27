@@ -71,7 +71,7 @@ internal object SnapshotRefresh {
      * Pure enough for a JVM test: every clock, sleep and read is a lambda. It never throws and the
      * iteration cap is independent of the clock, so a stuck clock or a throwing sleep cannot hang a
      * report. With neither a new dump nor a changed status, the previous snapshot is returned unchanged
-     * with `refreshed=false`.
+     * with `refreshed=false`; a status-only answer is returned with an empty dump and `dumpAt=0`.
      */
     fun poll(
         previous: FreshSnapshot,
@@ -90,7 +90,7 @@ internal object SnapshotRefresh {
         val attempts = if (poll <= 0L) 1 else (timeoutMs.coerceAtLeast(0L) / poll).toInt() + 2
         // The module writes the status first and the dump immediately after, so a changed status can be
         // seen one poll before the dump. Keep waiting for the dump; a status-only answer is still usable
-        // evidence, but only as the fallback at the deadline.
+        // evidence, but only as the status fallback at the deadline and never with the stored dump.
         var statusOnly: FreshSnapshot? = null
         repeat(attempts) {
             val status = runCatching { readStatus() }.getOrNull()
@@ -100,7 +100,9 @@ internal object SnapshotRefresh {
                 val dumpFresh = dumpAt > previous.dumpAt || dump != previous.dump
                 if (dumpFresh) return FreshSnapshot(status, dump, dumpAt, refreshed = true)
                 if (status != previous.status) {
-                    statusOnly = FreshSnapshot(status, dump, dumpAt, refreshed = true)
+                    // A status-only write (e.g. the module load line) proves the status, not the dump.
+                    // Carrying the stored dump over here labelled the previous build's dump fresh.
+                    statusOnly = FreshSnapshot(status, "", 0L, refreshed = true)
                 }
             }
             val time = runCatching { now() }.getOrDefault(deadline)

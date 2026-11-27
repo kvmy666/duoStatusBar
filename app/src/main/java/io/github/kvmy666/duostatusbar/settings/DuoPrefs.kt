@@ -1015,7 +1015,7 @@ object DuoPrefs {
         0L
     }
 
-    /** A heartbeat older than this means the module is not running now. Three missed beats at 20 s. */
+    /** A heartbeat older than this means the module is not running now: 20 s cadence, 90 s stale. */
     const val HEARTBEAT_STALE_MS = 90_000L
 
     /**

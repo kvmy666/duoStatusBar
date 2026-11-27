@@ -170,6 +170,66 @@ class ReportFactsTest {
         assertFalse("dump-derived per-piece facts must be absent", out.contains("ios engine"))
     }
 
+    // M2: when the app update stamp is unreadable the running build is unknown, but a dump from another
+    // build is still stale. The app version decides, not the runningVersion wording input.
+    @Test
+    fun `a stale dump is detected when the running version is unknown`() {
+        val staleDump = """
+            Duo Status Bar diagnostic dump
+            version: 2.1.1 (code 111, debug=false)
+            module:
+              ios v2 timing: calls=9 hits=7 misses=2
+        """.trimIndent()
+        val out = facts(
+            status = "process=com.android.systemui pid=7525 · owner=ios · stage=2",
+            dump = staleDump,
+            health = ModuleHealth(
+                ModuleState.OK,
+                100L,
+                0L,
+                ModuleMode.IOS,
+                runningVersion = null
+            ),
+            appVersion = "2.1.3"
+        )
+
+        assertTrue(
+            "an old dump must be stale even when runningVersion is unreadable: $out",
+            out.contains("dump: STALE diagnostic dump from 2.1.1")
+        )
+        assertFalse("dump-derived facts must be absent: $out", out.contains("ios engine"))
+    }
+
+    // m2: a nonsensical future stamp is clamped to now instead of printed as a future write time.
+    @Test
+    fun `a future dump stamp is clamped to now`() {
+        val staleDump = """
+            Duo Status Bar diagnostic dump
+            version: 2.1.1 (code 111, debug=false)
+        """.trimIndent()
+        var seen = -1L
+        ReportFacts.perPieceStatus(
+            status = status,
+            dump = staleDump,
+            settings = null,
+            health = ModuleHealth(
+                ModuleState.OK,
+                100L,
+                50L,
+                ModuleMode.IOS,
+                runningVersion = null
+            ),
+            lastChange = null,
+            revision = 0L,
+            captureText = "",
+            formatTimestamp = { seen = it; "stamped" },
+            appVersion = "2.1.3",
+            dumpAt = Long.MAX_VALUE
+        )
+
+        assertTrue("a future stamp must be clamped: $seen", seen in 1..System.currentTimeMillis())
+    }
+
     // The embedded module log can be missing or truncated; the module's own dump stamp still says
     // when the stale dump was written, so the report never needs "written at an unknown time".
     @Test

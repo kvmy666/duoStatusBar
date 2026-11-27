@@ -280,6 +280,16 @@ fun DuoSettingsScreen(
         SnapshotRefresh.refresh(context)
     }
 
+    /**
+     * Whether [snapshot] may ship as evidence, decided from a health read taken *after* the refresh.
+     * The composition-time [moduleHealth] can be stale: the screen may open while healthy and the
+     * module can be unscoped before the report button runs.
+     */
+    suspend fun freshEvidenceUsable(snapshot: FreshSnapshot): Boolean = withContext(Dispatchers.IO) {
+        val health = runCatching { ModuleHealthCheck.of(context) }.getOrNull()
+        SnapshotRefresh.evidenceUsable(snapshot, health?.state)
+    }
+
     // One-tap bug report, shared by the About button and the module-health card: packs the description,
     // the module status and the logs, uploads it, and falls back to the share sheet.
     fun collectAndSend() {
@@ -294,7 +304,7 @@ fun DuoSettingsScreen(
             val snapshot = refreshedDump()
             // A timed-out snapshot on a NEVER_LOADED module is the previous run's leftovers; the
             // report and the ZIP must drop its status/dump instead of describing a dead process.
-            val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, moduleHealth.state)
+            val evidenceLive = freshEvidenceUsable(snapshot)
             val evidence = reportEvidence(
                 snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
             )
@@ -472,9 +482,7 @@ fun DuoSettingsScreen(
                             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
                             val snapshot = refreshedDump()
-                            val evidenceLive = SnapshotRefresh.evidenceUsable(
-                                snapshot, moduleHealth.state
-                            )
+                            val evidenceLive = freshEvidenceUsable(snapshot)
                             val evidence = reportEvidence(
                                 snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
                             )
@@ -512,9 +520,7 @@ fun DuoSettingsScreen(
                             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
                             val snapshot = refreshedDump()
-                            val evidenceLive = SnapshotRefresh.evidenceUsable(
-                                snapshot, moduleHealth.state
-                            )
+                            val evidenceLive = freshEvidenceUsable(snapshot)
                             val evidence = reportEvidence(
                                 snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
                             )
@@ -535,9 +541,13 @@ fun DuoSettingsScreen(
                     }
                 },
                 onGitHub = {
-                    val stored = SnapshotRefresh.stored(context)
-                    val evidenceLive = SnapshotRefresh.evidenceUsable(stored, moduleHealth.state)
-                    openGitHubIssue(context, fallback, if (evidenceLive) stored.status else "")
+                    scope.launch {
+                        val stored = withContext(Dispatchers.IO) {
+                            SnapshotRefresh.stored(context)
+                        }
+                        val evidenceLive = freshEvidenceUsable(stored)
+                        openGitHubIssue(context, fallback, if (evidenceLive) stored.status else "")
+                    }
                 },
                 onDismiss = {
                     DuoPrefs.writeFallback(context, "")
@@ -675,7 +685,7 @@ fun DuoSettingsScreen(
                     val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                     exporting = false
                     val snapshot = refreshedDump()
-                    val evidenceLive = SnapshotRefresh.evidenceUsable(snapshot, moduleHealth.state)
+                    val evidenceLive = freshEvidenceUsable(snapshot)
                     val evidence = reportEvidence(
                         snapshot.status, snapshot.dump, snapshot.dumpAt, evidenceLive
                     )

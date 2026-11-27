@@ -989,7 +989,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // Report even when the module is gated off: the app must still learn the family and the
             // support verdict, otherwise an iOS request on an unsupported UI looks like DISABLED.
             reportIosCapability(ctx)
-            Breadcrumb.step("ios:capability")
             // The settings/restart receiver goes in *before* the gate. It is the app's only way to reach a
             // module that read itself as "off": "Restart System UI" and a live enable both arrive here.
             // Registering it after the gate (as before) left the button dead on every ROM where the stage
@@ -2128,7 +2127,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         /** Give the restart broadcast a moment to finish before the process goes. */
         const val RESTART_DELAY_MS = 300L
 
-        /** The process-wide alive beat. Three missed writes is what the app treats as gone. */
+        /** The process-wide alive beat (20 s cadence); the app treats 90 s without a write as gone. */
         const val HEARTBEAT_MS = 20_000L
 
         /** How long a burst of settings changes is allowed to settle before one apply runs. */

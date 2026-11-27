@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.settings
 
+import io.github.kvmy666.duostatusbar.ui.reportEvidence
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -53,8 +54,10 @@ class SnapshotRefreshTest {
         assertEquals("new dump", out.dump)
     }
 
+    // B1: a status-only write is proof of the live status, not of the dump. Carrying the stored dump
+    // over marked the previous build's dump fresh and the report shipped it.
     @Test
-    fun `a fresh status alone is a refresh and keeps the stored dump`() {
+    fun `a fresh status alone is a refresh with no dump`() {
         var now = 0L
         val out = SnapshotRefresh.poll(
             previous = previous,
@@ -68,7 +71,11 @@ class SnapshotRefreshTest {
 
         assertTrue(out.refreshed)
         assertEquals("process=com.android.systemui pid=2 · owner=duo · loaded", out.status)
-        assertEquals(previous.dump, out.dump)
+        assertEquals("a status-only write must not lend its freshness to the old dump", "", out.dump)
+        assertEquals(0L, out.dumpAt)
+        val evidence = reportEvidence(out.status, out.dump, out.dumpAt, evidenceLive = true)
+        assertEquals("the next report cannot ship the old dump", "", evidence.dump)
+        assertEquals(0L, evidence.dumpAt)
     }
 
     @Test

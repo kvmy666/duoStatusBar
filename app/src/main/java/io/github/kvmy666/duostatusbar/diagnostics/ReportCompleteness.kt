@@ -458,19 +458,24 @@ internal object ReportFacts {
             return@buildString
         }
 
-        // A loaded/current module whose stored dump is from the previous build (the owner field case:
-        // app 2.1.2, dump 2.1.1). The live status is still this run, so it is printed; nothing is taken
+        // A loaded/current module whose stored dump is from another build (the owner field case:
+        // app 2.1.3, dump 2.1.1). The live status is still this run, so it is printed; nothing is taken
         // from the old dump, and the mode comes from the live owner rather than a stale health state.
+        // The app version decides staleness: an unreadable update stamp leaves runningVersion null, but
+        // that must not turn an old dump into current evidence.
         val runningBuild = health?.runningVersion?.trim()?.takeIf { it.isNotEmpty() }
         val dumpBuild = dumpVersion(dump)?.trim()?.takeIf { it.isNotEmpty() }
-        if (runningBuild != null && dumpBuild != null && dumpBuild != runningBuild) {
+        if (dumpBuild != null && appVersion.isNotBlank() && dumpBuild != appVersion) {
+            val currentBuild = runningBuild ?: appVersion
             appendLine(liveStatusBlock(status))
             // The module's own dump stamp survives a missing/truncated embedded log; prefer it.
-            val writtenAt = dumpAt.takeIf { it > 0L } ?: dumpWrittenAt(dump)
+            val writtenAt = (dumpAt.takeIf { it > 0L } ?: dumpWrittenAt(dump))
+                ?.coerceAtMost(System.currentTimeMillis())
             val written = writtenAt?.let { " written ${formatTimestamp(it)}" }
                 ?: " written at an unknown time"
             appendLine(
-                "dump: STALE diagnostic dump from $dumpBuild$written; per-piece facts unavailable"
+                "dump: STALE diagnostic dump from $dumpBuild$written; per-piece facts unavailable " +
+                    "(report build $currentBuild)"
             )
             appendLine("mode: ${reportedState(status, health)} (${liveMode(status, health).label})")
             return@buildString
