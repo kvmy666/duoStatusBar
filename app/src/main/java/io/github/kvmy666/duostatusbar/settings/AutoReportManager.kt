@@ -209,8 +209,13 @@ internal object AutoReportManager {
         captureAttempt.exceptionOrNull()?.let {
             failures += "${it.javaClass.simpleName}: ${it.message}"
         }
-        val status = DuoPrefs.status(context)
-        val dump = DuoPrefs.dump(context)
+        // One bounded ask per pulse, before the status/dump reads: the stored pair can be the previous
+        // build's (field case). A module that never loaded is not asked, so the pulse cannot hang.
+        val snapshot = collectorRead("snapshot", failures) {
+            SnapshotRefresh.refresh(context)
+        } ?: SnapshotRefresh.stored(context)
+        val status = snapshot.status
+        val dump = snapshot.dump
         val fallback = DuoPrefs.fallback(context)
         val health = collectorRead("health", failures) { ModuleHealthCheck.of(context) }
         val current = DuoPrefs.read(context)
@@ -250,6 +255,7 @@ internal object AutoReportManager {
             history = DuoPrefs.statusHistory(context),
             dump = dump,
             moduleLoadAt = 0L,
+            dumpAt = snapshot.dumpAt,
             capture = capture,
             captureText = logs,
             captureFailure = captureFailure
@@ -259,6 +265,7 @@ internal object AutoReportManager {
             logs = logs,
             status = status,
             dump = dump,
+            dumpAt = snapshot.dumpAt,
             sections = capture?.sections?.size ?: 0,
             problems = problems
         )
@@ -270,7 +277,8 @@ internal object AutoReportManager {
             collected.report,
             collected.logs,
             collected.status,
-            collected.dump
+            collected.dump,
+            collected.dumpAt
         ) ?: throw IllegalStateException("zip unavailable")
         return ZipArtifact(file, file.length())
     }

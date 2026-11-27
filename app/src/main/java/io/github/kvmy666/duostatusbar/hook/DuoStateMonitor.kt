@@ -81,18 +81,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     /** Dedupe window so the executor hook and the file watcher cannot restart the same screenshot event. */
     private var lastScreenshotAt = 0L
 
-    /**
-     * Keeps the "module is alive" stamp fresh while this process lives, so the app can tell a running
-     * module from one that was just unscoped and left behind (System UI restarted without it). Cheap: a
-     * single Settings.Global write every [HEARTBEAT_MS], no wake lock, stopped with the monitor.
-     */
-    private val heartbeatRunnable = object : Runnable {
-        override fun run() {
-            runCatching { DuoGuard(context).noteHeartbeat() }
-            handler.postDelayed(this, HEARTBEAT_MS)
-        }
-    }
-
     /** True while [mobileDataObserver] is registered. */
     private var watchingMobileData = false
 
@@ -410,8 +398,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 updateClock()
                 refresh()
                 if (features.has(DuoFeature.DOWNLOAD)) requestDownloadState()
-                runCatching { DuoGuard(context).noteHeartbeat() }
-                handler.postDelayed(heartbeatRunnable, HEARTBEAT_MS)
                 L.i("state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane dnd=$dnd")
             } catch (t: Throwable) {
                 L.e("monitor start failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -473,7 +459,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         downloadDisplay.update(false)
         runCatching { fill?.cancel() }
         runCatching { handler.removeCallbacks(hideRunnable) }
-        runCatching { handler.removeCallbacks(heartbeatRunnable) }
         runCatching { eventEndRunnable?.let { handler.removeCallbacks(it) } }
         eventEndRunnable = null
         unwatchMobileData()
@@ -816,9 +801,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
         /** `TelephonyIntents.ACTION_ANY_DATA_CONNECTION_STATE_CHANGED`, spelled out: the constant is hidden. */
         const val ACTION_ANY_DATA_STATE = "android.intent.action.ANY_DATA_STATE"
-
-        /** How often the module proves it is alive; the app treats a much older stamp as "gone". */
-        private const val HEARTBEAT_MS = 20_000L
     }
 }
 

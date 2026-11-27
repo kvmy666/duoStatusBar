@@ -35,7 +35,9 @@ internal data class AutoReportCollected(
     val status: String,
     val dump: String,
     val sections: Int,
-    val problems: List<DetectedProblem>
+    val problems: List<DetectedProblem>,
+    /** When the dump was written, so the ZIP labels a stale one with its time. */
+    val dumpAt: Long = 0L
 )
 
 internal data class ZipArtifact(val file: File?, val bytes: Long)

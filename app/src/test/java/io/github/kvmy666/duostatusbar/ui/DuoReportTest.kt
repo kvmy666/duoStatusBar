@@ -1,7 +1,10 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import android.content.Context
+import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
+import io.github.kvmy666.duostatusbar.settings.DuoOrientation
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
@@ -37,6 +40,49 @@ class DuoReportTest {
         logcat = "logcat-body",
         screenshotPng = screenshot
     )
+
+    // R16-A2 integration: the path the manual report screen now takes. A module loaded after this APK
+    // is the app build, so its stale 2.1.1 dump is labelled AND the per-piece block uses live status.
+    @Test
+    fun `buildDiagnostics labels a stale dump with time and prints the live mode`() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val updatedAt = context.packageManager
+            .getPackageInfo(context.packageName, 0).lastUpdateTime
+        Settings.Global.putLong(
+            context.contentResolver, "duo_statusbar_last_load", updatedAt + 10_000L
+        )
+        Settings.Global.putLong(
+            context.contentResolver, "duo_statusbar_heartbeat", System.currentTimeMillis()
+        )
+        val status = "process=com.android.systemui pid=25754 · owner=ios · stage=0 · " +
+            "renderer=none · attached=false"
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: 2.1.1 (code 111, debug=false)\n" +
+            "=== module log (from the module, no root needed) ===\n" +
+            "1795696331873 status -> app: stage=0 · renderer=none · attached=false\n"
+        val settings = DuoSettings(enabled = false, iosMode = true)
+        DuoPrefs.write(context, settings, DuoOrientation.PORTRAIT)
+        DuoPrefs.write(context, settings, DuoOrientation.LANDSCAPE)
+        DuoPrefs.writeStatus(context, status)
+        DuoPrefs.writeDump(context, dump)
+
+        val report = buildDiagnostics(
+            context = context,
+            settings = settings,
+            status = status,
+            history = emptyList(),
+            dump = dump,
+            moduleLoadAt = 0L,
+            dumpAt = 1795696331873L,
+            captureText = ""
+        )
+
+        assertTrue(report, report.contains("mode: OK (iOS active)"))
+        assertTrue(report, report.contains("per-piece facts not derived from it"))
+        assertTrue(report, report.contains("dump: STALE diagnostic dump from 2.1.1 written "))
+        assertFalse(report, report.contains("NEVER_LOADED"))
+        assertFalse(report, report.contains("missing:"))
+    }
 
     @Test
     fun `the full report puts the user message after the completeness header`() {
@@ -219,6 +265,59 @@ class DuoReportTest {
         val labelled = labelStaleDump(dump, "2.0.2")
         assertTrue(labelled.startsWith("[stale diagnostic dump from 1.4.2"))
         assertTrue("the dump itself must be kept", labelled.contains(dump))
+    }
+
+    // R16-A2: the dump carries the module-log epochs; the last one is when the module wrote the dump.
+    @Test
+    fun dumpWrittenAtUsesTheLastEpochInTheModuleLogSection() {
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: 2.1.1 (code 111, debug=false)\n" +
+            "=== module log (from the module, no root needed) ===\n" +
+            "1795654045014 MainHook loaded\n" +
+            "1795696331873 status -> app: owner=ios\n"
+        assertEquals(1795696331873L, dumpWrittenAt(dump))
+    }
+
+    @Test
+    fun dumpWrittenAtIgnoresEpochsOutsideTheModuleLogSection() {
+        val dump = "1795696331873 a dump header that happens to start with an epoch\n" +
+            "=== module log (from the module, no root needed) ===\n" +
+            "1795654045014 MainHook loaded\n"
+        assertEquals(1795654045014L, dumpWrittenAt(dump))
+        assertNull(dumpWrittenAt("1795696331873 but no module log section\n"))
+    }
+
+    // R16-A2: the label must name both builds and when the stale dump was written.
+    @Test
+    fun labelStaleDumpWithTimeNamesTheBuildAndTheWriteTime() {
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: 2.1.1 (code 111, debug=false)\n" +
+            "=== module log (from the module, no root needed) ===\n" +
+            "1795696331873 status -> app\n"
+        // The label is local time, as a user reads it; the epoch is 2026-11-26. Pin the expected text
+        // with the same formatter so the test is not tied to the machine's timezone.
+        val written = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+            .format(java.util.Date(1795696331873L))
+        val labelled = labelStaleDump(dump, "2.1.3", dumpAt = 0L, now = 1795696400000L)
+        assertTrue("the date must be the epoch's day: $labelled", written.startsWith("2026-11-26"))
+        assertTrue(
+            "stale label must name build and time: $labelled",
+            labelled.startsWith(
+                "[stale diagnostic dump from 2.1.1 written $written; app is 2.1.3; " +
+                    "per-piece facts not derived from it]"
+            )
+        )
+        assertTrue("the dump itself must be kept", labelled.contains(dump))
+    }
+
+    @Test
+    fun labelStaleDumpKeepsTheOldTwoArgumentWording() {
+        val dump = "Duo Status Bar diagnostic dump\n" +
+            "version: 2.1.1 (code 111, debug=false)\n"
+        assertEquals(
+            "[stale diagnostic dump from 2.1.1; app is 2.1.3; do not read it as this run]\n$dump",
+            labelStaleDump(dump, "2.1.3")
+        )
     }
 
     @Test

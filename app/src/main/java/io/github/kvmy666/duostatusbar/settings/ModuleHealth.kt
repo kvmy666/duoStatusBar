@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.settings
 
 import android.content.Context
+import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.ui.dumpVersion
 
 /** How the module is doing, as the app can tell from stores it can read without root. */
@@ -82,8 +83,14 @@ internal object ModuleHealthCheck {
         val iosEnabled = portrait.iosMode || landscape.iosMode
         // Only a report from the current module session is trusted; a missing/stale one is UNKNOWN.
         val capability = IosCapability.read(context, loadedAt)
-        // Evidence for the wording of a pending update ("System UI still runs 2.1.1"). Never the rule.
-        val runningVersion = dumpVersion(DuoPrefs.dump(context))
+        // The build the loaded module is. A load newer than the APK update means it is this build; only
+        // a pending update (APK newer than the load) still runs the dump's build.
+        val runningVersion = runningVersion(
+            loadedAt,
+            updatedAt,
+            dumpVersion(DuoPrefs.dump(context)),
+            BuildConfig.VERSION_NAME
+        )
         return ModuleHealth(
             decide(
                 loadedAt,
@@ -165,6 +172,28 @@ internal object ModuleHealthCheck {
             statusBlank -> ModuleState.NOT_REPORTING
             else -> ModuleState.OK
         }
+    }
+
+    /**
+     * The build the *loaded* module is, as far as the two stamps prove it.
+     *
+     * [loadedAt] is written by the module that System UI started; [appUpdatedAt] is when this APK was
+     * installed. A load after the update means the old process is gone, so the loaded code is this APK —
+     * even when the stored dump is old and still says `version: 2.1.1` (the field case). Only while the
+     * APK is newer than the load is the running build the previous one, and then the dump names it.
+     * Equal or missing stamps prove nothing. The dump never decides this: a stale dump made a current
+     * module look old in the app's own report.
+     */
+    fun runningVersion(
+        loadedAt: Long,
+        appUpdatedAt: Long,
+        dumpVersion: String?,
+        appVersion: String
+    ): String? = when {
+        loadedAt <= 0L -> null
+        appUpdatedAt > loadedAt -> dumpVersion?.trim()?.takeIf { it.isNotEmpty() }
+        loadedAt > appUpdatedAt -> appVersion.trim().takeIf { it.isNotEmpty() }
+        else -> null
     }
 
     /** The configured owner: iOS takes precedence over Duo, matching the runtime feature gate. */

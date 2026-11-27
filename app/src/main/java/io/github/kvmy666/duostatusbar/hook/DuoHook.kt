@@ -410,6 +410,23 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
+    /**
+     * Process-wide "the module is alive" beat, started once in [start] and independent of the owner and
+     * stage. The old beat lived in [DuoStateMonitor], which only starts when Duo attaches: an iOS or
+     * stage-0 module never refreshed it, so after 90 s the app called a loaded module NEVER_LOADED (the
+     * owner field report). One owner, one cadence, guarded so a failed write never reaches System UI.
+     */
+    private fun startHeartbeat(ctx: Context) {
+        val beat = object : Runnable {
+            override fun run() {
+                L.guard("DuoHook heartbeat loop") { DuoGuard(ctx).noteHeartbeat() }
+                handler.postDelayed(this, HEARTBEAT_MS)
+            }
+        }
+        L.guard("DuoHook heartbeat") { DuoGuard(ctx).noteHeartbeat() }
+        handler.postDelayed(beat, HEARTBEAT_MS)
+    }
+
     fun install() {
         L.guard("DuoHook install") {
             // MainHook owns the per-process install claim. This is only a same-instance guard, so a
@@ -947,6 +964,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         Breadcrumb.step("start")
         // First statement, before RomDetection: the new process must be detectable immediately.
         noteLoadStamp(ctx)
+        startHeartbeat(ctx)
         app = ctx
         // Now that a context exists the SystemUI package can be inspected. Only a successful read that
         // proves a non-MIUI SystemUI may switch a Xiaomi-brand device to AOSP; an unreadable one keeps
@@ -1134,11 +1152,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         // so the dump reflects the reported state instead of the boot-time one.
                         val ctxNow = app
                         if (ctxNow != null) {
-                            reporter.reportDiagnostics(
+                            // The report needs both halves fresh: the status names the live
+                            // process/owner/stage, then report() writes the dump the app waits for.
+                            reporter.report(
                                 ctxNow,
                                 DuoGuard(ctxNow).stage(),
                                 DuoSettingsClient.read(ctxNow),
-                                host?.duo
+                                features.owner
                             )
                             L.i("diagnostic dump refreshed on app request")
                         }
@@ -2096,6 +2116,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
         /** Give the restart broadcast a moment to finish before the process goes. */
         const val RESTART_DELAY_MS = 300L
+
+        /** The process-wide alive beat. Three missed writes is what the app treats as gone. */
+        const val HEARTBEAT_MS = 20_000L
 
         /** How long a burst of settings changes is allowed to settle before one apply runs. */
         const val SETTINGS_DEBOUNCE_MS = 250L

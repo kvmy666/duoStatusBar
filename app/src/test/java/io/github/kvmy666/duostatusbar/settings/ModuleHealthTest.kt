@@ -98,6 +98,73 @@ class ModuleHealthTest {
         assertEquals(ModuleState.NOT_REPORTING, ModuleHealthCheck.decide(200L, 100L, true, fresh, now, true))
     }
 
+    // R16-A2: the build the running module is. A loaded module that started after the last APK update
+    // *is* this APK, so a stale dump must not make it look old. Only a pending update names the old build.
+    @Test
+    fun `a module loaded after the app update runs the app build`() {
+        assertEquals(
+            "2.1.3",
+            ModuleHealthCheck.runningVersion(
+                loadedAt = 200L,
+                appUpdatedAt = 100L,
+                dumpVersion = "2.1.1",
+                appVersion = "2.1.3"
+            )
+        )
+    }
+
+    @Test
+    fun `a pending update names the dump build`() {
+        assertEquals(
+            "2.1.1",
+            ModuleHealthCheck.runningVersion(
+                loadedAt = 100L,
+                appUpdatedAt = 200L,
+                dumpVersion = "2.1.1",
+                appVersion = "2.1.3"
+            )
+        )
+    }
+
+    @Test
+    fun `a pending update without a dump has no running build`() {
+        assertEquals(
+            null,
+            ModuleHealthCheck.runningVersion(
+                loadedAt = 100L,
+                appUpdatedAt = 200L,
+                dumpVersion = null,
+                appVersion = "2.1.3"
+            )
+        )
+    }
+
+    @Test
+    fun `equal load and update times have no proven running build`() {
+        assertEquals(
+            null,
+            ModuleHealthCheck.runningVersion(
+                loadedAt = 200L,
+                appUpdatedAt = 200L,
+                dumpVersion = "2.1.1",
+                appVersion = "2.1.3"
+            )
+        )
+    }
+
+    @Test
+    fun `a module that never loaded has no running build`() {
+        assertEquals(
+            null,
+            ModuleHealthCheck.runningVersion(
+                loadedAt = 0L,
+                appUpdatedAt = 100L,
+                dumpVersion = "2.1.1",
+                appVersion = "2.1.3"
+            )
+        )
+    }
+
     // ---------------------------------------------------------------- iOS owner report
 
     private fun capability(

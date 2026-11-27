@@ -34,6 +34,7 @@ import androidx.compose.ui.res.stringResource
 import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+import io.github.kvmy666.duostatusbar.settings.SnapshotRefresh
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -112,6 +113,11 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                     status = collectingText
                     scope.launch {
                         val settings = DuoPrefs.read(context)
+                        // One bounded ask, then the same snapshot feeds both the text report and the
+                        // ZIP. The old code read the stored values (possibly the previous build's dump).
+                        val snapshot = withContext(Dispatchers.IO) {
+                            SnapshotRefresh.refresh(context)
+                        }
                         val captured = withContext(Dispatchers.IO) {
                             runCatching { RootLogs.collectSections(context) }
                         }
@@ -123,21 +129,27 @@ fun DuoReportScreen(modifier: Modifier = Modifier) {
                             context,
                             problem,
                             settings,
-                            DuoPrefs.status(context),
-                            DuoPrefs.statusHistory(context),
-                            DuoPrefs.dump(context),
+                            snapshot.status,
+                            if (snapshot.status.isNotBlank()) {
+                                DuoPrefs.statusHistory(context)
+                            } else {
+                                emptyList()
+                            },
+                            snapshot.dump,
                             0L,
                             logs,
                             capture = capture,
-                            captureFailure = captureFailure
+                            captureFailure = captureFailure,
+                            dumpAt = snapshot.dumpAt
                         )
                         val zip = withContext(Dispatchers.IO) {
                             writeReportZip(
                                 context,
                                 report,
                                 logs,
-                                DuoPrefs.status(context),
-                                DuoPrefs.dump(context)
+                                snapshot.status,
+                                snapshot.dump,
+                                snapshot.dumpAt
                             )
                         }
                         val handle = telegramUser.trim().let {

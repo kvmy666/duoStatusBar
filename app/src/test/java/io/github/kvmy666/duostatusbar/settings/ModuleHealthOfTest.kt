@@ -229,11 +229,13 @@ class ModuleHealthOfTest {
         assertNotEquals(ModuleState.DISABLED, ModuleHealthCheck.of(context).state)
     }
 
-    // R16-A: the running build is read from the stored dump so a pending update can name the old build.
+    // R16-A2: a module loaded after this APK was installed *is* this APK. A stale dump written by the
+    // previous build must not make the current module look old.
     @Test
-    fun `of reports the dump build as the running version`() {
-        val now = System.currentTimeMillis()
-        stampFresh(now)
+    fun `of reports the app build for a module loaded after the update`() {
+        val updatedAt = context.packageManager
+            .getPackageInfo(context.packageName, 0).lastUpdateTime
+        stampFresh(updatedAt + 10_000L)
         DuoPrefs.writeDump(
             context,
             "Duo Status Bar diagnostic dump\n" +
@@ -241,15 +243,22 @@ class ModuleHealthOfTest {
                 "build:\n"
         )
 
-        assertEquals("2.1.1", ModuleHealthCheck.of(context).runningVersion)
+        assertEquals(
+            io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,
+            ModuleHealthCheck.of(context).runningVersion
+        )
     }
 
     @Test
-    fun `of reports no running version when the dump has none`() {
-        val now = System.currentTimeMillis()
-        stampFresh(now)
+    fun `of still names the app build without a dump in the current session`() {
+        val updatedAt = context.packageManager
+            .getPackageInfo(context.packageName, 0).lastUpdateTime
+        stampFresh(updatedAt + 10_000L)
         DuoPrefs.writeDump(context, "Duo Status Bar diagnostic dump\nbuild:\n")
 
-        assertEquals(null, ModuleHealthCheck.of(context).runningVersion)
+        assertEquals(
+            io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,
+            ModuleHealthCheck.of(context).runningVersion
+        )
     }
 }

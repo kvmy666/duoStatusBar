@@ -540,6 +540,7 @@ object DuoPrefs {
     private const val KEY_STATUS = "last_status"
     private const val KEY_HISTORY = "status_history"
     private const val KEY_DUMP = "last_dump"
+    private const val KEY_DUMP_AT = "last_dump_at"
     private const val KEY_STOCK_ICONS = "last_stock_icons"
     private const val KEY_HIDE_STOCK_ICONS = "hide_stock_icons"
     private const val KEY_FALLBACK = "last_fallback"
@@ -948,6 +949,14 @@ object DuoPrefs {
     fun dump(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DUMP, "") ?: ""
 
+    /**
+     * Wall-clock ms when [dump] was last written, or 0 for a dump written by a build that predates this
+     * key. A report asks the module for a fresh dump and treats a newer stamp (or changed text) as proof
+     * that the module answered; without it the app could only sleep and hope.
+     */
+    fun dumpAt(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_DUMP_AT, 0L)
+
     /** Maximum number of UTF-16 code units kept for [KEY_DUMP] before truncation. */
     const val DUMP_MAX_CHARS = 2 * 1024 * 1024
 
@@ -977,6 +986,7 @@ object DuoPrefs {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_DUMP, truncateDump(dump))
+            .putLong(KEY_DUMP_AT, System.currentTimeMillis())
             .apply()
     }
 

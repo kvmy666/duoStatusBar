@@ -116,6 +116,79 @@ class ReportFactsTest {
         assertFalse(out.contains("attached="))
     }
 
+    // R16-A2: the owner case. The running module is the app build, but the stored dump is the previous
+    // build's. The report prints live status facts and one stale-dump line; it never derives per-piece
+    // facts or mode from the old dump, and it never calls the live module NEVER_LOADED.
+    @Test
+    fun `a stale dump from a loaded module prints a live block and no per-piece missing lines`() {
+        val liveStatus =
+            "process=com.android.systemui pid=25754 · owner=ios · stage=0 · renderer=none · " +
+                "attached=false · riveAttempts=0"
+        val staleDump = """
+            Duo Status Bar diagnostic dump
+            version: 2.1.1 (code 111, debug=false)
+            build:
+              MANUFACTURER=OnePlus BRAND=OnePlus MODEL=CPH2747
+            === module log (from the module, no root needed) ===
+            1795696331873 status -> app: stage=0 · renderer=none · attached=false
+        """.trimIndent()
+        val out = ReportFacts.perPieceStatus(
+            status = liveStatus,
+            dump = staleDump,
+            settings = DuoSettings(designStyle = DuoSettings.DESIGN_OLD),
+            health = ModuleHealth(
+                ModuleState.NEVER_LOADED,
+                100L,
+                50L,
+                ModuleMode.IOS,
+                runningVersion = "2.1.3"
+            ),
+            lastChange = null,
+            revision = 0L,
+            captureText = "",
+            appVersion = "2.1.3",
+            formatTimestamp = { if (it == 1795696331873L) "2026-11-26 15:32" else "unexpected:$it" }
+        )
+
+        assertTrue(out.contains("process: process=com.android.systemui pid=25754"))
+        assertTrue(
+            out.contains(
+                "duo attach: attached=false stage=0 renderer=none owner=ios"
+            )
+        )
+        assertTrue(
+            out.contains(
+                "dump: STALE diagnostic dump from 2.1.1 written 2026-11-26 15:32; " +
+                    "per-piece facts unavailable"
+            )
+        )
+        assertTrue(out.contains("mode: OK (iOS active)"))
+        assertFalse("a stale dump must not produce missing: spam:\n$out", out.contains("missing:"))
+        assertFalse("a live module must not be called NEVER_LOADED:\n$out", out.contains("NEVER_LOADED"))
+        assertFalse("dump-derived per-piece facts must be absent", out.contains("ios engine"))
+    }
+
+    @Test
+    fun `the live status owner decides the mode label`() {
+        val dumpWithSameBuild = dump.replace(
+            "Duo Status Bar diagnostic dump",
+            "Duo Status Bar diagnostic dump\nversion: 2.1.3 (code 113, debug=false)"
+        )
+        val out = facts(
+            status = status.replace("owner=ios", "owner=duo"),
+            dump = dumpWithSameBuild,
+            health = ModuleHealth(
+                ModuleState.OK,
+                1L,
+                0L,
+                ModuleMode.IOS,
+                runningVersion = "2.1.3"
+            ),
+            appVersion = "2.1.3"
+        )
+        assertTrue(out.contains("mode: OK (Duo active)"))
+    }
+
     @Test
     fun `mode design last change process uptime and deaths are stated`() {
         val out = facts()

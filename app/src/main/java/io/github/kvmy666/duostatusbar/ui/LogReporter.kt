@@ -187,6 +187,8 @@ internal fun buildDiagnostics(
     history: List<String>,
     dump: String,
     moduleLoadAt: Long,
+    /** When [dump] was written (see [DuoPrefs.dumpAt]); 0 falls back to the stored stamp. */
+    dumpAt: Long = 0L,
     /** The structured capture, when the caller has it. Its section states feed the completeness header. */
     capture: RootCapture? = null,
     /** The rendered capture, for callers that only kept the text. */
@@ -257,7 +259,15 @@ internal fun buildDiagnostics(
         // The full dump (build identity, id probes, view tree, readers). Empty in release.
         if (dump.isNotEmpty()) {
             appendLine()
-            append(labelStaleDump(dump, BuildConfig.VERSION_NAME))
+            append(
+                labelStaleDump(
+                    dump,
+                    BuildConfig.VERSION_NAME,
+                    dumpAt = dumpAt.takeIf { it > 0L }
+                        ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L),
+                    now = now
+                )
+            )
         }
     }
     // Defense in depth: the builders return redacted text, and the ZIP/document writers redact again.
@@ -349,7 +359,9 @@ internal fun buildFullReport(
     /** The structured capture, when the caller kept it; otherwise [logs] is parsed. */
     capture: RootCapture? = null,
     /** Set when collecting the capture threw. */
-    captureFailure: String? = null
+    captureFailure: String? = null,
+    /** When [dump] was written (see [DuoPrefs.dumpAt]); 0 falls back to the stored stamp. */
+    dumpAt: Long = 0L
 ): String {
     val raw = buildString {
         append(
@@ -360,6 +372,7 @@ internal fun buildFullReport(
                 history,
                 dump,
                 moduleLoadAt,
+                dumpAt = dumpAt,
                 capture = capture,
                 captureText = logs,
                 captureFailure = captureFailure,
@@ -433,7 +446,9 @@ internal fun writeReportZip(
     report: String,
     logs: String,
     status: String,
-    dump: String
+    dump: String,
+    /** When [dump] was written (see [DuoPrefs.dumpAt]); 0 falls back to the stored stamp. */
+    dumpAt: Long = 0L
 ): File? = try {
     val dir = context.getExternalFilesDir("diagnostics") ?: return null
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
@@ -482,7 +497,14 @@ internal fun writeReportZip(
         moduleLog = moduleLog,
         logcat = logs,
         diagnosticsDump = dump.takeIf { it.isNotBlank() }
-            ?.let { labelStaleDump(it, BuildConfig.VERSION_NAME) },
+            ?.let {
+                labelStaleDump(
+                    it,
+                    BuildConfig.VERSION_NAME,
+                    dumpAt = dumpAt.takeIf { at -> at > 0L }
+                        ?: runCatching { DuoPrefs.dumpAt(context) }.getOrDefault(0L)
+                )
+            },
         screenshotPng = null,
         // The header is the one schema both the manual and the automatic report understand.
         completeness = ReportCompleteness.parseHeader(report)

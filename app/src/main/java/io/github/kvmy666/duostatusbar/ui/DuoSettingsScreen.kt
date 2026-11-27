@@ -59,9 +59,11 @@ import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.BackupCodec
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import io.github.kvmy666.duostatusbar.settings.FreshSnapshot
 import io.github.kvmy666.duostatusbar.settings.IosCapability
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
+import io.github.kvmy666.duostatusbar.settings.SnapshotRefresh
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StageOverride
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
@@ -107,7 +109,6 @@ fun DuoSettingsScreen(
     var settings by remember(orientation) { mutableStateOf(DuoPrefs.read(context, orientation)) }
     var status by remember { mutableStateOf(DuoPrefs.status(context)) }
     var history by remember { mutableStateOf(DuoPrefs.statusHistory(context)) }
-    var dump by remember { mutableStateOf(DuoPrefs.dump(context)) }
     var query by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     var collecting by remember { mutableStateOf(false) }
@@ -232,7 +233,6 @@ fun DuoSettingsScreen(
             delay(1500)
             status = DuoPrefs.status(context)
             history = DuoPrefs.statusHistory(context)
-            dump = DuoPrefs.dump(context)
             moduleLoadAt = DuoPrefs.moduleLoadTime(context)
             fallback = DuoPrefs.fallback(context)
             stageOverride = StageOverride.read(context)
@@ -272,18 +272,12 @@ fun DuoSettingsScreen(
     val iosAvailable = iosCapability?.supported ?: true
 
     /**
-     * Asks the module for a fresh diagnostic dump and returns it, so a report captures the bar as it is
-     * right now (e.g. the shade open) rather than the one-shot boot dump. Falls back to the last stored
-     * dump if the module is unreachable or does not answer in time.
+     * Asks the module for a fresh status and diagnostic dump, bounded once per report, so the report
+     * captures the bar as it is right now (e.g. the shade open) rather than a stale dump. A module that
+     * never loaded is not asked; an unanswered request falls back to the stored values, marked fresh=false.
      */
-    suspend fun refreshedDump(): String = try {
-        context.sendBroadcast(
-            Intent(DuoPrefs.ACTION_DIAGNOSTICS_REQUEST).setPackage("com.android.systemui")
-        )
-        withContext(Dispatchers.IO) { Thread.sleep(900) }
-        DuoPrefs.dump(context).ifEmpty { dump }
-    } catch (t: Throwable) {
-        dump
+    suspend fun refreshedDump(): FreshSnapshot = withContext(Dispatchers.IO) {
+        SnapshotRefresh.refresh(context)
     }
 
     // One-tap bug report, shared by the About button and the module-health card: packs the description,
@@ -295,22 +289,24 @@ fun DuoSettingsScreen(
             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
             collecting = false
             val message = problem.trim()
-            // Only trust the stored module status/dump while the module is actually running; after it is
-            // unscoped the persisted values are the *previous* run and would read as a healthy report.
-            val alive = moduleHealth.state != ModuleState.NEVER_LOADED
-            val dumpValue = if (alive) refreshedDump() else ""
+            // One bounded ask; the report builder and the ZIP share the same snapshot. A stored dump that
+            // did not refresh is still evidence, and the report labels its build/time as stale.
+            val snapshot = refreshedDump()
             val report = buildFullReport(
                 context, problem, settings,
-                if (alive) status else "",
-                if (alive) history else emptyList(),
-                dumpValue,
-                if (alive) moduleLoadAt else 0L,
-                logs
+                snapshot.status,
+                if (snapshot.status.isNotBlank()) history else emptyList(),
+                snapshot.dump,
+                moduleLoadAt,
+                logs,
+                dumpAt = snapshot.dumpAt
             )
             // Prefer the self-contained report ZIP; fall back to the legacy text path when it cannot be
             // built (no diagnostics dir, IO failure, ...).
             val zip = withContext(Dispatchers.IO) {
-                writeReportZip(context, report, logs, if (alive) status else "", dumpValue)
+                writeReportZip(
+                    context, report, logs, snapshot.status, snapshot.dump, snapshot.dumpAt
+                )
             }
             if (zip == null) {
                 val file = writeDiagnostics(context, report)
@@ -467,15 +463,16 @@ fun DuoSettingsScreen(
                         scope.launch {
                             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
-                            val alive = moduleHealth.state != ModuleState.NEVER_LOADED
+                            val snapshot = refreshedDump()
                             pendingExport =
                                 buildFullReport(
                                     context, "", settings,
-                                    if (alive) status else "",
-                                    if (alive) history else emptyList(),
-                                    if (alive) dump else "",
-                                    if (alive) moduleLoadAt else 0L,
-                                    logs
+                                    snapshot.status,
+                                    if (snapshot.status.isNotBlank()) history else emptyList(),
+                                    snapshot.dump,
+                                    moduleLoadAt,
+                                    logs,
+                                    dumpAt = snapshot.dumpAt
                                 )
                             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                             exportLog.launch("duo-log-$stamp.txt")
@@ -499,15 +496,16 @@ fun DuoSettingsScreen(
                             // Same full log as the About button: the module dump plus the device capture.
                             val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
-                            val alive = moduleHealth.state != ModuleState.NEVER_LOADED
+                            val snapshot = refreshedDump()
                             sendLogOnTelegram(
                                 context,
                                 buildDiagnostics(
                                     context, settings,
-                                    if (alive) status else "",
-                                    if (alive) history else emptyList(),
-                                    if (alive) dump else "",
-                                    if (alive) moduleLoadAt else 0L
+                                    snapshot.status,
+                                    if (snapshot.status.isNotBlank()) history else emptyList(),
+                                    snapshot.dump,
+                                    moduleLoadAt,
+                                    dumpAt = snapshot.dumpAt
                                 ) +
                                     "\n\n===== device capture =====\n" + logs
                             )
@@ -650,14 +648,15 @@ fun DuoSettingsScreen(
                 scope.launch {
                     val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                     exporting = false
-                    val alive = moduleHealth.state != ModuleState.NEVER_LOADED
+                    val snapshot = refreshedDump()
                     pendingExport = buildFullReport(
                         context, "", settings,
-                        if (alive) status else "",
-                        if (alive) history else emptyList(),
-                        if (alive) refreshedDump() else "",
-                        if (alive) moduleLoadAt else 0L,
-                        logs
+                        snapshot.status,
+                        if (snapshot.status.isNotBlank()) history else emptyList(),
+                        snapshot.dump,
+                        moduleLoadAt,
+                        logs,
+                        dumpAt = snapshot.dumpAt
                     )
                     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                     exportLog.launch("duo-log-$stamp.txt")

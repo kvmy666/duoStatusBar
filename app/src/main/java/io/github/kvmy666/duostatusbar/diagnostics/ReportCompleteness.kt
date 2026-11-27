@@ -2,9 +2,11 @@ package io.github.kvmy666.duostatusbar.diagnostics
 
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealth
+import io.github.kvmy666.duostatusbar.settings.ModuleMode
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.SettingsHistory
 import io.github.kvmy666.duostatusbar.ui.dumpVersion
+import io.github.kvmy666.duostatusbar.ui.dumpWrittenAt
 
 /** How one report section ended. [MISSING] is for app-side inputs the report could not find. */
 internal enum class ReportSectionState { PRESENT, EMPTY, UNREADABLE, SKIPPED, MISSING }
@@ -455,6 +457,35 @@ internal object ReportFacts {
             return@buildString
         }
 
+        // A loaded/current module whose stored dump is from the previous build (the owner field case:
+        // app 2.1.2, dump 2.1.1). The live status is still this run, so it is printed; nothing is taken
+        // from the old dump, and the mode comes from the live owner rather than a stale health state.
+        val runningBuild = health?.runningVersion?.trim()?.takeIf { it.isNotEmpty() }
+        val dumpBuild = dumpVersion(dump)?.trim()?.takeIf { it.isNotEmpty() }
+        if (runningBuild != null && dumpBuild != null && dumpBuild != runningBuild) {
+            appendLine(liveStatusBlock(status))
+            val writtenAt = dumpWrittenAt(dump)
+            val written = writtenAt?.let { " written ${formatTimestamp(it)}" }
+                ?: " written at an unknown time"
+            appendLine(
+                "dump: STALE diagnostic dump from $dumpBuild$written; per-piece facts unavailable"
+            )
+            val liveMode = liveMode(status, health)
+            // A live status proves the module is running; NEVER_LOADED/NOT_REPORTING describe the
+            // heartbeat channel, not this status line, and must not contradict it in the same report.
+            val liveState = if (status.isNotBlank() &&
+                (health?.state == null ||
+                    health.state == ModuleState.NEVER_LOADED ||
+                    health.state == ModuleState.NOT_REPORTING)
+            ) {
+                ModuleState.OK
+            } else {
+                health?.state ?: ModuleState.OK
+            }
+            appendLine("mode: $liveState (${liveMode.label})")
+            return@buildString
+        }
+
         val process = field(status, "process") ?: dumpField(dump, "process")
         val pid = field(status, "pid") ?: dumpField(dump, "pid")
         if (process == null && pid == null) {
@@ -562,7 +593,7 @@ internal object ReportFacts {
 
         appendLine(
             "mode: " + if (health != null) {
-                "${health.state} (${health.mode.label})"
+                "${health.state} (${liveMode(status, health).label})"
             } else {
                 "missing:module health unavailable"
             }
@@ -614,6 +645,30 @@ internal object ReportFacts {
         }
     }
 }
+
+/**
+ * The two live facts lines for a stale-dump report. Only the status is read, so no fact here comes from
+ * the previous build's dump; a field the status does not carry says `unknown`, never `missing:`.
+ */
+private fun liveStatusBlock(status: String): String {
+    val process = field(status, "process") ?: "unknown"
+    val pid = field(status, "pid") ?: "unknown"
+    val attached = field(status, "attached") ?: "unknown"
+    val stage = field(status, "stage") ?: "unknown"
+    val renderer = field(status, "renderer") ?: "unknown"
+    val owner = field(status, "owner") ?: "unknown"
+    return "process: process=$process pid=$pid\n" +
+        "duo attach: attached=$attached stage=$stage renderer=$renderer owner=$owner"
+}
+
+/** The live owner from the status line, falling back to the configured mode when it is absent. */
+private fun liveMode(status: String, health: ModuleHealth?): ModuleMode =
+    when (field(status, "owner")) {
+        "duo" -> ModuleMode.DUO
+        "ios" -> ModuleMode.IOS
+        "none" -> ModuleMode.OFF
+        else -> health?.mode ?: ModuleMode.OFF
+    }
 
 private fun field(line: String, key: String): String? =
     Regex("""(?:^|[\s·])${Regex.escape(key)}=([^\s·]+)""")

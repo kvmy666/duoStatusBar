@@ -37,6 +37,22 @@ class DuoPrefsDumpTest {
     }
 
     @Test
+    fun `writeDump records when it was written`() {
+        val before = System.currentTimeMillis()
+        DuoPrefs.writeDump(context, "hello dump")
+        val at = DuoPrefs.dumpAt(context)
+        val after = System.currentTimeMillis()
+
+        assertTrue("dumpAt must be the write time, not zero", at > 0L)
+        assertTrue("dumpAt must be this write: $at not in $before..$after", at in before..after)
+    }
+
+    @Test
+    fun `a dump without a recorded time reads zero`() {
+        assertEquals(0L, DuoPrefs.dumpAt(context))
+    }
+
+    @Test
     fun `truncation does not split a UTF-16 surrogate pair`() {
         val cap = 2 * 1024 * 1024
         val input = "a".repeat(cap - 1) + "\uD83D\uDE00" + "b".repeat(1000)

@@ -5,6 +5,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -43,6 +46,33 @@ internal fun labelStaleDump(dump: String, appVersion: String): String {
 }
 
 /**
+ * The same label, naming when the dump was written. A report can pass the fresh timestamp it read
+ * ([io.github.kvmy666.duostatusbar.settings.DuoPrefs.dumpAt]) or 0 to fall back to the module log's own
+ * last epoch ([dumpWrittenAt]). [now] rejects a nonsensical future stamp. It says both facts a reader
+ * needs to judge the dump: which build wrote it, and how old it is.
+ */
+internal fun labelStaleDump(
+    dump: String,
+    appVersion: String,
+    dumpAt: Long,
+    now: Long = System.currentTimeMillis()
+): String {
+    if (dump.isBlank()) return dump
+    val version = dumpVersion(dump) ?: return dump
+    if (version == appVersion) return dump
+    val writtenAt = when {
+        dumpAt > 0L && (now <= 0L || dumpAt <= now) -> dumpAt
+        else -> dumpWrittenAt(dump)
+    }
+    val written = writtenAt?.let {
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(it))
+    }
+    val detail = if (written != null) "from $version written $written" else "from $version"
+    return "[stale diagnostic dump $detail; app is $appVersion; " +
+        "per-piece facts not derived from it]\n$dump"
+}
+
+/**
  * The first token after a leading `version:` line of a diagnostic dump, or null when it has none.
  * This is the build the *running* module wrote, which is what a pending update names as the old build.
  */
@@ -50,8 +80,28 @@ internal fun dumpVersion(dump: String): String? = dump.lineSequence()
     .mapNotNull { VERSION_LINE.find(it)?.groupValues?.get(1) }
     .firstOrNull()
 
+/**
+ * When the module wrote [dump], as the last leading 13-digit epoch in its embedded module-log section.
+ * The app cannot read the module's ring buffer or a file mtime from System UI, so the log lines' own
+ * timestamps are the best available proof. A dump with no such section has no readable time (null);
+ * `DuoPrefs.dumpAt` is the explicit stamp for builds that write it.
+ */
+internal fun dumpWrittenAt(dump: String): Long? {
+    if (dump.isBlank()) return null
+    val index = dump.lastIndexOf(MODULE_LOG_MARKER)
+    if (index < 0) return null
+    return dump.substring(index + MODULE_LOG_MARKER.length)
+        .lineSequence()
+        .map { it.trim() }
+        .mapNotNull { EPOCH_LINE.find(it)?.groupValues?.get(1)?.toLongOrNull() }
+        .lastOrNull()
+}
+
 /** The first token after a leading `version:` line of a diagnostic dump. */
 private val VERSION_LINE = Regex("""^\s*version:\s*(\S+)""")
+
+/** A module-log line starts with its wall-clock epoch in milliseconds; 13 digits until the year 2286. */
+private val EPOCH_LINE = Regex("""^(\d{13})(?:\s|$)""")
 
 internal object DuoReport {
 
